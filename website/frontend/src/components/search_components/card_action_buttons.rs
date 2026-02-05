@@ -23,6 +23,7 @@ pub fn DocCardActionButtonOpenNewTab(document_identifier:ReadSignal<DocumentIden
                 padding: 1px;
                 margin: 1px;
             ",
+            target: "_blank",
             class: "hoover4-hover-shadow-background",
             href: Route::ViewDocumentPage { document_identifier: document_identifier.read().clone().into() }.to_string(),
             // onclick: move |_e| {

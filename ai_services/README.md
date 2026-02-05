@@ -1,6 +1,18 @@
-# Alex RAG Demo
+# OCR, NER and RAG services
 
-A comprehensive RAG (Retrieval-Augmented Generation) system with document ingestion, vector search, advanced reranking, and interactive chat interface. Built with Milvus vector store, Hoover4 AI services, and LiteLLM integration.
+This section contains:
+- A OCR service based on EasyOCR and TesseractOCR, supporting text and PDF content, running on the GPU.
+- A NER service that tags text as `PER` (person), `ORG` (organization), `LOC` (place) or `MISC` type semantic entities, running on the GPU.
+- A comprehensive RAG (Retrieval-Augmented Generation) system with document ingestion, vector search, advanced reranking, and interactive chat interface. Built with Milvus vector store, Hoover4 AI services, and LiteLLM integration.
+
+
+## Requirements
+
+Hardware: minimum of 1 x RTX 3090 with 24gb of video RAM (or better). Minimum of 64gb of system RAM or better. CPU with at least 8 CPU cores.
+
+Software: Running these services requires `nvidia-docker` and `CUDA 12.8` installed.
+
+
 
 ## Features
 

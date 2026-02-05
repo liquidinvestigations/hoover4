@@ -30,7 +30,3 @@ The docker containers start up the following services:
 - **Temporal Cassandra**: [http://localhost:9042](http://localhost:9042) - Temporal's Cassandra database
 - **Temporal Elasticsearch**: [http://localhost:9200](http://localhost:9200) - Elasticsearch REST API
 
-### Notes
-
-- MinIO S3 and Temporal UI are configured but ports are commented out in the docker-compose.yaml
-- ZooKeeper runs internally without exposed ports
