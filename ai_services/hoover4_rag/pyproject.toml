@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "hoover4-rag"
+version = "0.2.0"
+description = "Hoover4 RAG Package"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "hoover4_rag"}]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0.0"
+clickhouse-connect = "^0.8.18"
+python-dotenv = "^1.0.0"
+langchain = "^0.3.27"
+langchain-core = "^0.3.27"
+langchain-openai = "^0.2.0"
+requests = "^2.31.0"
+pymilvus = "^2.4.0"
+tqdm = "^4.66.0"
+hoover4-ai-clients = {path = "../hoover4_ai_clients"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+black = "^23.0"
+ruff = "^0.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

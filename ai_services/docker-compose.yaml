@@ -1,0 +1,266 @@
+services:
+  # AI Server - FastAPI embedding/reranking/NER server
+  hoover4-ai-server:
+    build:
+      context: .
+      dockerfile: ./hoover4_ai_server/Dockerfile
+    container_name: hoover4-ai-server
+    ports:
+      - "${AI_SERVER_PORT}:${AI_SERVER_PORT}"
+    environment:
+      - HOST=${AI_SERVER_HOST}
+      - PORT=${AI_SERVER_PORT}
+      - OPTIMAL_BATCH_SIZE=${AI_SERVER_OPTIMAL_BATCH_SIZE}
+      - MAX_SEQUENCE_LENGTH=${AI_SERVER_MAX_SEQUENCE_LENGTH}
+      - ENABLE_HALF_PRECISION=${AI_SERVER_ENABLE_HALF_PRECISION}
+      - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE}
+      - LOG_LEVEL=${LOG_LEVEL}
+    env_file:
+      - .env
+    volumes:
+      - ai_models_cache:/root/.cache/huggingface/transformers
+      - ai_models_cache:/root/.cache/torch/sentence_transformers
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+
+  # DuckDuckGo Search MCP Server
+  hoover4-mcp-ddg:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/ddg_search_server/Dockerfile
+    container_name: hoover4-mcp-ddg
+    ports:
+      - "${DDG_SERVER_PORT}:${DDG_SERVER_PORT}"
+    environment:
+      - HOST=${DDG_SERVER_HOST}
+      - PORT=${DDG_SERVER_PORT}
+      - SERVER_NAME=${DDG_SERVER_NAME}
+      - SERVER_INSTRUCTIONS=${DDG_SERVER_INSTRUCTIONS}
+      - DDG_DEFAULT_REGION=${DDG_DEFAULT_REGION}
+      - DDG_DEFAULT_MAX_RESULTS=${DDG_DEFAULT_MAX_RESULTS}
+      - DDG_DEFAULT_SAFESEARCH=${DDG_DEFAULT_SAFESEARCH}
+      - DDG_DEFAULT_TIMELIMIT=${DDG_DEFAULT_TIMELIMIT}
+      - DDG_PROXY_URL=${DDG_PROXY_URL}
+      - DDG_TIMEOUT=${DDG_TIMEOUT}
+      - LOG_LEVEL=${LOG_LEVEL}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${DDG_SERVER_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+  # Milvus Search MCP Server
+  hoover4-mcp-milvus:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/milvus_search_server/Dockerfile
+    container_name: hoover4-mcp-milvus
+    ports:
+      - "${MILVUS_MCP_PORT}:${MILVUS_MCP_PORT}"
+    environment:
+      - HOST=${MILVUS_MCP_HOST}
+      - PORT=${MILVUS_MCP_PORT}
+      - SERVER_NAME=${MILVUS_MCP_SERVER_NAME}
+      - SERVER_INSTRUCTIONS=${MILVUS_MCP_SERVER_INSTRUCTIONS}
+      - MILVUS_HOST=${MILVUS_HOST}
+      - MILVUS_PORT=${MILVUS_PORT}
+      - MILVUS_COLLECTION_NAME=${MILVUS_COLLECTION_NAME}
+      - EMBEDDING_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIM=${EMBEDDING_DIM}
+      - NER_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
+      - RERANKER_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
+      - SEARCH_MODE=${SEARCH_MODE}
+      - SEARCH_INITIAL_K=${SEARCH_INITIAL_K}
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS}
+      - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS}
+      - SEARCH_RRF_K=${SEARCH_RRF_K}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_FORMAT=${LOG_FORMAT}
+    env_file:
+      - .env
+    depends_on:
+      - hoover4-ai-server
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${MILVUS_MCP_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+  # WHOIS Search MCP Server
+  hoover4-mcp-whois:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/whois_search_server/Dockerfile
+    container_name: hoover4-mcp-whois
+    ports:
+      - "${WHOIS_SERVER_PORT}:${WHOIS_SERVER_PORT}"
+    environment:
+      - HOST=${WHOIS_SERVER_HOST}
+      - PORT=${WHOIS_SERVER_PORT}
+      - SERVER_NAME=${WHOIS_SERVER_NAME}
+      - SERVER_INSTRUCTIONS=${WHOIS_SERVER_INSTRUCTIONS}
+      - WHOIS_RATE_LIMITING=${WHOIS_RATE_LIMITING}
+      - WHOIS_RATE_LIMIT_MS=${WHOIS_RATE_LIMIT_MS}
+      - WHOIS_TIMEOUT=${WHOIS_TIMEOUT}
+      - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_FORMAT=${LOG_FORMAT}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${WHOIS_SERVER_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+  # Wikipedia Search MCP Server
+  hoover4-mcp-wikipedia:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/wikipedia_search_server/Dockerfile
+    container_name: hoover4-mcp-wikipedia
+    ports:
+      - "${WIKIPEDIA_SERVER_PORT}:${WIKIPEDIA_SERVER_PORT}"
+    environment:
+      - HOST=${WIKIPEDIA_SERVER_HOST}
+      - PORT=${WIKIPEDIA_SERVER_PORT}
+      - SERVER_NAME=${WIKIPEDIA_SERVER_NAME}
+      - SERVER_INSTRUCTIONS=${WIKIPEDIA_SERVER_INSTRUCTIONS}
+      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE}
+      - WIKIPEDIA_MAX_RESULTS=${WIKIPEDIA_MAX_RESULTS}
+      - WIKIPEDIA_MAX_ALLOWED_RESULTS=${WIKIPEDIA_MAX_ALLOWED_RESULTS}
+      - WIKIPEDIA_SUMMARY_SENTENCES=${WIKIPEDIA_SUMMARY_SENTENCES}
+      - WIKIPEDIA_MAX_SUMMARY_SENTENCES=${WIKIPEDIA_MAX_SUMMARY_SENTENCES}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_FORMAT=${LOG_FORMAT}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${WIKIPEDIA_SERVER_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+  # Full Research Agent API Server (access to all MCP servers)
+  hoover4-full-research-agent:
+    build:
+      context: .
+      dockerfile: ./hoover4_research_agent/Dockerfile
+    container_name: hoover4-full-research-agent
+    ports:
+      - "${FULL_RESEARCH_AGENT_PORT}:${FULL_RESEARCH_AGENT_PORT}"
+    environment:
+      - HOST=${FULL_RESEARCH_AGENT_HOST}
+      - PORT=${FULL_RESEARCH_AGENT_PORT}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME}
+      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT}
+      - MCP_SERVERS=http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-milvus:8081/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+    env_file:
+      - .env
+    depends_on:
+      - hoover4-mcp-ddg
+      - hoover4-mcp-milvus
+      - hoover4-mcp-whois
+      - hoover4-mcp-wikipedia
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${FULL_RESEARCH_AGENT_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+  # Internal Search Agent API Server (access only to Milvus)
+  hoover4-internal-search-agent:
+    build:
+      context: .
+      dockerfile: ./hoover4_research_agent/Dockerfile
+    container_name: hoover4-internal-search-agent
+    ports:
+      - "${INTERNAL_SEARCH_AGENT_PORT}:${INTERNAL_SEARCH_AGENT_PORT}"
+    environment:
+      - HOST=${INTERNAL_SEARCH_AGENT_HOST}
+      - PORT=${INTERNAL_SEARCH_AGENT_PORT}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME}
+      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT}
+      - MCP_SERVERS=http://hoover4-mcp-milvus:8081/mcp
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+    env_file:
+      - .env
+    depends_on:
+      - hoover4-mcp-milvus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${INTERNAL_SEARCH_AGENT_PORT}/health')"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4-network
+
+
+volumes:
+  ai_models_cache:
+    driver: local
+  ai_models_cache_2:
+    driver: local
+  ai_models_cache_3:
+    driver: local
+
+networks:
+  hoover4-network:
+    driver: bridge

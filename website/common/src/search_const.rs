@@ -1,0 +1,2 @@
+pub const PAGE_SIZE: u64 = 20;
+pub const MAX_PAGINATION_DOCUMENT_LIMIT: u64 = 1000;

@@ -1,0 +1,6 @@
+[package]
+name = "common"
+edition = "2024"
+
+[dependencies]
+serde = "1"

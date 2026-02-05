@@ -1,0 +1,1 @@
+ALTER TABLE search_manticore_cache ADD COLUMN duration_ms UInt32 DEFAULT 0 COMMENT 'The duration of the search in milliseconds';

@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "hoover4-mcp-milvus-search-server"
+version = "0.1.0"
+description = "MCP server exposing Hoover4 Milvus search functionality"
+authors = ["Your Name <your.email@example.com>"]
+packages = [{include = "milvus_server"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0.0"
+mcp = "1.14.1"
+fastmcp = "2.12.2"
+pydantic = ">=2.0.0"
+python-dotenv = ">=1.0.0"
+requests = ">=2.31.0"
+langchain-core = "^0.3.27"
+pymilvus = "^2.4.0"
+hoover4-ai-clients = {path = "../../hoover4_ai_clients"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+pytest-asyncio = "^0.21.0"
+black = "^23.0.0"
+ruff = "^0.1.0"
+
+[tool.poetry.scripts]
+hoover4-milvus-search-server = "milvus_server.server:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+select = ["E", "F", "W", "B", "I", "N"]
+ignore = ["E501", "B008"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]

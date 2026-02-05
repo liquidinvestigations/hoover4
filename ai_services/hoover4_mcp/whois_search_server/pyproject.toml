@@ -1,0 +1,42 @@
+[project]
+name = "hoover4-mcp-whois-server"
+version = "0.1.0"
+description = "MCP server exposing WHOIS domain lookup functionality"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+requires-python = ">=3.10,<4.0.0"
+dependencies = [
+    "mcp==1.14.1",
+    "fastmcp==2.12.2",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "python-whois>=0.9.5",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+hoover4-whois-server = "whois_server.server:main"
+
+[tool.poetry]
+packages = [{include = "whois_server"}]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+select = ["E", "F", "W", "B", "I", "N"]
+ignore = ["E501", "B008"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]

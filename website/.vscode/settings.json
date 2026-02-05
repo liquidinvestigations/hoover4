@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./common/Cargo.toml",
+        "./backend/Cargo.toml",
+        "./frontend/Cargo.toml"
+    ],
+    "rust-analyzer.cargo.targetDir": "target/rust-analyzer",
+    "rust-analyzer.cargo.features": ["dioxus/server", "dioxus/fullstack"],
+}

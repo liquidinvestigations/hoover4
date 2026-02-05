@@ -1,0 +1,626 @@
+services:
+
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: zookeeper
+    hostname: zookeeper
+    memswap_limit: 6000M
+    mem_limit: 6000M
+    networks:
+      - hoover4
+    restart: unless-stopped
+
+  manticore:
+    image: manticoresearch/manticore:14.1.0
+    container_name: manticore
+    ports:
+      - '9306:9306'
+      - '9308:9308'
+    volumes:
+      - manticore_data_v14:/var/lib/manticore
+    memswap_limit: 19000M
+    mem_limit: 19000M
+    ulimits:
+      nproc: 65535
+      nofile:
+         soft: 65535
+         hard: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+    networks:
+      - hoover4
+    environment:
+      - TELEMETRY=0
+    user: 999:999
+
+  clickhouse:
+    container_name: clickhouse
+    image: clickhouse/clickhouse-server:25.8
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
+      - IPC_LOCK
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+      - CLICKHOUSE_DB=hoover4
+      - CLICKHOUSE_USER=hoover4
+      - CLICKHOUSE_PASSWORD=hoover4
+    ports:
+      - '8123:8123'
+      - '9000:9000'
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      # - ./data:/var/lib/clickhouse/user_files
+      - ./clickhouse-server-config-override.xml:/etc/clickhouse-server/config.d/clickhouse-server-config-override.xml
+    healthcheck:
+      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
+      interval: 13s
+      timeout: 15s
+      retries: 6
+    memswap_limit: 19000M
+    mem_limit: 19000M
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    networks:
+      - hoover4
+
+  clickhouse-monitoring:
+    image: ghcr.io/duyet/clickhouse-monitoring:2cc8058
+    environment:
+      - "CLICKHOUSE_HOST=http://clickhouse:8123"
+      - CLICKHOUSE_USER=hoover4
+      - CLICKHOUSE_PASSWORD=hoover4
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - 3000:3000
+    volumes:
+      - clickhouse_monitoring:/var/lib/clickhouse-monitoring
+    memswap_limit: 6000M
+    mem_limit: 6000M
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:sha-6227281d8c096e4259a1b96c92aa3f8d784a3c2b
+    ports:
+      - '5521:5521'
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    memswap_limit: 6000M
+    mem_limit: 6000M
+    restart: unless-stopped
+    environment:
+      VITE_CLICKHOUSE_URL: "$EXTERNAL_CLICKHOUSE_URL"
+      VITE_CLICKHOUSE_USER: "hoover4"
+      VITE_CLICKHOUSE_PASS: "hoover4"
+    networks:
+      - hoover4
+
+
+  # ========================
+  #         TEMPORAL
+  # ========================
+  temporal-cassandra:
+    container_name: temporal-cassandra
+    image: cassandra:${CASSANDRA_VERSION}
+    # image: scylladb/scylla -- SLOWER
+    networks:
+      - hoover4
+    ports:
+      - 127.0.0.1:9042:9042
+    environment:
+      - MAX_HEAP_SIZE=4G
+      - HEAP_NEWSIZE=512M
+      #- disk_access_mode="mmap_index_only" -- is default
+    volumes:
+      - temporal_cassandra:/var/lib/cassandra
+    healthcheck:
+      test: cqlsh -u cassandra -p cassandra -e 'describe cluster'
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6000M
+        reservations:
+          cpus: '1'
+          memory: 5000M
+    restart: unless-stopped
+
+  temporal-elasticsearch:
+    container_name: temporal-elasticsearch
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms2048m -Xmx2048m
+      - xpack.security.enabled=false
+    image: elasticsearch:${ELASTICSEARCH_VERSION}
+    networks:
+      - hoover4
+    ports:
+      - 127.0.0.1:9200:9200
+    volumes:
+      - temporal_elasticsearch:/var/lib/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 12048M
+        reservations:
+          cpus: '1'
+          memory: 1500M
+    restart: unless-stopped
+
+  temporal:
+    container_name: temporal
+    depends_on:
+      temporal-elasticsearch:
+        condition: service_healthy
+      temporal-cassandra:
+        condition: service_healthy
+    environment:
+      - CASSANDRA_SEEDS=temporal-cassandra
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+    image: temporalio/auto-setup:${TEMPORAL_VERSION}
+    networks:
+      - hoover4
+    ports:
+      - 127.0.0.1:7233:7233
+    labels:
+      kompose.volume.type: configMap
+    healthcheck:
+      test: ['CMD-SHELL', 'tctl --address temporal:7233 workflow list --pagesize 1']
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6000M
+        reservations:
+          cpus: '1'
+          memory: 500M
+    restart: unless-stopped
+
+  temporal-ui:
+    container_name: temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    image: temporalio/ui:${TEMPORAL_UI_VERSION}
+    networks:
+      - hoover4
+    ports:
+      - 127.0.0.1:8081:8080
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --silent --fail http://temporal-ui:8080/api/v1/settings? || exit 1']
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6000M
+        reservations:
+          cpus: '1'
+          memory: 500M
+    restart: unless-stopped
+
+
+  # ========================
+  #          S3
+  # ========================
+
+  minio-s3:
+    container_name: minio-s3
+    image: minio/minio:${MINIO_VERSION}
+    volumes:
+      - minio_data:/data
+    networks:
+      - hoover4
+    ports:
+      - "8084:8084"
+      - "9004:9000"
+      - "9123:8123"
+    environment:
+      MINIO_ACCESS_KEY: hoover4
+      MINIO_SECRET_KEY: hoover4-secret
+      MINIO_BROWSER_REDIRECT_URL: "http://localhost:8084"
+      MINIO_UPDATE: "off"
+      MINIO_API_REQUESTS_MAX: "600"
+      MINIO_API_REQUESTS_DEADLINE: "2m"
+      MINIO_DRIVE_SYNC: "on"
+      GOMAXPROCS: "20"
+    command: server /data  --console-address :8084
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local"]
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 6000M
+        reservations:
+          cpus: '1'
+          memory: 500M
+    restart: unless-stopped
+
+
+  redis:
+    image: redis:6.0.9
+    hostname: redis
+    container_name: redis
+    command: ["redis-server", "--appendonly", "no", "--maxmemory", "3000mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - '127.0.0.1:6379:6379'
+    networks:
+      - hoover4
+    deploy:
+      resources:
+        limits:
+          memory: 4000M
+        reservations:
+          memory: 300M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+    restart: unless-stopped
+
+
+# ========================
+#          Milvus
+# ========================
+
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - milvus_etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - hoover4
+    memswap_limit: 9000M
+    mem_limit: 9000M
+    restart: unless-stopped
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    # ports:
+      # - "9001:9001"
+      # - "9000:9000"
+    volumes:
+      - milvus_minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - hoover4
+    memswap_limit: 9000M
+    mem_limit: 9000M
+    restart: unless-stopped
+
+  milvus-standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.6.1
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+    - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MQ_TYPE: woodpecker
+    volumes:
+      - milvus_standalone:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+      - "minio"
+    restart: unless-stopped
+    networks:
+      - hoover4
+    memswap_limit: 39000M
+    mem_limit: 39000M
+
+  # docker run -it --rm --gpus all -e CUDA_DEVICE_ORDER=PCI_BUS_ID -v "D:\huggingface_cache":/root/.cache/huggingface -p 8001:8001 --ipc=host --entrypoint bash vllm/vllm-openai:latest -c "pip install bitblas>=0.1.0 && vllm serve oodapow/phi-4-gptq-4k-en-hb --tensor-parallel-size 2 --gpu-memory-utilization 0.98 --enforce-eager --max-model-len 4096 --max-num-seqs 15"
+  # vllm:
+  #   container_name: vllm
+  #   image: vllm/vllm-openai:latest
+  #   entrypoint: ["/bin/bash"]
+  #   command: /vllm_command.sh
+  #   ports:
+  #     - "8011:8000"
+  #   memswap_limit: 29000M
+  #   mem_limit: 29000M
+  #   ipc: host
+  #   networks:
+  #     - hoover4
+  #   volumes:
+  #     - vllm_huggingface_cache:/root/.cache/huggingface
+  #     - ./vllm_command.sh:/vllm_command.sh
+  #   restart: unless-stopped
+  #   # runtime: nvidia
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             capabilities: ["gpu"]
+  #             device_ids: ["0"]
+  #   environment:
+  #     - VLLM_API_HOST=0.0.0.0
+  #     # - VLLM_API_HOST=0.0.0.0
+  #     # - VLLM_API_PORT=8011
+  #     - VLLM_API_KEY=sk-1234
+  #     - VLLM_NO_USAGE_STATS=1
+  #     - DO_NOT_TRACK=1
+
+  #     # - CUDA_DEVICE_ORDER=PCI_BUS_ID
+
+
+  # ollama_phi4:
+  #   container_name: ollama_phi4
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   memswap_limit: 48000M
+  #   mem_limit: 48000M
+  #   ipc: host
+  #   networks:
+  #     - hoover4
+  #   volumes:
+  #     - ollama:/root/.ollama
+  #   restart: unless-stopped
+  #   # runtime: nvidia
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             capabilities: ["gpu"]
+  #             device_ids: ["0"]
+  #   environment:
+  #     - DO_NOT_TRACK=1
+
+      # - CUDA_DEVICE_ORDER=PCI_BUS_ID
+
+  # open-webui:
+  #   image: ghcr.io/open-webui/open-webui:main
+  #   container_name: open-webui
+  #   volumes:
+  #     - open-webui2:/app/backend/data
+  #   depends_on:
+  #     - vllm
+  #   ports:
+  #     - 8275:8080
+  #   environment:
+  #     - 'OPENAI_API_BASE_URL=http://vllm:8000/v1'
+  #     - 'OPENAI_API_KEY=sk-1234'
+  #     - 'WEBUI_SECRET_KEY='
+  #     - 'ENABLE_FOLLOW_UP_GENERATION=False'
+  #     - 'ENABLE_REVISION_GENERATION=False'
+  #     - 'ENABLE_TAGS_GENERATION=False'
+  #     - 'WEBUI_AUTH=False'
+  #     - ENABLE_VERSION_UPDATE_CHECK=False
+  #     - ENABLE_FOLLOW_UP_GENERATION=False
+  #     - ENABLE_AUTOCOMPLETE_GENERATION=False
+  #     - ENABLE_EVALUATION_ARENA_MODELS=False
+  #     - ENABLE_MESSAGE_RATING=False
+  #     - OFFLINE_MODE=True
+  #     - 'ENABLE_TRACING=False'
+  #     - 'ENABLE_LOGGING=False'
+  #     - 'ENABLE_METRICS=False'
+  #     - 'ENABLE_PROFILING=False'
+  #     - 'ENABLE_DEBUG=False'
+  #     - 'ENABLE_SANITIZATION=False'
+  #   restart: unless-stopped
+  #   networks:
+  #     - hoover4
+
+  # litellm:
+  #   image: ghcr.io/berriai/litellm:main-stable
+  #   #########################################
+  #   ## Uncomment these lines to start proxy with a config.yaml file ##
+  #   # volumes:
+  #   #  - ./config.yaml:/app/config.yaml <<- this is missing in the docker-compose file currently
+  #   # command:
+  #   #  - "--config=/app/config.yaml"
+  #   ##############################################
+  #   ports:
+  #     - "4000:4000" # Map the container port to the host, change the host port if necessary
+  #   environment:
+  #     DATABASE_URL: "postgresql://llmproxy:dbpassword9090@litellm_db:5432/litellm"
+  #     STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
+  #     LITELLM_MASTER_KEY: "sk-12349876243249846213498432198491556"
+  #     LITELLM_SALT_KEY: "sk-1234"
+  #   depends_on:
+  #     - litellm_db  # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
+  #   healthcheck:  # Defines the health check configuration for the container
+  #     test: [ "CMD-SHELL", "wget --no-verbose --tries=1 http://localhost:4000/health/liveliness || exit 1" ]  # Command to execute for health check
+  #     interval: 30s  # Perform health check every 30 seconds
+  #     timeout: 10s   # Health check command times out after 10 seconds
+  #     retries: 3     # Retry up to 3 times if health check fails
+  #     start_period: 40s  # Wait 40 seconds after container start before beginning health checks
+  #   restart: unless-stopped
+  #   networks:
+  #     - hoover4
+  #   memswap_limit: 9000M
+  #   mem_limit: 9000M
+
+  # litellm_db:
+  #   image: postgres:16
+  #   container_name: litellm_db
+  #   environment:
+  #     POSTGRES_DB: litellm
+  #     POSTGRES_USER: llmproxy
+  #     POSTGRES_PASSWORD: dbpassword9090
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - litellm_postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
+  #     interval: 1s
+  #     timeout: 5s
+  #     retries: 10
+  #   restart: unless-stopped
+  #   networks:
+  #     - hoover4
+  #   memswap_limit: 9000M
+  #   mem_limit: 9000M
+
+  hoover4-worker:
+    # image: hoover4-worker
+    container_name: hoover4-worker
+    build:
+      context: ../../processing
+      dockerfile: Dockerfile
+    command: bash -exc "uv run main.py migrate && uv run main.py worker"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    memswap_limit: 29000M
+    mem_limit: 29000M
+    volumes:
+      - /opt/hoover4-testdata:/testdata
+      - ../../processing:/app
+    depends_on:
+      temporal:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      - "NER_URL=${NER_URL}"
+
+  hoover4-website:
+    # image: hoover4-website
+    container_name: hoover4-website
+    build:
+      context: ../../../website
+      dockerfile: Dockerfile
+    command: bash -c "cd frontend && while true; do dx serve --renderer web --port 12345 --addr 0.0.0.0 --open false --hot-reload false; sleep 1; echo restarting...; done"
+    restart: unless-stopped
+    memswap_limit: 9000M
+    mem_limit: 9000M
+    volumes:
+      - ../../../website/frontend:/app/frontend
+      - ../../../website/common:/app/common
+      - ../../../website/backend:/app/backend
+      - ../../../website/Cargo.toml:/app/Cargo.toml
+      - ../../../website/Cargo.lock:/app/Cargo.lock
+      - hoover4-website-target:/app/frontend/target
+    ports:
+      - "0.0.0.0:12345:12345"
+    environment:
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - MANTICORE_URL=http://manticore:9308
+    networks:
+      - hoover4
+    depends_on:
+      temporal:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+
+volumes:
+  clickhouse_data:
+    driver: local
+  manticore_data_v14:
+    driver: local
+  minio_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  temporal_elasticsearch:
+    driver: local
+  temporal_cassandra:
+    driver: local
+  milvus_etcd:
+    driver: local
+  milvus_minio:
+    driver: local
+  milvus_standalone:
+    driver: local
+  clickhouse_monitoring:
+    driver: local
+  hoover4-website-target:
+    driver: local
+  # vllm_huggingface_cache:
+  #   driver: local
+  # litellm_postgres_data:
+  #   driver: local
+  # ollama:
+  #   driver: local
+  # open-webui2:
+  #   driver: local
+networks:
+  hoover4:
+    name: hoover4
+    # external: true
+
+
+
+# ======================================================

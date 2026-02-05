@@ -1,0 +1,37 @@
+[package]
+name = "frontend"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { version = "0.7.1", features = ["router", "fullstack", "logger"] }
+dioxus-free-icons={version="0.10.0", features=[
+    "material-design-icons-action",
+    "material-design-icons-file",
+    "material-design-icons-communication",
+    "material-design-icons-social",
+    "material-design-icons-image",
+    "material-design-icons-navigation",
+    "material-design-icons-editor",
+    "material-design-icons-toggle",
+    "octicons",
+]}
+dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
+base64 = "0.22.1"
+serde = "1"
+futures-util = "0.3.31"
+ciborium = "0.2.2"
+common = { path = "../common" }
+backend = { path = "../backend", optional = true }
+gloo-timers = "0.3"
+anyhow = "1"
+serde_json = "1"
+web-sys = {version = "0.3", features = ["Window", "Navigator", "Clipboard", "Url", "Permissions"]}
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+server = ["dioxus/server", "dep:backend"]

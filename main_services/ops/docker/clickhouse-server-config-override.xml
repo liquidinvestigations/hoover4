@@ -1,0 +1,47 @@
+<!--
+  NOTE: User and query level settings are set up in "users.xml" file.
+  If you have accidentally specified user-level settings here, server won't start.
+  You can either move the settings to the right place inside "users.xml" file
+   or add <skip_check_for_incorrect_settings>1</skip_check_for_incorrect_settings> here.
+-->
+<clickhouse>
+    <zookeeper>
+        <node>
+            <host>zookeeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+
+    
+    <max_server_memory_usage>16106127360</max_server_memory_usage>
+    <mark_cache_size>1536870912</mark_cache_size>
+    <concurrent_threads_soft_limit_num>3</concurrent_threads_soft_limit_num>
+    <max_concurrent_queries>512</max_concurrent_queries>
+    <max_thread_pool_size>1024</max_thread_pool_size>
+    <!-- usersxml -->
+    
+    <profiles><default>
+        <max_block_size>8192</max_block_size>
+        <max_download_threads>1</max_download_threads>
+        <input_format_parallel_parsing>0</input_format_parallel_parsing>
+        <output_format_parallel_formatting>0</output_format_parallel_formatting>
+
+    </default></profiles>
+
+    <asynchronous_metric_log remove="1"/>
+    <metric_log remove="1"/>
+    <query_thread_log remove="1" />  
+    <query_log remove="1" />
+    <query_views_log remove="1" />
+    <part_log remove="1"/>
+    <session_log remove="1"/>
+    <text_log remove="1" />
+    <trace_log remove="1"/>
+    <crash_log remove="1"/>
+    <opentelemetry_span_log remove="1"/>
+    <zookeeper_log remove="1"/>
+    <latency_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <asynchronous_insert_log remove="1"/>
+
+</clickhouse>
