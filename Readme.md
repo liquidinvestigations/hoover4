@@ -8,6 +8,8 @@ Hoover4 will supersede the legacy [hoover-search](https://github.com/liquidinves
 
 ## [Live Demo](https://liquiddemo.org/)
 
+<a href="https://new.liquiddemo.org" target="_blank"> <img src="./main_services/docs/website-screenshot.png" width="24em"></img></a>
+
 A live demo website for this prototype is available at https://new.liquiddemo.org/.
 
 A live demo website for the legacy project is also available at https://liquiddemo.org/.
