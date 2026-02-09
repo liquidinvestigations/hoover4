@@ -1,3 +1,5 @@
+"""Tika/Extractous parsing activity for text and metadata extraction."""
+
 from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass

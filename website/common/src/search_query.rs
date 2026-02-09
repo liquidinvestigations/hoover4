@@ -1,3 +1,5 @@
+//! Shared search query models and helpers.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};

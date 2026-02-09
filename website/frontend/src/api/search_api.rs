@@ -1,3 +1,5 @@
+//! Client API calls for search endpoints.
+
 use common::{search_query::SearchQuery, search_result::{SearchResultDocuments, SearchResultFacets}};
 use dioxus::prelude::*;
 

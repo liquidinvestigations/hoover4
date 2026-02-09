@@ -1,3 +1,5 @@
+//! Frontend pages module.
+
 pub mod home_page;
 pub mod search_page;
 pub mod file_browser_page;

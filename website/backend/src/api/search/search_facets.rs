@@ -1,3 +1,5 @@
+//! Search facets endpoint and response shaping.
+
 use std::{collections::{HashMap, HashSet}, u64};
 
 use crate::{api::search::search_sql::build_sql_where_clause, db_utils::{clickhouse_utils::get_clickhouse_client, manticore_utils::{RawSearchResultAggregation, manticore_search_sql}}};

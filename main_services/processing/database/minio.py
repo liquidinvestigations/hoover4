@@ -1,3 +1,5 @@
+"""MinIO client helpers for blob storage access."""
+
 import logging
 log = logging.getLogger(__name__)
 from minio import Minio

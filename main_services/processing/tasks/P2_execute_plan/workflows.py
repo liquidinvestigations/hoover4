@@ -1,3 +1,5 @@
+"""Workflows for executing processing plans and per-file parsing tasks."""
+
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from datetime import timedelta

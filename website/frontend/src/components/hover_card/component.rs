@@ -1,3 +1,5 @@
+//! Hover card component implementation.
+
 use dioxus::prelude::*;
 use dioxus_primitives::hover_card::{
     self, HoverCardContentProps, HoverCardProps, HoverCardTriggerProps,

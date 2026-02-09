@@ -1,3 +1,5 @@
+//! ClickHouse query helpers for the backend.
+
 pub fn get_clickhouse_client() -> clickhouse::Client {
     clickhouse::Client::default()
         .with_url(std::env::var("CLICKHOUSE_URL").unwrap_or("http://localhost:8123".to_string()))

@@ -1,3 +1,5 @@
+//! Search result item card component.
+
 use dioxus::{logger::tracing, prelude::*};
 use common::{search_result::{DocumentIdentifier, SearchResultDocumentItem}, text_highlight::HighlightTextSpan};
 use dioxus_free_icons::{Icon, icons::{go_icons::GoDatabase, md_action_icons::{MdDonutLarge, MdOpenInNew}, md_editor_icons::MdInsertDriveFile, md_navigation_icons::MdMoreVert}};

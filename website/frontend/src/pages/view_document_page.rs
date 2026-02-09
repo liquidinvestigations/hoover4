@@ -1,3 +1,5 @@
+//! Document view page layout.
+
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 

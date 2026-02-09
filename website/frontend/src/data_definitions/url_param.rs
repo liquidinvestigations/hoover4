@@ -1,3 +1,5 @@
+//! URL parameter helpers and types.
+
 use std::{fmt::Display, str::FromStr};
 
 use base64::engine::general_purpose::URL_SAFE;

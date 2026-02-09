@@ -1,3 +1,5 @@
+//! Frontend component module.
+
 pub mod navbar;
 pub mod hover_card;
 pub mod error_boundary;

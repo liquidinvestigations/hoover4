@@ -1,3 +1,5 @@
+//! Root application component.
+
 use dioxus::prelude::*;
 
 use crate::components::error_boundary::GlobalErrorBoundary;

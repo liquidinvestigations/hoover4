@@ -1,3 +1,5 @@
+//! Utilities for Manticore query formatting and results.
+
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;

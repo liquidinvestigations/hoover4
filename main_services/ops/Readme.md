@@ -1,3 +1,36 @@
+# Operations
+
+This directory provides the runtime environment for Hoover4 main services. The `docker/` folder contains Docker Compose definitions and configuration overrides used to run processing dependencies.
+
+## Docker Compose Services
+
+The stack includes:
+
+- Workflow orchestration: Temporal with Cassandra and Elasticsearch backends, plus the Temporal UI.
+- Primary data stores: ClickHouse for structured processing tables, Manticore for text search, MinIO for object storage, and Redis for auxiliary caching.
+- Parsing and enrichment: Apache Tika and OCR-related workers that connect to the processing pipeline.
+- Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
+
+## Common Endpoints (Local)
+
+- Temporal UI: `http://localhost:8081`
+- ClickHouse HTTP: `http://localhost:8123`
+- ClickHouse Native: `http://localhost:9000`
+- Manticore SQL: `http://localhost:9306`
+- Manticore HTTP: `http://localhost:9308`
+- Apache Tika: `http://localhost:9998`
+- MinIO Console: `http://localhost:8084` (default credentials are documented in Docker Compose)
+- Redis: `tcp://localhost:6379`
+
+## Technical Details
+
+This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, MinIO, Redis, and supporting UIs.
+
+Configuration is organized under `docker/`, which includes compose files, `.env` values, service overrides, and helper scripts. Use `docker compose up -d` from `docker/` after setting environment variables in the local `.env` file.
+
+## Navigation
+
+-  [Go Back](../Readme.md)
 # Ops
 
 ## Docker

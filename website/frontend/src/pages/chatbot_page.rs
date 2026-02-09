@@ -1,3 +1,5 @@
+//! Chatbot page layout and integration.
+
 use dioxus::prelude::*;
 
 

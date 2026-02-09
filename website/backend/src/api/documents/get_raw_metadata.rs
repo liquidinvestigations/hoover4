@@ -1,3 +1,5 @@
+//! Endpoint for retrieving raw document metadata.
+
 use clickhouse::sql;
 use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
 use tokio::io::AsyncBufReadExt;

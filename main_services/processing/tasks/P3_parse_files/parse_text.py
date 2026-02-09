@@ -1,3 +1,5 @@
+"""Plaintext extraction activity for raw text files."""
+
 from temporalio import activity
 from typing import Dict, Any
 from dataclasses import dataclass

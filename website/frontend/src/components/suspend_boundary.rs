@@ -1,3 +1,5 @@
+//! Suspension boundary component for async rendering.
+
 use dioxus::prelude::*;
 
 use crate::components::error_boundary::ComponentErrorBoundary;

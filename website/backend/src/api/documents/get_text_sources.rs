@@ -1,3 +1,5 @@
+//! Endpoint for fetching document text sources.
+
 use common::{document_text_sources::DocumentTextSourceItem, search_result::DocumentIdentifier};
 
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;

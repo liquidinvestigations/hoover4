@@ -1,3 +1,5 @@
+//! Search API route handlers and module exports.
+
 mod search_for_results;
 pub use search_for_results::search_for_results;
 

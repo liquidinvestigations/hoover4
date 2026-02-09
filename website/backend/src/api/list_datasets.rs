@@ -1,3 +1,5 @@
+//! Endpoint for listing datasets.
+
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 pub async fn list_dataset_ids() -> anyhow::Result<Vec<String>> {

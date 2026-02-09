@@ -1,3 +1,5 @@
+//! Search input and controls in the top bar.
+
 use dioxus::prelude::*;
 use common::search_query::SearchQuery;
 use dioxus_free_icons::{Icon, icons::{go_icons::GoDatabase, md_action_icons::MdSearch, md_communication_icons::MdLocationOn, md_editor_icons::MdInsertDriveFile, md_navigation_icons::{MdApps, MdArrowDropDown}}};

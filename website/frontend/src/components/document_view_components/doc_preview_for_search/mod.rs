@@ -1,3 +1,5 @@
+//! Document preview components for search results.
+
 mod no_document_selected;
 mod preview_subtitle_bar;
 mod text_data_viewer;

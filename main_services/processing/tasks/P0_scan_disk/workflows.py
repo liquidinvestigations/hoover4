@@ -1,3 +1,5 @@
+"""Temporal workflows for recursive disk scanning and ingestion."""
+
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy

@@ -1,3 +1,5 @@
+"""CLI entry point for processing services, including migrations and workers."""
+
 import click
 import asyncio
 

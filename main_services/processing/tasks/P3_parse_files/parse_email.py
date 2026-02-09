@@ -1,3 +1,5 @@
+"""Email parsing activities and workflow for headers and attachments."""
+
 from temporalio import activity, workflow
 from temporalio.common import RetryPolicy
 from typing import Dict, Any, List

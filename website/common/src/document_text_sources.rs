@@ -1,3 +1,5 @@
+//! Shared types for document text source metadata.
+
 use serde::{Deserialize, Serialize};
 
 use crate::text_highlight::HighlightTextSpan;

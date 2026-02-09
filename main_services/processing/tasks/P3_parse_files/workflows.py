@@ -1,3 +1,5 @@
+"""Parsing workflows that route files by type to specialized handlers."""
+
 from temporalio import workflow, activity
 from temporalio.common import RetryPolicy
 from datetime import timedelta

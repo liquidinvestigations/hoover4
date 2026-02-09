@@ -1,3 +1,5 @@
+//! Home page UI layout.
+
 use dioxus::prelude::*;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;

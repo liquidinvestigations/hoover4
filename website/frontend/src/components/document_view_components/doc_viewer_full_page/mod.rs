@@ -1,3 +1,5 @@
+//! Full-page document viewer components.
+
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 

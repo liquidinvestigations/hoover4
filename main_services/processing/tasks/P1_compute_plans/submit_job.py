@@ -1,3 +1,5 @@
+"""Submission helper for starting compute-plans workflows."""
+
 from datetime import datetime
 import logging
 logging.basicConfig(level=logging.INFO)

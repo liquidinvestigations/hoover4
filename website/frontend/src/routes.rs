@@ -1,3 +1,5 @@
+//! Frontend route definitions.
+
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 

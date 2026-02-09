@@ -117,7 +117,7 @@ async def chat_with_agent():
             "context_id": "quantum_research",
             "thread_id": "session_001"
         }
-        
+
         async with session.post(
             "http://localhost:8000/chat/stream",
             json=payload

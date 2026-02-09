@@ -1,3 +1,5 @@
+"""Helpers for mapping string terms to stable numeric identifiers."""
+
 import logging
 log = logging.getLogger(__name__)
 

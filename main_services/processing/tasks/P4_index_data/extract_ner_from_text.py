@@ -1,3 +1,5 @@
+"""NER client helper for extracting entities from text via HTTP."""
+
 import os
 import logging
 logger = logging.getLogger(__name__)

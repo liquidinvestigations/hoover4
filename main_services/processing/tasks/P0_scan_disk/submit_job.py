@@ -1,3 +1,5 @@
+"""CLI helper to register disk datasets and start ingestion workflows."""
+
 import click
 import asyncio
 from datetime import datetime

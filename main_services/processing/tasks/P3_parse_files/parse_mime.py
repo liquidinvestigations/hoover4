@@ -1,3 +1,5 @@
+"""MIME detection activities using GNU file and Magika."""
+
 from temporalio import activity
 from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple, Set

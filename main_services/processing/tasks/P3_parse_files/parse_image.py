@@ -1,3 +1,5 @@
+"""Image metadata extraction activity using ffprobe."""
+
 from temporalio import activity
 from typing import Dict, Any
 from dataclasses import dataclass

@@ -1,25 +1,26 @@
-# Development
+# Hoover4 Frontend
 
-Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
+The frontend is a Dioxus WASM application that provides the Hoover4 user interface. It uses server functions to call the backend APIs and shares types via the `common` crate.
 
-```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
-├─ src/
-│  ├─ main.rs # main.rs is the entry point to your application and currently contains all components for the app
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
-```
+## Structure
 
-### Serving Your App
+- `assets/` - Static assets and global styles.
+- `src/main.rs` - Dioxus entry point and application launch configuration.
+- `src/app.rs` - Application root component, layout, and router.
+- `src/routes.rs` - Route definitions for search, document view, file browser, and chatbot pages.
+- `src/pages/` - Page-level UI compositions.
+- `src/components/` - Reusable UI building blocks.
+- `src/api/` - Server functions that proxy to the backend crate.
 
-Run the following command in the root of your project to start developing with the default platform:
+## Development
+
+From this directory:
 
 ```bash
 dx serve --platform web
 ```
 
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
+## Navigation
+
+-  [Go Back](../Readme.md)
 

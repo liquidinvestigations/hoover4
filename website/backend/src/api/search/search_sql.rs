@@ -1,3 +1,5 @@
+//! SQL builder helpers for search queries.
+
 use common::{search_query::SearchQuery, search_result::FacetOriginalValue};
 
 pub const SQL_FROM_CLAUSE: &'static str = "

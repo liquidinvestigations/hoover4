@@ -1,3 +1,5 @@
+//! Title bar for document viewer.
+
 use dioxus::prelude::*;
 
 use common::search_result::DocumentIdentifier;

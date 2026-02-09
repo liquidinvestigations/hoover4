@@ -1,3 +1,5 @@
+//! Document API routes and module exports.
+
 pub mod get_raw_metadata;
 pub mod get_file_path;
 pub mod get_text_sources;

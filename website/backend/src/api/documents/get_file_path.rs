@@ -1,3 +1,5 @@
+//! Endpoint for resolving document file paths.
+
 use common::search_result::DocumentIdentifier;
 
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;

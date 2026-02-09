@@ -1,3 +1,5 @@
+"""Activities that compute and store processing plans for new blobs."""
+
 from temporalio import activity
 from typing import Dict, Any
 from dataclasses import dataclass

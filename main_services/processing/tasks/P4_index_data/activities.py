@@ -1,3 +1,5 @@
+"""Indexing activities for text content, metadata, and entity extraction."""
+
 from typing import List
 from temporalio import activity
 from dataclasses import dataclass

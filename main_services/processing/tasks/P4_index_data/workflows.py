@@ -1,3 +1,5 @@
+"""Indexing workflows for processing plan content and metadata."""
+
 from dataclasses import dataclass
 import logging
 from asyncio import gather

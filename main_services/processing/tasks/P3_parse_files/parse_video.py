@@ -1,3 +1,5 @@
+"""Video parsing activities and workflow for ffprobe and frame extraction."""
+
 from temporalio import workflow, activity
 from temporalio.common import RetryPolicy
 from datetime import timedelta

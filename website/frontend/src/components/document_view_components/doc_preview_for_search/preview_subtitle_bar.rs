@@ -1,3 +1,5 @@
+//! Subtitle bar component for document previews.
+
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward}};

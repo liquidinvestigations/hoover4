@@ -1,3 +1,5 @@
+"""ClickHouse client helpers and migrations for processing storage."""
+
 import clickhouse_connect
 import logging
 from contextlib import contextmanager

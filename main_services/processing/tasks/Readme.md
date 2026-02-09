@@ -1,29 +1,36 @@
-# Processing Tasks Definitions
+# Processing Tasks
 
-This section contains code for the Temporal workflows for processing and indexing datasets.
+This directory contains Temporal workflows and activities that implement the multi-stage Hoover4 ingestion pipeline. Each stage is organized as a separate submodule and executed via worker queues defined in `run_worker.py`.
 
-The following sections describe each layer of the processing architecture.
+## Pipeline Stages
 
-## P0 - Scan Disk
+### P0 - Scan Disk
 
-This section is responsible for the initial contact with the user data; disk datasets are listed and statistics are computed for the size and number of files to be ingested.
+Discovers datasets on disk, enumerates files, and writes the virtual filesystem (VFS) tables:
 
 - Top-level workflow: `IngestDiskDataset`
-- Input: User Data
-- Output: VFS (virtual filesystem) data, saved in clickhouse tables `vfs_files` and `vfs_directories`
+- Outputs: `vfs_files` and `vfs_directories` in ClickHouse
 
-## P1 - Compute Plans
+### P1 - Compute Plans
 
-The statistics from the previous steps are used to split processing into chunks that will be scheduled separately.
+Builds processing plans from VFS statistics to chunk work into manageable batches.
 
-## P2 - Execute Plan
+### P2 - Execute Plan
 
-This workflow takes plan chunks computed earlier and schedules them on workers.
+Schedules plan chunks for distributed execution and manages temporary download and cleanup steps.
 
-## P3 - Parse Files
+### P3 - Parse Files
 
-This workflow contains code to process the various data types found in the dataset.
+Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-based extraction) and writes structured content.
 
-## P4 - Index Data
+### P4 - Index Data
 
-This workflow aggregates the metadata from the previous steps and indexes it in the other databases (search db, vector db). Text-based processing (NER) is also done at this time.
+Aggregates metadata and text content into search and vector indexes, and performs NER enrichment where needed.
+
+## Worker Queues
+
+Workers are split into dedicated queues for common processing, Tika parsing, OCR, and indexing to control throughput and resource usage.
+
+## Navigation
+
+-  [Go Back](../Readme.md)

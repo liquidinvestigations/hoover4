@@ -1,3 +1,5 @@
+//! Search page layout and wiring.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use dioxus::prelude::*;

@@ -1,3 +1,5 @@
+//! Search endpoint for result lists.
+
 use common::{
     search_query::SearchQuery,
     search_result::{DocumentIdentifier, SearchResultDocumentItem, SearchResultDocuments},

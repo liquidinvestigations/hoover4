@@ -1,3 +1,5 @@
+"""Dataclasses for indexing workflow parameters."""
+
 from dataclasses import dataclass
 
 @dataclass

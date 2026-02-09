@@ -1,3 +1,5 @@
+//! Shared search result models.
+
 use serde::{Deserialize, Serialize};
 
 use crate::{search_query::SearchQuery, text_highlight::HighlightTextSpan};

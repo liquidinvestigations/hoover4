@@ -1,3 +1,5 @@
+"""EasyOCR activity for extracting text from images."""
+
 from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass

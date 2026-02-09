@@ -1,3 +1,5 @@
+//! Frontend library entry point.
+
 // dioxus components are snake case
 #![allow(non_snake_case)]
 

@@ -1,3 +1,5 @@
+"""Disk ingestion activities for listing, hashing, and storing file metadata."""
+
 from temporalio import activity
 import os
 import re

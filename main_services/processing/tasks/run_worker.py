@@ -1,3 +1,5 @@
+"""Temporal worker entry points for processing queues."""
+
 import asyncio
 import concurrent.futures
 import logging

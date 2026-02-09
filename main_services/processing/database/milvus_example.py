@@ -1,3 +1,5 @@
+"""Standalone example for Milvus CRUD and search operations."""
+
 import time
 import numpy as np
 from pymilvus import (

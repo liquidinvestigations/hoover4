@@ -1,3 +1,5 @@
+//! Search result card action buttons component.
+
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::{md_action_icons::MdOpenInNew, md_editor_icons::MdInsertLink, md_file_icons::MdFileDownload, md_navigation_icons::MdMoreVert}};

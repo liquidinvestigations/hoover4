@@ -1,3 +1,5 @@
+//! Error boundary component for rendering failures.
+
 use dioxus::prelude::*;
 
 #[component]

@@ -1,3 +1,5 @@
+//! Search facets UI component.
+
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;

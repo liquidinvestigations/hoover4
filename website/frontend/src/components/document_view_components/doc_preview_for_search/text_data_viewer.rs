@@ -1,3 +1,5 @@
+//! Document preview text viewer component.
+
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;

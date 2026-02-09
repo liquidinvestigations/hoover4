@@ -1,3 +1,5 @@
+"""Temporary directory helpers for file parsing jobs."""
+
 import os
 import tempfile
 

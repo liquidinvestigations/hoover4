@@ -1,3 +1,5 @@
+//! Component for rendering raw metadata.
+
 use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 

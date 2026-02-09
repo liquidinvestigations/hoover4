@@ -1,3 +1,5 @@
+//! Left panel view for search filters and facets.
+
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;

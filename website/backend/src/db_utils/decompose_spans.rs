@@ -1,3 +1,5 @@
+//! Helpers for decomposing highlight spans.
+
 use common::text_highlight::HighlightTextSpan;
 
 const START_TAG: &str = "<hoover4_strong>";

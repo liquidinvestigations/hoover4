@@ -1,3 +1,5 @@
+"""PDF parsing activities and workflow for metadata, text, and images."""
+
 from temporalio import workflow, activity
 from temporalio.common import RetryPolicy
 from datetime import timedelta

@@ -1,3 +1,5 @@
+//! Placeholder view when no document is selected.
+
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_action_icons::MdSearchOff;

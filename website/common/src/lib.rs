@@ -1,3 +1,5 @@
+//! Common library exports shared between frontend and backend.
+
 extern crate serde;
 
 

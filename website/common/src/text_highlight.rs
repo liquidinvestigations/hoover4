@@ -1,3 +1,5 @@
+//! Utilities for highlighting text spans in search results.
+
 use serde::{Deserialize, Serialize};
 
 

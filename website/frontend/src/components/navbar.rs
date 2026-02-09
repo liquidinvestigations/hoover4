@@ -1,3 +1,5 @@
+//! Top navigation bar component.
+
 #![allow(unused_imports)]
 use dioxus::prelude::*;
 use dioxus_primitives::ContentAlign;

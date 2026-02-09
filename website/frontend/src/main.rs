@@ -1,3 +1,5 @@
+//! Frontend application entry point.
+
 use dioxus::prelude::server_only;
 use frontend::app::App;
 

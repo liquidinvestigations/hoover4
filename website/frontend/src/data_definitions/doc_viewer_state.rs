@@ -1,3 +1,5 @@
+//! State definitions for the document viewer.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

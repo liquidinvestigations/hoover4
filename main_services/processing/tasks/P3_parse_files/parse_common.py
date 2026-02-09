@@ -1,3 +1,5 @@
+"""Shared parsing utilities for text chunking and error recording."""
+
 from temporalio import activity
 from typing import Dict, Any, List, Sequence
 import logging

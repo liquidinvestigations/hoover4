@@ -1,3 +1,5 @@
+"""Temporal workflow for counting blobs and scheduling plan computation."""
+
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy

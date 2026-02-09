@@ -1,3 +1,5 @@
+"""Model loader for EasyOCR configurations used by parsing tasks."""
+
 import logging
 log = logging.getLogger(__name__)
 import easyocr

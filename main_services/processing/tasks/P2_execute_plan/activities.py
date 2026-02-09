@@ -1,3 +1,5 @@
+"""Activities to execute processing plans, download blobs, and record status."""
+
 from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass

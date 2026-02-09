@@ -1,3 +1,4 @@
+"""Utility for mapping MIME types to coarse file categories."""
 
 
 def coarse_file_type(mime_type: str) -> str:

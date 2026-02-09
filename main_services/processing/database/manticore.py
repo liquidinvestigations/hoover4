@@ -1,3 +1,5 @@
+"""Manticore Search connection helpers and schema migrations."""
+
 from contextlib import contextmanager
 import logging
 
