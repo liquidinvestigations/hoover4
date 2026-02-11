@@ -114,7 +114,7 @@ fn SearchHitSelector() -> Element {
     let hit_string = use_memo(move || {
         if have_hits() {
             let current = 1+*current_highlighted_word_index.read();
-            let max = 1+*max_highlighted_word_index.read();
+            let max = *max_highlighted_word_index.read();
             format!("{current} / {max}")
         } else {
             "- / -".to_string()
@@ -122,7 +122,7 @@ fn SearchHitSelector() -> Element {
     });
     let disable_next = use_memo(move || {
         !have_hits() ||
-        *current_highlighted_word_index.read() >= *max_highlighted_word_index.read()
+        *current_highlighted_word_index.read()+1 >= *max_highlighted_word_index.read()
     });
     let disable_previous = use_memo(move || {
         !have_hits() ||
