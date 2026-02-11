@@ -6,3 +6,4 @@ pub mod error_boundary;
 pub mod suspend_boundary;
 pub mod search_components;
 pub mod document_view_components;
+pub mod toast;

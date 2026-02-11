@@ -5,5 +5,5 @@
         "./frontend/Cargo.toml"
     ],
     "rust-analyzer.cargo.targetDir": "target/rust-analyzer",
-    "rust-analyzer.cargo.features": ["dioxus/server", "dioxus/fullstack"],
+    "rust-analyzer.cargo.features": ["dioxus/server", "dioxus/fullstack", "server"],
 }
