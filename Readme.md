@@ -1,6 +1,6 @@
 # Hoover4
 
-Hoover4 is a prototype tool by [Liquid Investigations](https://github.com/liquidinvestigations/docs/wiki). See also the [the Liquid Investigations Incubator](https://liquid-investigations.org/index.html).
+Hoover4 is a prototype tool by [Liquid Investigations](https://liquid-investigations.org/index.html). More information is available on the [Wiki Site](https://github.com/liquidinvestigations/docs/wiki).
 
 Hoover4 will supersede the legacy [hoover-search](https://github.com/liquidinvestigations/hoover-search) project.
 
@@ -18,7 +18,7 @@ A live demo website for the legacy project is also available at https://liquidde
 
 ## What is Hoover4?
 
-Hoover4 is an end-to-end document processing and search platform. It ingests heterogeneous file collections, made of archives, emails, PDFs, images, audio, video, and raw text, then extracts and normalizes their content, indexes structured and unstructured data, and exposes search and retrieval through a web application.
+Hoover4 is a self-hosted end-to-end document processing and search platform. It ingests heterogeneous file collections, made of archives, emails, PDFs, images, audio, video, and raw text, then extracts and normalizes their content, indexes structured and unstructured data, and exposes search and retrieval through a web application.
 
 ---
 
@@ -30,7 +30,7 @@ Hoover4 is designed for investigative teams, analysts, and organizations that ne
 - Extracting text, metadata, and named entities from mixed-format collections.
 - Performing keyword, semantic, and hybrid search across processed content.
 - Exporting analysis-ready data products for downstream reporting and publication.
-
+- Running on self-hosted, private cloud or offline environments; possibly on consumer-level hardware.
 ---
 
 ## Design Principles
