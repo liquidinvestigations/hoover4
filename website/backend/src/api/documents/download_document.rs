@@ -18,7 +18,7 @@ pub struct BlobValue {
     pub blob_length: u64,
 }
 
-pub async fn get_document_download_path(document_identifier: DocumentIdentifier) -> anyhow::Result< BlobInfo> {
+pub async fn get_document_s3_blob_download_path(document_identifier: DocumentIdentifier) -> anyhow::Result< BlobInfo> {
     let client = get_clickhouse_client();
     let query = "SELECT blob_size_bytes, s3_path, stored_in_clickhouse FROM blobs WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1";
     let query = client.query(query).bind(&document_identifier.collection_dataset).bind(&document_identifier.file_hash);

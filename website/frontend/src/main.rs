@@ -13,7 +13,7 @@ fn main() {
         use dioxus::server::axum;
 
         Ok(dioxus::server::router(App)
-        .route("/_download_document/{collection_dataset}/{file_hash}", axum::routing::get(backend::server_extra::download_document))
+        .route("/_download_document/{collection_dataset}/{file_hash}", axum::routing::get(backend::server_extra::download_document::download_document))
             // we can apply a layer to the entire router using axum's `.layer` method
             .layer(axum::middleware::from_fn(
                 |request: Request, next: Next| async move {
