@@ -10,6 +10,11 @@ pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -
 }
 
 pub async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
+    make_pdf_to_html_conversion(document_identifier).await
+}
+
+
+async fn make_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
     let is_pdf = get_document_type_is_pdf(document_identifier.clone()).await?;
     if !is_pdf {
         anyhow::bail!("Document is not a PDF");
