@@ -4,9 +4,8 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 
-use crate::{components::suspend_boundary::LoadingIndicator, pages::search_page::DocViewerStateControl};
+use crate::{components::{document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentViewerResultStore, suspend_boundary::LoadingIndicator}, pages::search_page::DocViewerStateControl};
 
-use super::DocumentViewerResultStore;
 
 #[component]
 pub fn TextDataViewer() -> Element {

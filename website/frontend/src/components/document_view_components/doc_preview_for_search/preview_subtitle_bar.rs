@@ -4,7 +4,7 @@ use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward}};
 
-use crate::{components::{document_view_components::doc_preview_for_search::DocumentViewerResultStore, search_components::search_result_list_controls::NavigationButton}, data_definitions::doc_viewer_state::DocViewerState, pages::search_page::DocViewerStateControl};
+use crate::{components::{document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentViewerResultStore, search_components::search_result_list_controls::NavigationButton}, data_definitions::doc_viewer_state::DocViewerState, pages::search_page::DocViewerStateControl};
 
 #[component]
 pub fn PreviewSubtitleBar(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {

@@ -319,9 +319,11 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "axum",
+ "bytes",
  "clickhouse",
  "common",
  "format-sql-query",
+ "futures",
  "minio",
  "reqwest",
  "serde",

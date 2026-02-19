@@ -584,6 +584,22 @@ services:
       clickhouse:
         condition: service_healthy
 
+  hoover4-processing-pdf-to-html:
+    container_name: hoover4-processing-pdf-to-html
+    build:
+      context: ./pdf-to-html
+      dockerfile: Dockerfile
+    ports:
+      - "19027:19027"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    memswap_limit: 9000M
+    mem_limit: 9000M
+    volumes:
+      - ./pdf-to-html:/app
+    entrypoint: ["/usr/bin/python", "/app/pdf2html_server.py"]
+    working_dir: /app
 
 volumes:
   clickhouse_data:
