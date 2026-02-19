@@ -31,25 +31,31 @@ pub fn DocumentPreviewForSearchRoot(
         }
     };
 
-    let is_pdf = use_resource(move || {
-        let document_identifier = selected_result_hash.read().clone();
+    let mut is_pdf = use_resource(move || {
+        let document_identifier = selected_result_hash.peek().clone();
         async move {
-            let Some(document_identifier) = document_identifier else { return false };
+            let Some(document_identifier) = document_identifier else { return (false,0_u32) };
             if let Ok(is_pdf) = get_document_type_is_pdf(document_identifier).await {
                 return is_pdf;
             } else {
-                return false;
+                return (false,0_u32);
             };
         }
     });
+    use_effect(move || {
+        let _document_identifier = selected_result_hash.read().clone();
+        // let Some(_document_identifier) = document_identifier else { return };
+        is_pdf.clear();
+        is_pdf.restart();
+    });
 
     match is_pdf.read().clone() {
-        Some(true) => {
+        Some((true, page_count)) => {
             rsx! {
-                DocumentPreviewForPdf { document_identifier }
+                DocumentPreviewForPdf { document_identifier, page_count }
             }
         }
-        Some(false) => {
+        Some((false, _)) => {
             rsx! {
                 DocumentPreviewForTextWithSearch { document_identifier }
             }

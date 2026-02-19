@@ -18,12 +18,24 @@ struct PDFToHtmlCacheRow {
     pub page_height_px: f32,
 }
 
-pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -> anyhow::Result<bool> {
+pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -> anyhow::Result<(bool, u32)> {
     let meta = get_raw_metadata(document_identifier, DocumentMetadataTableInfo::new("pdfs", "pdf_hash")).await?;
-    Ok(!meta.is_empty())
+    let Some(obj) = meta.first() else {
+        return Ok((false, 0));
+    };
+    let Some(page_count) = obj.get("page_count").and_then(|v| v.as_u64()) else {
+        return Ok((false, 0));
+    };
+    Ok((true, page_count as u32))
 }
 
-pub async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
+pub async fn get_pdf_to_html_single_page(document_identifier: DocumentIdentifier, page_index: u32) -> anyhow::Result<PDFToHtmlConversionResponse> {
+    let mut doc = get_pdf_to_html_conversion(document_identifier).await?;
+    doc.pages = vec![doc.pages[page_index as usize].clone()];
+    Ok(doc)
+}
+
+pub(crate) async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
     let client = get_clickhouse_client();
     let query = "SELECT collection_dataset, pdf_hash, page_count, styles, pages, page_width_px, page_height_px FROM pdf_to_html_cache WHERE collection_dataset = ? AND pdf_hash = ? LIMIT 1";
     let query = client.query(query)
@@ -42,7 +54,7 @@ pub async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier)
     }
 
     tracing::info!("PDF to HTML cache: MISS");
-    let response = make_pdf_to_html_conversion(document_identifier.clone()).await?;
+    let response = _make_pdf_to_html_conversion(document_identifier.clone()).await?;
 
     let row = PDFToHtmlCacheRow {
         collection_dataset: document_identifier.collection_dataset.clone(),
@@ -63,8 +75,8 @@ pub async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier)
 }
 
 
-async fn make_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
-    let is_pdf = get_document_type_is_pdf(document_identifier.clone()).await?;
+async fn _make_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
+    let (is_pdf, _page_count) = get_document_type_is_pdf(document_identifier.clone()).await?;
     if !is_pdf {
         anyhow::bail!("Document is not a PDF");
     }
@@ -82,6 +94,7 @@ async fn make_pdf_to_html_conversion(document_identifier: DocumentIdentifier) ->
     let response = response.error_for_status()?;
     let body = response.text().await?;
     let body = serde_json::from_str::<PDFToHtmlConversionResponse>(&body)?;
+    assert!(_page_count == body.pages.len() as u32, "page count mismatch");
     Ok(body)
 }
 

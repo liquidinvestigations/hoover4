@@ -59,7 +59,7 @@ def pdf2html(pdf_file_path):
         "--dest-dir", workdir,
         "--tounicode", "1",
         "--optimize-text", "1",
-        "--embed-external-font", "1",
+        "--embed-external-font", "0",
         "--process-type3", "1",
         "--no-drm", "1",
         pdf_file_path])

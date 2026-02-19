@@ -6,3 +6,4 @@ pub mod get_text_sources;
 pub mod get_pdf_to_html_conversion;
 pub mod search_document_text;
 pub mod download_document;
+pub mod search_document_pdf_html_preview;
