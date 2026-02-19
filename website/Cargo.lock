@@ -2092,6 +2092,7 @@ dependencies = [
  "gloo-timers",
  "serde",
  "serde_json",
+ "tokio",
  "web-sys",
 ]
 

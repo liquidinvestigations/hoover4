@@ -28,10 +28,11 @@ gloo-timers = "0.3"
 anyhow = "1"
 serde_json = "1"
 web-sys = {version = "0.3", features = ["Window", "Navigator", "Clipboard", "Url", "Permissions"]}
+tokio = { version = "1.48", features = ["rt-multi-thread", "full"], optional = true}
 
 [features]
 default = ["web"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "dep:backend"]
+server = ["dioxus/server", "dep:backend", "dep:tokio"]
