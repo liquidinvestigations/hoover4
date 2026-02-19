@@ -577,6 +577,7 @@ services:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
+      - S3_ENDPOINT=http://minio-s3:9000
     networks:
       - hoover4
     depends_on:
