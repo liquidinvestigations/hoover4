@@ -53,7 +53,16 @@ def process_data(pdf_file_bytes):
 def pdf2html(pdf_file_path):
     workdir = os.path.dirname(pdf_file_path)
     # "--fallback", "1", "--zoom", "1.0", "--fit-width", "768", "--bg-format", "jpg",
-    subprocess.check_call(["pdf2htmlEX", "--fit-width", "1024", "--dest-dir", workdir, pdf_file_path])
+    subprocess.check_call([
+        "pdf2htmlEX",
+        "--fit-width", "768",
+        "--dest-dir", workdir,
+        "--tounicode", "1",
+        "--optimize-text", "1",
+        "--embed-external-font", "1",
+        "--process-type3", "1",
+        "--no-drm", "1",
+        pdf_file_path])
     os.remove(pdf_file_path)
     styles = []
     pages = []
@@ -67,8 +76,8 @@ def pdf2html(pdf_file_path):
             log.info(f"Soup Page {i+1}")
             pages.append(str(page))
 
-    width = 1024.0
-    height = 1024.0
+    width = 768.0
+    height = 768.0
     for style in styles:
         # .w0{width:1024.000000px;}
         width1 = 0.0

@@ -5,3 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 RUN apk add --update --no-cache python3 && ln -sf python3 /usr/bin/python
 RUN python3 -m ensurepip
 RUN pip3 install --no-cache --upgrade pip setuptools beautifulsoup4
+RUN apk update \
+  && ( apk search font-adobe | rev | cut -d- -f3- | rev | xargs apk add ) \
+  && ( apk search font-noto | rev | cut -d- -f3- | rev | xargs apk add ) \
+  && (  apk search font- | grep '^font-' | rev | cut -d- -f3- | rev | xargs apk add )
