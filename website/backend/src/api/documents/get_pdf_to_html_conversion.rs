@@ -1,8 +1,22 @@
 use anyhow::Context;
+use clickhouse::Row;
 use common::{document_metadata::DocumentMetadataTableInfo, pdf_to_html_conversion::PDFToHtmlConversionResponse, search_result::DocumentIdentifier};
 use reqwest::Body;
+use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{download_document::get_document_content_stream, get_raw_metadata::get_raw_metadata};
+use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Row)]
+struct PDFToHtmlCacheRow {
+    pub collection_dataset: String,
+    pub pdf_hash: String,
+    pub page_count: u32,
+    pub styles: Vec<String>,
+    pub pages: Vec<String>,
+    pub page_width_px: f32,
+    pub page_height_px: f32,
+}
 
 pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -> anyhow::Result<bool> {
     let meta = get_raw_metadata(document_identifier, DocumentMetadataTableInfo::new("pdfs", "pdf_hash")).await?;
@@ -10,7 +24,42 @@ pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -
 }
 
 pub async fn get_pdf_to_html_conversion(document_identifier: DocumentIdentifier) -> anyhow::Result<PDFToHtmlConversionResponse> {
-    make_pdf_to_html_conversion(document_identifier).await
+    let client = get_clickhouse_client();
+    let query = "SELECT collection_dataset, pdf_hash, page_count, styles, pages, page_width_px, page_height_px FROM pdf_to_html_cache WHERE collection_dataset = ? AND pdf_hash = ? LIMIT 1";
+    let query = client.query(query)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash);
+
+    let result = query.fetch_all::<PDFToHtmlCacheRow>().await?;
+    if let Some(row) = result.into_iter().next() {
+        tracing::info!("PDF to HTML cache: HIT");
+        return Ok(PDFToHtmlConversionResponse {
+            pages: row.pages,
+            styles: row.styles,
+            page_width_px: row.page_width_px,
+            page_height_px: row.page_height_px,
+        });
+    }
+
+    tracing::info!("PDF to HTML cache: MISS");
+    let response = make_pdf_to_html_conversion(document_identifier.clone()).await?;
+
+    let row = PDFToHtmlCacheRow {
+        collection_dataset: document_identifier.collection_dataset.clone(),
+        pdf_hash: document_identifier.file_hash.clone(),
+        page_count: response.pages.len() as u32,
+        styles: response.styles.clone(),
+        pages: response.pages.clone(),
+        page_width_px: response.page_width_px,
+        page_height_px: response.page_height_px,
+    };
+
+    tracing::info!("PDF to HTML cache: SET");
+    let mut insert = client.insert::<PDFToHtmlCacheRow>("pdf_to_html_cache").await?;
+    insert.write(&row).await?;
+    insert.end().await?;
+
+    Ok(response)
 }
 
 
