@@ -61,6 +61,7 @@ def pdf2html(pdf_file_path):
         "--optimize-text", "1",
         "--embed-external-font", "1",
         "--process-type3", "1",
+        "--printing", "0",
         "--no-drm", "1",
         pdf_file_path])
     os.remove(pdf_file_path)
@@ -68,10 +69,17 @@ def pdf2html(pdf_file_path):
     pages = []
     with open(os.path.join(workdir, "file.html"), "rb") as f:
         soup = BeautifulSoup(f, 'html.parser')
+        # drop all links
+        for tag in soup.find_all():
+            if tag.name == 'a':
+                tag.extract()
+                
+        # extract all styles
         for (i,style) in enumerate(soup.find_all('style')):
             log.info(f"Soup Style {i+1}")
             styles.append(str(style))
 
+        # extract all pages
         for i, page in enumerate(soup.select("div#page-container>div")):
             log.info(f"Soup Page {i+1}")
             pages.append(str(page))
