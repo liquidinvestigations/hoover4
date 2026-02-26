@@ -2090,6 +2090,7 @@ dependencies = [
  "dioxus-primitives",
  "futures-util",
  "gloo-timers",
+ "html5ever 0.38.0",
  "serde",
  "serde_json",
  "tokio",

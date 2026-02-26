@@ -135,7 +135,8 @@ fn PDFDataViewer(pdf_to_html_conversion: ReadSignal<PDFToHtmlConversionResponse>
         let page_idx = 0;
         let page_content = pdf_to_html_conversion.read().clone().pages[page_idx].clone();
         let page_content = format!("{styles}\n{page_content}");
-
+        let text_content = parse_html::extract_text_from_html(&page_content).unwrap_or_default();
+        info!("Text content: {text_content}");
         rsx! {
             iframe {
                 srcdoc: "{page_content}",
@@ -184,4 +185,68 @@ async fn get_pdf_to_html_single_page(document_identifier: DocumentIdentifier, pa
     let pdf_to_html_conversion = backend::api::documents::get_pdf_to_html_conversion::
     get_pdf_to_html_single_page(document_identifier, page_index).await.map_err(|e| ServerFnError::from(e));
     pdf_to_html_conversion
+}
+
+
+mod parse_html {
+    use std::cell::RefCell;
+
+    use html5ever::tokenizer::{BufferQueue, TagKind::{EndTag, StartTag}, Token::{self, CharacterTokens, TagToken}, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts};
+
+
+struct TextExtractor {
+    text: RefCell<String>,
+    in_skip_tag: RefCell<u32>,
+}
+
+impl TokenSink for TextExtractor {
+    type Handle = ();
+
+    fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+        let mut in_skip_tag = self.in_skip_tag.borrow_mut();
+        let mut text = self.text.borrow_mut();
+        match token {
+            TagToken(tag) => {
+                let tag_name = tag.name.as_ref();
+                if tag_name == "script" || tag_name == "style" {
+                    match tag.kind {
+                        StartTag => *in_skip_tag += 1,
+                        EndTag => *in_skip_tag = in_skip_tag.saturating_sub(1),
+                    }
+                }
+            }
+            CharacterTokens(tendril) => {
+                if *in_skip_tag == 0 {
+                    text.push_str(&tendril);
+                    //
+                }
+            }
+            _ => {}
+        }
+        TokenSinkResult::Continue
+    }
+}
+
+pub(crate) fn extract_text_from_html(page: &str) -> anyhow::Result<String> {
+    let sink = TextExtractor {
+        text: RefCell::new(String::new()),
+        in_skip_tag: RefCell::new(0),
+    };
+
+    let mut input = BufferQueue::default();
+    input.push_back(page.to_string().into());
+
+    let tokenizer = Tokenizer::new(
+        sink,
+        TokenizerOpts::default(),
+    );
+    let _ = tokenizer.feed(&input);
+    tokenizer.end();
+
+    // let query = query.to_lowercase();
+    let text_content = tokenizer.sink.text.borrow().to_string();
+
+    // let count = text_content.matches(&query).count() as u32;
+    Ok(text_content)
+}
 }

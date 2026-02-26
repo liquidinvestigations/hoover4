@@ -29,6 +29,7 @@ anyhow = "1"
 serde_json = "1"
 web-sys = {version = "0.3", features = ["Window", "Navigator", "Clipboard", "Url", "Permissions"]}
 tokio = { version = "1.48", features = ["rt-multi-thread", "full"], optional = true}
+html5ever = "0.38"
 
 [features]
 default = ["web"]
