@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 
-
 /// File browser page
 #[component]
 pub fn FileBrowserPage() -> Element {

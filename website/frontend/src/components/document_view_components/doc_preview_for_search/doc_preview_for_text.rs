@@ -1,19 +1,22 @@
-
-use common::document_text_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem};
+use common::document_text_sources::{
+    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
+};
 use common::pdf_to_html_conversion::PDFToHtmlConversionResponse;
-use dioxus::logger::tracing;
-use dioxus::prelude::*;
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
+use dioxus::logger::tracing;
+use dioxus::prelude::*;
 
-use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::{DocumentPreviewForPdf, get_document_type_is_pdf};
-use crate::components::document_view_components::doc_preview_for_search::{preview_subtitle_bar, text_data_viewer};
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::{
+    DocumentPreviewForPdf, get_document_type_is_pdf,
+};
+use crate::components::document_view_components::doc_preview_for_search::{
+    preview_subtitle_bar, text_data_viewer,
+};
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
-
-
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct DocumentViewerResultStore {
@@ -24,13 +27,10 @@ pub struct DocumentViewerResultStore {
     pub current_highlighted_word_index: Signal<u32>,
 }
 
-
 #[component]
 pub fn DocumentPreviewForTextWithSearch(
     document_identifier: ReadSignal<DocumentIdentifier>,
 ) -> Element {
-
-
     // ============== ALL COUNTS: ==============
     let mut _all_counts_res = use_resource(move || {
         let _doc_id = document_identifier.read().clone();
@@ -43,7 +43,9 @@ pub fn DocumentPreviewForTextWithSearch(
     });
     let _all_counts_memo = use_memo(move || {
         let _all_counts_res = _all_counts_res.read().cloned();
-        let Some(Ok(all_counts)) = _all_counts_res else { return vec![] };
+        let Some(Ok(all_counts)) = _all_counts_res else {
+            return vec![];
+        };
         all_counts
     });
 
@@ -51,7 +53,9 @@ pub fn DocumentPreviewForTextWithSearch(
     let _control_state = use_context::<DocViewerStateControl>().doc_viewer_state;
     let _find_query = use_memo(move || {
         let _control_state = _control_state.read().clone();
-        let Some(state) = &_control_state else { return "".to_string() };
+        let Some(state) = &_control_state else {
+            return "".to_string();
+        };
         state.find_query.clone()
     });
     let mut _hit_counts_res = use_resource(move || {
@@ -67,8 +71,10 @@ pub fn DocumentPreviewForTextWithSearch(
     });
     let _hit_counts_memo = use_memo(move || {
         let _hit_counts_res = _hit_counts_res.read().cloned();
-        let Some(Ok(hit_counts)) = _hit_counts_res else { return None };
-        dioxus::logger::tracing::info!("hit_counts: {:#?}", hit_counts);
+        let Some(Ok(hit_counts)) = _hit_counts_res else {
+            return None;
+        };
+        // dioxus::logger::tracing::info!("hit_counts: {:#?}", hit_counts);
         Some(hit_counts)
     });
 
@@ -77,24 +83,40 @@ pub fn DocumentPreviewForTextWithSearch(
         let hit_counts = _hit_counts_memo.read().clone();
         let _all_counts = _all_counts_memo.read().clone();
 
-        let Some(mut hit_counts) = hit_counts else { return None };
-        if hit_counts.is_empty() { return _all_counts.first().cloned().map(|item| (item.extracted_by, item.min_page)); }
+        let Some(mut hit_counts) = hit_counts else {
+            return None;
+        };
+        if hit_counts.is_empty() {
+            return _all_counts
+                .first()
+                .cloned()
+                .map(|item| (item.extracted_by, item.min_page));
+        }
         hit_counts.sort_by_key(|h| h.hit_count as i64 * -1);
 
         return Some((hit_counts[0].extracted_by.clone(), hit_counts[0].page_id));
-
     });
 
     // ================ CURRENT TEXT DATA: ================
-    let _current_text_data: Resource<std::result::Result<Vec<DocumentTextSourceHit>, ServerFnError>> = use_resource(move || {
+    let _current_text_data: Resource<
+        std::result::Result<Vec<DocumentTextSourceHit>, ServerFnError>,
+    > = use_resource(move || {
         let _current_text_selection = _current_text_selection.read().clone();
         let document_identifier = document_identifier.read().clone();
         let find_query = _find_query.read().clone();
         async move {
             let Some((extracted_by, page_id)) = _current_text_selection else {
-                return Err(ServerFnError::from(anyhow::anyhow!("No current text selection"))) };
+                return Err(ServerFnError::from(anyhow::anyhow!(
+                    "No current text selection"
+                )));
+            };
             let item = search_document_text_for_hits(
-                document_identifier, find_query, extracted_by, page_id).await;
+                document_identifier,
+                find_query,
+                extracted_by,
+                page_id,
+            )
+            .await;
             item
         }
     });
@@ -104,11 +126,15 @@ pub fn DocumentPreviewForTextWithSearch(
     use_effect(move || {
         let _selection = _current_text_selection.read().clone();
         let _hits = _hit_counts_memo.read().clone();
-        let (Some(selection), Some(hits))= (&_selection, &_hits) else {
+        let (Some(selection), Some(hits)) = (&_selection, &_hits) else {
             max_highlighted_word_index.set(0);
             return;
         };
-        let Some(selected_item) = hits.iter().find(|h| h.extracted_by == selection.0 && h.page_id == selection.1).cloned() else {
+        let Some(selected_item) = hits
+            .iter()
+            .find(|h| h.extracted_by == selection.0 && h.page_id == selection.1)
+            .cloned()
+        else {
             max_highlighted_word_index.set(0);
             return;
         };
@@ -119,7 +145,6 @@ pub fn DocumentPreviewForTextWithSearch(
         let _max = *max_highlighted_word_index.read();
         current_highlighted_word_index.set(0);
     });
-
 
     use_context_provider(move || DocumentViewerResultStore {
         hit_counts: _hit_counts_memo.into(),
@@ -155,18 +180,44 @@ pub fn DocumentPreviewForTextWithSearch(
 }
 
 #[server]
-async fn get_text_sources(document_identifier: DocumentIdentifier) -> Result<Vec<DocumentTextSourceItem>, ServerFnError> {
-    let text_sources = backend::api::documents::get_text_sources::get_text_sources(document_identifier).await.map_err(|e| ServerFnError::from(e));
+async fn get_text_sources(
+    document_identifier: DocumentIdentifier,
+) -> Result<Vec<DocumentTextSourceItem>, ServerFnError> {
+    let text_sources =
+        backend::api::documents::get_text_sources::get_text_sources(document_identifier)
+            .await
+            .map_err(|e| ServerFnError::from(e));
     text_sources
 }
 #[server]
-async fn search_document_text_for_hit_count(document_identifier: DocumentIdentifier, find_query: String) -> Result<Vec<DocumentTextSourceHitCount>, ServerFnError> {
-    let hit_counts = backend::api::documents::search_document_text::search_document_text_for_hit_count(document_identifier, find_query).await.map_err(|e| ServerFnError::from(e));
+async fn search_document_text_for_hit_count(
+    document_identifier: DocumentIdentifier,
+    find_query: String,
+) -> Result<Vec<DocumentTextSourceHitCount>, ServerFnError> {
+    let hit_counts =
+        backend::api::documents::search_document_text::search_document_text_for_hit_count(
+            document_identifier,
+            find_query,
+        )
+        .await
+        .map_err(|e| ServerFnError::from(e));
     hit_counts
 }
 
 #[server]
-async fn search_document_text_for_hits(document_identifier: DocumentIdentifier, find_query: String, extracted_by: String, page_id: u32) -> Result<Vec<DocumentTextSourceHit>, ServerFnError> {
-    let hits = backend::api::documents::search_document_text::search_document_text_for_hits(document_identifier, find_query, extracted_by, page_id).await.map_err(|e| ServerFnError::from(e));
+async fn search_document_text_for_hits(
+    document_identifier: DocumentIdentifier,
+    find_query: String,
+    extracted_by: String,
+    page_id: u32,
+) -> Result<Vec<DocumentTextSourceHit>, ServerFnError> {
+    let hits = backend::api::documents::search_document_text::search_document_text_for_hits(
+        document_identifier,
+        find_query,
+        extracted_by,
+        page_id,
+    )
+    .await
+    .map_err(|e| ServerFnError::from(e));
     hits
 }

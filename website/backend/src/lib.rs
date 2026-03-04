@@ -3,7 +3,7 @@
 extern crate anyhow;
 extern crate common;
 pub mod api;
-pub mod server_extra;
 pub(crate) mod db_utils;
+pub mod server_extra;
 
 pub use tokio;

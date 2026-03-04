@@ -2,10 +2,18 @@
 
 use common::search_const::{MAX_PAGINATION_DOCUMENT_LIMIT, PAGE_SIZE};
 use dioxus::prelude::*;
-use dioxus_free_icons::{Icon, icons::md_navigation_icons::{MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowLeft, MdArrowRight, MdArrowUpward}};
+use dioxus_free_icons::{
+    Icon,
+    icons::md_navigation_icons::{
+        MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowLeft, MdArrowRight, MdArrowUpward,
+    },
+};
 use dioxus_primitives::{ContentAlign, ContentSide};
 
-use crate::{components::hover_card::{HoverCard, HoverCardContent, HoverCardTrigger}, components::search_components::search_panel_left_view::SearchResultsState};
+use crate::{
+    components::hover_card::{HoverCard, HoverCardContent, HoverCardTrigger},
+    components::search_components::search_panel_left_view::SearchResultsState,
+};
 
 #[component]
 pub fn SearchResultListControls() -> Element {
@@ -36,10 +44,8 @@ pub fn SearchResultListControls() -> Element {
     }
 }
 
-
 #[component]
 fn PaginationControls() -> Element {
-
     rsx! {
         div {
             style: "
@@ -57,24 +63,42 @@ fn PaginationControls() -> Element {
     }
 }
 
-
 #[component]
 fn ControlNextPrevDocument() -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let hit_count = search_results_state.hit_count;
-    let hit_count = use_memo(move || hit_count.read().cloned().unwrap_or(Ok(0)).unwrap_or(0).min(MAX_PAGINATION_DOCUMENT_LIMIT));
-    let selected_result_hash = use_memo(move || search_results_state.selected_result_hash.read().clone());
+    let hit_count = use_memo(move || {
+        hit_count
+            .read()
+            .cloned()
+            .unwrap_or(Ok(0))
+            .unwrap_or(0)
+            .min(MAX_PAGINATION_DOCUMENT_LIMIT)
+    });
+    let selected_result_hash =
+        use_memo(move || search_results_state.selected_result_hash.read().clone());
     let result_hashes = use_memo(move || {
         let search_result = search_results_state.search_result.read();
         let search_result = search_result.as_ref();
-        let Some(Ok(search_result)) = search_result else { return Vec::new() };
-        return search_result.results.iter().map(|result| result.document_identifier()).collect::<Vec<_>>();
+        let Some(Ok(search_result)) = search_result else {
+            return Vec::new();
+        };
+        return search_result
+            .results
+            .iter()
+            .map(|result| result.document_identifier())
+            .collect::<Vec<_>>();
     });
     let current_list_position = use_memo(move || {
         //
         let result_hashes = result_hashes();
-        let Some(selected_result_hash) = selected_result_hash() else { return None };
-        result_hashes.iter().position(|hash| hash == &selected_result_hash).map(|i| i as u64)
+        let Some(selected_result_hash) = selected_result_hash() else {
+            return None;
+        };
+        result_hashes
+            .iter()
+            .position(|hash| hash == &selected_result_hash)
+            .map(|i| i as u64)
     });
 
     let total_result_index = use_memo(move || {
@@ -110,14 +134,21 @@ fn ControlNextPrevDocument() -> Element {
                 if let Some(prev_hash) = search_result.prev_hash.clone() {
                     // fetch previous page and id
                     if *search_results_state.current_search_result_page.read() > 0 {
-                        search_results_state.set_selected_result_hash_and_page.call((Some(prev_hash.clone()), *search_results_state.current_search_result_page.read() - 1));
+                        search_results_state
+                            .set_selected_result_hash_and_page
+                            .call((
+                                Some(prev_hash.clone()),
+                                *search_results_state.current_search_result_page.read() - 1,
+                            ));
                     }
                 }
             }
         } else {
             let result_hashes = result_hashes();
             let prev_hash = &result_hashes[current_list_position as usize - 1];
-            search_results_state.set_selected_result_hash.call(Some(prev_hash.clone()));
+            search_results_state
+                .set_selected_result_hash
+                .call(Some(prev_hash.clone()));
         }
     };
 
@@ -129,16 +160,23 @@ fn ControlNextPrevDocument() -> Element {
         let result_hashes = result_hashes();
         if current_list_position == result_hashes.len() as u64 - 1 {
             let search_result = search_results_state.search_result.read();
-        let search_result = search_result.as_ref();
-        if let Some(Ok(next_hash)) = search_result {
-            if let Some(next_hash) = next_hash.next_hash.clone() {
-                // fetch next page and id
-                search_results_state.set_selected_result_hash_and_page.call((Some(next_hash.clone()), *search_results_state.current_search_result_page.read() + 1));
+            let search_result = search_result.as_ref();
+            if let Some(Ok(next_hash)) = search_result {
+                if let Some(next_hash) = next_hash.next_hash.clone() {
+                    // fetch next page and id
+                    search_results_state
+                        .set_selected_result_hash_and_page
+                        .call((
+                            Some(next_hash.clone()),
+                            *search_results_state.current_search_result_page.read() + 1,
+                        ));
+                }
             }
-        }
         } else {
             let next_hash = &result_hashes[current_list_position as usize + 1];
-            search_results_state.set_selected_result_hash.call(Some(next_hash.clone()));
+            search_results_state
+                .set_selected_result_hash
+                .call(Some(next_hash.clone()));
         }
     };
     rsx! {
@@ -175,30 +213,29 @@ fn ControlNextPrevPage() -> Element {
     let search_result_page = search_results_state.current_search_result_page;
     let set_current_page = search_results_state.set_current_page;
 
-    let hit_count = use_memo(move || hit_count.read().cloned().unwrap_or(Ok(0)).unwrap_or(0).min(MAX_PAGINATION_DOCUMENT_LIMIT));
+    let hit_count = use_memo(move || {
+        hit_count
+            .read()
+            .cloned()
+            .unwrap_or(Ok(0))
+            .unwrap_or(0)
+            .min(MAX_PAGINATION_DOCUMENT_LIMIT)
+    });
     let max_pages = use_memo(move || {
         let hit_count = *hit_count.read();
         let page_count = hit_count / common::search_const::PAGE_SIZE;
-        if hit_count > 0 {
-            page_count + 1
-        } else {
-            0
-        }
+        if hit_count > 0 { page_count + 1 } else { 0 }
     });
     let selected_page = use_memo(move || {
-        let current_page = *search_result_page.read()+1;
+        let current_page = *search_result_page.read() + 1;
         if current_page > *max_pages.read() {
             *max_pages.read()
         } else {
             current_page
         }
     });
-    let can_go_to_previous_page = use_memo(move || {
-        selected_page() > 1
-    });
-    let can_go_to_next_page = use_memo(move || {
-        selected_page() < *max_pages.read()
-    });
+    let can_go_to_previous_page = use_memo(move || selected_page() > 1);
+    let can_go_to_next_page = use_memo(move || selected_page() < *max_pages.read());
 
     rsx! {
         // prev page
@@ -244,10 +281,33 @@ fn ControlNextPrevPage() -> Element {
 }
 
 #[component]
-pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 'static>(icon: I, label: String, disabled: ReadSignal<bool>, onclick: Callback<()>) -> Element {
-    let btn_color = use_memo(move || if *disabled.read() { "rgba(0,0,0,0.3)" } else { "rgba(0,0,0,1)" });
-    let tooltip_color = use_memo(move || if *disabled.read() { "rgba(0,0,0,0.6)" } else { "rgba(0,0,0,1)" });
-    let btn_cursor = use_memo(move || if *disabled.read() { "not-allowed" } else { "pointer" });
+pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 'static>(
+    icon: I,
+    label: String,
+    disabled: ReadSignal<bool>,
+    onclick: Callback<()>,
+) -> Element {
+    let btn_color = use_memo(move || {
+        if *disabled.read() {
+            "rgba(0,0,0,0.3)"
+        } else {
+            "rgba(0,0,0,1)"
+        }
+    });
+    let tooltip_color = use_memo(move || {
+        if *disabled.read() {
+            "rgba(0,0,0,0.6)"
+        } else {
+            "rgba(0,0,0,1)"
+        }
+    });
+    let btn_cursor = use_memo(move || {
+        if *disabled.read() {
+            "not-allowed"
+        } else {
+            "pointer"
+        }
+    });
     rsx! {
         HoverCard {
             HoverCardTrigger {
@@ -290,17 +350,16 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
     }
 }
 
-
 #[component]
-fn SearchForResultsHitCountString(hit_count: ReadSignal<Option<Result<u64, ServerFnError>>>) -> Element {
-
+fn SearchForResultsHitCountString(
+    hit_count: ReadSignal<Option<Result<u64, ServerFnError>>>,
+) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let hit_count = search_results_state.hit_count;
-
 
     match hit_count.read().cloned() {
         Some(Err(e)) => return rsx! { "! error: {e:?}" },
         Some(Ok(s)) => return rsx! { "{s} documents found" },
-        None => return rsx! {"..."}
+        None => return rsx! {"..."},
     };
 }

@@ -6,7 +6,6 @@ const START_TAG: &str = "<hoover4_strong>";
 const END_TAG: &str = "</hoover4_strong>";
 
 pub fn decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
-
     let mut v = _do_decompose_text_into_spans(text);
     let mut index = 0;
     for item in v.iter_mut() {
@@ -30,7 +29,11 @@ fn _do_decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
     // Fast-path: if there is no opening <strong>, we don't attempt to parse.
     // Return a single non-highlighted span with the original text (preserving any stray closers).
     if !text.contains(START_TAG) {
-        return vec![HighlightTextSpan { text, is_highlighted: false, index: 0 }];
+        return vec![HighlightTextSpan {
+            text,
+            is_highlighted: false,
+            index: 0,
+        }];
     }
 
     let input = text;
@@ -42,23 +45,24 @@ fn _do_decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
 
     // Helper to flush the current buffer into a span, merging with the previous span
     // if it shares the same highlight state to avoid tiny adjacent spans.
-    let flush_buffer = |spans: &mut Vec<HighlightTextSpan>, buffer: &mut String, highlighted: bool| {
-        if buffer.is_empty() {
-            return;
-        }
-        if let Some(last) = spans.last_mut() {
-            if last.is_highlighted == highlighted {
-                last.text.push_str(buffer);
-                buffer.clear();
+    let flush_buffer =
+        |spans: &mut Vec<HighlightTextSpan>, buffer: &mut String, highlighted: bool| {
+            if buffer.is_empty() {
                 return;
             }
-        }
-        spans.push(HighlightTextSpan {
-            text: std::mem::take(buffer),
-            is_highlighted: highlighted,
-            index: 0,
-        });
-    };
+            if let Some(last) = spans.last_mut() {
+                if last.is_highlighted == highlighted {
+                    last.text.push_str(buffer);
+                    buffer.clear();
+                    return;
+                }
+            }
+            spans.push(HighlightTextSpan {
+                text: std::mem::take(buffer),
+                is_highlighted: highlighted,
+                index: 0,
+            });
+        };
 
     // Scan for the next tag, always consuming the nearest of START_TAG or END_TAG
     while i < s.len() {
@@ -70,7 +74,11 @@ fn _do_decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
             (Some(op), None) => (START_TAG, op),
             (None, Some(cp)) => (END_TAG, cp),
             (Some(op), Some(cp)) => {
-                if op < cp { (START_TAG, op) } else { (END_TAG, cp) }
+                if op < cp {
+                    (START_TAG, op)
+                } else {
+                    (END_TAG, cp)
+                }
             }
         };
 

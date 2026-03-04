@@ -10,21 +10,20 @@ use crate::components::hover_card::HoverCard;
 use crate::components::hover_card::HoverCardContent;
 use crate::components::hover_card::HoverCardTrigger;
 use crate::data_definitions::url_param::UrlParam;
-use common::search_query::SearchQuery;
 use crate::routes::Route;
+use common::search_query::SearchQuery;
 
+use crate::pages::chatbot_page::ChatbotPage;
+use crate::pages::file_browser_page::FileBrowserPage;
 use crate::pages::home_page::HomePage;
 use crate::pages::search_page::SearchPage;
-use crate::pages::file_browser_page::FileBrowserPage;
-use crate::pages::chatbot_page::ChatbotPage;
 
 use dioxus_free_icons::icons::md_action_icons::MdHome;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
-use dioxus_free_icons::icons::md_file_icons::MdFolder;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
+use dioxus_free_icons::icons::md_file_icons::MdFolder;
 use dioxus_free_icons::icons::md_social_icons::MdPerson;
 use dioxus_free_icons::{Icon, IconShape};
-
 
 /// Shared navbar component.
 #[component]
@@ -110,7 +109,6 @@ fn NavbarTopIconLinks() -> Element {
     }
 }
 
-
 #[component]
 fn NavbarBottomIconLinks() -> Element {
     rsx! {
@@ -131,7 +129,11 @@ fn NavbarBottomIconLinks() -> Element {
 }
 
 #[component]
-fn IconLink<T: IconShape + Clone + PartialEq + 'static> (to: Route, icon: T, label: String) -> Element {
+fn IconLink<T: IconShape + Clone + PartialEq + 'static>(
+    to: Route,
+    icon: T,
+    label: String,
+) -> Element {
     rsx! {
         HoverCard {
             HoverCardTrigger {

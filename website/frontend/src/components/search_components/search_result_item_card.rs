@@ -1,13 +1,33 @@
 //! Search result item card component.
 
+use common::{
+    search_result::{DocumentIdentifier, SearchResultDocumentItem},
+    text_highlight::HighlightTextSpan,
+};
 use dioxus::{logger::tracing, prelude::*};
-use common::{search_result::{DocumentIdentifier, SearchResultDocumentItem}, text_highlight::HighlightTextSpan};
-use dioxus_free_icons::{Icon, icons::{go_icons::GoDatabase, md_action_icons::{MdDonutLarge, MdOpenInNew}, md_editor_icons::MdInsertDriveFile, md_navigation_icons::MdMoreVert}};
+use dioxus_free_icons::{
+    Icon,
+    icons::{
+        go_icons::GoDatabase,
+        md_action_icons::{MdDonutLarge, MdOpenInNew},
+        md_editor_icons::MdInsertDriveFile,
+        md_navigation_icons::MdMoreVert,
+    },
+};
 
-use crate::{components::search_components::{card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab}, search_panel_left_view::SearchResultsState}, routes::Route};
+use crate::{
+    components::search_components::{
+        card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab},
+        search_panel_left_view::SearchResultsState,
+    },
+    routes::Route,
+};
 
 #[component]
-pub fn SearchResultItemCard(result: ReadSignal<SearchResultDocumentItem>, onmounted: Callback<Event<MountedData>>) -> Element {
+pub fn SearchResultItemCard(
+    result: ReadSignal<SearchResultDocumentItem>,
+    onmounted: Callback<Event<MountedData>>,
+) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let current_search_result_page = search_results_state.current_search_result_page;
     let set_selected_result_hash = search_results_state.set_selected_result_hash;
@@ -20,11 +40,22 @@ pub fn SearchResultItemCard(result: ReadSignal<SearchResultDocumentItem>, onmoun
         collection_dataset,
         result_index_in_page,
     } = result.read().clone();
-    let we_are_selected = selected_result_hash.read().clone() == Some(result().document_identifier());
+    let we_are_selected =
+        selected_result_hash.read().clone() == Some(result().document_identifier());
 
-    let item_index = 1 + (*current_search_result_page.read() * common::search_const::PAGE_SIZE) + result_index_in_page;
-    let border_color = if we_are_selected { "#367ED899" } else { "#AAAAAA33" };
-    let background_color = if we_are_selected { "#4096FF33" } else { "white" };
+    let item_index = 1
+        + (*current_search_result_page.read() * common::search_const::PAGE_SIZE)
+        + result_index_in_page;
+    let border_color = if we_are_selected {
+        "#367ED899"
+    } else {
+        "#AAAAAA33"
+    };
+    let background_color = if we_are_selected {
+        "#4096FF33"
+    } else {
+        "white"
+    };
 
     rsx! {
         div {
@@ -110,7 +141,6 @@ pub fn SearchResultItemCard(result: ReadSignal<SearchResultDocumentItem>, onmoun
         }
     }
 }
-
 
 #[component]
 fn FileTypeIcon() -> Element {
@@ -199,7 +229,6 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
 
 #[component]
 fn HighlightTextSnippetSection(highlight_text_spans: Vec<HighlightTextSpan>) -> Element {
-
     rsx! {
         div {
             // TEXT SNIPPET
@@ -222,17 +251,23 @@ fn HighlightTextSnippetSection(highlight_text_spans: Vec<HighlightTextSpan>) -> 
 }
 
 fn render_highlight_text_span(spans: Vec<HighlightTextSpan>) -> Element {
-    let spans = spans.into_iter().map(|i| {
-        let color = if i.is_highlighted { "#EB3E014D" } else { "transparent" };
-        rsx! {
-            span {
-                style: "background-color: {color}; color: rgb(0, 0, 0);",
-                "{i.text}"
+    let spans = spans
+        .into_iter()
+        .map(|i| {
+            let color = if i.is_highlighted {
+                "#EB3E014D"
+            } else {
+                "transparent"
+            };
+            rsx! {
+                span {
+                    style: "background-color: {color}; color: rgb(0, 0, 0);",
+                    "{i.text}"
+                }
             }
-        }
-    }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
     rsx! {
         {spans.into_iter()}
     }
 }
-

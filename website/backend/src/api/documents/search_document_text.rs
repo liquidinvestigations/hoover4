@@ -1,10 +1,15 @@
 //! Endpoint for retrieving document text snippets.
 
-use common::{document_text_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount}, search_result::DocumentIdentifier};
+use common::{
+    document_text_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
+    search_result::DocumentIdentifier,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::db_utils::{decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql};
 use crate::api::search::search_sql::SQL_OPTIONS_CLAUSE;
+use crate::db_utils::{
+    decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct DocumentHits {
@@ -18,9 +23,9 @@ pub async fn search_document_text_for_hits(
     find_query: String,
     extracted_by: String,
     page_id: u32,
-) -> anyhow::Result<Vec<DocumentTextSourceHit>>
-{
-    let sql = format!(r#"
+) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
+    let sql = format!(
+        r#"
             SELECT
                 extracted_by,
                 page_id,
@@ -47,21 +52,24 @@ pub async fn search_document_text_for_hits(
     );
     let response = manticore_search_sql::<DocumentHits>(sql).await?;
     let hits = response.hits.hits;
-    let result = hits.into_iter().map(|hit| DocumentTextSourceHit {
-        extracted_by: hit._source.extracted_by,
-        page_id: hit._source.page_id,
-        highlight_text_spans: decompose_text_into_spans(hit._source.text),
-    }).collect::<Vec<_>>();
+    let result = hits
+        .into_iter()
+        .map(|hit| DocumentTextSourceHit {
+            extracted_by: hit._source.extracted_by,
+            page_id: hit._source.page_id,
+            highlight_text_spans: decompose_text_into_spans(hit._source.text),
+        })
+        .collect::<Vec<_>>();
 
     Ok(result)
 }
 
 pub async fn search_document_text_for_hit_count(
     document_identifier: DocumentIdentifier,
-    find_query: String
+    find_query: String,
 ) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
-
-    let sql = format!(r#"
+    let sql = format!(
+        r#"
         SELECT
             extracted_by,
             page_id,
@@ -80,27 +88,36 @@ pub async fn search_document_text_for_hit_count(
         LIMIT 1000
         {SQL_OPTIONS_CLAUSE}
     "#,
-    format_sql_query::QuotedData(&document_identifier.file_hash),
-    format_sql_query::QuotedData(&document_identifier.collection_dataset),
-    format_sql_query::QuotedData(&find_query),
+        format_sql_query::QuotedData(&document_identifier.file_hash),
+        format_sql_query::QuotedData(&document_identifier.collection_dataset),
+        format_sql_query::QuotedData(&find_query),
     );
     let response = manticore_search_sql::<DocumentHits>(sql).await?;
     let hits = response.hits.hits;
-    let result = hits.into_iter().map(|hit| DocumentTextSourceHit {
-        extracted_by: hit._source.extracted_by,
-        page_id: hit._source.page_id,
-        highlight_text_spans: decompose_text_into_spans(hit._source.text),
-    }).collect::<Vec<_>>();
+    let result = hits
+        .into_iter()
+        .map(|hit| DocumentTextSourceHit {
+            extracted_by: hit._source.extracted_by,
+            page_id: hit._source.page_id,
+            highlight_text_spans: decompose_text_into_spans(hit._source.text),
+        })
+        .collect::<Vec<_>>();
 
-    let result = result.into_iter().map(|hits| {
-        let hit_count = hits.highlight_text_spans.iter().filter(|h| h.is_highlighted).count();
+    let result = result
+        .into_iter()
+        .map(|hits| {
+            let hit_count = hits
+                .highlight_text_spans
+                .iter()
+                .filter(|h| h.is_highlighted)
+                .count();
 
-        DocumentTextSourceHitCount {
-            extracted_by: hits.extracted_by,
-            page_id: hits.page_id,
-            hit_count: hit_count as u64,
-        }
-    }).collect::<Vec<_>>();
+            DocumentTextSourceHitCount {
+                extracted_by: hits.extracted_by,
+                page_id: hits.page_id,
+                hit_count: hit_count as u64,
+            }
+        })
+        .collect::<Vec<_>>();
     Ok(result)
 }
-

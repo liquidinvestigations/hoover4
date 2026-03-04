@@ -2,17 +2,16 @@
 
 use std::{fmt::Display, str::FromStr};
 
-use base64::engine::general_purpose::URL_SAFE;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE;
 // use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-
 
 // You can use a custom type with the hash segment as long as it implements Display, FromStr and Default
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct UrlParam<T>(pub T);
 
-impl <T> From<T> for UrlParam<T> {
+impl<T> From<T> for UrlParam<T> {
     fn from(value: T) -> Self {
         UrlParam(value)
     }

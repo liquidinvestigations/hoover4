@@ -3,8 +3,10 @@
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
-use crate::{components::document_view_components::doc_viewer_full_page::DocViewerRoot, data_definitions::url_param::UrlParam};
-
+use crate::{
+    components::document_view_components::doc_viewer_full_page::DocViewerRoot,
+    data_definitions::url_param::UrlParam,
+};
 
 /// View document page
 #[component]

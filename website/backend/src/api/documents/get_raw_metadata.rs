@@ -8,18 +8,17 @@ use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 pub async fn get_raw_metadata(
     document_identifier: DocumentIdentifier,
-    table_info: DocumentMetadataTableInfo)
-    -> anyhow::Result<Vec<serde_json::Value>> {
+    table_info: DocumentMetadataTableInfo,
+) -> anyhow::Result<Vec<serde_json::Value>> {
     let client = get_clickhouse_client();
 
-    let query =
-        "SELECT * FROM ? WHERE ? = ? AND collection_dataset = ? LIMIT 11";
-    let query = client.query(query)
-    .bind(sql::Identifier(&table_info.table_name))
-    .bind(sql::Identifier(&table_info.hash_column_name))
-    .bind(&document_identifier.file_hash)
-    .bind(&document_identifier.collection_dataset);
-
+    let query = "SELECT * FROM ? WHERE ? = ? AND collection_dataset = ? LIMIT 11";
+    let query = client
+        .query(query)
+        .bind(sql::Identifier(&table_info.table_name))
+        .bind(sql::Identifier(&table_info.hash_column_name))
+        .bind(&document_identifier.file_hash)
+        .bind(&document_identifier.collection_dataset);
 
     let mut result_lines = query.fetch_bytes("JSONEachRow")?.lines();
 

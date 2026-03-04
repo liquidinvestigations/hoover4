@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 
-
 /// Chatbot page
 #[component]
 pub fn ChatbotPage() -> Element {

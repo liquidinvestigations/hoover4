@@ -3,8 +3,9 @@
 use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 
-use crate::components::{error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator};
-
+use crate::components::{
+    error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator,
+};
 
 #[component]
 pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
@@ -64,9 +65,8 @@ fn RawMetadataCollectorSection(
     let mut raw_metadata = use_resource(move || {
         let document_identifier = document_identifier();
         let table_info = table_info();
-        async move {
-            get_raw_metadata(document_identifier, table_info).await
-    }});
+        async move { get_raw_metadata(document_identifier, table_info).await }
+    });
     use_effect(move || {
         let _document_identifier = document_identifier();
         let _table_info = table_info();
@@ -75,17 +75,21 @@ fn RawMetadataCollectorSection(
     });
     let result = match raw_metadata().clone() {
         Some(Ok(result)) => result,
-        Some(Err(e)) => return rsx! { div {
-            // {section_header},
-            ComponentErrorDisplay { error_txt: format!("{:#?}", e) }
-        }},
-        None => return rsx! { div {
-            // {section_header},
-            LoadingIndicator{}
-        }},
+        Some(Err(e)) => {
+            return rsx! { div {
+                // {section_header},
+                ComponentErrorDisplay { error_txt: format!("{:#?}", e) }
+            }};
+        }
+        None => {
+            return rsx! { div {
+                // {section_header},
+                LoadingIndicator{}
+            }};
+        }
     };
     if result.is_empty() {
-        return rsx!{}
+        return rsx! {};
     }
     rsx! {
         li {
@@ -107,16 +111,12 @@ fn RawMetadataCollectorSection(
     }
 }
 
-
 #[server]
 async fn get_raw_metadata(
     document_identifier: DocumentIdentifier,
-    table_info: DocumentMetadataTableInfo)
--> Result<Vec<serde_json::Value>, ServerFnError> {
-    backend::api::documents::get_raw_metadata::get_raw_metadata(
-        document_identifier,
-        table_info
-    )
-    .await
-    .map_err(|e| ServerFnError::from(e))
+    table_info: DocumentMetadataTableInfo,
+) -> Result<Vec<serde_json::Value>, ServerFnError> {
+    backend::api::documents::get_raw_metadata::get_raw_metadata(document_identifier, table_info)
+        .await
+        .map_err(|e| ServerFnError::from(e))
 }

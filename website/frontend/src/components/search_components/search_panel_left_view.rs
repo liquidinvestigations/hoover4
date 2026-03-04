@@ -4,8 +4,23 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 
-use common::{search_query::SearchQuery, search_result::{DocumentIdentifier, SearchResultDocuments}};
-use crate::{api::search_api::{search_for_results, search_for_results_hit_count}, components::{error_boundary::ComponentErrorDisplay, search_components::{search_result_item_card::SearchResultItemCard, search_result_list_controls::SearchResultListControls}, suspend_boundary::{LoadingIndicator, SuspendWrapper}}, data_definitions::doc_viewer_state::DocViewerState, routes::Route};
+use crate::{
+    api::search_api::{search_for_results, search_for_results_hit_count},
+    components::{
+        error_boundary::ComponentErrorDisplay,
+        search_components::{
+            search_result_item_card::SearchResultItemCard,
+            search_result_list_controls::SearchResultListControls,
+        },
+        suspend_boundary::{LoadingIndicator, SuspendWrapper},
+    },
+    data_definitions::doc_viewer_state::DocViewerState,
+    routes::Route,
+};
+use common::{
+    search_query::SearchQuery,
+    search_result::{DocumentIdentifier, SearchResultDocuments},
+};
 #[derive(Copy, Clone)]
 pub struct SearchResultsState {
     // pub query: ReadSignal<SearchQuery>,
@@ -19,8 +34,11 @@ pub struct SearchResultsState {
 }
 
 #[component]
-pub fn SearchPanelLeftView(query: ReadSignal<SearchQuery>, current_search_result_page: ReadSignal<u64>, selected_result_hash: ReadSignal<Option<DocumentIdentifier>>) -> Element {
-
+pub fn SearchPanelLeftView(
+    query: ReadSignal<SearchQuery>,
+    current_search_result_page: ReadSignal<u64>,
+    selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
+) -> Element {
     let mut hit_count = use_resource(move || {
         let q = query.read().clone();
         search_for_results_hit_count(q)
@@ -44,7 +62,6 @@ pub fn SearchPanelLeftView(query: ReadSignal<SearchQuery>, current_search_result
         search_result.restart();
     });
 
-
     let set_current_page = Callback::new(move |page: u64| {
         let route = Route::SearchPage {
             query: query.read().clone().into(),
@@ -59,19 +76,26 @@ pub fn SearchPanelLeftView(query: ReadSignal<SearchQuery>, current_search_result
             query: query.read().clone().into(),
             current_search_result_page: *current_search_result_page.read(),
             selected_result_hash: hash.into(),
-            doc_viewer_state: Some(DocViewerState::from_find_query(query.read().clone().query_string.clone())).into(),
+            doc_viewer_state: Some(DocViewerState::from_find_query(
+                query.read().clone().query_string.clone(),
+            ))
+            .into(),
         };
         navigator().push(route);
     });
-    let set_selected_result_hash_and_page = Callback::new(move |(hash, page): (Option<DocumentIdentifier>, u64)| {
-        let route = Route::SearchPage {
-            query: query.read().clone().into(),
-            current_search_result_page: page,
-            selected_result_hash: hash.into(),
-            doc_viewer_state: Some(DocViewerState::from_find_query(query.read().clone().query_string.clone())).into(),
-        };
-        navigator().push(route);
-    });
+    let set_selected_result_hash_and_page =
+        Callback::new(move |(hash, page): (Option<DocumentIdentifier>, u64)| {
+            let route = Route::SearchPage {
+                query: query.read().clone().into(),
+                current_search_result_page: page,
+                selected_result_hash: hash.into(),
+                doc_viewer_state: Some(DocViewerState::from_find_query(
+                    query.read().clone().query_string.clone(),
+                ))
+                .into(),
+            };
+            navigator().push(route);
+        });
     use_context_provider(move || SearchResultsState {
         hit_count: hit_count.into(),
         search_result: search_result.into(),
@@ -81,7 +105,6 @@ pub fn SearchPanelLeftView(query: ReadSignal<SearchQuery>, current_search_result
         set_selected_result_hash,
         set_selected_result_hash_and_page,
     });
-
 
     rsx! {
         div {
@@ -118,21 +141,22 @@ fn SearchResultsView() -> Element {
     // .suspend()?.cloned();
     let search_result = search_result.read();
     let search_result = match search_result.as_ref() {
-        Some( Err(e)) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
+        Some(Err(e)) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
         Some(Ok(s)) => s,
         None => return rsx! { LoadingIndicator{} },
     };
 
     let result_list = search_result.results.clone();
-    let mut result_mounted_thing = use_signal(move || BTreeMap::<DocumentIdentifier, Event<MountedData>>::new());
+    let mut result_mounted_thing =
+        use_signal(move || BTreeMap::<DocumentIdentifier, Event<MountedData>>::new());
     use_effect(move || {
         let selected = search_results_state.selected_result_hash.read().clone();
         if let Some(selected) = selected {
             if let Some(mounted_data) = result_mounted_thing.read().get(&selected) {
-                let _x = mounted_data.scroll_to_with_options( ScrollToOptions {
+                let _x = mounted_data.scroll_to_with_options(ScrollToOptions {
                     behavior: ScrollBehavior::Smooth,
                     vertical: ScrollLogicalPosition::Center,
-                    horizontal: ScrollLogicalPosition::Center
+                    horizontal: ScrollLogicalPosition::Center,
                 });
                 // if let Err(e) = _x {dioxus::logger::tracing::error!("Error scrolling to selected result: {e}");}
             }

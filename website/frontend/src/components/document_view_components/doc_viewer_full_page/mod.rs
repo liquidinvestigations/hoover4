@@ -3,8 +3,9 @@
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
-use crate::components::document_view_components::{doc_title_bar::DocTitleBar, raw_metadata_collector::RawMetadataCollector};
-
+use crate::components::document_view_components::{
+    doc_title_bar::DocTitleBar, raw_metadata_collector::RawMetadataCollector,
+};
 
 #[component]
 pub fn DocViewerRoot(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {

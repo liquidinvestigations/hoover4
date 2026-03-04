@@ -18,7 +18,6 @@ pub struct DocumentTextSourceHit {
     pub highlight_text_spans: Vec<HighlightTextSpan>,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocumentTextSourceHitCount {
     pub extracted_by: String,

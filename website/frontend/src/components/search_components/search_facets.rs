@@ -2,14 +2,28 @@
 
 use std::collections::BTreeSet;
 
-use dioxus::prelude::*;
 use common::{search_query::SearchQuery, search_result::FacetOriginalValue};
-use dioxus_free_icons::{Icon, icons::{md_action_icons::MdInfo, md_communication_icons::MdBusiness, md_social_icons::MdPerson, md_toggle_icons::{MdCheckBox, MdCheckBoxOutlineBlank}}};
+use dioxus::prelude::*;
+use dioxus_free_icons::{
+    Icon,
+    icons::{
+        md_action_icons::MdInfo,
+        md_communication_icons::MdBusiness,
+        md_social_icons::MdPerson,
+        md_toggle_icons::{MdCheckBox, MdCheckBoxOutlineBlank},
+    },
+};
 
-use dioxus_free_icons::icons::{go_icons::GoDatabase, md_communication_icons::MdLocationOn, md_editor_icons::MdInsertDriveFile, md_navigation_icons::{MdApps, MdArrowDropDown}};
-use crate::{api::search_api::search_string_facet, components::{error_boundary::ComponentErrorDisplay, suspend_boundary::SuspendWrapper}};
-
-
+use crate::{
+    api::search_api::search_string_facet,
+    components::{error_boundary::ComponentErrorDisplay, suspend_boundary::SuspendWrapper},
+};
+use dioxus_free_icons::icons::{
+    go_icons::GoDatabase,
+    md_communication_icons::MdLocationOn,
+    md_editor_icons::MdInsertDriveFile,
+    md_navigation_icons::{MdApps, MdArrowDropDown},
+};
 
 #[derive(Clone, Copy)]
 struct FacetContext {
@@ -20,7 +34,11 @@ struct FacetContext {
 }
 
 #[component]
-pub fn FacetButtonStrip(original_query: ReadSignal<SearchQuery>, modified_search_query: Signal<SearchQuery>, trigger_search: Callback<()>) -> Element {
+pub fn FacetButtonStrip(
+    original_query: ReadSignal<SearchQuery>,
+    modified_search_query: Signal<SearchQuery>,
+    trigger_search: Callback<()>,
+) -> Element {
     let mut expanded_facet = use_signal(|| "".to_string());
     let set_expanded_facet: Callback<String> = Callback::new(move |facet: String| {
         expanded_facet.set(facet.clone());
@@ -127,7 +145,7 @@ pub fn FacetButtonStrip(original_query: ReadSignal<SearchQuery>, modified_search
 }
 
 #[component]
-fn FacetButton<I: dioxus_free_icons::IconShape+'static+Clone+PartialEq>(
+fn FacetButton<I: dioxus_free_icons::IconShape + 'static + Clone + PartialEq>(
     facet_display_name: ReadSignal<String>,
     facet_field_name: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
@@ -139,10 +157,24 @@ fn FacetButton<I: dioxus_free_icons::IconShape+'static+Clone+PartialEq>(
     let original_query = facet_context.original_query;
     let modified_search_query = facet_context.modified_search_query;
 
-    let is_expanded = use_memo(move || expanded_facet.read().clone() == facet_display_name.read().clone());
+    let is_expanded =
+        use_memo(move || expanded_facet.read().clone() == facet_display_name.read().clone());
     let button_z_level = use_memo(move || if is_expanded() { 1000 } else { 888 });
-    let is_filtered = use_memo(move || !modified_search_query.read().facet_filters.get(&facet_field_name.read().clone()).unwrap_or(&BTreeSet::new()).is_empty());
-    let border_color = use_memo(move || if is_filtered() { "rgba(0,0,255,0.9)" } else { "rgba(0,0,0,0.5)" });
+    let is_filtered = use_memo(move || {
+        !modified_search_query
+            .read()
+            .facet_filters
+            .get(&facet_field_name.read().clone())
+            .unwrap_or(&BTreeSet::new())
+            .is_empty()
+    });
+    let border_color = use_memo(move || {
+        if is_filtered() {
+            "rgba(0,0,255,0.9)"
+        } else {
+            "rgba(0,0,0,0.5)"
+        }
+    });
 
     rsx! {
         if is_expanded() {
@@ -248,31 +280,52 @@ fn FacetButton<I: dioxus_free_icons::IconShape+'static+Clone+PartialEq>(
             Icon { icon: MdArrowDropDown, style: "width: 20px; height: 20px; color:rgba(0,0,0,0.9);" }
         }
     }
-
 }
 
-
-
-
 #[component]
-fn FacetSelectorList(original_query: ReadSignal<SearchQuery>, modified_search_query: Signal<SearchQuery>, facet_field_name: ReadSignal<String>, map_string_terms: ReadSignal<Option<String>>) -> Element {
+fn FacetSelectorList(
+    original_query: ReadSignal<SearchQuery>,
+    modified_search_query: Signal<SearchQuery>,
+    facet_field_name: ReadSignal<String>,
+    map_string_terms: ReadSignal<Option<String>>,
+) -> Element {
     let search_result = use_resource(move || {
         let q = original_query.read().clone();
-        search_string_facet(q, facet_field_name.read().clone(), map_string_terms.read().clone())
-    }).suspend()?.cloned();
+        search_string_facet(
+            q,
+            facet_field_name.read().clone(),
+            map_string_terms.read().clone(),
+        )
+    })
+    .suspend()?
+    .cloned();
     let mut search_result = match search_result {
         Err(e) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
-        Ok(s) => s
+        Ok(s) => s,
     };
-    let originally_filtered_values = original_query.read().facet_filters.get(&facet_field_name.read().clone()).unwrap_or(&BTreeSet::new()).clone();
-    let returned_values = search_result.facet_values.iter().map(|v| v.original_value.clone()).collect::<BTreeSet<_>>();
-    let missing_values = originally_filtered_values.difference(&returned_values).cloned().collect::<Vec<_>>();
+    let originally_filtered_values = original_query
+        .read()
+        .facet_filters
+        .get(&facet_field_name.read().clone())
+        .unwrap_or(&BTreeSet::new())
+        .clone();
+    let returned_values = search_result
+        .facet_values
+        .iter()
+        .map(|v| v.original_value.clone())
+        .collect::<BTreeSet<_>>();
+    let missing_values = originally_filtered_values
+        .difference(&returned_values)
+        .cloned()
+        .collect::<Vec<_>>();
     for value in missing_values {
-        search_result.facet_values.push(common::search_result::SearchResultFacetItem {
-            display_string: format!("Missing: {:?}", value),
-            original_value: value,
-            count: 0,
-        });
+        search_result
+            .facet_values
+            .push(common::search_result::SearchResultFacetItem {
+                display_string: format!("Missing: {:?}", value),
+                original_value: value,
+                count: 0,
+            });
     }
     rsx! {
         ul {
@@ -293,10 +346,22 @@ fn FacetSelectorList(original_query: ReadSignal<SearchQuery>, modified_search_qu
     }
 }
 
-
 #[component]
-fn FacetCheckbox(mut query: Signal<SearchQuery>, facet_name: ReadSignal<String>, facet_value: ReadSignal<FacetOriginalValue>, result_count: ReadSignal<u64>, result_display_string: ReadSignal<String>) -> Element {
-    let is_checked = use_memo(move || query.read().facet_filters.get(&facet_name.read().clone()).unwrap_or(&BTreeSet::new()).contains(&facet_value.read().clone()));
+fn FacetCheckbox(
+    mut query: Signal<SearchQuery>,
+    facet_name: ReadSignal<String>,
+    facet_value: ReadSignal<FacetOriginalValue>,
+    result_count: ReadSignal<u64>,
+    result_display_string: ReadSignal<String>,
+) -> Element {
+    let is_checked = use_memo(move || {
+        query
+            .read()
+            .facet_filters
+            .get(&facet_name.read().clone())
+            .unwrap_or(&BTreeSet::new())
+            .contains(&facet_value.read().clone())
+    });
     rsx! {
 
         div {

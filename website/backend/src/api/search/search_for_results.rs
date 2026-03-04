@@ -1,12 +1,14 @@
 //! Search endpoint for result lists.
 
+use crate::api::search::search_sql::{SQL_FROM_CLAUSE, SQL_OPTIONS_CLAUSE, build_sql_where_clause};
+use crate::db_utils::{
+    decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
+};
 use common::{
     search_query::SearchQuery,
     search_result::{DocumentIdentifier, SearchResultDocumentItem, SearchResultDocuments},
 };
 use serde::{Deserialize, Serialize};
-use crate::api::search::search_sql::{SQL_FROM_CLAUSE, build_sql_where_clause, SQL_OPTIONS_CLAUSE};
-use crate::{db_utils::{decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct SearchForResultsResponse {
@@ -24,7 +26,10 @@ struct SearchForResultsResponse {
     // file_paths: Vec<u64>,
 }
 
-pub async fn search_for_results(query: SearchQuery, current_search_result_page: u64) -> anyhow::Result<SearchResultDocuments> {
+pub async fn search_for_results(
+    query: SearchQuery,
+    current_search_result_page: u64,
+) -> anyhow::Result<SearchResultDocuments> {
     let sql_where_clause = build_sql_where_clause(&query);
     let mut offset = current_search_result_page * common::search_const::PAGE_SIZE;
     let mut limit = common::search_const::PAGE_SIZE + 1;
@@ -36,8 +41,6 @@ pub async fn search_for_results(query: SearchQuery, current_search_result_page: 
     }
 
     // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-
 
     let sql = format!(
         "
@@ -76,35 +79,40 @@ pub async fn search_for_results(query: SearchQuery, current_search_result_page: 
 
     {SQL_OPTIONS_CLAUSE}
     ;",
-    /*
-    ,
-        doc_metadata.file_mime_types as file_mime_types,
-        doc_metadata.file_extensions as file_extensions,
-        doc_metadata.file_paths as file_pathsr
-     */
-        /* FACET collection_dataset
-           FACET file_types
-           FACET file_mime_types
-           FACET file_extensions
-           FACET file_paths
-        */
+        /*
+        ,
+            doc_metadata.file_mime_types as file_mime_types,
+            doc_metadata.file_extensions as file_extensions,
+            doc_metadata.file_paths as file_pathsr
+         */
+            /* FACET collection_dataset
+               FACET file_types
+               FACET file_mime_types
+               FACET file_extensions
+               FACET file_paths
+            */
     );
     let response = manticore_search_sql::<SearchForResultsResponse>(sql).await?;
 
     let mut search_results = response
         .hits
         .hits
-        .into_iter().enumerate()
+        .into_iter()
+        .enumerate()
         .map(|(hit_index_in_page, hit)| {
-
-            let filenames = hit._source.filenames.split("\n").map(|i| i.to_string()).collect::<Vec<_>>();
-            let mut title =hit
-            ._source
-            .filenames
-            .split("\n")
-            .next()
-            .unwrap_or("")
-            .to_string();
+            let filenames = hit
+                ._source
+                .filenames
+                .split("\n")
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>();
+            let mut title = hit
+                ._source
+                .filenames
+                .split("\n")
+                .next()
+                .unwrap_or("")
+                .to_string();
 
             if !hit._source.filenames.is_empty() {
                 for x in filenames {
@@ -115,19 +123,20 @@ pub async fn search_for_results(query: SearchQuery, current_search_result_page: 
             }
 
             SearchResultDocumentItem {
-            collection_dataset: hit._source.collection_dataset,
-            file_hash: hit._source.file_hash,
-            title: hit
-                ._source
-                .filenames
-                .split("\n")
-                .next()
-                .unwrap_or("")
-                .to_string(),
-            highlight_text_spans: decompose_text_into_spans(hit._source.highlight_text),
-            highlight_filenames_spans: decompose_text_into_spans(title.clone()),
-            result_index_in_page: 0_u64,
-        }})
+                collection_dataset: hit._source.collection_dataset,
+                file_hash: hit._source.file_hash,
+                title: hit
+                    ._source
+                    .filenames
+                    .split("\n")
+                    .next()
+                    .unwrap_or("")
+                    .to_string(),
+                highlight_text_spans: decompose_text_into_spans(hit._source.highlight_text),
+                highlight_filenames_spans: decompose_text_into_spans(title.clone()),
+                result_index_in_page: 0_u64,
+            }
+        })
         .collect::<Vec<_>>();
 
     let mut prev_hash = None;
@@ -142,8 +151,12 @@ pub async fn search_for_results(query: SearchQuery, current_search_result_page: 
     let mut next_hash = None;
     if search_results.len() > common::search_const::PAGE_SIZE as usize {
         next_hash = Some(DocumentIdentifier {
-            collection_dataset: search_results[common::search_const::PAGE_SIZE as usize].collection_dataset.clone(),
-            file_hash: search_results[common::search_const::PAGE_SIZE as usize].file_hash.clone(),
+            collection_dataset: search_results[common::search_const::PAGE_SIZE as usize]
+                .collection_dataset
+                .clone(),
+            file_hash: search_results[common::search_const::PAGE_SIZE as usize]
+                .file_hash
+                .clone(),
         });
         search_results.remove(common::search_const::PAGE_SIZE as usize);
     }

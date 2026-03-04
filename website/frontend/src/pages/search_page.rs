@@ -4,13 +4,25 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use dioxus::prelude::*;
 
-use common::{search_query::SearchQuery, search_result::{DocumentIdentifier, SearchResultDocuments}};
 use crate::{
     api::search_api::{search_for_results, search_for_results_hit_count},
-    components::{document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot, error_boundary::ComponentErrorDisplay, search_components::{search_input_top_bar::SearchInputTopBar, search_panel_left_view::SearchPanelLeftView, search_result_item_card::SearchResultItemCard, search_result_list_controls::SearchResultListControls}, suspend_boundary::{LoadingIndicator, SuspendWrapper}},
-    data_definitions::{doc_viewer_state::DocViewerState, url_param::UrlParam}, routes::Route
+    components::{
+        document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot,
+        error_boundary::ComponentErrorDisplay,
+        search_components::{
+            search_input_top_bar::SearchInputTopBar, search_panel_left_view::SearchPanelLeftView,
+            search_result_item_card::SearchResultItemCard,
+            search_result_list_controls::SearchResultListControls,
+        },
+        suspend_boundary::{LoadingIndicator, SuspendWrapper},
+    },
+    data_definitions::{doc_viewer_state::DocViewerState, url_param::UrlParam},
+    routes::Route,
 };
-
+use common::{
+    search_query::SearchQuery,
+    search_result::{DocumentIdentifier, SearchResultDocuments},
+};
 
 fn title_ellipsis(title: String) -> String {
     if title.len() > 20 {
@@ -54,7 +66,6 @@ fn SearchPageRootComponent(
     selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
     doc_viewer_state: ReadSignal<Option<DocViewerState>>,
 ) -> Element {
-
     use_context_provider(move || DocViewerStateControl {
         doc_viewer_state: doc_viewer_state.into(),
         set_doc_viewer_state: Callback::new(move |state: DocViewerState| {
@@ -141,4 +152,3 @@ fn SearchPageRootComponent(
         }
     }
 }
-

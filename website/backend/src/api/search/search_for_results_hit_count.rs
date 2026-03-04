@@ -1,9 +1,12 @@
 //! Search count endpoint for result totals.
 
-use crate::{api::search::search_sql::build_sql_where_clause, db_utils::manticore_utils::manticore_search_sql};
+use crate::api::search::search_sql::{SQL_FROM_CLAUSE, SQL_OPTIONS_CLAUSE};
+use crate::{
+    api::search::search_sql::build_sql_where_clause,
+    db_utils::manticore_utils::manticore_search_sql,
+};
 use common::search_query::SearchQuery;
 use serde::{Deserialize, Serialize};
-use crate::api::search::search_sql::{SQL_FROM_CLAUSE, SQL_OPTIONS_CLAUSE};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchForResultsHitCountResponse {

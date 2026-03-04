@@ -2092,8 +2092,11 @@ dependencies = [
  "gloo-timers",
  "html5ever 0.38.0",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

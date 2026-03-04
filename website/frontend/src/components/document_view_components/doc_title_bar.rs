@@ -3,9 +3,14 @@
 use dioxus::prelude::*;
 
 use common::search_result::DocumentIdentifier;
-use dioxus_free_icons::{Icon, icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile}};
+use dioxus_free_icons::{
+    Icon,
+    icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile},
+};
 
-use crate::components::search_components::card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab};
+use crate::components::search_components::card_action_buttons::{
+    DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
+};
 
 #[component]
 pub fn DocTitleBar(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
@@ -105,17 +110,20 @@ fn CollectionIcon() -> Element {
 
 #[component]
 fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
-    let mut file_path_resource = use_resource(move ||get_file_path(document_identifier.read().clone()));
+    let mut file_path_resource =
+        use_resource(move || get_file_path(document_identifier.read().clone()));
     let file_path = match file_path_resource.read().clone() {
-        Some(Ok(path)) => {
-            path.split("/").last().unwrap_or("").to_string()
-        },
-        Some(Err(e)) => return rsx! { div {
-            "error! {e}"
-        }},
-        None => return rsx! { div {
-            "..."
-        }},
+        Some(Ok(path)) => path.split("/").last().unwrap_or("").to_string(),
+        Some(Err(e)) => {
+            return rsx! { div {
+                "error! {e}"
+            }};
+        }
+        None => {
+            return rsx! { div {
+                "..."
+            }};
+        }
     };
     use_effect(move || {
         let _document_identifier = document_identifier();
@@ -130,7 +138,6 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
         }
     }
 }
-
 
 #[component]
 fn FileTypeIcon() -> Element {
@@ -160,6 +167,6 @@ fn FileTypeIcon() -> Element {
 #[server]
 async fn get_file_path(document_identifier: DocumentIdentifier) -> Result<String, ServerFnError> {
     backend::api::documents::get_file_path::get_file_path(document_identifier)
-    .await
-    .map_err(|e| ServerFnError::from(e))
+        .await
+        .map_err(|e| ServerFnError::from(e))
 }

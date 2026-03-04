@@ -1,10 +1,23 @@
 //! Search input and controls in the top bar.
 
-use dioxus::prelude::*;
+use crate::{
+    components::{
+        search_components::search_facets::FacetButtonStrip, suspend_boundary::SuspendWrapper,
+    },
+    routes::Route,
+};
 use common::search_query::SearchQuery;
-use dioxus_free_icons::{Icon, icons::{go_icons::GoDatabase, md_action_icons::MdSearch, md_communication_icons::MdLocationOn, md_editor_icons::MdInsertDriveFile, md_navigation_icons::{MdApps, MdArrowDropDown}}};
-use crate::{components::{search_components::search_facets::{FacetButtonStrip}, suspend_boundary::SuspendWrapper}, routes::Route};
-
+use dioxus::prelude::*;
+use dioxus_free_icons::{
+    Icon,
+    icons::{
+        go_icons::GoDatabase,
+        md_action_icons::MdSearch,
+        md_communication_icons::MdLocationOn,
+        md_editor_icons::MdInsertDriveFile,
+        md_navigation_icons::{MdApps, MdArrowDropDown},
+    },
+};
 
 #[component]
 pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
@@ -15,10 +28,19 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
         // orig_query.set(new_query.clone());
         modified_search_query.set(new_query);
     });
-    let query_has_changed = use_memo(move || modified_search_query.read().clone() != original_query.read().clone());
-    let search_button_color = use_memo(move || if query_has_changed() { "blue" } else { "#6B7280" });
+    let query_has_changed =
+        use_memo(move || modified_search_query.read().clone() != original_query.read().clone());
+    let search_button_color = use_memo(move || {
+        if query_has_changed() {
+            "blue"
+        } else {
+            "#6B7280"
+        }
+    });
     let trigger_search = move |_: ()| {
-        navigator().push(Route::search_page_from_query(modified_search_query.read().clone()));
+        navigator().push(Route::search_page_from_query(
+            modified_search_query.read().clone(),
+        ));
     };
     let search_oninput = move |event: Event<FormData>| {
         let new_q = event.value();

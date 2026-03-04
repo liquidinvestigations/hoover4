@@ -1,8 +1,8 @@
 //! Utilities for Manticore query formatting and results.
 
+use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RawSarchResult<T> {
@@ -51,7 +51,8 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     }
     println!("SEARCH CACHE MISS: {}", query_hash);
     let t0 = std::time::Instant::now();
-    let database_url = std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:9308".to_string());
+    let database_url =
+        std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:9308".to_string());
     let database_url = format!("{}/sql", database_url);
     let client = reqwest::Client::new();
 
@@ -64,8 +65,14 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     println!("SEARCH RESPONSE: len = {}", response_txt.len());
     let t1 = std::time::Instant::now();
     let dt_ms = t1.duration_since(t0).as_millis() as u32;
-    if insert_cache(&query_hash, &sql, &response_txt, dt_ms).await.is_ok() {
-        println!("SEARCH CACHE INSERTED: {} (searched in {}ms)", query_hash, dt_ms);
+    if insert_cache(&query_hash, &sql, &response_txt, dt_ms)
+        .await
+        .is_ok()
+    {
+        println!(
+            "SEARCH CACHE INSERTED: {} (searched in {}ms)",
+            query_hash, dt_ms
+        );
     } else {
         println!("SEARCH CACHE INSERT FAILED: {}", query_hash);
     }
@@ -74,9 +81,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     Ok(response)
 }
 
-
 async fn get_cached_response(query_hash: &String, query_string: &String) -> anyhow::Result<String> {
-
     let client = get_clickhouse_client();
     let sql = "
     SELECT result_json
@@ -99,8 +104,12 @@ async fn get_cached_response(query_hash: &String, query_string: &String) -> anyh
     }
 }
 
-
-async fn insert_cache(query_hash: &String, query_string: &String, response_txt: &String, dt_ms: u32) -> anyhow::Result<()> {
+async fn insert_cache(
+    query_hash: &String,
+    query_string: &String,
+    response_txt: &String,
+    dt_ms: u32,
+) -> anyhow::Result<()> {
     let client = get_clickhouse_client();
     let sql = "
     INSERT INTO search_manticore_cache (query_hash, query_string, result_json, duration_ms)

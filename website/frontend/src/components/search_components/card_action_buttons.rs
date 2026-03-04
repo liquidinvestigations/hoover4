@@ -2,12 +2,20 @@
 
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
-use dioxus_free_icons::{Icon, icons::{md_action_icons::MdOpenInNew, md_editor_icons::MdInsertLink, md_file_icons::MdFileDownload, md_navigation_icons::MdMoreVert}};
+use dioxus_free_icons::{
+    Icon,
+    icons::{
+        md_action_icons::MdOpenInNew, md_editor_icons::MdInsertLink, md_file_icons::MdFileDownload,
+        md_navigation_icons::MdMoreVert,
+    },
+};
 
 use crate::routes::Route;
 
 #[component]
-pub fn DocCardActionButtonOpenNewTab(document_identifier:ReadSignal<DocumentIdentifier>) -> Element {
+pub fn DocCardActionButtonOpenNewTab(
+    document_identifier: ReadSignal<DocumentIdentifier>,
+) -> Element {
     rsx! {
         a {
             style: "
@@ -42,36 +50,36 @@ pub fn DocCardActionButtonOpenNewTab(document_identifier:ReadSignal<DocumentIden
 }
 
 #[component]
-pub fn DocCardActionButtonMore(document_identifier:ReadSignal<DocumentIdentifier>) -> Element {
+pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let mut is_expanded = use_signal(|| false);
-    let do_copy_link = use_callback(move |_:()| {
+    let do_copy_link = use_callback(move |_: ()| {
         let url = web_sys::window().unwrap().location().href().unwrap();
-        let _r = web_sys::window().unwrap().navigator().clipboard().write_text(&url);
+        let _r = web_sys::window()
+            .unwrap()
+            .navigator()
+            .clipboard()
+            .write_text(&url);
         dioxus::logger::tracing::info!("Link copied to clipboard: {:#?}", url);
         // toastr().success("Link copied to clipboard");
 
         let toast_api = dioxus_primitives::toast::consume_toast();
-        toast_api
-                .info(
-                    "Link copied to clipboard.".to_string(),
-                    dioxus_primitives::toast::ToastOptions::new()
-                        .description("The document link has been copied to your clipboard.")
-                        .duration(std::time::Duration::from_secs(15))
-                        .permanent(false),
-                );
-
-
+        toast_api.info(
+            "Link copied to clipboard.".to_string(),
+            dioxus_primitives::toast::ToastOptions::new()
+                .description("The document link has been copied to your clipboard.")
+                .duration(std::time::Duration::from_secs(15))
+                .permanent(false),
+        );
     });
-    let do_download_document = use_callback(move |_:()| {
+    let do_download_document = use_callback(move |_: ()| {
         let toast_api = dioxus_primitives::toast::consume_toast();
-        toast_api
-                .info(
-                    "Document download started.".to_string(),
-                    dioxus_primitives::toast::ToastOptions::new()
-                        .description("The document is being downloaded to your computer.")
-                        .duration(std::time::Duration::from_secs(15))
-                        .permanent(false),
-                );
+        toast_api.info(
+            "Document download started.".to_string(),
+            dioxus_primitives::toast::ToastOptions::new()
+                .description("The document is being downloaded to your computer.")
+                .duration(std::time::Duration::from_secs(15))
+                .permanent(false),
+        );
     });
     rsx! {
         div {

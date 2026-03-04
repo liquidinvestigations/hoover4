@@ -2,16 +2,28 @@
 
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
-use dioxus_free_icons::{Icon, icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward}};
+use dioxus_free_icons::{
+    Icon,
+    icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward},
+};
 
-use crate::{components::{document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentViewerResultStore, search_components::search_result_list_controls::NavigationButton}, data_definitions::doc_viewer_state::DocViewerState, pages::search_page::DocViewerStateControl};
+use crate::{
+    components::{
+        document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentViewerResultStore,
+        search_components::search_result_list_controls::NavigationButton,
+    },
+    data_definitions::doc_viewer_state::DocViewerState,
+    pages::search_page::DocViewerStateControl,
+};
 
 #[component]
 pub fn PreviewSubtitleBar(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let state = use_context::<DocViewerStateControl>();
     let find_query = use_memo(move || {
         let r = state.doc_viewer_state.read().clone();
-        let Some(state) = &r else { return "".to_string() };
+        let Some(state) = &r else {
+            return "".to_string();
+        };
         state.find_query.clone()
     });
     let mut modified_find_query = use_signal(move || find_query.read().clone());
@@ -106,14 +118,14 @@ pub fn PreviewSubtitleBar(document_identifier: ReadSignal<DocumentIdentifier>) -
 
 #[component]
 fn SearchHitSelector() -> Element {
-    let max_highlighted_word_index = use_context::<DocumentViewerResultStore>().max_highlighted_word_index;
-    let mut current_highlighted_word_index = use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
-    let have_hits = use_memo(move || {
-        *max_highlighted_word_index.read() > 0
-    });
+    let max_highlighted_word_index =
+        use_context::<DocumentViewerResultStore>().max_highlighted_word_index;
+    let mut current_highlighted_word_index =
+        use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
+    let have_hits = use_memo(move || *max_highlighted_word_index.read() > 0);
     let hit_string = use_memo(move || {
         if have_hits() {
-            let current = 1+*current_highlighted_word_index.read();
+            let current = 1 + *current_highlighted_word_index.read();
             let max = *max_highlighted_word_index.read();
             format!("{current} / {max}")
         } else {
@@ -121,13 +133,11 @@ fn SearchHitSelector() -> Element {
         }
     });
     let disable_next = use_memo(move || {
-        !have_hits() ||
-        *current_highlighted_word_index.read()+1 >= *max_highlighted_word_index.read()
+        !have_hits()
+            || *current_highlighted_word_index.read() + 1 >= *max_highlighted_word_index.read()
     });
-    let disable_previous = use_memo(move || {
-        !have_hits() ||
-        *current_highlighted_word_index.read() == 0
-    });
+    let disable_previous =
+        use_memo(move || !have_hits() || *current_highlighted_word_index.read() == 0);
     rsx! {
         div {
             style: "

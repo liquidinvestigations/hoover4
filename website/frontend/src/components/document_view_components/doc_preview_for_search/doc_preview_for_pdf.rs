@@ -1,23 +1,29 @@
-use common::document_text_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem};
+use common::document_text_sources::{
+    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
+};
 use common::pdf_to_html_conversion::PDFToHtmlConversionResponse;
-use dioxus::logger::tracing;
-use dioxus::prelude::*;
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
+use dioxus::logger::tracing;
+use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
 
-
-
 #[server]
-pub async fn get_document_type_is_pdf(document_identifier: DocumentIdentifier) -> Result<(bool, u32), ServerFnError> {
-    let (is_pdf, page_count) = backend::api::documents::get_pdf_to_html_conversion::get_document_type_is_pdf(document_identifier).await.map_err(|e| ServerFnError::from(e))?;
+pub async fn get_document_type_is_pdf(
+    document_identifier: DocumentIdentifier,
+) -> Result<(bool, u32), ServerFnError> {
+    let (is_pdf, page_count) =
+        backend::api::documents::get_pdf_to_html_conversion::get_document_type_is_pdf(
+            document_identifier,
+        )
+        .await
+        .map_err(|e| ServerFnError::from(e))?;
     Ok((is_pdf, page_count))
 }
-
 
 #[component]
 pub fn DocumentPreviewForPdf(
@@ -29,7 +35,8 @@ pub fn DocumentPreviewForPdf(
         let document_identifier = document_identifier.read().clone();
         let current_page_index = current_page_index.read().clone();
         async move {
-            let pdf_to_html_conversion = get_pdf_to_html_single_page(document_identifier, current_page_index).await;
+            let pdf_to_html_conversion =
+                get_pdf_to_html_single_page(document_identifier, current_page_index).await;
             pdf_to_html_conversion
         }
     });
@@ -45,7 +52,7 @@ pub fn DocumentPreviewForPdf(
                     style: "color:red; font-size: 26px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
                     "{e:#?}"
                 }
-            }
+            };
         }
         None => {
             return rsx! {
@@ -53,7 +60,7 @@ pub fn DocumentPreviewForPdf(
                     style: "width: 90%; height: 60px;",
                     LoadingIndicator {  }
                 }
-            }
+            };
         }
     };
     rsx! {
@@ -120,26 +127,17 @@ fn PdfControllerOverlay(page_count: ReadSignal<u32>, current_page_index: Signal<
 }
 #[component]
 fn PDFDataViewer(pdf_to_html_conversion: ReadSignal<PDFToHtmlConversionResponse>) -> Element {
-    let page_width_px = use_memo(move || {
-        pdf_to_html_conversion.read().page_width_px
-    });
-    let page_height_px = use_memo(move || {
-        pdf_to_html_conversion.read().page_height_px
-    });
-    let aspect_ratio = use_memo(move || {
-        page_width_px() / page_height_px()
-    });
+    let page_width_px = use_memo(move || pdf_to_html_conversion.read().page_width_px);
+    let page_height_px = use_memo(move || pdf_to_html_conversion.read().page_height_px);
+    let aspect_ratio = use_memo(move || page_width_px() / page_height_px());
 
     let html_content = use_memo(move || {
-
         let styles = pdf_to_html_conversion.read().clone().styles.join("\n");
         let page_idx = 0;
         let page_content = pdf_to_html_conversion.read().clone().pages[page_idx].clone();
         let page_content = format!("{styles}\n{page_content}");
 
         let page_content = parse_html::search_snippet(&page_content, "Adobe");
-
-
 
         let text_content = parse_html::extract_text_from_html(&page_content).unwrap_or_default();
         info!("Text content: {text_content}");
@@ -158,8 +156,6 @@ fn PDFDataViewer(pdf_to_html_conversion: ReadSignal<PDFToHtmlConversionResponse>
         let min_scale_factor = rx.min(ry);
         min_scale_factor
     });
-
-
 
     rsx! {
         div {
@@ -187,17 +183,29 @@ fn PDFDataViewer(pdf_to_html_conversion: ReadSignal<PDFToHtmlConversionResponse>
 }
 
 #[server]
-async fn get_pdf_to_html_single_page(document_identifier: DocumentIdentifier, page_index: u32) -> Result<PDFToHtmlConversionResponse, ServerFnError> {
-    let pdf_to_html_conversion = backend::api::documents::get_pdf_to_html_conversion::
-    get_pdf_to_html_single_page(document_identifier, page_index).await.map_err(|e| ServerFnError::from(e));
+async fn get_pdf_to_html_single_page(
+    document_identifier: DocumentIdentifier,
+    page_index: u32,
+) -> Result<PDFToHtmlConversionResponse, ServerFnError> {
+    let pdf_to_html_conversion =
+        backend::api::documents::get_pdf_to_html_conversion::get_pdf_to_html_single_page(
+            document_identifier,
+            page_index,
+        )
+        .await
+        .map_err(|e| ServerFnError::from(e));
     pdf_to_html_conversion
 }
-
 
 mod parse_html {
     use std::cell::RefCell;
 
-    use html5ever::tokenizer::{BufferQueue, TagKind::{EndTag, StartTag}, Token::{self, CharacterTokens, TagToken}, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts};
+    use html5ever::tokenizer::{
+        BufferQueue,
+        TagKind::{EndTag, StartTag},
+        Token::{self, CharacterTokens, TagToken},
+        TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+    };
 
     #[derive(Debug, Clone)]
     struct Snippet {
@@ -280,10 +288,7 @@ mod parse_html {
         let mut input = BufferQueue::default();
         input.push_back(page.to_string().into());
 
-        let tokenizer = Tokenizer::new(
-            sink,
-            TokenizerOpts::default(),
-        );
+        let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
         let _ = tokenizer.feed(&input);
         tokenizer.end();
 
@@ -311,7 +316,10 @@ mod parse_html {
         }
 
         // Combine all snippet text to search across them
-        let full_text: String = snippets_with_offsets.iter().map(|s| s.text.as_str()).collect();
+        let full_text: String = snippets_with_offsets
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect();
         let query_lower = query.to_lowercase();
         let full_text_lower = full_text.to_lowercase();
 
@@ -382,14 +390,17 @@ mod parse_html {
         let mut input = BufferQueue::default();
         input.push_back(page.to_string().into());
 
-        let tokenizer = Tokenizer::new(
-            sink,
-            TokenizerOpts::default(),
-        );
+        let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
         let _ = tokenizer.feed(&input);
         tokenizer.end();
 
-        let text_content: String = tokenizer.sink.snippets.borrow().iter().map(|s| s.text.as_str()).collect();
+        let text_content: String = tokenizer
+            .sink
+            .snippets
+            .borrow()
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect();
         Ok(text_content)
     }
 }

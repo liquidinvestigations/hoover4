@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{search_query::SearchQuery, text_highlight::HighlightTextSpan};
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResultDocuments {
     pub query: SearchQuery,
@@ -19,7 +18,6 @@ pub struct DocumentIdentifier {
     pub collection_dataset: String,
     pub file_hash: String,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResultDocumentItem {

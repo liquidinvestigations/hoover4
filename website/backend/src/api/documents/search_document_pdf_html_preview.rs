@@ -1,7 +1,10 @@
-use std::collections::BTreeMap;
-use std::cell::RefCell;
 use html5ever::tendril::TendrilSink;
-use html5ever::tokenizer::{Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts, BufferQueue, TagToken, StartTag, EndTag, CharacterTokens};
+use html5ever::tokenizer::{
+    BufferQueue, CharacterTokens, EndTag, StartTag, TagToken, Token, TokenSink, TokenSinkResult,
+    Tokenizer, TokenizerOpts,
+};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 use common::search_result::DocumentIdentifier;
 

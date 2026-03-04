@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::search_result::FacetOriginalValue;
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SearchQuery {
