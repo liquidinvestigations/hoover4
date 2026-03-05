@@ -22,16 +22,17 @@ struct PdfViewerControllerInnerJs {
     loaded_event: PdfLoadedEvent,
     scroll_api: PdfScrollApi,
     search_api: PdfSearchApi,
+    zoom_api: PdfZoomApi,
 }
 
 impl PdfViewerControllerJs {
     pub fn pdf_url(&self) -> String {
         self.inner.pdf_url.clone()
     }
-    pub fn total_pages(&self) -> u32 {
+    pub fn total_pages(&self) -> i32 {
         self.inner.loaded_event.totalPages
     }
-    pub fn initial_page(&self) -> u32 {
+    pub fn initial_page(&self) -> i32 {
         self.inner.loaded_event.pageNumber
     }
     fn document_id(&self) -> String {
@@ -39,23 +40,28 @@ impl PdfViewerControllerJs {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct PdfViewerControllerDx {
     _controller: Signal<PdfViewerControllerJs>,
-    pub current_page: ReadSignal<u32>,
-    pub total_pages: ReadSignal<u32>,
-    pub set_page: Callback<u32>,
+    pub current_page: ReadSignal<i32>,
+    pub total_pages: ReadSignal<i32>,
+    pub set_page: Callback<i32>,
 
     pub search_query: ReadSignal<String>,
     pub set_search_query: Callback<String>,
-    pub search_hit_index: ReadSignal<u32>,
-    pub search_hit_count: ReadSignal<u32>,
-    pub set_search_idx: Callback<u32>,
+    pub search_hit_index: ReadSignal<i32>,
+    pub search_hit_count: ReadSignal<i32>,
+    pub set_search_idx: Callback<i32>,
+
+    pub zoom_in: Callback<()>,
+    pub zoom_out: Callback<()>,
+    pub zoom_state: ReadSignal<String>,
 }
 
-fn scroll_to_page_options(page: u32, coord_x: f64, coord_y: f64, align_y: f64) -> JsValue {
+fn scroll_to_page_options(page: i32, coord_x: f64, coord_y: f64, align_y: f64) -> JsValue {
     #[derive(Serialize)]
     struct PdfScrollToPageOptions {
-        pageNumber: u32,
+        pageNumber: i32,
         behavior: String,
         pageCoordinates: PdfScrollToPageOptionsPoint,
         alignY: f64,
@@ -80,17 +86,17 @@ fn scroll_to_page_options(page: u32, coord_x: f64, coord_y: f64, align_y: f64) -
 #[derive(Debug, Deserialize, Clone)]
 struct PdfSearchResults {
     pub results: Vec<PdfSearchResult>,
-    pub total: u32,
+    pub total: i32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 struct PdfSearchResult {
     #[serde(rename = "pageIndex")]
-    pub page_index: u32,
+    pub page_index: i32,
     #[serde(rename = "charIndex")]
-    pub char_index: u32,
+    pub char_index: i32,
     #[serde(rename = "charCount")]
-    pub char_count: u32,
+    pub char_count: i32,
     pub rects: Vec<PdfSearchResultRect>,
     pub context: PdfSearchResultContext,
 }
@@ -144,7 +150,7 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     // =========== PAGE NAVIGATION ============
     let mut current_page = use_signal(move || controller().initial_page());
     let total_pages = use_signal(move || controller().total_pages());
-    let set_page = Callback::new(move |new_page: u32| {
+    let set_page = Callback::new(move |new_page: i32| {
         let new_page = new_page.clamp(1, total_pages());
         controller().inner.scroll_api.scrollToPage(
             scroll_to_page_options(new_page, 0., 0., 0.),
@@ -155,7 +161,7 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let on_page_change = move |obj| {
         #[derive(Debug, Deserialize)]
         struct PdfPageChangeEvent {
-            pub pageNumber: u32,
+            pub pageNumber: i32,
         }
         let Ok(obj) = serde_wasm_bindgen::from_value::<PdfPageChangeEvent>(obj) else {
             error!("Failed to deserialize page change event");
@@ -175,9 +181,9 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         results: vec![],
         total: 0,
     });
-    let search_hit_count = use_memo(move || search_results.read().results.len() as u32);
+    let search_hit_count = use_memo(move || search_results.read().results.len() as i32);
 
-    let set_search_idx = Callback::new(move |new_idx: u32| {
+    let set_search_idx = Callback::new(move |new_idx: i32| {
         if search_hit_count() == 0 {
             return;
         }
@@ -233,6 +239,32 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         _sig_search_task.set(Some(_c));
     });
 
+    // =========== ZOOM ============
+    let mut zoom_state_jsvalue = use_signal(move || controller().inner.zoom_api.getState());
+    let zoom_in = Callback::new(move |_| {
+        controller().inner.zoom_api.zoomIn();
+        zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
+    });
+    let zoom_out = Callback::new(move |_| {
+        controller().inner.zoom_api.zoomOut();
+        zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
+    });
+    let zoom_state_str = use_memo(move || {
+        #[derive(Debug, Serialize, Deserialize, Default)]
+        struct PdfZoomState {
+            pub currentZoomLevel: f32,
+        }
+        let obj = serde_wasm_bindgen::from_value::<PdfZoomState>(zoom_state_jsvalue.read().clone()).unwrap_or_default();
+        let zoom = (obj.currentZoomLevel * 100.0) as i32;
+        format!("{}%", zoom)
+    });
+    let on_zoom_change = move |_obj| {
+        zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
+    };
+    let on_zoom_change = Closure::new(Box::new(on_zoom_change) as Box<dyn FnMut(JsValue)>);
+    let on_zoom_change = on_zoom_change.into_js_value();
+    controller().inner.zoom_api.onZoomChange(on_zoom_change);
+
     PdfViewerControllerDx {
         _controller: controller,
         current_page: current_page.into(),
@@ -243,6 +275,9 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         search_hit_index: search_hit_index.into(),
         search_hit_count: search_hit_count.into(),
         set_search_idx,
+        zoom_in,
+        zoom_out,
+        zoom_state: zoom_state_str.into(),
     }
 }
 
@@ -273,7 +308,7 @@ pub fn PdfViewer(
         }
 
         let cb =
-            move |pdf_url: String, event: JsValue, scroll: PdfScrollApi, search: PdfSearchApi| {
+            move |pdf_url: String, event: JsValue, scroll: PdfScrollApi, search: PdfSearchApi, zoom: PdfZoomApi| {
                 let loaded_event = serde_wasm_bindgen::from_value(event)
                     .expect("Failed to deserialize loaded event");
                 proxy_cb.call(PdfViewerControllerJs {
@@ -282,11 +317,12 @@ pub fn PdfViewer(
                         loaded_event,
                         scroll_api: scroll,
                         search_api: search,
+                        zoom_api: zoom,
                     }),
                 });
             };
         let cb = Closure::new(
-            Box::new(cb) as Box<dyn FnMut(String, JsValue, PdfScrollApi, PdfSearchApi)>
+            Box::new(cb) as Box<dyn FnMut(String, JsValue, PdfScrollApi, PdfSearchApi, PdfZoomApi)>
         );
         let cb = cb.into_js_value();
 
@@ -325,6 +361,7 @@ mod _js {
     #[wasm_bindgen]
     extern "C" {
 
+        // ====== SCROLL API ======
         pub type PdfScrollApi;
 
         #[wasm_bindgen(method, structural)]
@@ -333,6 +370,7 @@ mod _js {
         #[wasm_bindgen(method, structural)]
         pub fn onPageChange(this: &PdfScrollApi, callback_fn: JsValue) -> JsValue;
 
+        // ====== SEARCH API ======
         pub type PdfSearchApi;
 
         #[wasm_bindgen(method, structural)]
@@ -343,7 +381,7 @@ mod _js {
         ) -> SearchAllPagesTask;
 
         #[wasm_bindgen(method, structural)]
-        pub fn goToResult(this: &PdfSearchApi, result_index: u32, doc_id: String) -> JsValue;
+        pub fn goToResult(this: &PdfSearchApi, result_index: i32, doc_id: String) -> JsValue;
 
         #[wasm_bindgen(method, structural)]
         pub fn getState(this: &PdfSearchApi) -> JsValue;
@@ -351,14 +389,26 @@ mod _js {
         pub type SearchAllPagesTask;
         #[wasm_bindgen(method, structural)]
         pub fn toPromise(this: &SearchAllPagesTask) -> Promise;
+
+        // ====== ZOOM API ======
+        pub type PdfZoomApi;
+
+        #[wasm_bindgen(method, structural)]
+        pub fn zoomIn(this: &PdfZoomApi) -> JsValue;
+        #[wasm_bindgen(method, structural)]
+        pub fn zoomOut(this: &PdfZoomApi) -> JsValue;
+        #[wasm_bindgen(method, structural)]
+        pub fn getState(this: &PdfZoomApi) -> JsValue;
+        #[wasm_bindgen(method, structural)]
+        pub fn onZoomChange(this: &PdfZoomApi, callback_fn: JsValue) -> JsValue;
     }
 
     #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     pub struct PdfLoadedEvent {
         pub documentId: String,
         pub isInitial: bool,
-        pub pageNumber: u32,
-        pub totalPages: u32,
+        pub pageNumber: i32,
+        pub totalPages: i32,
     }
 }
 

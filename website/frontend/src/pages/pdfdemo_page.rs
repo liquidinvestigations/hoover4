@@ -65,6 +65,9 @@ pub fn PdfControllerButtons(controller: PdfViewerControllerJs) -> Element {
         search_hit_index,
         search_hit_count,
         set_search_idx,
+        zoom_in,
+        zoom_out,
+        zoom_state,
         ..
     } = use_pdf_controller(controller);
 
@@ -119,6 +122,22 @@ pub fn PdfControllerButtons(controller: PdfViewerControllerJs) -> Element {
             disabled: 1+search_hit_index() >= search_hit_count(),
             "NEXT HIT"
         }
+        div {style: "flex-grow: 1;"}
 
+        button {
+            onclick: move |_| {
+                zoom_in.call(());
+            },
+            "ZOOM IN"
+        }
+        h1 {
+            "ZOOM {zoom_state()}"
+        }
+        button {
+            onclick: move |_| {
+                zoom_out.call(());
+            },
+            "ZOOM OUT"
+        }
     }
 }

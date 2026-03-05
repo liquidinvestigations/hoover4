@@ -70,9 +70,10 @@ window.x_open_pdf_viewer = async function(pdf_url, callback_fn) {
 
       const scroll = registry.getPlugin('scroll').provides();
       const search = registry.getPlugin('search').provides();
+      const zoom = registry.getPlugin('zoom').provides();
       scroll.onLayoutReady((event) => {
         // console.log("PDF LAYOUT READY: ", event);
-        callback_fn(pdf_url, event, scroll, search);
+        callback_fn(pdf_url, event, scroll, search, zoom);
       });
     return true;
   } else {
