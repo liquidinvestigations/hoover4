@@ -20,6 +20,17 @@ fn main() {
                 tokio::runtime::RuntimeFlavor::MultiThread,
                 rt_handle.runtime_flavor()
             );
+            let _pdf_search_server = tokio::spawn(async move {
+                let res = backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;
+                match res {
+                    Ok(code) => {
+                        dioxus::logger::tracing::info!("PDF search server exited with code: {}", code);
+                    }
+                    Err(e) => {
+                        dioxus::logger::tracing::error!("PDF search server error: {:?}", e);
+                    }
+                }
+            });
 
             use axum::{extract::Request, middleware::Next};
             use dioxus::server::axum;

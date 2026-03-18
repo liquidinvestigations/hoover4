@@ -1,0 +1,21 @@
+
+[43m[30m WARN [39m[49m Issue while reading "/work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> @embedpdf/pdfium@2.9.0 build /work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/packages/pdfium
+> rollup -c
+
+[36m
+[1msrc/index.esm.ts[22m → [1mdist/index.browser.js[22m...[39m
+[32mcreated [1mdist/index.browser.js[22m in [1m1.1s[22m[39m
+[36m
+[1msrc/index.esm.ts[22m → [1mdist/index.js[22m...[39m
+[32mcreated [1mdist/index.js[22m in [1m698ms[22m[39m
+[36m
+[1msrc/index.cjs.ts[22m → [1mdist/index.cjs[22m...[39m
+[32mcreated [1mdist/index.cjs[22m in [1m711ms[22m[39m
+[36m
+[1msrc/index.esm.ts[22m → [1mdist/index.d.ts[22m...[39m
+[32mcreated [1mdist/index.d.ts[22m in [1m427ms[22m[39m
+[36m
+[1msrc/index.cjs.ts[22m → [1mdist/index.d.cts[22m...[39m
+[32mcreated [1mdist/index.d.cts[22m in [1m378ms[22m[39m

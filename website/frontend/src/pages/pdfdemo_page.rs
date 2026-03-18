@@ -4,14 +4,23 @@ use crate::components::pdf_viewer::{
     PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
 };
 
+#[used]
+static EMBED_PDF_FOLDER: Asset = asset!("/assets/embed-pdf/_viewer/",
+AssetOptions::folder().with_hash_suffix(false));
+
 #[component]
 pub fn PdfDemoPage() -> Element {
+
     let mut pdf_url = use_signal(move || "".to_string());
-    let mut controller = use_signal(move || None);
+    // let mut controller = use_signal(move || None);
     let mut on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
-        controller.set(Some(x));
+        // controller.set(Some(x));
     });
     rsx! {
+        script {
+            src: "/assets/_viewer/embed-demo.js",
+            r#type: "module",
+        }
 
         div {
             style: "height: 10%; width: 90%; border: 1px solid black;padding:10px;margin:10px;
@@ -22,23 +31,23 @@ pub fn PdfDemoPage() -> Element {
 
             button {
                 onclick: move |_| {
-                    controller.set(None);
+                    // controller.set(None);
                     pdf_url.set("https://snippet.embedpdf.com/ebook.pdf".to_string());
                 },
                 "DOCUMENT 1"
             }
             button {
                 onclick: move |_| {
-                    controller.set(None);
+                    // controller.set(None);
                     pdf_url.set("http://localhost:8080/_download_document/testdata/a0d06de0243c63497070c77e9bb6cab5a2d0bda5564daa03a37987a4f1640fd3".to_string());
                 },
                 "DOCUMENT 2"
             }
             div {style: "flex-grow: 1;"}
 
-            if let Some(controller) = controller() {
-                PdfControllerButtons { controller }
-            }
+            // if let Some(controller) = controller() {
+            //     PdfControllerButtons { controller }
+            // }
             div {style: "flex-grow: 1;"}
 
 
@@ -46,7 +55,11 @@ pub fn PdfDemoPage() -> Element {
 
         div {
             style: "width:90%;height:80%;",
-            PdfViewer {pdf_url, on_document_loaded}
+            // PdfViewer {pdf_url, on_document_loaded}
+            div {
+                id: "x-demo-pdf-viewer",
+                style: "width:100%;height:100%;",
+            }
         }
 
 

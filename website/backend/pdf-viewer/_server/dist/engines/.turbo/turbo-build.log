@@ -1,0 +1,97 @@
+
+[43m[30m WARN [39m[49m Issue while reading "/work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> @embedpdf/engines@2.9.0 build /work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/packages/engines
+> pnpm run clean && concurrently -c auto -n base,react,preact,vue,svelte "vite build --mode base" "vite build --mode react" "vite build --mode preact" "vite build --mode vue" "vite build --mode svelte"
+
+[43m[30m WARN [39m[49m Issue while reading "/work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/.npmrc". Failed to replace env in config: ${NPM_TOKEN}
+
+> @embedpdf/engines@2.9.0 clean /work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/packages/engines
+> rimraf dist
+
+[95m[svelte][39m [36m7:41:41 PM [vite-plugin-svelte] no Svelte config found at /work/liquid/hoover4/website/frontend/assets/embed-pdf/embed-pdf-viewer/packages/engines - using default configuration.[39m
+[36m[base][39m [36mvite v6.4.1 [32mbuilding for base...[36m[39m
+[92m[preact][39m [36mvite v6.4.1 [32mbuilding for preact...[36m[39m
+[95m[svelte][39m [36mvite v6.4.1 [32mbuilding for svelte...[36m[39m
+[33m[react][39m [36mvite v6.4.1 [32mbuilding for react...[36m[39m
+[94m[vue][39m [36mvite v6.4.1 [32mbuilding for vue...[36m[39m
+[95m[svelte][39m transforming...
+[94m[vue][39m transforming...
+[92m[preact][39m transforming...
+[94m[vue][39m [32m✓[39m 8 modules transformed.
+[33m[react][39m transforming...
+[94m[vue][39m rendering chunks...
+[94m[vue][39m [32m
+[94m[vue][39m [36m[unplugin:dts][32m Start generate declaration files...[39m
+[92m[preact][39m [32m✓[39m 10 modules transformed.
+[94m[vue][39m computing gzip size...
+[94m[vue][39m [2mdist/[22m[36mvue/index.js  [39m[1m[2m2.41 kB[22m[1m[22m[2m │ gzip: 0.95 kB[22m[2m │ map: 5.34 kB[22m
+[94m[vue][39m [32m[36m[unplugin:dts][32m Declaration files built in 2799ms.
+[94m[vue][39m [39m
+[92m[preact][39m rendering chunks...
+[92m[preact][39m [32m
+[92m[preact][39m [36m[unplugin:dts][32m Start generate declaration files...[39m
+[92m[preact][39m computing gzip size...
+[92m[preact][39m [2mdist/[22m[36mpreact/index.js  [39m[1m[2m2.45 kB[22m[1m[22m[2m │ gzip: 0.91 kB[22m[2m │ map: 5.54 kB[22m
+[92m[preact][39m [32m[36m[unplugin:dts][32m Declaration files built in 2922ms.
+[92m[preact][39m [39m
+[33m[react][39m [32m✓[39m 10 modules transformed.
+[33m[react][39m rendering chunks...
+[33m[react][39m [32m
+[33m[react][39m [36m[unplugin:dts][32m Start generate declaration files...[39m
+[94m[vue][39m [2mdist/[22m[36mvue/index.cjs  [39m[1m[2m1.64 kB[22m[1m[22m[2m │ gzip: 0.82 kB[22m[2m │ map: 5.61 kB[22m
+[94m[vue][39m [32m✓ built in 3.08s[39m
+[33m[react][39m computing gzip size...
+[33m[react][39m [2mdist/[22m[36mreact/index.js  [39m[1m[2m2.41 kB[22m[1m[22m[2m │ gzip: 0.90 kB[22m[2m │ map: 5.54 kB[22m
+[33m[react][39m [32m[36m[unplugin:dts][32m Declaration files built in 2983ms.
+[33m[react][39m [39m
+[94m[vue][39m [0mvite build --mode vue exited with code 0[0m
+[92m[preact][39m [2mdist/[22m[36mpreact/index.cjs  [39m[1m[2m1.63 kB[22m[1m[22m[2m │ gzip: 0.79 kB[22m[2m │ map: 5.75 kB[22m
+[92m[preact][39m [32m✓ built in 3.18s[39m
+[92m[preact][39m [0mvite build --mode preact exited with code 0[0m
+[33m[react][39m [2mdist/[22m[36mreact/index.cjs  [39m[1m[2m1.60 kB[22m[1m[22m[2m │ gzip: 0.78 kB[22m[2m │ map: 5.75 kB[22m
+[33m[react][39m [32m✓ built in 3.24s[39m
+[33m[react][39m [0mvite build --mode react exited with code 0[0m
+[36m[base][39m transforming...
+[36m[base][39m [32m✓[39m 26 modules transformed.
+[36m[base][39m rendering chunks...
+[36m[base][39m [33m[plugin worker-replacer] Sourcemap is likely to be incorrect: a plugin (worker-replacer) was used to transform files, but didn't generate a sourcemap for the transformation. Consult the plugin documentation for help[39m
+[36m[base][39m [33m[plugin encoder-worker-replacer] Sourcemap is likely to be incorrect: a plugin (encoder-worker-replacer) was used to transform files, but didn't generate a sourcemap for the transformation. Consult the plugin documentation for help[39m
+[36m[base][39m [32m
+[36m[base][39m [36m[unplugin:dts][32m Start generate declaration files...[39m
+[36m[base][39m computing gzip size...
+[36m[base][39m [32m[36m[unplugin:dts][32m Declaration files built in 2941ms.
+[36m[base][39m [39m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/web/direct-engine.js  [39m[1m[2m  0.24 kB[22m[1m[22m[2m │ gzip:   0.18 kB[22m[2m │ map:   0.10 kB[22m
+[36m[base][39m [2mdist/[22m[36mbrowser-BISJ9naB.js              [39m[1m[2m  2.40 kB[22m[1m[22m[2m │ gzip:   0.79 kB[22m[2m │ map:   6.06 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/converters/index.js          [39m[1m[2m  2.99 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m[2m │ map:   8.29 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/index.js              [39m[1m[2m  3.16 kB[22m[1m[22m[2m │ gzip:   1.03 kB[22m[2m │ map:   6.83 kB[22m
+[36m[base][39m [2mdist/[22m[36mindex.js                         [39m[1m[2m 10.41 kB[22m[1m[22m[2m │ gzip:   2.10 kB[22m[2m │ map:  17.47 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/webworker/engine.js          [39m[1m[2m 28.96 kB[22m[1m[22m[2m │ gzip:   3.10 kB[22m[2m │ map:  54.06 kB[22m
+[36m[base][39m [2mdist/[22m[36mpdf-engine-ZvReuoDb.js           [39m[1m[2m 30.39 kB[22m[1m[22m[2m │ gzip:   5.39 kB[22m[2m │ map:  65.09 kB[22m
+[36m[base][39m [2mdist/[22m[36mdirect-engine-D-Jf9yyY.js        [39m[1m[2m300.02 kB[22m[1m[22m[2m │ gzip:  49.67 kB[22m[2m │ map: 539.28 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/web/worker-engine.js  [39m[1m[33m657.69 kB[39m[22m[2m │ gzip: 112.19 kB[22m[2m │ map:  32.20 kB[22m
+[36m[base][39m [33m[plugin worker-replacer] Sourcemap is likely to be incorrect: a plugin (worker-replacer) was used to transform files, but didn't generate a sourcemap for the transformation. Consult the plugin documentation for help[39m
+[36m[base][39m [33m[plugin encoder-worker-replacer] Sourcemap is likely to be incorrect: a plugin (encoder-worker-replacer) was used to transform files, but didn't generate a sourcemap for the transformation. Consult the plugin documentation for help[39m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/web/direct-engine.cjs  [39m[1m[2m  0.34 kB[22m[1m[22m[2m │ gzip:   0.24 kB[22m[2m │ map:   0.10 kB[22m
+[36m[base][39m [2mdist/[22m[36mbrowser-13mzox-R.cjs              [39m[1m[2m  1.20 kB[22m[1m[22m[2m │ gzip:   0.62 kB[22m[2m │ map:   6.14 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/converters/index.cjs          [39m[1m[2m  1.79 kB[22m[1m[22m[2m │ gzip:   0.71 kB[22m[2m │ map:   8.36 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/index.cjs              [39m[1m[2m  2.70 kB[22m[1m[22m[2m │ gzip:   0.98 kB[22m[2m │ map:   7.00 kB[22m
+[36m[base][39m [2mdist/[22m[36mindex.cjs                         [39m[1m[2m  6.09 kB[22m[1m[22m[2m │ gzip:   1.72 kB[22m[2m │ map:  17.68 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/webworker/engine.cjs          [39m[1m[2m 11.69 kB[22m[1m[22m[2m │ gzip:   1.98 kB[22m[2m │ map:  53.48 kB[22m
+[36m[base][39m [2mdist/[22m[36mpdf-engine-DeyImjZt.cjs           [39m[1m[2m 16.21 kB[22m[1m[22m[2m │ gzip:   3.73 kB[22m[2m │ map:  64.88 kB[22m
+[36m[base][39m [2mdist/[22m[36mdirect-engine-CDxs18JK.cjs        [39m[1m[2m135.78 kB[22m[1m[22m[2m │ gzip:  27.58 kB[22m[2m │ map: 543.37 kB[22m
+[36m[base][39m [2mdist/[22m[36mlib/pdfium/web/worker-engine.cjs  [39m[1m[33m651.38 kB[39m[22m[2m │ gzip: 111.24 kB[22m[2m │ map:  32.80 kB[22m
+[36m[base][39m [32m✓ built in 4.65s[39m
+[36m[base][39m [0mvite build --mode base exited with code 0[0m
+[95m[svelte][39m [32m✓[39m 8 modules transformed.
+[95m[svelte][39m rendering chunks...
+[95m[svelte][39m [32m
+[95m[svelte][39m [36m[unplugin:dts][32m Start generate declaration files...[39m
+[95m[svelte][39m computing gzip size...
+[95m[svelte][39m [2mdist/[22m[36msvelte/index.js  [39m[1m[2m2.87 kB[22m[1m[22m[2m │ gzip: 1.05 kB[22m[2m │ map: 5.70 kB[22m
+[95m[svelte][39m [32m[36m[unplugin:dts][32m Declaration files built in 5186ms.
+[95m[svelte][39m [39m
+[95m[svelte][39m [2mdist/[22m[36msvelte/index.cjs  [39m[1m[2m2.10 kB[22m[1m[22m[2m │ gzip: 0.97 kB[22m[2m │ map: 5.75 kB[22m
+[95m[svelte][39m [32m✓ built in 5.41s[39m
+[95m[svelte][39m [0mvite build --mode svelte exited with code 0[0m

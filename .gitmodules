@@ -1,0 +1,3 @@
+[submodule "website/frontend/assets/embed-pdf/embed-pdf-viewer"]
+	path = components/pdf-viewer/embed-pdf-viewer
+	url = https://github.com/embedpdf/embed-pdf-viewer

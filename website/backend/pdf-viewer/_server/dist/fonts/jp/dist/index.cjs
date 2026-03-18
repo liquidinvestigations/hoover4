@@ -1,0 +1,2 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});const t=[{file:"NotoSansJP-Thin.otf",weight:100},{file:"NotoSansJP-Light.otf",weight:300},{file:"NotoSansJP-DemiLight.otf",weight:350},{file:"NotoSansJP-Regular.otf",weight:400},{file:"NotoSansJP-Medium.otf",weight:500},{file:"NotoSansJP-Bold.otf",weight:700},{file:"NotoSansJP-Black.otf",weight:900}],o={name:"@embedpdf/fonts-jp",fonts:t};exports.fonts=t,exports.fontsMeta=o;
+//# sourceMappingURL=index.cjs.map

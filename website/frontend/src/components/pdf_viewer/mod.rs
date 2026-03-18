@@ -416,7 +416,8 @@ mod _js {
 pub fn PdfViewerJsScriptTag() -> Element {
     rsx! {
         script {
-            src:asset!("/assets/embed-pdf/embed-pdf.js"),
+            // src:asset!("/assets/embed-pdf/embed-pdf.js"),
+            src: "/assets/_viewer/embed-pdf.js",
             r#type: "module",
         }
     }
