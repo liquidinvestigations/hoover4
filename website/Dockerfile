@@ -11,7 +11,7 @@ RUN apt update -yq && apt install -yq libwebkit2gtk-4.1-dev \
   libxdo-dev \
   libssl-dev \
   libayatana-appindicator3-dev \
-  librsvg2-dev lld
+  librsvg2-dev lld nodejs
 
 
 
