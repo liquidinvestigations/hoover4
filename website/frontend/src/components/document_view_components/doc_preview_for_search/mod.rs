@@ -6,23 +6,15 @@ mod no_document_selected;
 mod preview_subtitle_bar;
 mod text_data_viewer;
 
-use common::document_text_sources::{
-    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
-};
-use common::pdf_to_html_conversion::PDFToHtmlConversionResponse;
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
-use dioxus::logger::tracing;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::{
     DocumentPreviewForPdf, get_document_type_is_pdf,
 };
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentPreviewForTextWithSearch;
-use crate::components::document_view_components::doc_title_bar::DocTitleBar;
-use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 use crate::components::suspend_boundary::LoadingIndicator;
-use crate::pages::search_page::DocViewerStateControl;
 
 #[component]
 pub fn DocumentPreviewForSearchRoot(

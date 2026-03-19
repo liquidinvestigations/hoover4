@@ -1,16 +1,7 @@
-use common::document_text_sources::{
-    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
-};
-use common::pdf_to_html_conversion::PDFToHtmlConversionResponse;
-use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
-use dioxus::logger::tracing;
 use dioxus::prelude::*;
 
-use crate::components::document_view_components::doc_title_bar::DocTitleBar;
-use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 use crate::components::pdf_viewer::{PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller};
-use crate::components::suspend_boundary::LoadingIndicator;
 
 #[server]
 pub async fn get_document_type_is_pdf(
@@ -70,7 +61,7 @@ pub fn DocumentPreviewForPdf(
             }
             div {
                 style:"height: calc(100% - 58px);width:100%;",
-                PdfViewer { pdf_url, on_document_loaded }
+                PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
                 if let Some(controller) = controller() {
                     PdfControllerOverlay {controller }
                 }

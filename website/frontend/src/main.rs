@@ -25,9 +25,11 @@ fn main() {
                 match res {
                     Ok(code) => {
                         dioxus::logger::tracing::info!("PDF search server exited with code: {}", code);
+                        // std::process::exit(code);
                     }
                     Err(e) => {
                         dioxus::logger::tracing::error!("PDF search server error: {:?}", e);
+                        // std::process::exit(1);
                     }
                 }
             });

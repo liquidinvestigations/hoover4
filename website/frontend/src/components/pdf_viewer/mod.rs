@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use _js::*;
+use common::{pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsValue, prelude::Closure};
@@ -19,6 +20,7 @@ impl PartialEq for PdfViewerControllerJs {
 
 struct PdfViewerControllerInnerJs {
     pdf_url: String,
+    document_identifier: DocumentIdentifier,
     loaded_event: PdfLoadedEvent,
     scroll_api: PdfScrollApi,
     search_api: PdfSearchApi,
@@ -83,66 +85,6 @@ fn scroll_to_page_options(page: i32, coord_x: f64, coord_y: f64, align_y: f64) -
     serde_wasm_bindgen::to_value(&options).expect("Failed to serialize scroll to page options")
 }
 
-#[derive(Debug, Deserialize, Clone)]
-struct PdfSearchResults {
-    pub results: Vec<PdfSearchResult>,
-    pub total: i32,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct PdfSearchResult {
-    #[serde(rename = "pageIndex")]
-    pub page_index: i32,
-    #[serde(rename = "charIndex")]
-    pub char_index: i32,
-    #[serde(rename = "charCount")]
-    pub char_count: i32,
-    pub rects: Vec<PdfSearchResultRect>,
-    pub context: PdfSearchResultContext,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct PdfSearchResultRect {
-    pub origin: RectPoint,
-    pub size: RectSize,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct RectPoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct RectSize {
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct PdfSearchResultContext {
-    pub before: String,
-    #[serde(rename = "match")]
-    pub _match: String,
-    pub after: String,
-    #[serde(rename = "truncatedLeft")]
-    pub truncated_left: bool,
-    #[serde(rename = "truncatedRight")]
-    pub truncated_right: bool,
-}
-
-async fn desearialize_search_results(
-    search_task: SearchAllPagesTask,
-) -> anyhow::Result<PdfSearchResults> {
-    let search_task = search_task.toPromise();
-    let search_task = JsFuture::from(search_task);
-    let result = search_task
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to get search results: {e:?}"))?;
-    let result = serde_wasm_bindgen::from_value::<PdfSearchResults>(result)
-        .map_err(|e| anyhow::anyhow!("Failed to deserialize search results: {e:?}"))?;
-    Ok(result)
-}
 
 pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControllerDx {
     let controller = use_signal(move || controller);
@@ -220,12 +162,10 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         }
 
         search_query.set(new_query.clone());
-        let search_task = controller()
-            .inner
-            .search_api
-            .searchAllPages(new_query.clone(), controller().document_id());
+        let new_query = new_query.clone();
+        let document_identifier = controller().inner.document_identifier.clone();
         let _c = spawn(async move {
-            let results = match desearialize_search_results(search_task).await {
+            let results = match search_document_pdf(document_identifier, new_query).await {
                 Ok(result) => result,
                 Err(e) => {
                     error!("Failed to get search results: {e:?}");
@@ -235,6 +175,8 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
             _sig_search_task.set(None);
             search_results.set(results.clone());
             set_search_idx.call(0);
+            controller().inner.search_api.startSearch(controller().document_id());
+            controller().inner.search_api.setExternalSearchResults(controller().document_id(), serde_wasm_bindgen::to_value(&results).unwrap());
         });
         _sig_search_task.set(Some(_c));
     });
@@ -281,9 +223,18 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     }
 }
 
+#[server]
+async fn search_document_pdf(
+    document_identifier: DocumentIdentifier,
+    query: String,
+) -> anyhow::Result<PdfSearchResults> {
+    let results = backend::api::documents::search_document_pdf::search_document_pdf(document_identifier, query).await?;
+    Ok(results)
+}
 #[component]
 pub fn PdfViewer(
     pdf_url: ReadSignal<String>,
+    document_identifier: ReadSignal<DocumentIdentifier>,
     on_document_loaded: Callback<PdfViewerControllerJs>,
 ) -> Element {
     let mut is_mounted = use_signal(move || false);
@@ -314,6 +265,7 @@ pub fn PdfViewer(
                 proxy_cb.call(PdfViewerControllerJs {
                     inner: Arc::new(PdfViewerControllerInnerJs {
                         pdf_url: pdf_url,
+                        document_identifier: document_identifier(),
                         loaded_event,
                         scroll_api: scroll,
                         search_api: search,
@@ -385,6 +337,12 @@ mod _js {
 
         #[wasm_bindgen(method, structural)]
         pub fn getState(this: &PdfSearchApi) -> JsValue;
+
+        #[wasm_bindgen(method, structural)]
+        pub fn setExternalSearchResults(this: &PdfSearchApi, doc_id: String, results: JsValue) -> JsValue;
+
+        #[wasm_bindgen(method, structural)]
+        pub fn startSearch(this: &PdfSearchApi, doc_id: String) -> JsValue;
 
         pub type SearchAllPagesTask;
         #[wasm_bindgen(method, structural)]
