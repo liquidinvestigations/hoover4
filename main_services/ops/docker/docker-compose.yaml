@@ -560,7 +560,7 @@ services:
     build:
       context: ../../../website
       dockerfile: Dockerfile
-    command: bash -c "cd frontend && while true; do dx serve --renderer web --port 8080 --addr 0.0.0.0 --open false --hot-reload false; sleep 1; echo restarting...; done"
+    command: bash -c "while true; do dx serve --fullstack --package frontend --renderer web --port 8080 --addr 0.0.0.0 --open false --hot-reload false; sleep 1; echo restarting...; done"
     restart: unless-stopped
     memswap_limit: 9000M
     mem_limit: 9000M
