@@ -71,7 +71,32 @@ pub async fn search_document_pdf(
     }
     final_results
         .results
-        .sort_by_key(|result| (result.page_index, result.char_index));
+        .sort_by_key(|result| (result.page_index, result.char_index, -result.char_count));
     tracing::info!("FINAL RESULTS COUNT: {:?}", final_results.results.len());
-    Ok(final_results)
+    Ok(remove_overlapping_results(final_results))
+}
+
+
+fn remove_overlapping_results(results: PdfSearchResults) -> PdfSearchResults {
+
+    let mut new_results = PdfSearchResults {
+        results: vec![],
+        total: 0,
+    };
+
+    for result in results.results {
+        let Some(prev_result) = new_results.results.last() else {
+            new_results.results.push(result);
+            continue;
+        };
+        if prev_result.page_index == result.page_index
+        && prev_result.char_index <= result.char_index
+        && (prev_result.char_index + prev_result.char_count) > result.char_index {
+            continue;
+        }
+        new_results.results.push(result);
+
+    }
+    new_results.total = new_results.results.len() as i32;
+    new_results
 }
