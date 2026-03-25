@@ -1,7 +1,7 @@
 //! Endpoint for retrieving document text snippets.
 
 use common::{
-    document_text_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
+    document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
     search_result::DocumentIdentifier,
 };
 use serde::{Deserialize, Serialize};

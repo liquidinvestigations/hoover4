@@ -36,8 +36,6 @@ pub struct RectSize {
     pub height: f64,
 }
 
-
-
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct PdfSearchResultContext {
     pub before: String,

@@ -5,12 +5,13 @@ use crate::components::pdf_viewer::{
 };
 
 #[used]
-static EMBED_PDF_FOLDER: Asset = asset!("/assets/embed-pdf/_viewer/",
-AssetOptions::folder().with_hash_suffix(false));
+static EMBED_PDF_FOLDER: Asset = asset!(
+    "/assets/embed-pdf/_viewer/",
+    AssetOptions::folder().with_hash_suffix(false)
+);
 
 #[component]
 pub fn PdfDemoPage() -> Element {
-
     let mut pdf_url = use_signal(move || "".to_string());
     // let mut controller = use_signal(move || None);
     let mut on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {

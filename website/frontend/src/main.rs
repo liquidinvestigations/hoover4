@@ -21,10 +21,14 @@ fn main() {
                 rt_handle.runtime_flavor()
             );
             let _pdf_search_server = tokio::spawn(async move {
-                let res = backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;
+                let res =
+                    backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;
                 match res {
                     Ok(code) => {
-                        dioxus::logger::tracing::info!("PDF search server exited with code: {}", code);
+                        dioxus::logger::tracing::info!(
+                            "PDF search server exited with code: {}",
+                            code
+                        );
                         // std::process::exit(code);
                     }
                     Err(e) => {

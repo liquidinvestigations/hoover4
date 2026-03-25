@@ -2,9 +2,7 @@ use std::pin::Pin;
 
 use anyhow::Context;
 use clickhouse::Row;
-use common::{
-    document_text_sources::DocumentTextSourceHitCount, search_result::DocumentIdentifier,
-};
+use common::{document_sources::DocumentTextSourceHitCount, search_result::DocumentIdentifier};
 use futures::{StreamExt, TryStreamExt};
 use minio::s3::types::S3Api;
 use serde::{Deserialize, Serialize};

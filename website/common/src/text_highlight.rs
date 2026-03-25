@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub struct HighlightTextSpan {
     pub text: String,
     pub is_highlighted: bool,

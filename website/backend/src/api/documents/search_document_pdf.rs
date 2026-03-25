@@ -4,15 +4,15 @@ use common::{pdf_search_results::PdfSearchResults, search_result::DocumentIdenti
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::api::documents::{get_text_sources::get_text_sources, search_document_text::search_document_text_for_hits};
+use crate::api::documents::{
+    get_document_sources::get_text_sources, search_document_text::search_document_text_for_hits,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchPdfResultsSet {
     keyword: String,
     result_set: PdfSearchResults,
 }
-
-
 
 pub async fn search_document_pdf(
     document_identifier: DocumentIdentifier,
@@ -23,7 +23,13 @@ pub async fn search_document_pdf(
     let mut text_results = vec![];
     for source in text_sources {
         for page_id in source.min_page..=source.max_page {
-            let results = search_document_text_for_hits(document_identifier.clone(), query.clone(), source.extracted_by.clone(), page_id).await?;
+            let results = search_document_text_for_hits(
+                document_identifier.clone(),
+                query.clone(),
+                source.extracted_by.clone(),
+                page_id,
+            )
+            .await?;
             text_results.extend(results);
         }
     }
@@ -76,9 +82,7 @@ pub async fn search_document_pdf(
     Ok(remove_overlapping_results(final_results))
 }
 
-
 fn remove_overlapping_results(results: PdfSearchResults) -> PdfSearchResults {
-
     let mut new_results = PdfSearchResults {
         results: vec![],
         total: 0,
@@ -90,12 +94,12 @@ fn remove_overlapping_results(results: PdfSearchResults) -> PdfSearchResults {
             continue;
         };
         if prev_result.page_index == result.page_index
-        && prev_result.char_index <= result.char_index
-        && (prev_result.char_index + prev_result.char_count) > result.char_index {
+            && prev_result.char_index <= result.char_index
+            && (prev_result.char_index + prev_result.char_count) > result.char_index
+        {
             continue;
         }
         new_results.results.push(result);
-
     }
     new_results.total = new_results.results.len() as i32;
     new_results

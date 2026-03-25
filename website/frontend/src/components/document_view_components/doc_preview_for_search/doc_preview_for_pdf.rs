@@ -1,20 +1,9 @@
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
-use crate::components::pdf_viewer::{PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller};
-
-#[server]
-pub async fn get_document_type_is_pdf(
-    document_identifier: DocumentIdentifier,
-) -> Result<(bool, u32), ServerFnError> {
-    let (is_pdf, page_count) =
-        backend::api::documents::get_pdf_to_html_conversion::get_document_type_is_pdf(
-            document_identifier,
-        )
-        .await
-        .map_err(|e| ServerFnError::from(e))?;
-    Ok((is_pdf, page_count))
-}
+use crate::components::pdf_viewer::{
+    PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
+};
 
 #[component]
 pub fn DocumentPreviewForPdf(
@@ -28,12 +17,10 @@ pub fn DocumentPreviewForPdf(
         format!("/_download_document/{c}/{f}")
     });
 
-
     let mut controller = use_signal(move || None);
     let mut on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
         controller.set(Some(x));
     });
-
 
     rsx! {
 
@@ -70,8 +57,6 @@ pub fn DocumentPreviewForPdf(
     }
 }
 
-
-
 #[component]
 fn PdfControllerButtons(controller: PdfViewerControllerJs) -> Element {
     let controller = use_pdf_controller(controller);
@@ -87,7 +72,6 @@ fn PdfControllerOverlay(controller: PdfViewerControllerJs) -> Element {
         PdfControllerOverlay2 { controller }
     }
 }
-
 
 #[component]
 
@@ -228,7 +212,6 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
         }
     }
 }
-
 
 #[component]
 fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {

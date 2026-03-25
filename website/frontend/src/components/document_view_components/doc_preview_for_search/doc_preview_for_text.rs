@@ -1,5 +1,5 @@
-use common::document_text_sources::{
-    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
+use common::document_sources::{
+    DocumentSourceItem, DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
 };
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
@@ -22,25 +22,8 @@ pub struct DocumentViewerResultStore {
 #[component]
 pub fn DocumentPreviewForTextWithSearch(
     document_identifier: ReadSignal<DocumentIdentifier>,
+    text_sources: ReadSignal<Vec<DocumentTextSourceItem>>,
 ) -> Element {
-    // ============== ALL COUNTS: ==============
-    let mut _all_counts_res = use_resource(move || {
-        let _doc_id = document_identifier.read().clone();
-        get_text_sources(_doc_id)
-    });
-    use_effect(move || {
-        let _doc_id = document_identifier.read().clone();
-        _all_counts_res.clear();
-        _all_counts_res.restart();
-    });
-    let _all_counts_memo = use_memo(move || {
-        let _all_counts_res = _all_counts_res.read().cloned();
-        let Some(Ok(all_counts)) = _all_counts_res else {
-            return vec![];
-        };
-        all_counts
-    });
-
     // ============== HIT COUNTS: ==============
     let _control_state = use_context::<DocViewerStateControl>().doc_viewer_state;
     let _find_query = use_memo(move || {
@@ -73,7 +56,7 @@ pub fn DocumentPreviewForTextWithSearch(
     // ================ CURRENT SELECTION: ================
     let _current_text_selection: Memo<Option<(String, u32)>> = use_memo(move || {
         let hit_counts = _hit_counts_memo.read().clone();
-        let _all_counts = _all_counts_memo.read().clone();
+        let _all_counts = text_sources.read().clone();
 
         let Some(mut hit_counts) = hit_counts else {
             return None;
@@ -140,7 +123,7 @@ pub fn DocumentPreviewForTextWithSearch(
 
     use_context_provider(move || DocumentViewerResultStore {
         hit_counts: _hit_counts_memo.into(),
-        all_sources: _all_counts_memo.into(),
+        all_sources: text_sources.into(),
         current_text_data: _current_text_data.into(),
         max_highlighted_word_index: max_highlighted_word_index.into(),
         current_highlighted_word_index: current_highlighted_word_index,
@@ -171,15 +154,14 @@ pub fn DocumentPreviewForTextWithSearch(
     }
 }
 
-#[server]
-async fn get_text_sources(
-    document_identifier: DocumentIdentifier,
-) -> Result<Vec<DocumentTextSourceItem>, ServerFnError> {
-    let text_sources =
-        backend::api::documents::get_text_sources::get_text_sources(document_identifier)
-            .await
-            .map_err(|e| ServerFnError::from(e));
-    text_sources
+fn _get_text_sources(document_sources: Vec<DocumentSourceItem>) -> Vec<DocumentTextSourceItem> {
+    document_sources
+        .iter()
+        .filter_map(|source| match source {
+            DocumentSourceItem::Text(text_source) => Some(text_source.clone()),
+            _ => None,
+        })
+        .collect()
 }
 #[server]
 async fn search_document_text_for_hit_count(

@@ -85,7 +85,6 @@ fn scroll_to_page_options(page: i32, coord_x: f64, coord_y: f64, align_y: f64) -
     serde_wasm_bindgen::to_value(&options).expect("Failed to serialize scroll to page options")
 }
 
-
 pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControllerDx {
     let controller = use_signal(move || controller);
 
@@ -175,8 +174,14 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
             _sig_search_task.set(None);
             search_results.set(results.clone());
             set_search_idx.call(0);
-            controller().inner.search_api.startSearch(controller().document_id());
-            controller().inner.search_api.setExternalSearchResults(controller().document_id(), serde_wasm_bindgen::to_value(&results).unwrap());
+            controller()
+                .inner
+                .search_api
+                .startSearch(controller().document_id());
+            controller().inner.search_api.setExternalSearchResults(
+                controller().document_id(),
+                serde_wasm_bindgen::to_value(&results).unwrap(),
+            );
         });
         _sig_search_task.set(Some(_c));
     });
@@ -196,7 +201,8 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         struct PdfZoomState {
             pub currentZoomLevel: f32,
         }
-        let obj = serde_wasm_bindgen::from_value::<PdfZoomState>(zoom_state_jsvalue.read().clone()).unwrap_or_default();
+        let obj = serde_wasm_bindgen::from_value::<PdfZoomState>(zoom_state_jsvalue.read().clone())
+            .unwrap_or_default();
         let zoom = (obj.currentZoomLevel * 100.0) as i32;
         format!("{}%", zoom)
     });
@@ -228,7 +234,11 @@ async fn search_document_pdf(
     document_identifier: DocumentIdentifier,
     query: String,
 ) -> anyhow::Result<PdfSearchResults> {
-    let results = backend::api::documents::search_document_pdf::search_document_pdf(document_identifier, query).await?;
+    let results = backend::api::documents::search_document_pdf::search_document_pdf(
+        document_identifier,
+        query,
+    )
+    .await?;
     Ok(results)
 }
 #[component]
@@ -258,24 +268,29 @@ pub fn PdfViewer(
             return;
         }
 
+        let cb = move |pdf_url: String,
+                       event: JsValue,
+                       scroll: PdfScrollApi,
+                       search: PdfSearchApi,
+                       zoom: PdfZoomApi| {
+            let loaded_event =
+                serde_wasm_bindgen::from_value(event).expect("Failed to deserialize loaded event");
+            proxy_cb.call(PdfViewerControllerJs {
+                inner: Arc::new(PdfViewerControllerInnerJs {
+                    pdf_url: pdf_url,
+                    document_identifier: document_identifier(),
+                    loaded_event,
+                    scroll_api: scroll,
+                    search_api: search,
+                    zoom_api: zoom,
+                }),
+            });
+        };
         let cb =
-            move |pdf_url: String, event: JsValue, scroll: PdfScrollApi, search: PdfSearchApi, zoom: PdfZoomApi| {
-                let loaded_event = serde_wasm_bindgen::from_value(event)
-                    .expect("Failed to deserialize loaded event");
-                proxy_cb.call(PdfViewerControllerJs {
-                    inner: Arc::new(PdfViewerControllerInnerJs {
-                        pdf_url: pdf_url,
-                        document_identifier: document_identifier(),
-                        loaded_event,
-                        scroll_api: scroll,
-                        search_api: search,
-                        zoom_api: zoom,
-                    }),
-                });
-            };
-        let cb = Closure::new(
-            Box::new(cb) as Box<dyn FnMut(String, JsValue, PdfScrollApi, PdfSearchApi, PdfZoomApi)>
-        );
+            Closure::new(Box::new(cb)
+                as Box<
+                    dyn FnMut(String, JsValue, PdfScrollApi, PdfSearchApi, PdfZoomApi),
+                >);
         let cb = cb.into_js_value();
 
         let promise = x_open_pdf_viewer(pdf_url.clone(), cb);
@@ -339,7 +354,11 @@ mod _js {
         pub fn getState(this: &PdfSearchApi) -> JsValue;
 
         #[wasm_bindgen(method, structural)]
-        pub fn setExternalSearchResults(this: &PdfSearchApi, doc_id: String, results: JsValue) -> JsValue;
+        pub fn setExternalSearchResults(
+            this: &PdfSearchApi,
+            doc_id: String,
+            results: JsValue,
+        ) -> JsValue;
 
         #[wasm_bindgen(method, structural)]
         pub fn startSearch(this: &PdfSearchApi, doc_id: String) -> JsValue;

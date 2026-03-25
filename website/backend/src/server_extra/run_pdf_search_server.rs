@@ -4,7 +4,7 @@ const PID_FILE: &str = "/tmp/pdf-search-server.pid";
 
 async fn write_pid_file(pid: u32) -> anyhow::Result<()> {
     use tokio::io::AsyncWriteExt;
-    let mut file =  tokio::fs::File::create(PID_FILE).await?;
+    let mut file = tokio::fs::File::create(PID_FILE).await?;
     file.write_all(pid.to_string().as_bytes()).await?;
     Ok(())
 }
@@ -21,7 +21,9 @@ async fn kill_process(pid: u32) -> anyhow::Result<()> {
         .arg("-s")
         .arg("0")
         .arg(pid.to_string())
-        .spawn()?.wait().await?;
+        .spawn()?
+        .wait()
+        .await?;
     if !_x.success() {
         tracing::info!("PID {} is not running", pid);
         return Ok(());
@@ -32,7 +34,9 @@ async fn kill_process(pid: u32) -> anyhow::Result<()> {
     let _x = tokio::process::Command::new("kill")
         .arg("-9")
         .arg(pid.to_string())
-        .spawn()?.wait().await?;
+        .spawn()?
+        .wait()
+        .await?;
     Ok(())
 }
 
