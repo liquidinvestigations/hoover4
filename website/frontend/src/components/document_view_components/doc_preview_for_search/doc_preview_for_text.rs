@@ -5,15 +5,26 @@ use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::{
-    preview_subtitle_bar, text_data_viewer,
+    PreviewControlsSection, PreviewPageSection, text_data_viewer
 };
-use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::pages::search_page::DocViewerStateControl;
+
+
+use dioxus_free_icons::{
+    icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward},
+};
+
+use crate::{
+    components::{
+        search_components::search_result_list_controls::NavigationButton,
+    },
+};
+
+
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct DocumentViewerResultStore {
     pub hit_counts: ReadSignal<Option<Vec<DocumentTextSourceHitCount>>>,
-    pub all_sources: ReadSignal<Vec<DocumentTextSourceItem>>,
     pub current_text_data: ReadSignal<Option<Result<Vec<DocumentTextSourceHit>, ServerFnError>>>,
     pub max_highlighted_word_index: ReadSignal<u32>,
     pub current_highlighted_word_index: Signal<u32>,
@@ -22,7 +33,7 @@ pub struct DocumentViewerResultStore {
 #[component]
 pub fn DocumentPreviewForTextWithSearch(
     document_identifier: ReadSignal<DocumentIdentifier>,
-    text_sources: ReadSignal<Vec<DocumentTextSourceItem>>,
+    source: ReadSignal<DocumentTextSourceItem>,
 ) -> Element {
     // ============== HIT COUNTS: ==============
     let _control_state = use_context::<DocViewerStateControl>().doc_viewer_state;
@@ -56,16 +67,14 @@ pub fn DocumentPreviewForTextWithSearch(
     // ================ CURRENT SELECTION: ================
     let _current_text_selection: Memo<Option<(String, u32)>> = use_memo(move || {
         let hit_counts = _hit_counts_memo.read().clone();
-        let _all_counts = text_sources.read().clone();
+        let source = source.read().clone();
 
-        let Some(mut hit_counts) = hit_counts else {
+        let Some(hit_counts) = hit_counts else {
             return None;
         };
+        let mut hit_counts = hit_counts.iter().filter(|h| h.extracted_by == source.extracted_by).collect::<Vec<_>>();
         if hit_counts.is_empty() {
-            return _all_counts
-                .first()
-                .cloned()
-                .map(|item| (item.extracted_by, item.min_page));
+            return Some((source.extracted_by, source.min_page));
         }
         hit_counts.sort_by_key(|h| h.hit_count as i64 * -1);
 
@@ -123,33 +132,17 @@ pub fn DocumentPreviewForTextWithSearch(
 
     use_context_provider(move || DocumentViewerResultStore {
         hit_counts: _hit_counts_memo.into(),
-        all_sources: text_sources.into(),
         current_text_data: _current_text_data.into(),
         max_highlighted_word_index: max_highlighted_word_index.into(),
         current_highlighted_word_index: current_highlighted_word_index,
     });
 
     rsx! {
-        div {
-            style: "
-                display: flex;
-                flex-direction: column;
-                height: 100%;
-                width: 100%;
-            ",
-            DocTitleBar { document_identifier }
-            preview_subtitle_bar::PreviewSubtitleBar { document_identifier }
-            div {
-                style: "
-                    width: 100%;
-                    height: calc(100% - 54px - 48px);
-                    flex-grow: 0;
-                    flex-shrink: 0;
-                    border-left: 1px solid rgba(0,0,0,.3);
-                ",
-                // RawMetadataCollector { document_identifier }
-                text_data_viewer::TextDataViewer {}
-            }
+        PreviewControlsSection {
+            SearchHitSelector {}
+        }
+        PreviewPageSection {
+            text_data_viewer::TextDataViewer {}
         }
     }
 }
@@ -194,4 +187,61 @@ async fn search_document_text_for_hits(
     .await
     .map_err(|e| ServerFnError::from(e));
     hits
+}
+
+#[component]
+fn SearchHitSelector() -> Element {
+    let max_highlighted_word_index =
+        use_context::<DocumentViewerResultStore>().max_highlighted_word_index;
+    let mut current_highlighted_word_index =
+        use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
+    let have_hits = use_memo(move || *max_highlighted_word_index.read() > 0);
+    let hit_string = use_memo(move || {
+        if have_hits() {
+            let current = 1 + *current_highlighted_word_index.read();
+            let max = *max_highlighted_word_index.read();
+            format!("{current} / {max}")
+        } else {
+            "- / -".to_string()
+        }
+    });
+    let disable_next = use_memo(move || {
+        !have_hits()
+            || *current_highlighted_word_index.read() + 1 >= *max_highlighted_word_index.read()
+    });
+    let disable_previous =
+        use_memo(move || !have_hits() || *current_highlighted_word_index.read() == 0);
+    rsx! {
+        div {
+            style: "
+                flex-grow: 0;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                padding: 12px;
+            ",
+            // up button
+            NavigationButton { icon: MdArrowUpward, label: "Previous Hit", disabled: disable_previous, onclick: move |_| {
+                dioxus::logger::tracing::info!("Go previous hit");
+                *current_highlighted_word_index.write() -= 1;
+            } }
+            // hit string
+            div {
+                style: "
+                    min-width: 60px;
+                    font-size: 20px;
+                    line-height: 28px;
+                ",
+                "{hit_string()}"
+            }
+            // down button
+            NavigationButton { icon: MdArrowDownward, label: "Next Hit", disabled: disable_next, onclick: move |_| {
+                dioxus::logger::tracing::info!("Go next hit");
+                *current_highlighted_word_index.write() += 1;
+            } }
+        }
+    }
 }

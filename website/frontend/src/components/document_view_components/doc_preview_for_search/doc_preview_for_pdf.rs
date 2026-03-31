@@ -1,14 +1,15 @@
-use common::search_result::DocumentIdentifier;
+use common::{document_sources::DocumentPdfSourceItem, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
+use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
 
-use crate::components::pdf_viewer::{
+use crate::{components::{document_view_components::doc_preview_for_search::{PreviewControlsSection, PreviewPageSection}, pdf_viewer::{
     PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
-};
+}, search_components::search_result_list_controls::NavigationButton}, pages::search_page::DocViewerStateControl};
 
 #[component]
 pub fn DocumentPreviewForPdf(
     document_identifier: ReadSignal<DocumentIdentifier>,
-    page_count: ReadSignal<u32>,
+    source: ReadSignal<DocumentPdfSourceItem>,
 ) -> Element {
     let pdf_url = use_memo(move || {
         let document_identifier = document_identifier.read().clone();
@@ -18,42 +19,54 @@ pub fn DocumentPreviewForPdf(
     });
 
     let mut controller = use_signal(move || None);
-    let mut on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
+    let on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
         controller.set(Some(x));
     });
 
+
     rsx! {
-
-        div {
-            style: "display: flex; flex-direction: column; gap: 10px; width:100%;height:100%;align-items:center;justify-content:center;",
-
-            div {
-                style: "
-                    display: flex;
-                    flex-direction: row;
-                    gap: 12px;
-                    align-items: center;
-                    justify-content: space-between;
-                    height: 48px;
-                    width: 100%;
-                    background-color:rgba(0, 0, 0, 0.04);
-                    flex-shrink: 0;
-                    flex-grow: 0;
-                    border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
-                ",
-                if let Some(controller) = controller() {
-                    PdfControllerButtons {controller }
-                }
-
-            }
-            div {
-                style:"height: calc(100% - 58px);width:100%;",
-                PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
-                if let Some(controller) = controller() {
-                    PdfControllerOverlay {controller }
-                }
+        PreviewControlsSection {
+            if let Some(controller) = controller() {
+                PdfControllerButtons {controller }
             }
         }
+        PreviewPageSection {
+            PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
+            if let Some(controller) = controller() {
+                PdfControllerOverlay {controller }
+            }
+        }
+
+        // div {
+        //     style: "display: flex; flex-direction: column; gap: 10px; width:100%;height:100%;align-items:center;justify-content:center;",
+
+        //     div {
+        //         style: "
+        //             display: flex;
+        //             flex-direction: row;
+        //             gap: 12px;
+        //             align-items: center;
+        //             justify-content: space-between;
+        //             height: 48px;
+        //             width: 100%;
+        //             background-color:rgba(0, 0, 0, 0.04);
+        //             flex-shrink: 0;
+        //             flex-grow: 0;
+        //             border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
+        //         ",
+        //         if let Some(controller) = controller() {
+        //             PdfControllerButtons {controller }
+        //         }
+
+        //     }
+        //     div {
+        //         style:"height: calc(100% - 58px);width:100%;",
+        //         PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
+        //         if let Some(controller) = controller() {
+        //             PdfControllerOverlay {controller }
+        //         }
+        //     }
+        // }
     }
 }
 
@@ -77,76 +90,87 @@ fn PdfControllerOverlay(controller: PdfViewerControllerJs) -> Element {
 
 pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
     let PdfViewerControllerDx {
-        current_page,
-        total_pages,
-        set_page,
-        search_query,
+        // current_page,
+        // total_pages,
+        // set_page,
+        // search_query,
         set_search_query,
         search_hit_index,
         search_hit_count,
         set_search_idx,
-        zoom_in,
-        zoom_out,
-        zoom_state,
+        // zoom_in,
+        // zoom_out,
+        // zoom_state,
         ..
     } = controller;
 
+
+    let global_control = use_context::<DocViewerStateControl>();
+    let global_search_query = use_memo(move || {
+            let global_state = global_control.doc_viewer_state.read().clone().unwrap_or_default();
+            global_state.find_query.clone()
+    });
+    use_effect(move || {
+        set_search_query.call(global_search_query.read().clone());
+    });
+
+
     rsx! {
-        div {
-            style: "
-            flex-grow: 0;
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            padding: 12px;
-        ",
-            h1 {
-                "PAGE {current_page()} / {total_pages()}"
-            }
-            button {
-                onclick: move |_| {
-                    set_page.call(current_page() - 1);
-                },
-                disabled: current_page() <= 1,
-                "PREV PAGE"
-            }
-            button {
-                onclick: move |_| {
-                    set_page.call(current_page() + 1);
-                },
-                disabled: current_page() >= total_pages(),
-                "NEXT PAGE"
-            }
-        }
+        // div {
+        //     style: "
+        //     flex-grow: 0;
+        //     flex-shrink: 0;
+        //     display: flex;
+        //     flex-direction: row;
+        //     align-items: center;
+        //     justify-content: center;
+        //     gap: 12px;
+        //     padding: 12px;
+        // ",
+        //     h1 {
+        //         "PAGE {current_page()} / {total_pages()}"
+        //     }
+        //     button {
+        //         onclick: move |_| {
+        //             set_page.call(current_page() - 1);
+        //         },
+        //         disabled: current_page() <= 1,
+        //         "PREV PAGE"
+        //     }
+        //     button {
+        //         onclick: move |_| {
+        //             set_page.call(current_page() + 1);
+        //         },
+        //         disabled: current_page() >= total_pages(),
+        //         "NEXT PAGE"
+        //     }
+        // }
 
-        div {style: "flex-grow: 1;"}
+        // div {style: "flex-grow: 1;"}
 
 
-        input {
-            r#type: "text",
-            placeholder: "Search in document",
-            style: "
-                        width: 100%;
-                        height: 70%;
-                        border: none;
-                        outline: none;
-                        background: white;
-                        border: 1px solid rgba(0, 0, 0, 0.5);
-                        border-radius: 14px;
-                        padding: 8px 12px;
-                        font-size: 14px;
-                        font-weight: 400;
-                        color: rgba(0, 0, 0, 0.8);
-                        margin-left: 12px;
-                        ",
-            value: search_query(),
-            oninput: move |e| {
-                set_search_query.call(e.value());
-            },
-        }
+        // input {
+        //     r#type: "text",
+        //     placeholder: "Search in document",
+        //     style: "
+        //                 width: 100%;
+        //                 height: 70%;
+        //                 border: none;
+        //                 outline: none;
+        //                 background: white;
+        //                 border: 1px solid rgba(0, 0, 0, 0.5);
+        //                 border-radius: 14px;
+        //                 padding: 8px 12px;
+        //                 font-size: 14px;
+        //                 font-weight: 400;
+        //                 color: rgba(0, 0, 0, 0.8);
+        //                 margin-left: 12px;
+        //                 ",
+        //     value: search_query(),
+        //     oninput: move |e| {
+        //         set_search_query.call(e.value());
+        //     },
+        // }
 
         div {
             style: "
@@ -160,56 +184,67 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
                 padding: 12px;
             ",
 
-            if search_hit_count() == 0 {
-                h1 { "HIT - / -"}
-            } else {
-                h1 { "HIT {search_hit_index()+1} / {search_hit_count()}"}
-            }
-            button {
+
+            NavigationButton {
+                icon: MdArrowUpward,
                 onclick: move |_| {
                     set_search_idx.call(search_hit_index() - 1);
                 },
                 disabled: search_hit_index() <= 0,
-                "PREV HIT"
+                label: "Previous Hit"
             }
-            button {
+
+            div {
+                style: "
+                    min-width: 60px;
+                    font-size: 20px;
+                    line-height: 28px;
+                ",
+                if search_hit_count() == 0 {
+                    h1 { "- / -"}
+                } else {
+                    h1 { "{search_hit_index()+1} / {search_hit_count()}"}
+                }
+            }
+
+            NavigationButton {
+                icon: MdArrowDownward, label: "Next Hit",
                 onclick: move |_| {
                     set_search_idx.call(search_hit_index() + 1);
                 },
                 disabled: 1+search_hit_index() >= search_hit_count(),
-                "NEXT HIT"
             }
         }
-        div {style: "flex-grow: 1;"}
+        // div {style: "flex-grow: 1;"}
 
-        div {
-            style: "
-                flex-grow: 0;
-                flex-shrink: 0;
-                display: flex;
-                flex-direction: row;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                padding: 12px;
-            ",
+        // div {
+        //     style: "
+        //         flex-grow: 0;
+        //         flex-shrink: 0;
+        //         display: flex;
+        //         flex-direction: row;
+        //         align-items: center;
+        //         justify-content: center;
+        //         gap: 12px;
+        //         padding: 12px;
+        //     ",
 
-            button {
-                onclick: move |_| {
-                    zoom_in.call(());
-                },
-                "ZOOM IN"
-            }
-            h1 {
-                "ZOOM {zoom_state()}"
-            }
-            button {
-                onclick: move |_| {
-                    zoom_out.call(());
-                },
-                "ZOOM OUT"
-            }
-        }
+        //     button {
+        //         onclick: move |_| {
+        //             zoom_in.call(());
+        //         },
+        //         "ZOOM IN"
+        //     }
+        //     h1 {
+        //         "ZOOM {zoom_state()}"
+        //     }
+        //     button {
+        //         onclick: move |_| {
+        //             zoom_out.call(());
+        //         },
+        //         "ZOOM OUT"
+        //     }
+        // }
     }
 }
 

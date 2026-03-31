@@ -3,16 +3,20 @@
 mod doc_preview_for_pdf;
 mod doc_preview_for_text;
 mod no_document_selected;
-mod preview_subtitle_bar;
 mod text_data_viewer;
+mod doc_preview_source_selector;
+mod doc_preview_find_query;
 
 use common::document_sources::DocumentSourceItem;
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_find_query::DocPreviewFindQueryInputBox;
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelector;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::DocumentPreviewForPdf;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentPreviewForTextWithSearch;
+use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
 
@@ -69,12 +73,6 @@ pub fn DocumentPreviewForSearchRoot(
         control.set_doc_viewer_state.call(state);
     });
 
-    let on_page_selected = Callback::new(move |page: u32| {
-        let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
-        state.selected_source_page = Some(page);
-        control.set_doc_viewer_state.call(state);
-    });
-
     let preview_selector = rsx! {
         DocumentPreviewSourceSelector {
             sources: doc_sources,
@@ -83,17 +81,30 @@ pub fn DocumentPreviewForSearchRoot(
         }
     };
 
+    let on_find_query_changed = Callback::new(move |query: String| {
+        let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
+        state.find_query = query;
+        control.set_doc_viewer_state.call(state);
+    });
+
+    let find_query_input_box = rsx! {
+        DocPreviewFindQueryInputBox {
+            on_find_query_changed: on_find_query_changed.clone(),
+        }
+    };
+
+
     match (
         doc_sources.read().as_ref(),
         currently_selected_source.read().as_ref(),
     ) {
         (Some(_sources), Some(selected_source)) => {
             rsx! {
-                DocumentPreviewSection {
+                DocumentPreviewRender {
                     preview_selector,
+                    find_query_input_box,
                     document_identifier,
                     source: selected_source.clone(),
-                    on_page_selected: on_page_selected.clone(),
                 }
                 // DocumentPreviewForPdf { document_identifier, page_count }
             }
@@ -123,53 +134,144 @@ pub async fn get_document_sources(
 }
 
 #[component]
-fn DocumentPreviewSourceSelector(
-    sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
-    selected_source: ReadSignal<Option<DocumentSourceItem>>,
-    on_source_selected: Callback<DocumentSourceItem>,
+fn DocumentPreviewRender(
+    preview_selector: Element,
+    find_query_input_box: Element,
+    document_identifier: ReadSignal<DocumentIdentifier>,
+    source: ReadSignal<DocumentSourceItem>,
 ) -> Element {
-    let sources = sources.read().clone().unwrap_or_default();
-    if sources.is_empty() {
-        return rsx! {
-            "No Sources!"
-        };
-    };
-    let Some(selected_source) = selected_source.read().clone() else {
-        return rsx! {
-            "No Selected Source!"
-        };
-    };
+    let find_query = use_signal(move || find_query_input_box);
+    let preview_selector = use_signal(move || preview_selector);
+    use_context_provider(move || PreviewExtraSections {
+        find_query: find_query.into(),
+        preview_selector: preview_selector.into(),
+    });
     rsx! {
-        ul {
-            for source in sources.into_iter() {
-                li {
-                    key: "{source:?}",
-                    style: {
-                        if source == selected_source {
-                            "color: blue; text-decoration: underline;"
-                        } else {
-                            "color: black;"
-                        }
-                    },
-                    onclick: move |_| {
-                        on_source_selected(source.clone());
-                    },
-                    "{source:?}",
-                }
-            }
+        PreviewDocumentDispatch {
+            document_identifier,
+            source,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PreviewExtraSections {
+    find_query: ReadSignal<Element>,
+    preview_selector: ReadSignal<Element>,
+}
+
+#[component]
+pub fn PreviewControlsSection(children: Element) -> Element {
+    let sections = use_context::<PreviewExtraSections>();
+    rsx!{
+        PreviewSubtitleBar2 {
+            find_query_input_box: sections.find_query.read().clone(),
+            preview_selector: sections.preview_selector.read().clone(),
+            control: children,
         }
     }
 }
 
 #[component]
-fn DocumentPreviewSection(
-    preview_selector: Element,
-    document_identifier: ReadSignal<DocumentIdentifier>,
-    source: ReadSignal<DocumentSourceItem>,
-    on_page_selected: Callback<u32>,
-) -> Element {
+pub fn PreviewPageSection(children: Element) -> Element {
     rsx! {
-        {preview_selector}
-        "DOCUMENT PREVIEW SECTION FOR {document_identifier.read().clone():?} / {source.read().clone():?}"
+        div {
+            style: "
+                width: 100%;
+                height: calc(100% - 110px);
+                padding: 10px;
+            ",
+            {children}
+
+        }
     }
+}
+
+
+
+#[component]
+fn PreviewSubtitleBar2(find_query_input_box: Element, preview_selector: Element, control: Element) -> Element {
+    rsx! {
+        div {
+            style: "
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+                align-items: center;
+                justify-content: space-between;
+                height: 48px;
+                width: 100%;
+                background-color:rgba(0, 0, 0, 0.04);
+                flex-shrink: 0;
+                flex-grow: 0;
+                border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
+            ",
+
+            // SEARCH BOX
+            {find_query_input_box}
+
+
+            // SPACER
+            div {style:"flex-grow: 1;"}
+
+            // CONTROLS
+            div {
+                style:"flex-grow: 13; flex-shrink: 1; height: 90%;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                ",
+                {control}
+            }
+
+
+            // SPACER
+            div {style:"flex-grow: 1;"}
+
+            // SEARCH HIT SELECTOR
+            {preview_selector}
+
+        }
+    }
+}
+
+
+#[component]
+fn PreviewDocumentDispatch(document_identifier: ReadSignal<DocumentIdentifier>, source: ReadSignal<DocumentSourceItem>) -> Element {
+    let page = match source.read().clone() {
+        DocumentSourceItem::Pdf(pdf) => {
+            rsx! {
+                DocumentPreviewForPdf {
+                    document_identifier,
+                    source: pdf,
+                }
+            }
+        }
+        DocumentSourceItem::Text(text) => {
+            rsx! {
+                DocumentPreviewForTextWithSearch {
+                    document_identifier,
+                    source: text,
+                }
+            }
+        }
+        _x => {
+            rsx! {
+                PreviewControlsSection {
+                    "TODO CONTROLS: {_x:?}"
+                }
+                PreviewPageSection {
+                    "TODO PAGE: {_x:?}"
+                }
+            }
+        }
+    };
+
+    rsx! {
+        DocTitleBar { document_identifier }
+        {page}
+    }
+
 }

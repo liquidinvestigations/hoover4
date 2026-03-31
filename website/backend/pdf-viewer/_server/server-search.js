@@ -4,12 +4,13 @@ import { init } from './dist/pdfium/dist/index.js';
 import { PdfiumNative, PdfEngine } from './dist/engines/dist/index.js';
 import { MatchFlag } from './dist/models/dist/index.js';
 
-async function initPdfium() {
-  const pdfiumWasm = './dist/pdfium/dist/pdfium.wasm';
-  console.log("INIT. LOADING WASM: ", pdfiumWasm);
-  const wasmBinary = fs.readFileSync(pdfiumWasm);
-  console.log("WASM BINARY: ", wasmBinary.length, " bytes");
 
+const pdfiumWasm = './dist/pdfium/dist/pdfium.wasm';
+console.log("INIT. LOADING WASM: ", pdfiumWasm);
+const wasmBinary = fs.readFileSync(pdfiumWasm);
+console.log("WASM BINARY: ", wasmBinary.length, " bytes");
+
+async function initPdfium() {
   const pdfiumModule = await init({ wasmBinary });
   console.log("PDFIUM MODULE LOADED.");
   const native = new PdfiumNative(pdfiumModule);
@@ -20,19 +21,23 @@ async function initPdfium() {
   return engine;
 }
 
-const ENGINE = await initPdfium();
 
 async function searchPdfMultipleKeywords(pdf_url, keywords) {
   var results = [];
-  const doc = await ENGINE.openDocumentUrl({ id: pdf_url, url: pdf_url }).toPromise();
-  for (const keyword of keywords) {
-    const result_set = await ENGINE.searchAllPages(doc, keyword, {
-      flags: [MatchFlag.MatchWholeWord, MatchFlag.MatchConsecutive]
-    }).toPromise();
-    results.push({ keyword, result_set });
+
+  var engine = await initPdfium();
+  try {
+    var doc = await engine.openDocumentUrl({ id: pdf_url, url: pdf_url }).toPromise();
+    for (const keyword of keywords) {
+      const result_set = await engine.searchAllPages(doc, keyword, {
+        flags: [MatchFlag.MatchWholeWord, MatchFlag.MatchConsecutive]
+      }).toPromise();
+      results.push({ keyword, result_set });
+    }
+    return results;
+  } finally {
+    engine.destroy();
   }
-  await ENGINE.closeDocument(doc).toPromise();
-  return results;
 }
 
 const server = http.createServer(async (req, res) => {

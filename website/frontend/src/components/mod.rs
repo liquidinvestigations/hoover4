@@ -8,3 +8,4 @@ pub mod pdf_viewer;
 pub mod search_components;
 pub mod suspend_boundary;
 pub mod toast;
+pub mod popover;
