@@ -19,6 +19,12 @@ pub struct DocumentIdentifier {
     pub file_hash: String,
 }
 
+impl DocumentIdentifier {
+    pub fn get_absolute_url_path(&self)-> String {
+        format!("/_download_document/{}/{}", self.collection_dataset, self.file_hash)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResultDocumentItem {
     pub title: String,

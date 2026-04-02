@@ -8,8 +8,7 @@ use axum::{
 };
 use common::search_result::DocumentIdentifier;
 use futures::TryStreamExt;
-use minio::s3::Client;
-use minio::s3::{creds::StaticProvider, http::BaseUrl, types::S3Api};
+use minio::s3::types::S3Api;
 use reqwest::StatusCode;
 use tracing::info;
 

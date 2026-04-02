@@ -2,9 +2,8 @@ use std::pin::Pin;
 
 use anyhow::Context;
 use clickhouse::Row;
-use common::{document_sources::DocumentTextSourceHitCount, search_result::DocumentIdentifier};
-use futures::{StreamExt, TryStreamExt};
-use minio::s3::types::S3Api;
+use common::search_result::DocumentIdentifier;
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
@@ -45,8 +44,8 @@ pub async fn get_document_content_stream(
     Pin<Box<dyn futures::Stream<Item = anyhow::Result<bytes::Bytes>> + Send + 'static>>,
 )> {
     let path = format!(
-        "http://localhost:8080/_download_document/{}/{}",
-        document_identifier.collection_dataset, document_identifier.file_hash
+        "http://127.0.0.1:8080{}",
+        document_identifier.get_absolute_url_path()
     );
     tracing::info!("Downloading document from: {}", path);
     let response = reqwest::get(path).await?;

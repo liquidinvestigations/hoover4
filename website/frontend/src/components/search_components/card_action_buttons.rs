@@ -222,7 +222,7 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                             },
                             target: "_blank",
                             download: "_the_filename",
-                            href: "/_download_document/{document_identifier().collection_dataset}/{document_identifier().file_hash}",
+                            href: "{document_identifier().get_absolute_url_path()}",
 
                             Icon {
                                 icon: MdFileDownload,

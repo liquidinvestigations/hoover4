@@ -13,9 +13,7 @@ pub fn DocumentPreviewForPdf(
 ) -> Element {
     let pdf_url = use_memo(move || {
         let document_identifier = document_identifier.read().clone();
-        let c = document_identifier.collection_dataset;
-        let f = document_identifier.file_hash;
-        format!("/_download_document/{c}/{f}")
+        document_identifier.get_absolute_url_path()
     });
 
     let mut controller = use_signal(move || None);

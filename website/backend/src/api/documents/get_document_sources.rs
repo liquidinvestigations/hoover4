@@ -60,6 +60,7 @@ pub(crate) async fn get_pdf_sources(
     }))
 }
 
+#[tracing::instrument(level="debug", err(Debug))]
 async fn get_image_sources(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentImageSourceItem>> {
@@ -69,7 +70,9 @@ async fn get_image_sources(
     )
     .await?;
     let obj = meta.first().context("No image metadata found")?;
-    let streams = obj
+    let metadata = obj.get("image_metadata").and_then(|v| v.as_object()).context("No image metadata found")?;
+
+    let streams = metadata
         .get("streams")
         .and_then(|v| v.as_array())
         .context("No stream found")?;

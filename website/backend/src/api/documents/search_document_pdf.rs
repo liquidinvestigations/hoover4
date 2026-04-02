@@ -47,8 +47,8 @@ pub async fn search_document_pdf(
     let keywords = keywords.into_iter().take(50).collect::<Vec<_>>();
     tracing::info!("TEXT RESULT COUNT AFTER TRIM: {:?}", keywords.len());
     let pdf_url = format!(
-        "http://127.0.0.1:8080/_download_document/{}/{}",
-        document_identifier.collection_dataset, document_identifier.file_hash
+        "http://127.0.0.1:8080{}",
+        document_identifier.get_absolute_url_path()
     );
 
     let pdf_results = reqwest::ClientBuilder::new()

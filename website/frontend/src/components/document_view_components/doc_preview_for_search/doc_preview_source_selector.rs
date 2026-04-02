@@ -140,10 +140,19 @@ fn SourceItemRow(
     let (icon, label, count) = match source {
         DocumentSourceItem::Text(source) => ("📄", source.extracted_by.clone(), 0),
         DocumentSourceItem::Pdf(_source) => ("📑", "PDF".to_string(), 0),
+        DocumentSourceItem::Image(_source) => ("📷", "Image".to_string(), 0),
+        DocumentSourceItem::Audio(_source) => ("🎧", "Audio".to_string(), 0),
+        DocumentSourceItem::Video(_source) => ("🎥", "Video".to_string(), 0),
         _ => ("❓", format!("{:?}", source), 0),
     };
     let text_color = if selected { "#111" } else { "#333" };
     let dot_icon = if selected {"✔"} else { "●"};
+
+    let count = if count == 0 {
+        "".to_string()
+    } else {
+        count.to_string()
+    };
 
     rsx!{
         div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px;", {dot_icon} }

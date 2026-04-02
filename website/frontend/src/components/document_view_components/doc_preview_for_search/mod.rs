@@ -17,6 +17,7 @@ use crate::components::document_view_components::doc_preview_for_search::doc_pre
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::DocumentPreviewForPdf;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentPreviewForTextWithSearch;
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
+use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
 
@@ -254,6 +255,61 @@ fn PreviewDocumentDispatch(document_identifier: ReadSignal<DocumentIdentifier>, 
                 DocumentPreviewForTextWithSearch {
                     document_identifier,
                     source: text,
+                }
+            }
+        }
+        DocumentSourceItem::Image(image) => {
+            rsx! {
+                PreviewControlsSection {
+                    "Image; {image.width}x{image.height}"
+                }
+                PreviewPageSection {
+                    img {
+                        src: "{document_identifier().get_absolute_url_path()}",
+                        style: "max-width: 100%; max-height: 100%;",
+                        alt: "image preview"
+                    }
+                }
+            }
+        }
+        DocumentSourceItem::Audio(audio) => {
+            rsx! {
+                PreviewControlsSection {
+                    "Audio; {audio.duration_seconds} seconds"
+                }
+                PreviewPageSection {
+                    audio {
+                        src: "{document_identifier().get_absolute_url_path()}",
+                        alt: "audio preview",
+                        controls: true
+                    }
+                }
+            }
+        }
+        DocumentSourceItem::Video(video) => {
+            rsx! {
+                PreviewControlsSection {
+                    "Video; {video.width}x{video.height} - {video.duration_seconds} seconds"
+                }
+                PreviewPageSection {
+                    video {
+                        src: "{document_identifier().get_absolute_url_path()}",
+                        alt: "video preview",
+                        controls: true,
+                        style: "max-width: 100%; max-height: 100%;",
+                    }
+                }
+            }
+        }
+
+
+        DocumentSourceItem::Metadata => {
+            rsx! {
+                PreviewControlsSection {
+                    "Metadata"
+                }
+                PreviewPageSection {
+                    RawMetadataCollector { document_identifier }
                 }
             }
         }
