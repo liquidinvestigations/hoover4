@@ -7,6 +7,7 @@ use dioxus_free_icons::{
     Icon,
     icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile},
 };
+use dioxus_free_icons::icons::md_navigation_icons::MdMenu;
 
 use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
@@ -29,6 +30,29 @@ pub fn DocTitleBar(document_identifier: ReadSignal<DocumentIdentifier>) -> Eleme
                 flex-grow: 0;
                 border: 1px solid rgba(0, 0, 0, 0.3);
             ",
+            button {
+                style: "
+                    width: 42px;
+                    height: 42px;
+                    margin-left: 10px;
+                    cursor: pointer;
+                    border: 1px solid rgba(0, 0, 0, 0.7);
+                    border-radius: 10px;
+                    background: white;
+                    color: black;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                ",
+                class: "hoover4-hover-shadow-background",
+                onclick: move |_e| {
+                    // Layout requires a hamburger button; wiring will be added when a global left-nav exists.
+                    _e.prevent_default();
+                    _e.stop_propagation();
+                },
+                Icon { icon: MdMenu, style: "width: 22px; height: 22px;" }
+            }
             // COLLECTION AND FILENAME
             CollectionAndFilenameSection {document_identifier: document_identifier()}
             // SPACER
