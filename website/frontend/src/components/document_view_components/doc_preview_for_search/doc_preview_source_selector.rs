@@ -63,28 +63,39 @@ fn SelectedItemList(
             position: relative; top: 0px; left: 0px;",
 
             for source in sources.into_iter() {
-                div {
-                    key: "{source:?}",
-                    style: "
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    padding: 4px 12px;
-                    background: white;
-                    cursor: pointer;
-                    width: 100%;
-                    ",
+                if _should_display(&source) {
 
-                    onclick: move |_| {
-                        on_source_selected(source.clone());
-                    },
-                    SourceItemRow {
-                        source: source.clone(),
-                        selected: source == selected_source.read().clone(),
+                    div {
+                        key: "{source:?}",
+                        style: "
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 4px 12px;
+                        background: white;
+                        cursor: pointer;
+                        width: 100%;
+                        ",
+
+                        onclick: move |_| {
+                            on_source_selected(source.clone());
+                        },
+                        SourceItemRow {
+                            source: source.clone(),
+                            selected: source == selected_source.read().clone(),
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+fn _should_display(source: &DocumentSourceItem) -> bool {
+    match source {
+        DocumentSourceItem::FileLocations => false,
+        DocumentSourceItem::Metadata => false,
+        _ => true,
     }
 }
 
