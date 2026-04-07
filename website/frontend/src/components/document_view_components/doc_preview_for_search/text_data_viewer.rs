@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 
 use crate::{
     components::{
-        document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentViewerResultStore,
+        document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore,
         suspend_boundary::LoadingIndicator,
     },
     pages::search_page::DocViewerStateControl,

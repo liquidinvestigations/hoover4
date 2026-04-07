@@ -3,7 +3,8 @@
 use anyhow::Context;
 use common::{
     document_sources::{
-        DocumentAudioSourceItem, DocumentImageSourceItem, DocumentPdfSourceItem,
+        DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
+        DocumentPdfSourceItem,
         DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
     },
     search_result::DocumentIdentifier,
@@ -57,6 +58,38 @@ pub(crate) async fn get_pdf_sources(
         .context("No page count found")?;
     Ok(Some(DocumentPdfSourceItem {
         page_count: page_count as u32,
+    }))
+}
+
+async fn get_email_sources(
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<Option<DocumentEmailSourceItem>> {
+    let client = get_clickhouse_client();
+    let query = r#"
+        SELECT
+            subject,
+            addresses,
+            formatDateTime(date_sent, '%FT%TZ') AS date_sent,
+            raw_headers_json
+        FROM email_headers
+        WHERE collection_dataset = ? AND email_hash = ?
+        LIMIT 1
+    "#;
+    let query = client
+        .query(query)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash);
+    let result = query
+        .fetch_all::<(String, String, String, String)>()
+        .await?;
+    let Some((subject, addresses, date_sent, raw_headers_json)) = result.into_iter().next() else {
+        return Ok(None);
+    };
+    Ok(Some(DocumentEmailSourceItem {
+        subject,
+        addresses,
+        date_sent,
+        raw_headers_json,
     }))
 }
 
@@ -153,9 +186,10 @@ async fn get_audio_sources(
 pub async fn get_document_sources(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentSourceItem>> {
-    let (txt, pdf, img, vid, aud) = tokio::join!(
+    let (txt, pdf, email, img, vid, aud) = tokio::join!(
         get_text_sources(document_identifier.clone()),
         get_pdf_sources(document_identifier.clone()),
+        get_email_sources(document_identifier.clone()),
         get_image_sources(document_identifier.clone()),
         get_video_sources(document_identifier.clone()),
         get_audio_sources(document_identifier.clone()),
@@ -167,6 +201,9 @@ pub async fn get_document_sources(
     }
     for source in pdf.unwrap_or_default() {
         sources.push(DocumentSourceItem::Pdf(source));
+    }
+    for source in email.unwrap_or_default() {
+        sources.push(DocumentSourceItem::Email(source));
     }
     for source in img.unwrap_or_default() {
         sources.push(DocumentSourceItem::Image(source));

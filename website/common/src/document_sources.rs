@@ -31,6 +31,14 @@ pub struct DocumentPdfSourceItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub struct DocumentEmailSourceItem {
+    pub subject: String,
+    pub addresses: String,
+    pub date_sent: String,
+    pub raw_headers_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub struct DocumentImageSourceItem {
     pub width: u32,
     pub height: u32,
@@ -51,6 +59,7 @@ pub struct DocumentAudioSourceItem {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub enum DocumentSourceItem {
     Pdf(DocumentPdfSourceItem),
+    Email(DocumentEmailSourceItem),
     Image(DocumentImageSourceItem),
     Video(DocumentVideoSourceItem),
     Audio(DocumentAudioSourceItem),

@@ -140,6 +140,7 @@ fn SourceItemRow(
     let (icon, label, count) = match source {
         DocumentSourceItem::Text(source) => ("📄", source.extracted_by.clone(), 0),
         DocumentSourceItem::Pdf(_source) => ("📑", "PDF".to_string(), 0),
+        DocumentSourceItem::Email(_source) => ("✉", "Email".to_string(), 0),
         DocumentSourceItem::Image(_source) => ("📷", "Image".to_string(), 0),
         DocumentSourceItem::Audio(_source) => ("🎧", "Audio".to_string(), 0),
         DocumentSourceItem::Video(_source) => ("🎥", "Video".to_string(), 0),

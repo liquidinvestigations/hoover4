@@ -1,9 +1,11 @@
 //! Document preview components for search results.
 
 mod doc_preview_for_pdf;
+mod doc_preview_for_email;
 mod doc_preview_for_text;
 mod no_document_selected;
 mod text_data_viewer;
+mod text_preview_with_search;
 mod doc_preview_source_selector;
 mod doc_preview_find_query;
 
@@ -15,6 +17,7 @@ use dioxus::prelude::*;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_find_query::DocPreviewFindQueryInputBox;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelector;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_pdf::DocumentPreviewForPdf;
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_email::DocumentPreviewForEmail;
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_for_text::DocumentPreviewForTextWithSearch;
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
@@ -247,6 +250,14 @@ fn PreviewDocumentDispatch(document_identifier: ReadSignal<DocumentIdentifier>, 
                 DocumentPreviewForPdf {
                     document_identifier,
                     source: pdf,
+                }
+            }
+        }
+        DocumentSourceItem::Email(email) => {
+            rsx! {
+                DocumentPreviewForEmail {
+                    document_identifier,
+                    source: email,
                 }
             }
         }
