@@ -18,7 +18,7 @@ use crate::components::document_view_components::doc_preview_for_search::doc_pre
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelector;
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::doc_preview_shared::{
-    DocSourceDispatch, ProvidePreviewExtraSections,
+    DocSourceDispatch, PreviewExtraSections, ProvidePreviewExtraSections
 };
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
@@ -110,8 +110,9 @@ pub fn DocumentPreviewForSearchRoot(
                     preview_selector,
                     children: rsx! {
                         DocTitleBar { document_identifier }
-                        DocSourceDispatch { document_identifier, source: selected_source.clone() }
-                    }
+                        DocSourceDispatch { document_identifier, source: selected_source.clone() },
+                    },
+                    wrapper_fn: _make_preview_wrapper,
                 }
                 // DocumentPreviewForPdf { document_identifier, page_count }
             }
@@ -140,5 +141,57 @@ pub async fn get_document_sources(
     Ok(sources)
 }
 
-pub use crate::components::document_view_components::doc_preview_shared::PreviewControlsSection;
-pub use crate::components::document_view_components::doc_preview_shared::PreviewPageSection;
+fn _make_preview_wrapper(controls: Element, page: Element) -> Element {
+    let sections = use_context::<PreviewExtraSections>();
+    rsx! {
+        PreviewSubtitleBar {
+            find_query_input_box: sections.find_query.read().clone(),
+            preview_selector: sections.preview_selector.read().clone(),
+            control: controls,
+        }
+        div {
+            style: "
+                width: 100%;
+                height: calc(100% - 110px);
+                padding: 10px;
+            ",
+            {page}
+        }
+    }
+}
+
+
+#[component]
+fn PreviewSubtitleBar(find_query_input_box: Element, preview_selector: Element, control: Element) -> Element {
+    rsx! {
+        div {
+            style: "
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+                align-items: center;
+                justify-content: space-between;
+                height: 48px;
+                width: 100%;
+                background-color:rgba(0, 0, 0, 0.04);
+                flex-shrink: 0;
+                flex-grow: 0;
+                border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
+            ",
+            {find_query_input_box}
+            div { style:"flex-grow: 1;" }
+            div {
+                style:"flex-grow: 13; flex-shrink: 1; height: 90%;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                ",
+                {control}
+            }
+            div { style:"flex-grow: 1;" }
+            {preview_selector}
+        }
+    }
+}

@@ -4,8 +4,9 @@ use dioxus::prelude::*;
 
 use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
 
+use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::components::{
-    document_view_components::doc_preview_for_search::{text_data_viewer, PreviewControlsSection, PreviewPageSection},
+    document_view_components::doc_preview_for_search::{text_data_viewer},
     search_components::search_result_list_controls::NavigationButton,
 };
 use crate::pages::search_page::DocViewerStateControl;
@@ -118,22 +119,24 @@ pub fn DocumentPreviewTextWithSearch(
     });
 
     rsx! {
-        PreviewControlsSection {
-            SearchHitSelector {}
-        }
-        PreviewPageSection {
-            div {
-                style: "
-                    height: 100%;
-                    width: 100%;
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                ",
-                {preamble}
+        PreviewWrapper {
+            controls: rsx! {
+                SearchHitSelector {}
+            },
+            page: rsx! {
                 div {
-                    style: "flex: 1; min-height: 0;",
-                    text_data_viewer::TextDataViewer {}
+                    style: "
+                        height: 100%;
+                        width: 100%;
+                        display: flex;
+                        flex-direction: column;
+                        overflow: hidden;
+                    ",
+                    {preamble}
+                    div {
+                        style: "flex: 1; min-height: 0;",
+                        text_data_viewer::TextDataViewer {}
+                    }
                 }
             }
         }

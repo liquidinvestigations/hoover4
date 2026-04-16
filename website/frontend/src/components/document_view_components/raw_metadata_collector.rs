@@ -10,7 +10,7 @@ use crate::components::{
 #[component]
 pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let table_list: Vec<DocumentMetadataTableInfo> = vec![
-        DocumentMetadataTableInfo::new("text_content", "file_hash"),
+        // DocumentMetadataTableInfo::new("text_content", "file_hash"),
         DocumentMetadataTableInfo::new("archives", "archive_hash"),
         DocumentMetadataTableInfo::new("vfs_files", "container_hash"),
         DocumentMetadataTableInfo::new("vfs_files", "hash"),

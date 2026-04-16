@@ -2,9 +2,7 @@ use common::{document_sources::DocumentPdfSourceItem, search_result::DocumentIde
 use dioxus::prelude::*;
 use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
 
-use crate::{components::{document_view_components::doc_preview_for_search::{PreviewControlsSection, PreviewPageSection}, pdf_viewer::{
-    PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
-}, search_components::search_result_list_controls::NavigationButton}, pages::search_page::DocViewerStateControl};
+use crate::{components::{document_view_components::doc_preview_shared::PreviewWrapper, pdf_viewer::{PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller}, search_components::search_result_list_controls::NavigationButton}, pages::search_page::DocViewerStateControl};
 
 #[component]
 pub fn DocumentPreviewForPdf(
@@ -23,48 +21,19 @@ pub fn DocumentPreviewForPdf(
 
 
     rsx! {
-        PreviewControlsSection {
-            if let Some(controller) = controller() {
-                PdfControllerButtons {controller }
+        PreviewWrapper {
+            controls: rsx! {
+                if let Some(controller) = controller() {
+                    PdfControllerButtons {controller }
+                }
+            },
+            page: rsx! {
+                PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
+                if let Some(controller) = controller() {
+                    PdfControllerOverlay {controller }
+                }
             }
         }
-        PreviewPageSection {
-            PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
-            if let Some(controller) = controller() {
-                PdfControllerOverlay {controller }
-            }
-        }
-
-        // div {
-        //     style: "display: flex; flex-direction: column; gap: 10px; width:100%;height:100%;align-items:center;justify-content:center;",
-
-        //     div {
-        //         style: "
-        //             display: flex;
-        //             flex-direction: row;
-        //             gap: 12px;
-        //             align-items: center;
-        //             justify-content: space-between;
-        //             height: 48px;
-        //             width: 100%;
-        //             background-color:rgba(0, 0, 0, 0.04);
-        //             flex-shrink: 0;
-        //             flex-grow: 0;
-        //             border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
-        //         ",
-        //         if let Some(controller) = controller() {
-        //             PdfControllerButtons {controller }
-        //         }
-
-        //     }
-        //     div {
-        //         style:"height: calc(100% - 58px);width:100%;",
-        //         PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
-        //         if let Some(controller) = controller() {
-        //             PdfControllerOverlay {controller }
-        //         }
-        //     }
-        // }
     }
 }
 
@@ -114,61 +83,6 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
 
 
     rsx! {
-        // div {
-        //     style: "
-        //     flex-grow: 0;
-        //     flex-shrink: 0;
-        //     display: flex;
-        //     flex-direction: row;
-        //     align-items: center;
-        //     justify-content: center;
-        //     gap: 12px;
-        //     padding: 12px;
-        // ",
-        //     h1 {
-        //         "PAGE {current_page()} / {total_pages()}"
-        //     }
-        //     button {
-        //         onclick: move |_| {
-        //             set_page.call(current_page() - 1);
-        //         },
-        //         disabled: current_page() <= 1,
-        //         "PREV PAGE"
-        //     }
-        //     button {
-        //         onclick: move |_| {
-        //             set_page.call(current_page() + 1);
-        //         },
-        //         disabled: current_page() >= total_pages(),
-        //         "NEXT PAGE"
-        //     }
-        // }
-
-        // div {style: "flex-grow: 1;"}
-
-
-        // input {
-        //     r#type: "text",
-        //     placeholder: "Search in document",
-        //     style: "
-        //                 width: 100%;
-        //                 height: 70%;
-        //                 border: none;
-        //                 outline: none;
-        //                 background: white;
-        //                 border: 1px solid rgba(0, 0, 0, 0.5);
-        //                 border-radius: 14px;
-        //                 padding: 8px 12px;
-        //                 font-size: 14px;
-        //                 font-weight: 400;
-        //                 color: rgba(0, 0, 0, 0.8);
-        //                 margin-left: 12px;
-        //                 ",
-        //     value: search_query(),
-        //     oninput: move |e| {
-        //         set_search_query.call(e.value());
-        //     },
-        // }
 
         div {
             style: "
@@ -213,36 +127,6 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
                 disabled: 1+search_hit_index() >= search_hit_count(),
             }
         }
-        // div {style: "flex-grow: 1;"}
-
-        // div {
-        //     style: "
-        //         flex-grow: 0;
-        //         flex-shrink: 0;
-        //         display: flex;
-        //         flex-direction: row;
-        //         align-items: center;
-        //         justify-content: center;
-        //         gap: 12px;
-        //         padding: 12px;
-        //     ",
-
-        //     button {
-        //         onclick: move |_| {
-        //             zoom_in.call(());
-        //         },
-        //         "ZOOM IN"
-        //     }
-        //     h1 {
-        //         "ZOOM {zoom_state()}"
-        //     }
-        //     button {
-        //         onclick: move |_| {
-        //             zoom_out.call(());
-        //         },
-        //         "ZOOM OUT"
-        //     }
-        // }
     }
 }
 

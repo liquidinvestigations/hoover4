@@ -23,6 +23,114 @@ use crate::{
     data_definitions::doc_viewer_state::DocViewerState,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RightTab {
+    Entities,
+    Metadata,
+}
+
+#[component]
+fn RightTabButton(right_tab: Signal<RightTab>, tab: RightTab, label: &'static str) -> Element {
+    let is_active = right_tab() == tab;
+    let border = if is_active {
+        "2px solid rgba(0,0,0,0.9)"
+    } else {
+        "1px solid rgba(0,0,0,0.25)"
+    };
+    let bg = if is_active { "white" } else { "rgba(0,0,0,0.03)" };
+
+    rsx! {
+        button {
+            style: "
+                cursor: pointer;
+                padding: 8px 12px;
+                border-radius: 10px;
+                border: {border};
+                background: {bg};
+                font-size: 14px;
+                font-weight: 600;
+            ",
+            onclick: move |_e| {
+                _e.prevent_default();
+                right_tab.set(tab);
+            },
+            "{label}"
+        }
+    }
+}
+
+#[component]
+fn RightPanel(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let mut right_tab = use_signal(|| RightTab::Entities);
+
+    rsx! {
+        div {
+            style: "
+                height: 100%;
+                width: 100%;
+                overflow: hidden;
+                border-left: 1px solid rgba(0,0,0,0.2);
+                display: flex;
+                flex-direction: column;
+            ",
+            div {
+                style: "
+                    flex-shrink: 0;
+                    display: flex;
+                    flex-direction: row;
+                    gap: 10px;
+                    align-items: center;
+                    padding: 10px;
+                    border-bottom: 1px solid rgba(0,0,0,0.15);
+                    background: rgba(0,0,0,0.02);
+                ",
+                RightTabButton { right_tab, tab: RightTab::Entities, label: "Entities" }
+                RightTabButton { right_tab, tab: RightTab::Metadata, label: "Metadata" }
+            }
+            div {
+                style: "flex: 1 1 auto; min-height: 0; overflow: hidden;",
+                match right_tab() {
+                    RightTab::Entities => rsx! { DocumentEntitiesPanel { document_identifier } },
+                    RightTab::Metadata => rsx! { RawMetadataCollector { document_identifier } },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LeftControls(
+    sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
+    selected_source: ReadSignal<Option<DocumentSourceItem>>,
+    on_source_selected: Callback<DocumentSourceItem>,
+    on_find_query_changed: Callback<String>,
+) -> Element {
+    rsx! {
+        div {
+            style: "
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding: 12px;
+                height: 100%;
+                overflow: hidden;
+            ",
+            div {
+                style: "flex-shrink: 0;",
+                DocPreviewFindQueryInputBox { on_find_query_changed }
+            }
+            div {
+                style: "flex-shrink: 0;",
+                DocumentPreviewSourceSelector {
+                    sources,
+                    selected_source,
+                    on_source_selected
+                }
+            }
+        }
+    }
+}
+
 #[component]
 pub fn DocViewerRoot(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let mut doc_viewer_state = use_signal(|| Some(DocViewerState::default()));
@@ -73,96 +181,11 @@ pub fn DocViewerRoot(document_identifier: ReadSignal<DocumentIdentifier>) -> Ele
     });
 
     let left_controls = rsx! {
-        div {
-            style: "
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-                padding: 12px;
-                height: 100%;
-                overflow: hidden;
-            ",
-            div {
-                style: "flex-shrink: 0;",
-                DocPreviewFindQueryInputBox { on_find_query_changed }
-            }
-            div {
-                style: "flex-shrink: 0;",
-                DocumentPreviewSourceSelector {
-                    sources: doc_sources,
-                    selected_source: currently_selected_source,
-                    on_source_selected
-                }
-            }
-        }
-    };
-
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    enum RightTab {
-        Entities,
-        Metadata,
-    }
-    let mut right_tab = use_signal(|| RightTab::Entities);
-
-    let tab_button = |tab: RightTab, label: &'static str| {
-        let is_active = right_tab() == tab;
-        let border = if is_active {
-            "2px solid rgba(0,0,0,0.9)"
-        } else {
-            "1px solid rgba(0,0,0,0.25)"
-        };
-        let bg = if is_active { "white" } else { "rgba(0,0,0,0.03)" };
-        rsx! {
-            button {
-                style: "
-                    cursor: pointer;
-                    padding: 8px 12px;
-                    border-radius: 10px;
-                    border: {border};
-                    background: {bg};
-                    font-size: 14px;
-                    font-weight: 600;
-                ",
-                onclick: move |_e| {
-                    _e.prevent_default();
-                    right_tab.set(tab);
-                },
-                "{label}"
-            }
-        }
-    };
-
-    let right_panel = rsx! {
-        div {
-            style: "
-                height: 100%;
-                width: 100%;
-                overflow: hidden;
-                border-left: 1px solid rgba(0,0,0,0.2);
-                display: flex;
-                flex-direction: column;
-            ",
-            div {
-                style: "
-                    flex-shrink: 0;
-                    display: flex;
-                    flex-direction: row;
-                    gap: 10px;
-                    align-items: center;
-                    padding: 10px;
-                    border-bottom: 1px solid rgba(0,0,0,0.15);
-                    background: rgba(0,0,0,0.02);
-                ",
-                {tab_button(RightTab::Entities, "Entities")}
-                {tab_button(RightTab::Metadata, "Metadata")}
-            }
-            div {
-                style: "flex: 1 1 auto; min-height: 0; overflow: hidden;",
-                match right_tab() {
-                    RightTab::Entities => rsx! { DocumentEntitiesPanel { document_identifier } },
-                    RightTab::Metadata => rsx! { RawMetadataCollector { document_identifier } },
-                }
-            }
+        LeftControls {
+            sources: doc_sources,
+            selected_source: currently_selected_source,
+            on_source_selected,
+            on_find_query_changed,
         }
     };
 
@@ -178,7 +201,8 @@ pub fn DocViewerRoot(document_identifier: ReadSignal<DocumentIdentifier>) -> Ele
         ProvidePreviewExtraSections {
             find_query_input_box: rsx! { div {} },
             preview_selector: rsx! { div {} },
-            children: content_view_inner
+            children: content_view_inner,
+            wrapper_fn: _make_view_wrapper,
         }
     };
 
@@ -239,8 +263,17 @@ pub fn DocViewerRoot(document_identifier: ReadSignal<DocumentIdentifier>) -> Ele
                     overflow: hidden;
                     background: white;
                 ",
-                {right_panel}
+                RightPanel { document_identifier }
             }
         }
+    }
+}
+
+
+fn _make_view_wrapper(controls: Element, page: Element) -> Element {
+    rsx! {
+        {controls}
+        {page}
+
     }
 }
