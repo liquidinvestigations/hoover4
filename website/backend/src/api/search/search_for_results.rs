@@ -98,8 +98,7 @@ pub async fn search_for_results(
         .hits
         .hits
         .into_iter()
-        .enumerate()
-        .map(|(_hit_index_in_page, hit)| {
+        .map(|hit| {
             let filenames = hit
                 ._source
                 .filenames

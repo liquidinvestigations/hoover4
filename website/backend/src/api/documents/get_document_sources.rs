@@ -155,11 +155,11 @@ async fn get_video_sources(
         .get("height")
         .and_then(|v| v.as_u64())
         .context("No height found")?;
-    return Ok(Some(DocumentVideoSourceItem {
+    Ok(Some(DocumentVideoSourceItem {
         width: width as u32,
         height: height as u32,
         duration_seconds: duration as f32,
-    }));
+    }))
 }
 
 async fn get_audio_sources(
@@ -179,9 +179,9 @@ async fn get_audio_sources(
         .get("duration_seconds")
         .and_then(|v| v.as_f64())
         .context("No duration found")?;
-    return Ok(Some(DocumentAudioSourceItem {
+    Ok(Some(DocumentAudioSourceItem {
         duration_seconds: duration as f32,
-    }));
+    }))
 }
 
 #[allow(for_loops_over_fallibles)]

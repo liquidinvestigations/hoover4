@@ -90,7 +90,7 @@ pub async fn search_string_facet(
                     value
                 ),
             },
-            count: count,
+            count,
         });
     }
     drop(present_values);
@@ -104,11 +104,10 @@ pub async fn search_string_facet(
         }
         let display_strings = fetch_db_terms_for_ints(ints, map_string_terms).await?;
         for item in &mut result.facet_values {
-            if let FacetOriginalValue::Int(i) = item.original_value {
-                if let Some(display_string) = display_strings.get(&i) {
+            if let FacetOriginalValue::Int(i) = item.original_value
+                && let Some(display_string) = display_strings.get(&i) {
                     item.display_string = display_string.clone();
                 }
-            }
         }
     }
     result
@@ -186,7 +185,7 @@ pub async fn search_mva_facet(
                     value
                 ),
             },
-            count: count,
+            count,
         });
     }
     drop(present_values);
@@ -200,11 +199,10 @@ pub async fn search_mva_facet(
         }
         let display_strings = fetch_db_terms_for_ints(ints, map_string_terms).await?;
         for item in &mut result.facet_values {
-            if let FacetOriginalValue::Int(i) = item.original_value {
-                if let Some(display_string) = display_strings.get(&i) {
+            if let FacetOriginalValue::Int(i) = item.original_value
+                && let Some(display_string) = display_strings.get(&i) {
                     item.display_string = display_string.clone();
                 }
-            }
         }
     }
     result

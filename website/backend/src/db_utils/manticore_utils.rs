@@ -43,12 +43,11 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     sql: String,
 ) -> anyhow::Result<RawSarchResult<T>> {
     let query_hash = sha256::digest(sql.clone());
-    if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await {
-        if let Ok(response) = serde_json::from_str::<RawSarchResult<T>>(&cached_response) {
+    if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await
+        && let Ok(response) = serde_json::from_str::<RawSarchResult<T>>(&cached_response) {
             println!("SEARCH CACHE HIT: {}", query_hash);
             return Ok(response);
         }
-    }
     println!("SEARCH CACHE MISS: {}", query_hash);
     let t0 = std::time::Instant::now();
     let database_url =

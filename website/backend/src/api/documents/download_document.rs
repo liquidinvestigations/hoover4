@@ -53,7 +53,7 @@ pub async fn get_document_content_stream(
     let content_size = response
         .content_length()
         .context("Failed to get content length")?;
-    let content_stream = response.bytes_stream().map_err(|e| anyhow::Error::from(e));
+    let content_stream = response.bytes_stream().map_err(anyhow::Error::from);
 
     Ok((content_size as usize, Box::pin(content_stream)))
 }

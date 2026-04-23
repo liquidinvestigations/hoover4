@@ -94,7 +94,7 @@ async fn get_document_content_stream(
         .await
         .context("Failed to get object stream")?;
 
-    let stream2 = stream.map_err(|x| anyhow::Error::from(x));
+    let stream2 = stream.map_err(anyhow::Error::from);
 
     Ok((object_size, Box::pin(stream2)))
 }
@@ -125,7 +125,7 @@ async fn _download_document(
     ];
 
     let body = Body::from_stream(stream);
-    return Ok((headers, body).into_response());
+    Ok((headers, body).into_response())
 }
 
 pub async fn download_document(
@@ -135,7 +135,7 @@ pub async fn download_document(
         Ok(response) => response.into_response(),
         Err(e) => {
             tracing::error!("download_document: request failed: {:#?}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Body::from(e.to_string())).into_response();
+            (StatusCode::INTERNAL_SERVER_ERROR, Body::from(e.to_string())).into_response()
         }
     }
 }
