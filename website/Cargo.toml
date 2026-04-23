@@ -47,3 +47,26 @@ inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+# missing_docs = "deny"
+
+
+[workspace.lints.clippy]
+redundant_field_names = "allow"
+redundant_closure = "allow"
+match_like_matches_macro = "allow"
+clone_on_copy = "allow"
+needless_return = "allow"
+question_mark = "allow"
+neg_multiply = "allow"
+collapsible_if = "allow"
+useless_conversion = "allow"
+map_identity = "allow"
+op_ref = "allow"
+arc_with_non_send_sync = "allow"
+enum_variant_names = "allow"
+legacy_numeric_constants = "allow"
+ptr_arg = "allow"

@@ -39,3 +39,6 @@ web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
 server = ["dioxus/server", "dep:backend", "dep:tokio"]
+
+[lints]
+workspace = true
