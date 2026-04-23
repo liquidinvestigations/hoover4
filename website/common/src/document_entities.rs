@@ -22,4 +22,3 @@ pub struct DocumentEntityItem {
 pub struct DocumentEntitiesResponse {
     pub items: Vec<DocumentEntityItem>,
 }
-

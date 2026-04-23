@@ -1,4 +1,6 @@
-use common::document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem};
+use common::document_sources::{
+    DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem,
+};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
@@ -6,7 +8,7 @@ use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpwa
 
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::components::{
-    document_view_components::doc_preview_for_search::{text_data_viewer},
+    document_view_components::doc_preview_for_search::text_data_viewer,
     search_components::search_result_list_controls::NavigationButton,
 };
 use crate::pages::search_page::DocViewerStateControl;
@@ -79,10 +81,17 @@ pub fn DocumentPreviewTextWithSearch(
             let find_query = find_query.read().clone();
             async move {
                 let Some((extracted_by, page_id)) = current_text_selection else {
-                    return Err(ServerFnError::from(anyhow::anyhow!("No current text selection")));
+                    return Err(ServerFnError::from(anyhow::anyhow!(
+                        "No current text selection"
+                    )));
                 };
-                search_document_text_for_hits(document_identifier, find_query, extracted_by, page_id)
-                    .await
+                search_document_text_for_hits(
+                    document_identifier,
+                    find_query,
+                    extracted_by,
+                    page_id,
+                )
+                .await
             }
         });
 
@@ -218,4 +227,3 @@ async fn search_document_text_for_hits(
     .await
     .map_err(|e| ServerFnError::from(e))
 }
-

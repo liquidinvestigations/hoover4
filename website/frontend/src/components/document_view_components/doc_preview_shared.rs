@@ -1,29 +1,32 @@
 //! Shared document preview layout + dispatch (used by search preview and full-page viewer).
 
+// TODO: This is a workaround to avoid the warning about the function pointer being unpredictable.
+// We should find a better way to do this (trait + dyn dispatch).
+#![allow(unpredictable_function_pointer_comparisons)]
+
 use common::document_sources::DocumentSourceItem;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::{
-    doc_preview_for_email::DocumentPreviewForEmail,
-    doc_preview_for_pdf::DocumentPreviewForPdf,
+    doc_preview_for_email::DocumentPreviewForEmail, doc_preview_for_pdf::DocumentPreviewForPdf,
     doc_preview_for_text::DocumentPreviewForTextWithSearch,
 };
-use crate::components::document_view_components::raw_metadata_collector::RawMetadataCollector;
 
 #[derive(Clone, Copy)]
 pub struct PreviewExtraSections {
     pub find_query: ReadSignal<Element>,
     pub preview_selector: ReadSignal<Element>,
-    pub wrapper_fn: fn(Element, Element)->Element,
+    pub wrapper_fn: fn(Element, Element) -> Element,
 }
+
 
 #[component]
 pub fn ProvidePreviewExtraSections(
     find_query_input_box: Element,
     preview_selector: Element,
     children: Element,
-    wrapper_fn: fn(Element, Element)->Element,
+    wrapper_fn: fn(Element, Element) -> Element,
 ) -> Element {
     let find_query = use_signal(move || find_query_input_box);
     let preview_selector = use_signal(move || preview_selector);
@@ -41,7 +44,6 @@ pub fn PreviewWrapper(controls: Element, page: Element) -> Element {
     let wrapper_fn = extra.wrapper_fn;
     wrapper_fn(controls, page)
 }
-
 
 #[component]
 pub fn DocSourceDispatch(
@@ -98,7 +100,7 @@ pub fn DocSourceDispatch(
         DocumentSourceItem::Metadata => rsx! {
             PreviewWrapper {
                 controls: rsx! {"Metadata"},
-                page: rsx! { RawMetadataCollector { document_identifier } }
+                page: rsx! { "METADATA HIDDEN FROM PREVIEW"}
             },
         },
         other => rsx! {
@@ -109,4 +111,3 @@ pub fn DocSourceDispatch(
         },
     }
 }
-

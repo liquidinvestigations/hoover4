@@ -20,8 +20,11 @@ pub struct DocumentIdentifier {
 }
 
 impl DocumentIdentifier {
-    pub fn get_absolute_url_path(&self)-> String {
-        format!("/_download_document/{}/{}", self.collection_dataset, self.file_hash)
+    pub fn get_absolute_url_path(&self) -> String {
+        format!(
+            "/_download_document/{}/{}",
+            self.collection_dataset, self.file_hash
+        )
     }
 }
 

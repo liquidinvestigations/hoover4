@@ -99,7 +99,7 @@ pub async fn search_for_results(
         .hits
         .into_iter()
         .enumerate()
-        .map(|(hit_index_in_page, hit)| {
+        .map(|(_hit_index_in_page, hit)| {
             let filenames = hit
                 ._source
                 .filenames

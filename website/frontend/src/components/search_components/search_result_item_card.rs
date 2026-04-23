@@ -1,17 +1,15 @@
 //! Search result item card component.
 
 use common::{
-    search_result::{DocumentIdentifier, SearchResultDocumentItem},
+    search_result::SearchResultDocumentItem,
     text_highlight::HighlightTextSpan,
 };
-use dioxus::{logger::tracing, prelude::*};
+use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoDatabase,
-        md_action_icons::{MdDonutLarge, MdOpenInNew},
         md_editor_icons::MdInsertDriveFile,
-        md_navigation_icons::MdMoreVert,
     },
 };
 
@@ -20,7 +18,6 @@ use crate::{
         card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab},
         search_panel_left_view::SearchResultsState,
     },
-    routes::Route,
 };
 
 #[component]
@@ -33,12 +30,11 @@ pub fn SearchResultItemCard(
     let set_selected_result_hash = search_results_state.set_selected_result_hash;
     let selected_result_hash = search_results_state.selected_result_hash;
     let SearchResultDocumentItem {
-        title,
         highlight_text_spans,
         highlight_filenames_spans,
-        file_hash,
         collection_dataset,
         result_index_in_page,
+        ..
     } = result.read().clone();
     let we_are_selected =
         selected_result_hash.read().clone() == Some(result().document_identifier());

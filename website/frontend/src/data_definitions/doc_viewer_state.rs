@@ -29,3 +29,22 @@ impl Default for DocViewerState {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ViewerRightTabSelection {
+    Entities,
+    Metadata,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ViewerRightTabState {
+    pub selected_tab: ViewerRightTabSelection,
+}
+
+impl Default for ViewerRightTabState {
+    fn default() -> Self {
+        Self {
+            selected_tab: ViewerRightTabSelection::Entities,
+        }
+    }
+}

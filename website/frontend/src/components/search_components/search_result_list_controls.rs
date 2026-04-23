@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::md_navigation_icons::{
-        MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowLeft, MdArrowRight, MdArrowUpward,
+        MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward,
     },
 };
 use dioxus_primitives::{ContentAlign, ContentSide};

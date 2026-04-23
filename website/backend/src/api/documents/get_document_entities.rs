@@ -76,4 +76,3 @@ pub async fn get_document_entities(
 
     Ok(DocumentEntitiesResponse { items })
 }
-

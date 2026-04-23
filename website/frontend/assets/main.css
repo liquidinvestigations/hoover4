@@ -4,7 +4,7 @@
 *,::after,::before,::backdrop,::file-selector-button {  box-sizing: border-box;  border: 0 solid;}
 h1,h2,h3,h4,h5,h6 {  font-size: inherit;  font-weight: inherit;}
 ol,ul,menu {  list-style: none;}
-img,svg,video,canvas,audio,iframe,embed,object {  display: block;  vertical-align: middle;}
+img,svg,video,canvas,audio,iframe,embed,object {  display: block;  /*vertical-align: middle;*/}
 img,video {  max-width: 100%;  height: auto;}
 [hidden]:where(:not([hidden='until-found'])) {  display: none !important;}
 
@@ -51,4 +51,10 @@ html, body, #main {
 
 .hoover4-hover-shadow-background:hover {
     background-color: rgb(231, 231, 231) !important;
+}
+
+.x-entity-chip:hover {
+    color: #000293;
+    accent-color: #000293;
+    background-color: #ebebeb !important;
 }

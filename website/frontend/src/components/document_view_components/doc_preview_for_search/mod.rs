@@ -1,13 +1,13 @@
 //! Document preview components for search results.
 
-pub mod doc_preview_for_pdf;
+pub mod doc_preview_find_query;
 pub mod doc_preview_for_email;
+pub mod doc_preview_for_pdf;
 pub mod doc_preview_for_text;
+pub mod doc_preview_source_selector;
 mod no_document_selected;
 mod text_data_viewer;
 pub mod text_preview_with_search;
-pub mod doc_preview_source_selector;
-pub mod doc_preview_find_query;
 
 use common::document_sources::DocumentSourceItem;
 use common::search_query::SearchQuery;
@@ -15,7 +15,7 @@ use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_find_query::DocPreviewFindQueryInputBox;
-use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelector;
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelectorDropdown;
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::doc_preview_shared::{
     DocSourceDispatch, PreviewExtraSections, ProvidePreviewExtraSections
@@ -79,7 +79,7 @@ pub fn DocumentPreviewForSearchRoot(
     });
 
     let preview_selector = rsx! {
-        DocumentPreviewSourceSelector {
+        DocumentPreviewSourceSelectorDropdown {
             sources: doc_sources,
             selected_source: currently_selected_source,
             on_source_selected
@@ -98,7 +98,6 @@ pub fn DocumentPreviewForSearchRoot(
         }
     };
 
-
     match (
         doc_sources.read().as_ref(),
         currently_selected_source.read().as_ref(),
@@ -109,7 +108,7 @@ pub fn DocumentPreviewForSearchRoot(
                     find_query_input_box,
                     preview_selector,
                     children: rsx! {
-                        DocTitleBar { document_identifier }
+                        DocTitleBar { document_identifier, show_new_tab_button: true }
                         DocSourceDispatch { document_identifier, source: selected_source.clone() },
                     },
                     wrapper_fn: _make_preview_wrapper,
@@ -160,9 +159,12 @@ fn _make_preview_wrapper(controls: Element, page: Element) -> Element {
     }
 }
 
-
 #[component]
-fn PreviewSubtitleBar(find_query_input_box: Element, preview_selector: Element, control: Element) -> Element {
+fn PreviewSubtitleBar(
+    find_query_input_box: Element,
+    preview_selector: Element,
+    control: Element,
+) -> Element {
     rsx! {
         div {
             style: "

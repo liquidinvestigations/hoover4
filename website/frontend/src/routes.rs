@@ -4,7 +4,7 @@ use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::navbar::Navbar;
-use crate::data_definitions::doc_viewer_state::DocViewerState;
+use crate::data_definitions::doc_viewer_state::{DocViewerState, ViewerRightTabState};
 use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
@@ -34,8 +34,12 @@ pub enum Route {
     },
 
 
-    #[route("/view_document/:document_identifier")]
-    ViewDocumentPage { document_identifier: UrlParam<DocumentIdentifier> },
+    #[route("/view_document/:document_identifier/:doc_viewer_state/:viewer_right_tab_state")]
+    ViewDocumentPage {
+        document_identifier: UrlParam<DocumentIdentifier> ,
+        doc_viewer_state: UrlParam<Option<DocViewerState>>,
+        viewer_right_tab_state: UrlParam<ViewerRightTabState>,
+    },
 
 
     #[route("/file_browser")]

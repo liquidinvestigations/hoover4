@@ -10,7 +10,7 @@ use dioxus_free_icons::{
     },
 };
 
-use crate::routes::Route;
+use crate::{data_definitions::doc_viewer_state::ViewerRightTabState, routes::Route};
 
 #[component]
 pub fn DocCardActionButtonOpenNewTab(
@@ -35,7 +35,7 @@ pub fn DocCardActionButtonOpenNewTab(
             ",
             target: "_blank",
             class: "hoover4-hover-shadow-background",
-            href: Route::ViewDocumentPage { document_identifier: document_identifier.read().clone().into() }.to_string(),
+            href: Route::ViewDocumentPage { document_identifier: document_identifier.read().clone().into(), doc_viewer_state: None.into(), viewer_right_tab_state: ViewerRightTabState::default().into() }.to_string(),
             // onclick: move |_e| {
             //     _e.prevent_default();
             //     _e.stop_propagation();

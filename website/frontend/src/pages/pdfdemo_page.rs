@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::components::pdf_viewer::{
-    PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
+    PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller,
 };
 
 #[used]
@@ -14,7 +14,7 @@ static EMBED_PDF_FOLDER: Asset = asset!(
 pub fn PdfDemoPage() -> Element {
     let mut pdf_url = use_signal(move || "".to_string());
     // let mut controller = use_signal(move || None);
-    let mut on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
+    let mut _on_document_loaded = Callback::new(move |_x: PdfViewerControllerJs| {
         // controller.set(Some(x));
     });
     rsx! {

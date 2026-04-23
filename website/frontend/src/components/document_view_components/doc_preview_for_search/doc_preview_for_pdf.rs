@@ -2,7 +2,14 @@ use common::{document_sources::DocumentPdfSourceItem, search_result::DocumentIde
 use dioxus::prelude::*;
 use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
 
-use crate::{components::{document_view_components::doc_preview_shared::PreviewWrapper, pdf_viewer::{PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller}, search_components::search_result_list_controls::NavigationButton}, pages::search_page::DocViewerStateControl};
+use crate::{
+    components::{
+        document_view_components::doc_preview_shared::PreviewWrapper,
+        pdf_viewer::{PdfViewer, PdfViewerControllerDx, PdfViewerControllerJs, use_pdf_controller},
+        search_components::search_result_list_controls::NavigationButton,
+    },
+    pages::search_page::DocViewerStateControl,
+};
 
 #[component]
 pub fn DocumentPreviewForPdf(
@@ -18,7 +25,6 @@ pub fn DocumentPreviewForPdf(
     let on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
         controller.set(Some(x));
     });
-
 
     rsx! {
         PreviewWrapper {
@@ -71,16 +77,18 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
         ..
     } = controller;
 
-
     let global_control = use_context::<DocViewerStateControl>();
     let global_search_query = use_memo(move || {
-            let global_state = global_control.doc_viewer_state.read().clone().unwrap_or_default();
-            global_state.find_query.clone()
+        let global_state = global_control
+            .doc_viewer_state
+            .read()
+            .clone()
+            .unwrap_or_default();
+        global_state.find_query.clone()
     });
     use_effect(move || {
         set_search_query.call(global_search_query.read().clone());
     });
-
 
     rsx! {
 

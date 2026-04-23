@@ -5,7 +5,6 @@ use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
-use crate::data_definitions::url_param::UrlParam;
 use crate::routes::Route;
 use common::search_query::SearchQuery;
 

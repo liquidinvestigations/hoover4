@@ -4,8 +4,7 @@ use anyhow::Context;
 use common::{
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
-        DocumentPdfSourceItem,
-        DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
+        DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
     },
     search_result::DocumentIdentifier,
 };
@@ -93,7 +92,7 @@ async fn get_email_sources(
     }))
 }
 
-#[tracing::instrument(level="debug", err(Debug))]
+#[tracing::instrument(level = "debug", err(Debug))]
 async fn get_image_sources(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentImageSourceItem>> {
@@ -103,7 +102,10 @@ async fn get_image_sources(
     )
     .await?;
     let obj = meta.first().context("No image metadata found")?;
-    let metadata = obj.get("image_metadata").and_then(|v| v.as_object()).context("No image metadata found")?;
+    let metadata = obj
+        .get("image_metadata")
+        .and_then(|v| v.as_object())
+        .context("No image metadata found")?;
 
     let streams = metadata
         .get("streams")

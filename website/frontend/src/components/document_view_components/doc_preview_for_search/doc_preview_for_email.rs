@@ -4,11 +4,7 @@ use common::{
 };
 use dioxus::prelude::*;
 
-use crate::components::{
-    document_view_components::doc_preview_for_search::{
-        text_preview_with_search::DocumentPreviewTextWithSearch,
-    },
-};
+use crate::components::document_view_components::doc_preview_for_search::text_preview_with_search::DocumentPreviewTextWithSearch;
 
 const EMAIL_TEXT_EXTRACTOR: &str = "email_parser";
 

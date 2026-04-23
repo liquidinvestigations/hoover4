@@ -5,7 +5,6 @@ use common::{pdf_search_results::PdfSearchResults, search_result::DocumentIdenti
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsValue, prelude::Closure};
-use wasm_bindgen_futures::JsFuture;
 
 #[derive(Clone)]
 pub struct PdfViewerControllerJs {

@@ -7,6 +7,7 @@ use common::{
 use dioxus::prelude::*;
 
 use crate::components::{
+    document_view_components::doc_viewer_full_page::ViewerPageControls,
     error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator,
 };
 
@@ -85,7 +86,11 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
 }
 
 #[component]
-fn EntityGroup(title: String, entity_type: DocumentEntityType, items: Vec<DocumentEntityItem>) -> Element {
+fn EntityGroup(
+    title: String,
+    entity_type: DocumentEntityType,
+    items: Vec<DocumentEntityItem>,
+) -> Element {
     let group_items = items
         .into_iter()
         .filter(|i| i.entity_type == entity_type)
@@ -117,6 +122,9 @@ fn EntityGroup(title: String, entity_type: DocumentEntityType, items: Vec<Docume
 
 #[component]
 fn EntityChip(item: DocumentEntityItem) -> Element {
+    let page_controls = use_context::<ViewerPageControls>();
+    let on_find_query_changed = page_controls.on_find_query_changed.clone();
+
     rsx! {
         div {
             key: "{item.entity_type:?}-{item.value}-{item.hit_count}",
@@ -130,7 +138,14 @@ fn EntityChip(item: DocumentEntityItem) -> Element {
                 border-radius: 999px;
                 background: white;
                 max-width: 100%;
+                cursor: pointer;
             ",
+            class: "x-entity-chip",
+            onclick: move |_e| {
+                _e.prevent_default();
+                let new_query = format!("\"{}\"", item.value);
+                on_find_query_changed.call(new_query);
+            },
             div {
                 style: "
                     max-width: 260px;
@@ -163,4 +178,3 @@ async fn get_document_entities(
         .await
         .map_err(|e| ServerFnError::from(e))
 }
-

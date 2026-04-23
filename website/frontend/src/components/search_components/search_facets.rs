@@ -22,7 +22,7 @@ use dioxus_free_icons::icons::{
     go_icons::GoDatabase,
     md_communication_icons::MdLocationOn,
     md_editor_icons::MdInsertDriveFile,
-    md_navigation_icons::{MdApps, MdArrowDropDown},
+    md_navigation_icons::MdArrowDropDown,
 };
 
 #[derive(Clone, Copy)]

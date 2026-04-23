@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 
 #[component]
-pub fn DocumentPreviewSourceSelector(
+pub fn DocumentPreviewSourceSelectorDropdown(
     sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
     selected_source: ReadSignal<Option<DocumentSourceItem>>,
     on_source_selected: Callback<DocumentSourceItem>,
@@ -44,6 +44,34 @@ pub fn DocumentPreviewSourceSelector(
                         expand.set(false);
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn DocumentPreviewSourceSelectorList(
+    sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
+    selected_source: ReadSignal<Option<DocumentSourceItem>>,
+    on_source_selected: Callback<DocumentSourceItem>,
+) -> Element {
+    let sources = sources.read().clone().unwrap_or_default();
+    if sources.is_empty() {
+        return rsx! {
+            "No Sources!"
+        };
+    };
+    let Some(selected_source) = selected_source.read().clone() else {
+        return rsx! {
+            "No Selected Source!"
+        };
+    };
+    rsx! {
+        SelectedItemList {
+            sources,
+            selected_source,
+            on_source_selected: move |source: DocumentSourceItem| {
+                on_source_selected.call(source);
             }
         }
     }
@@ -104,8 +132,6 @@ fn SelectedItemDropdownDisplay(
     selected_item: ReadSignal<DocumentSourceItem>,
     expand: Signal<bool>,
 ) -> Element {
-
-
     rsx! {
         div {
             onclick: move |_e| {
@@ -140,13 +166,8 @@ fn SelectedItemDropdownDisplay(
     }
 }
 
-
 #[component]
-fn SourceItemRow(
-    source: ReadSignal<DocumentSourceItem>,
-    selected: bool,
-) -> Element {
-
+fn SourceItemRow(source: ReadSignal<DocumentSourceItem>, selected: bool) -> Element {
     let source = source.read().clone();
     let (icon, label, count) = match source {
         DocumentSourceItem::Text(source) => ("📄", source.extracted_by.clone(), 0),
@@ -158,7 +179,7 @@ fn SourceItemRow(
         _ => ("❓", format!("{:?}", source), 0),
     };
     let text_color = if selected { "#111" } else { "#333" };
-    let dot_icon = if selected {"✔"} else { "●"};
+    let dot_icon = if selected { "✔" } else { "●" };
 
     let count = if count == 0 {
         "".to_string()
@@ -166,11 +187,10 @@ fn SourceItemRow(
         count.to_string()
     };
 
-    rsx!{
+    rsx! {
         div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px;", {dot_icon} }
         div { style: "font-size: 16px; line-height: 24px; width: 24px;", "{icon}" }
         div { style: "flex-grow: 1; flex-shrink: 1; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
         div { style: "flex-shrink: 0;color: #333; font-weight: 400; font-size: 20px; line-height: 24px; margin-left: 4px;", "{count}" }
     }
-
 }

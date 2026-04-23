@@ -1,27 +1,22 @@
 //! Search page layout and wiring.
 
-use std::collections::{BTreeMap, BTreeSet};
 
 use dioxus::prelude::*;
 
 use crate::{
-    api::search_api::{search_for_results, search_for_results_hit_count},
     components::{
         document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot,
-        error_boundary::ComponentErrorDisplay,
         search_components::{
             search_input_top_bar::SearchInputTopBar, search_panel_left_view::SearchPanelLeftView,
-            search_result_item_card::SearchResultItemCard,
-            search_result_list_controls::SearchResultListControls,
         },
-        suspend_boundary::{LoadingIndicator, SuspendWrapper},
+        suspend_boundary::SuspendWrapper,
     },
     data_definitions::{doc_viewer_state::DocViewerState, url_param::UrlParam},
     routes::Route,
 };
 use common::{
     search_query::SearchQuery,
-    search_result::{DocumentIdentifier, SearchResultDocuments},
+    search_result::DocumentIdentifier,
 };
 
 fn title_ellipsis(title: String) -> String {
