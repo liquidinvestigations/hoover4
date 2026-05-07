@@ -1,6 +1,7 @@
 //! Search result card action buttons component.
 
 use common::search_result::DocumentIdentifier;
+use common::vfs::PathDescriptor;
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
@@ -89,11 +90,11 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
         let toast_api = dioxus_primitives::toast::consume_toast();
         spawn(async move {
             match get_document_first_vfs_path(document_identifier.clone()).await {
-                Ok(file_path) => {
-                    let parent_path = parent_folder_of(&file_path);
+                Ok(descriptor) => {
+                    let parent = descriptor.parent();
                     navigator().push(Route::FileBrowserPage {
                         collection: document_identifier.collection_dataset.clone(),
-                        path: UrlParam::from(parent_path),
+                        path: UrlParam::from(parent),
                     });
                 }
                 Err(e) => {
@@ -303,21 +304,10 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
     }
 }
 
-fn parent_folder_of(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-    match trimmed.rfind('/') {
-        Some(0) | None => "/".to_string(),
-        Some(idx) => trimmed[..idx].to_string(),
-    }
-}
-
 #[server]
 async fn get_document_first_vfs_path(
     document_identifier: DocumentIdentifier,
-) -> Result<String, ServerFnError> {
+) -> Result<PathDescriptor, ServerFnError> {
     backend::api::vfs::get_first_vfs_path(document_identifier)
         .await
         .map_err(|e| ServerFnError::ServerError {

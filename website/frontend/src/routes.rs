@@ -1,6 +1,7 @@
 //! Frontend route definitions.
 
 use common::search_result::DocumentIdentifier;
+use common::vfs::PathDescriptor;
 use dioxus::prelude::*;
 
 use crate::components::navbar::Navbar;
@@ -48,7 +49,7 @@ pub enum Route {
     #[route("/file_browser/:collection/:path")]
     FileBrowserPage {
         collection: String,
-        path: UrlParam<String>,
+        path: UrlParam<PathDescriptor>,
     },
 
     #[route("/chatbot")]

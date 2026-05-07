@@ -2,7 +2,7 @@
 
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
-use common::vfs::{VfsFileEntry, VfsListing};
+use common::vfs::{PathDescriptor, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
@@ -277,7 +277,7 @@ fn CollectionsTable(collections: Vec<String>) -> Element {
                                 Link {
                                     to: Route::FileBrowserPage {
                                         collection: collection.clone(),
-                                        path: UrlParam::from("/".to_string()),
+                                        path: UrlParam::from(PathDescriptor::root()),
                                     },
                                     style: FOLDER_LINK_STYLE,
                                     "{collection}"
@@ -294,7 +294,7 @@ fn CollectionsTable(collections: Vec<String>) -> Element {
 // ---------- File browser inside a collection ----------
 
 #[component]
-pub fn FileBrowserPage(collection: String, path: UrlParam<String>) -> Element {
+pub fn FileBrowserPage(collection: String, path: UrlParam<PathDescriptor>) -> Element {
     rsx! {
         Title { "Hoover Search - File Browser" }
         FileBrowserContent {
@@ -305,7 +305,10 @@ pub fn FileBrowserPage(collection: String, path: UrlParam<String>) -> Element {
 }
 
 #[component]
-fn FileBrowserContent(collection: ReadSignal<String>, path: ReadSignal<String>) -> Element {
+fn FileBrowserContent(
+    collection: ReadSignal<String>,
+    path: ReadSignal<PathDescriptor>,
+) -> Element {
     let mut listing_resource = use_resource(move || {
         let collection = collection();
         let path = path();
@@ -425,7 +428,7 @@ fn SidebarCollectionItem(collection: String, is_current: bool) -> Element {
         Link {
             to: Route::FileBrowserPage {
                 collection: collection.clone(),
-                path: UrlParam::from("/".to_string()),
+                path: UrlParam::from(PathDescriptor::root()),
             },
             style: item_style,
             span { style: ICON_STYLE, "🗄️" }
@@ -435,7 +438,7 @@ fn SidebarCollectionItem(collection: String, is_current: bool) -> Element {
 }
 
 #[component]
-fn Breadcrumbs(collection: String, path: String) -> Element {
+fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
     let segments = path_segments(&path);
     rsx! {
         div {
@@ -448,18 +451,18 @@ fn Breadcrumbs(collection: String, path: String) -> Element {
             Link {
                 to: Route::FileBrowserPage {
                     collection: collection.clone(),
-                    path: UrlParam::from("/".to_string()),
+                    path: UrlParam::from(PathDescriptor::root()),
                 },
                 style: CRUMB_LINK_STYLE,
                 "{collection}"
             }
-            for (name, full_path) in segments.iter() {
+            for (name, descriptor) in segments.iter() {
                 span { style: CRUMB_SEP_STYLE, "›" }
                 Link {
-                    key: "crumb-{full_path}",
+                    key: "crumb-{descriptor}",
                     to: Route::FileBrowserPage {
                         collection: collection.clone(),
-                        path: UrlParam::from(full_path.clone()),
+                        path: UrlParam::from(descriptor.clone()),
                     },
                     style: CRUMB_LINK_STYLE,
                     "{name}"
@@ -469,8 +472,8 @@ fn Breadcrumbs(collection: String, path: String) -> Element {
     }
 }
 
-fn path_segments(path: &str) -> Vec<(String, String)> {
-    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
+fn path_segments(path: &PathDescriptor) -> Vec<(String, PathDescriptor)> {
+    let trimmed = path.path.trim_start_matches('/').trim_end_matches('/');
     if trimmed.is_empty() {
         return Vec::new();
     }
@@ -479,7 +482,13 @@ fn path_segments(path: &str) -> Vec<(String, String)> {
     for part in trimmed.split('/') {
         current.push('/');
         current.push_str(part);
-        result.push((part.to_string(), current.clone()));
+        result.push((
+            part.to_string(),
+            PathDescriptor {
+                container_hash: path.container_hash.clone(),
+                path: current.clone(),
+            },
+        ));
     }
     result
 }
@@ -630,7 +639,7 @@ fn PreviewPane(selected_file: Option<DocumentIdentifier>) -> Element {
 #[server]
 async fn list_folder_children(
     collection_dataset: String,
-    path: String,
+    path: PathDescriptor,
 ) -> Result<VfsListing, ServerFnError> {
     backend::api::vfs::list_folder_children(collection_dataset, path)
         .await
