@@ -33,11 +33,25 @@ pub fn DocumentPreviewForSearchRoot(
             no_document_selected::NoDocumentSelected {}
         };
     };
-    let document_identifier: ReadSignal<DocumentIdentifier> =
-        use_signal(move || document_identifier_value.clone()).into();
+    rsx! {
+        DocumentPreviewForSearchContent {query, document_identifier: document_identifier_value}
+    }
+}
+
+#[component]
+fn DocumentPreviewForSearchContent(
+    query: ReadSignal<SearchQuery>,
+    document_identifier: ReadSignal<DocumentIdentifier>,
+) -> Element {
+
+
+    dioxus::logger::tracing::info!("DocumentPreviewForSearchRoot selected_result_hash: {:?}", document_identifier);
+
+
+
 
     let mut doc_sources: Resource<Vec<DocumentSourceItem>> = use_resource(move || {
-        let document_identifier = selected_result_hash.peek().clone();
+        let document_identifier = Some(document_identifier.read().clone());
         async move {
             let Some(document_identifier) = document_identifier else {
                 return vec![];
@@ -48,7 +62,7 @@ pub fn DocumentPreviewForSearchRoot(
         }
     });
     use_effect(move || {
-        let _document_identifier = selected_result_hash.read().clone();
+        let _document_identifier = Some(document_identifier.read().clone());
         // let Some(_document_identifier) = document_identifier else { return };
         doc_sources.clear();
         doc_sources.restart();

@@ -46,10 +46,12 @@ pub enum Route {
     #[route("/file_browser")]
     FileBrowserCollectionsPage {},
 
-    #[route("/file_browser/:collection/:path")]
+    #[route("/file_browser/:collection/:path/:selected_result_hash/:doc_viewer_state")]
     FileBrowserPage {
         collection: String,
         path: UrlParam<PathDescriptor>,
+        selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
+        doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
 
     #[route("/chatbot")]
@@ -65,6 +67,17 @@ impl Route {
         Self::SearchPage {
             query: UrlParam::from(q),
             current_search_result_page: 0_u64,
+            selected_result_hash: UrlParam::from(None),
+            doc_viewer_state: UrlParam::from(None),
+        }
+    }
+
+    /// Construct a [`Route::FileBrowserPage`] for navigating to a folder,
+    /// with no document selected and the default viewer state.
+    pub fn file_browser_page(collection: String, path: PathDescriptor) -> Self {
+        Self::FileBrowserPage {
+            collection,
+            path: UrlParam::from(path),
             selected_result_hash: UrlParam::from(None),
             doc_viewer_state: UrlParam::from(None),
         }

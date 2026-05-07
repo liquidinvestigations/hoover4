@@ -167,9 +167,9 @@ const TH_ACTIONS_STYLE: &str = "
     width: 110px;
 ";
 
-const ROW_STYLE: &str = "background: #FFFFFF;";
-const ROW_HOVER_FILE_STYLE: &str = "background: #FFFFFF; cursor: pointer;";
+const ROW_CLICKABLE_STYLE: &str = "background: #FFFFFF; cursor: pointer;";
 const ROW_SELECTED_STYLE: &str = "background: #EEF2FF; cursor: pointer;";
+const ROW_HOVER_CLASS: &str = "hoover4-hover-shadow-background";
 
 const TD_NAME_STYLE: &str = "
     padding: 14px 20px;
@@ -267,24 +267,35 @@ fn CollectionsTable(collections: Vec<String>) -> Element {
             }
             tbody {
                 for collection in collections.iter() {
-                    tr {
+                    CollectionRow {
                         key: "collection-{collection}",
-                        td {
-                            style: TD_NAME_STYLE,
-                            div {
-                                style: NAME_INNER_STYLE,
-                                span { style: ICON_STYLE, "🗄️" }
-                                Link {
-                                    to: Route::FileBrowserPage {
-                                        collection: collection.clone(),
-                                        path: UrlParam::from(PathDescriptor::root()),
-                                    },
-                                    style: FOLDER_LINK_STYLE,
-                                    "{collection}"
-                                }
-                            }
-                        }
+                        collection: collection.clone(),
                     }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CollectionRow(collection: String) -> Element {
+    let target_collection = collection.clone();
+    rsx! {
+        tr {
+            style: ROW_CLICKABLE_STYLE,
+            class: ROW_HOVER_CLASS,
+            onclick: move |_| {
+                navigator().push(Route::file_browser_page(
+                    target_collection.clone(),
+                    PathDescriptor::root(),
+                ));
+            },
+            td {
+                style: TD_NAME_STYLE,
+                div {
+                    style: NAME_INNER_STYLE,
+                    span { style: ICON_STYLE, "🗄️" }
+                    span { style: FOLDER_LINK_STYLE, "{collection}" }
                 }
             }
         }
@@ -294,12 +305,19 @@ fn CollectionsTable(collections: Vec<String>) -> Element {
 // ---------- File browser inside a collection ----------
 
 #[component]
-pub fn FileBrowserPage(collection: String, path: UrlParam<PathDescriptor>) -> Element {
+pub fn FileBrowserPage(
+    collection: String,
+    path: UrlParam<PathDescriptor>,
+    selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
+    doc_viewer_state: UrlParam<Option<DocViewerState>>,
+) -> Element {
     rsx! {
         Title { "Hoover Search - File Browser" }
         FileBrowserContent {
             collection: collection,
             path: path.0,
+            selected_result_hash: selected_result_hash.0,
+            doc_viewer_state: doc_viewer_state.0,
         }
     }
 }
@@ -308,6 +326,8 @@ pub fn FileBrowserPage(collection: String, path: UrlParam<PathDescriptor>) -> El
 fn FileBrowserContent(
     collection: ReadSignal<String>,
     path: ReadSignal<PathDescriptor>,
+    selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
+    doc_viewer_state: ReadSignal<Option<DocViewerState>>,
 ) -> Element {
     let mut listing_resource = use_resource(move || {
         let collection = collection();
@@ -321,29 +341,47 @@ fn FileBrowserContent(
         listing_resource.restart();
     });
 
-    let mut selected_file = use_signal(|| None::<DocumentIdentifier>);
-    let mut doc_viewer_state_signal = use_signal(|| None::<DocViewerState>);
-    use_effect(move || {
-        let _ = collection();
-        let _ = path();
-        selected_file.set(None);
-        doc_viewer_state_signal.set(None);
-    });
-
     use_context_provider(move || DocViewerStateControl {
-        doc_viewer_state: doc_viewer_state_signal.into(),
+        doc_viewer_state: doc_viewer_state.into(),
         set_doc_viewer_state: Callback::new(move |state: DocViewerState| {
-            doc_viewer_state_signal.set(Some(state));
+            let next = Route::FileBrowserPage {
+                collection: collection.read().clone(),
+                path: path.read().clone().into(),
+                selected_result_hash: selected_result_hash.read().clone().into(),
+                doc_viewer_state: Some(state.clone()).into(),
+            };
+            // if let Some(old_state) = doc_viewer_state.read().clone() {
+            //     if old_state == state {
+            //         return;
+            //     }
+            //     navigator().push(next);
+            // } else {
+                navigator().replace(next);
+            // }
         }),
     });
 
     let on_file_click = Callback::new(move |doc_id: DocumentIdentifier| {
-        selected_file.set(Some(doc_id));
+        // let already_selected = selected_result_hash
+        //     .read()
+        //     .as_ref()
+        //     .is_some_and(|s| s == &doc_id);
+        // if already_selected {
+        //     return;
+        // }
+        dioxus::logger::tracing::info!("on_file_click2: {:?}", doc_id);
+        navigator().replace(Route::FileBrowserPage {
+            collection: collection.read().clone(),
+            path: path.read().clone().into(),
+            selected_result_hash: Some(doc_id).into(),
+            doc_viewer_state: UrlParam::from(None),
+        });
     });
 
     let collection_value = collection();
     let path_value = path();
-    let selected_value = selected_file.read().clone();
+    let selected_value = selected_result_hash.read().clone();
+    dioxus::logger::tracing::info!("selected_value: {:?}", selected_value);
 
     let listing_view = match listing_resource.read().clone() {
         None => rsx! { div { padding: "20px", "Loading..." } },
@@ -426,11 +464,9 @@ fn SidebarCollectionItem(collection: String, is_current: bool) -> Element {
     };
     rsx! {
         Link {
-            to: Route::FileBrowserPage {
-                collection: collection.clone(),
-                path: UrlParam::from(PathDescriptor::root()),
-            },
+            to: Route::file_browser_page(collection.clone(), PathDescriptor::root()),
             style: item_style,
+            class: ROW_HOVER_CLASS,
             span { style: ICON_STYLE, "🗄️" }
             span { "{collection}" }
         }
@@ -450,10 +486,7 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 "Browsing"
             }
             Link {
-                to: Route::FileBrowserPage {
-                    collection: collection.clone(),
-                    path: UrlParam::from(PathDescriptor::root()),
-                },
+                to: Route::file_browser_page(collection.clone(), PathDescriptor::root()),
                 style: CRUMB_LINK_STYLE,
                 "{collection}"
             }
@@ -467,10 +500,7 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 span { style: CRUMB_SEP_STYLE, "›" }
                 Link {
                     key: "crumb-{descriptor}",
-                    to: Route::FileBrowserPage {
-                        collection: collection.clone(),
-                        path: UrlParam::from(descriptor.clone()),
-                    },
+                    to: Route::file_browser_page(collection.clone(), descriptor.clone()),
                     style: CRUMB_LINK_STYLE,
                     "{name}"
                 }
@@ -517,10 +547,7 @@ fn ContainerBreadcrumb(collection: String, container_hash: String) -> Element {
     rsx! {
         span { style: CRUMB_SEP_STYLE, "›" }
         Link {
-            to: Route::FileBrowserPage {
-                collection: collection.clone(),
-                path: UrlParam::from(parent_descriptor),
-            },
+            to: Route::file_browser_page(collection.clone(), parent_descriptor),
             style: CRUMB_LINK_STYLE,
             title: "{descriptor.path}",
             "📦 {label}"
@@ -587,26 +614,11 @@ fn ListingTable(
             }
             tbody {
                 for dir in listing.directories.iter() {
-                    tr {
+                    DirRow {
                         key: "dir-{dir.path}",
-                        style: ROW_STYLE,
-                        td {
-                            style: TD_NAME_STYLE,
-                            div {
-                                style: NAME_INNER_STYLE,
-                                span { style: ICON_STYLE, "📁" }
-                                Link {
-                                    to: Route::FileBrowserPage {
-                                        collection: collection.clone(),
-                                        path: UrlParam::from(dir.path.clone()),
-                                    },
-                                    style: FOLDER_LINK_STYLE,
-                                    "{dir.name}"
-                                }
-                            }
-                        }
-                        td { style: TD_SIZE_STYLE, "" }
-                        td { style: TD_ACTIONS_STYLE, "" }
+                        collection: collection.clone(),
+                        name: dir.name.clone(),
+                        path: dir.path.clone(),
                     }
                 }
                 for file in listing.files.iter() {
@@ -626,6 +638,34 @@ fn ListingTable(
 }
 
 #[component]
+fn DirRow(collection: String, name: String, path: PathDescriptor) -> Element {
+    let target_path = path.clone();
+    let target_collection = collection.clone();
+    rsx! {
+        tr {
+            style: ROW_CLICKABLE_STYLE,
+            class: ROW_HOVER_CLASS,
+            onclick: move |_| {
+                navigator().push(Route::file_browser_page(
+                    target_collection.clone(),
+                    target_path.clone(),
+                ));
+            },
+            td {
+                style: TD_NAME_STYLE,
+                div {
+                    style: NAME_INNER_STYLE,
+                    span { style: ICON_STYLE, "📁" }
+                    span { style: FOLDER_LINK_STYLE, "{name}" }
+                }
+            }
+            td { style: TD_SIZE_STYLE, "" }
+            td { style: TD_ACTIONS_STYLE, "" }
+        }
+    }
+}
+
+#[component]
 fn FileRow(
     collection: String,
     file: VfsFileEntry,
@@ -635,8 +675,9 @@ fn FileRow(
     let row_style = if is_selected {
         ROW_SELECTED_STYLE
     } else {
-        ROW_HOVER_FILE_STYLE
+        ROW_CLICKABLE_STYLE
     };
+    let row_class = if is_selected { "" } else { ROW_HOVER_CLASS };
     let click_doc_id = DocumentIdentifier {
         collection_dataset: collection.clone(),
         file_hash: file.hash.clone(),
@@ -645,7 +686,9 @@ fn FileRow(
     rsx! {
         tr {
             style: row_style,
+            class: row_class,
             onclick: move |_| {
+                dioxus::logger::tracing::info!("FileRow onclick: {:?}", click_doc_id.read().clone());
                 on_file_click.call(click_doc_id.read().clone());
             },
             td {
@@ -676,16 +719,13 @@ fn FileRow(
 // ---------- Right-hand preview pane ----------
 
 #[component]
-fn PreviewPane(selected_file: Option<DocumentIdentifier>) -> Element {
-    let Some(file_id) = selected_file else {
-        return rsx! { NoDocumentSelected {} };
-    };
+fn PreviewPane(selected_file: ReadSignal<Option<DocumentIdentifier>>) -> Element {
+
+    dioxus::logger::tracing::info!("PreviewPane selected_file: {:?}", selected_file);
     rsx! {
-        SuspendWrapper {
-            DocumentPreviewForSearchRoot {
-                query: SearchQuery::default(),
-                selected_result_hash: Some(file_id),
-            }
+        DocumentPreviewForSearchRoot {
+            query: SearchQuery::default(),
+            selected_result_hash: selected_file,
         }
     }
 }

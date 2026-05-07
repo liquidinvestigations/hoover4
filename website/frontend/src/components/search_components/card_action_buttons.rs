@@ -12,7 +12,7 @@ use dioxus_free_icons::{
 };
 
 use crate::{
-    data_definitions::{doc_viewer_state::ViewerRightTabState, url_param::UrlParam},
+    data_definitions::doc_viewer_state::ViewerRightTabState,
     routes::Route,
 };
 
@@ -92,10 +92,10 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
             match get_document_first_vfs_path(document_identifier.clone()).await {
                 Ok(descriptor) => {
                     let parent = descriptor.parent();
-                    navigator().push(Route::FileBrowserPage {
-                        collection: document_identifier.collection_dataset.clone(),
-                        path: UrlParam::from(parent),
-                    });
+                    navigator().push(Route::file_browser_page(
+                        document_identifier.collection_dataset.clone(),
+                        parent,
+                    ));
                 }
                 Err(e) => {
                     dioxus::logger::tracing::error!(
