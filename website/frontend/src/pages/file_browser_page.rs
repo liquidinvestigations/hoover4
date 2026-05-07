@@ -440,6 +440,7 @@ fn SidebarCollectionItem(collection: String, is_current: bool) -> Element {
 #[component]
 fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
     let segments = path_segments(&path);
+    let container_hash = path.container_hash.clone();
     rsx! {
         div {
             style: BREADCRUMB_BAR_STYLE,
@@ -456,6 +457,12 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 style: CRUMB_LINK_STYLE,
                 "{collection}"
             }
+            if !container_hash.is_empty() {
+                ContainerBreadcrumb {
+                    collection: collection.clone(),
+                    container_hash: container_hash.clone(),
+                }
+            }
             for (name, descriptor) in segments.iter() {
                 span { style: CRUMB_SEP_STYLE, "›" }
                 Link {
@@ -468,6 +475,55 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                     "{name}"
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn ContainerBreadcrumb(collection: String, container_hash: String) -> Element {
+    let collection_for_lookup = collection.clone();
+    let container_hash_for_lookup = container_hash.clone();
+    let descriptor_resource = use_resource(move || {
+        let collection = collection_for_lookup.clone();
+        let container_hash = container_hash_for_lookup.clone();
+        async move {
+            lookup_container_descriptor(DocumentIdentifier {
+                collection_dataset: collection,
+                file_hash: container_hash,
+            })
+            .await
+        }
+    });
+
+    let descriptor = match descriptor_resource.read().clone() {
+        Some(Ok(d)) => d,
+        _ => {
+            return rsx! {
+                span { style: CRUMB_SEP_STYLE, "›" }
+                span {
+                    style: CRUMB_LABEL_STYLE,
+                    "[{container_hash:.8}…]"
+                }
+            };
+        }
+    };
+    let label = descriptor
+        .path
+        .rsplit('/')
+        .find(|s| !s.is_empty())
+        .unwrap_or("(container)")
+        .to_string();
+    let parent_descriptor = descriptor.parent();
+    rsx! {
+        span { style: CRUMB_SEP_STYLE, "›" }
+        Link {
+            to: Route::FileBrowserPage {
+                collection: collection.clone(),
+                path: UrlParam::from(parent_descriptor),
+            },
+            style: CRUMB_LINK_STYLE,
+            title: "{descriptor.path}",
+            "📦 {label}"
         }
     }
 }
@@ -642,6 +698,19 @@ async fn list_folder_children(
     path: PathDescriptor,
 ) -> Result<VfsListing, ServerFnError> {
     backend::api::vfs::list_folder_children(collection_dataset, path)
+        .await
+        .map_err(|e| ServerFnError::ServerError {
+            message: e.to_string(),
+            code: 500,
+            details: None,
+        })
+}
+
+#[server]
+async fn lookup_container_descriptor(
+    document_identifier: DocumentIdentifier,
+) -> Result<PathDescriptor, ServerFnError> {
+    backend::api::vfs::get_first_vfs_path(document_identifier)
         .await
         .map_err(|e| ServerFnError::ServerError {
             message: e.to_string(),
