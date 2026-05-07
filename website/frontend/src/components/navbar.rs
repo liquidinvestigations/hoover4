@@ -103,7 +103,11 @@ fn NavbarTopIconLinks() -> Element {
             ",
             IconLink { to: Route::HomePage { }, icon: MdHome, label: "Home" }
             IconLink { to: Route::search_page_from_query(SearchQuery::default()), icon: MdSearch, label: "Search" }
-            IconLink { to: Route::FileBrowserPage { }, icon: MdFolder, label: "File Browser" }
+            IconLink {
+                to: Route::FileBrowserCollectionsPage {},
+                icon: MdFolder,
+                label: "File Browser",
+            }
             // IconLink { to: Route::ChatbotPage { }, icon: MdChat, label: "Chatbot" }
         }
     }

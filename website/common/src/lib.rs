@@ -10,3 +10,4 @@ pub mod search_const;
 pub mod search_query;
 pub mod search_result;
 pub mod text_highlight;
+pub mod vfs;

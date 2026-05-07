@@ -10,7 +10,10 @@ use dioxus_free_icons::{
     },
 };
 
-use crate::{data_definitions::doc_viewer_state::ViewerRightTabState, routes::Route};
+use crate::{
+    data_definitions::{doc_viewer_state::ViewerRightTabState, url_param::UrlParam},
+    routes::Route,
+};
 
 #[component]
 pub fn DocCardActionButtonOpenNewTab(
@@ -80,6 +83,34 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                 .duration(std::time::Duration::from_secs(15))
                 .permanent(false),
         );
+    });
+    let do_open_in_file_browser = use_callback(move |_: ()| {
+        let document_identifier = document_identifier.read().clone();
+        let toast_api = dioxus_primitives::toast::consume_toast();
+        spawn(async move {
+            match get_document_first_vfs_path(document_identifier.clone()).await {
+                Ok(file_path) => {
+                    let parent_path = parent_folder_of(&file_path);
+                    navigator().push(Route::FileBrowserPage {
+                        collection: document_identifier.collection_dataset.clone(),
+                        path: UrlParam::from(parent_path),
+                    });
+                }
+                Err(e) => {
+                    dioxus::logger::tracing::error!(
+                        "Failed to look up VFS path for document: {:#?}",
+                        e
+                    );
+                    toast_api.error(
+                        "Could not open in file browser.".to_string(),
+                        dioxus_primitives::toast::ToastOptions::new()
+                            .description(format!("{}", e))
+                            .duration(std::time::Duration::from_secs(15))
+                            .permanent(false),
+                    );
+                }
+            }
+        });
     });
     rsx! {
         div {
@@ -230,9 +261,68 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                             },
                             "Download Document"
                         },
+                        div {
+                            style: "width: 100%; border-bottom: 1px solid rgba(0, 0, 0, 0.5);",
+                        }
+                        div {
+                            style: "
+                            padding: 2px;
+                            padding-left: 10px;
+                            margin: 2px;
+                            cursor: pointer;
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 10px;
+                            ",
+                            class: "hoover4-hover-shadow-background",
+                            onclick: move |_e| {
+                                _e.prevent_default();
+                                _e.stop_propagation();
+                                do_open_in_file_browser.call(());
+                                *is_expanded.write() = false;
+                            },
+
+                            span {
+                                style: "
+                                    font-size: 18px;
+                                    width: 20px;
+                                    height: 20px;
+                                    display: inline-flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                ",
+                                "📁"
+                            }
+                            "Open in File Browser"
+                        },
                     }
                 }
             }
         }
     }
+}
+
+fn parent_folder_of(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    match trimmed.rfind('/') {
+        Some(0) | None => "/".to_string(),
+        Some(idx) => trimmed[..idx].to_string(),
+    }
+}
+
+#[server]
+async fn get_document_first_vfs_path(
+    document_identifier: DocumentIdentifier,
+) -> Result<String, ServerFnError> {
+    backend::api::vfs::get_first_vfs_path(document_identifier)
+        .await
+        .map_err(|e| ServerFnError::ServerError {
+            message: e.to_string(),
+            code: 500,
+            details: None,
+        })
 }

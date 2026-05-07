@@ -5,7 +5,7 @@ pub mod doc_preview_for_email;
 pub mod doc_preview_for_pdf;
 pub mod doc_preview_for_text;
 pub mod doc_preview_source_selector;
-mod no_document_selected;
+pub mod no_document_selected;
 mod text_data_viewer;
 pub mod text_preview_with_search;
 

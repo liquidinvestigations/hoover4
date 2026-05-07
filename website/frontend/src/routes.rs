@@ -9,7 +9,7 @@ use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::chatbot_page::ChatbotPage;
-use crate::pages::file_browser_page::FileBrowserPage;
+use crate::pages::file_browser_page::{FileBrowserCollectionsPage, FileBrowserPage};
 use crate::pages::home_page::HomePage;
 use crate::pages::pdfdemo_page::PdfDemoPage;
 use crate::pages::search_page::SearchPage;
@@ -43,7 +43,13 @@ pub enum Route {
 
 
     #[route("/file_browser")]
-    FileBrowserPage {  },
+    FileBrowserCollectionsPage {},
+
+    #[route("/file_browser/:collection/:path")]
+    FileBrowserPage {
+        collection: String,
+        path: UrlParam<String>,
+    },
 
     #[route("/chatbot")]
     ChatbotPage {  },
