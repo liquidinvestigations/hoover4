@@ -1,6 +1,5 @@
 //! Search page layout and wiring.
 
-
 use dioxus::prelude::*;
 
 use crate::{
@@ -14,10 +13,7 @@ use crate::{
     data_definitions::{doc_viewer_state::DocViewerState, url_param::UrlParam},
     routes::Route,
 };
-use common::{
-    search_query::SearchQuery,
-    search_result::DocumentIdentifier,
-};
+use common::{search_query::SearchQuery, search_result::DocumentIdentifier};
 
 fn title_ellipsis(title: String) -> String {
     if title.len() > 20 {

@@ -11,10 +11,7 @@ use dioxus_free_icons::{
     },
 };
 
-use crate::{
-    data_definitions::doc_viewer_state::ViewerRightTabState,
-    routes::Route,
-};
+use crate::{data_definitions::doc_viewer_state::ViewerRightTabState, routes::Route};
 
 #[component]
 pub fn DocCardActionButtonOpenNewTab(

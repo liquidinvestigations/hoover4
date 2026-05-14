@@ -1,23 +1,15 @@
 //! Search result item card component.
 
-use common::{
-    search_result::SearchResultDocumentItem,
-    text_highlight::HighlightTextSpan,
-};
+use common::{search_result::SearchResultDocumentItem, text_highlight::HighlightTextSpan};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::{
-        go_icons::GoDatabase,
-        md_editor_icons::MdInsertDriveFile,
-    },
+    icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile},
 };
 
-use crate::{
-    components::search_components::{
-        card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab},
-        search_panel_left_view::SearchResultsState,
-    },
+use crate::components::search_components::{
+    card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab},
+    search_panel_left_view::SearchResultsState,
 };
 
 #[component]

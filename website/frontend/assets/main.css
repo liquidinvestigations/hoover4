@@ -85,26 +85,7 @@ html, body, #main {
         zoom: 0.93;
     }
 }
-@media screen and (min-width: 2000px) {
-    #x-nav-container {
-        zoom: 1.04;
-    }
-}
-@media screen and (min-width: 2300px) {
-    #x-nav-container {
-        zoom: 1.19;
-    }
-}
-@media screen and (min-width: 2600px) {
-    #x-nav-container {
-        zoom: 1.35;
-    }
-}
-@media screen and (min-width: 2900px) {
-    #x-nav-container {
-        zoom: 1.51;
-    }
-}
+
 
 #x-nav-sidebar {
     width:15rem;

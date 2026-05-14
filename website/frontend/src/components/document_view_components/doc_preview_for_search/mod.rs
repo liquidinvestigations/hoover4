@@ -43,12 +43,10 @@ fn DocumentPreviewForSearchContent(
     query: ReadSignal<SearchQuery>,
     document_identifier: ReadSignal<DocumentIdentifier>,
 ) -> Element {
-
-
-    dioxus::logger::tracing::info!("DocumentPreviewForSearchRoot selected_result_hash: {:?}", document_identifier);
-
-
-
+    dioxus::logger::tracing::info!(
+        "DocumentPreviewForSearchRoot selected_result_hash: {:?}",
+        document_identifier
+    );
 
     let mut doc_sources: Resource<Vec<DocumentSourceItem>> = use_resource(move || {
         let document_identifier = Some(document_identifier.read().clone());

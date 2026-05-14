@@ -1,5 +1,6 @@
 use common::document_sources::DocumentSourceItem;
 use dioxus::prelude::*;
+use dioxus_free_icons::{IconShape, icons::{md_action_icons::MdQuestionAnswer, md_communication_icons::MdEmail, md_file_icons::MdTextSnippet, md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo}, md_navigation_icons::MdCheck, md_toggle_icons::MdRadioButtonUnchecked}};
 
 use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 
@@ -170,16 +171,28 @@ fn SelectedItemDropdownDisplay(
 fn SourceItemRow(source: ReadSignal<DocumentSourceItem>, selected: bool) -> Element {
     let source = source.read().clone();
     let (icon, label, count) = match source {
-        DocumentSourceItem::Text(source) => ("📄", source.extracted_by.clone(), 0),
-        DocumentSourceItem::Pdf(_source) => ("📑", "PDF".to_string(), 0),
-        DocumentSourceItem::Email(_source) => ("✉", "Email".to_string(), 0),
-        DocumentSourceItem::Image(_source) => ("📷", "Image".to_string(), 0),
-        DocumentSourceItem::Audio(_source) => ("🎧", "Audio".to_string(), 0),
-        DocumentSourceItem::Video(_source) => ("🎥", "Video".to_string(), 0),
-        _ => ("❓", format!("{:?}", source), 0),
+        DocumentSourceItem::Text(source) => (
+            _item_icon_rsx(MdTextSnippet),
+            source.extracted_by.clone(),
+            0,
+        ),
+        DocumentSourceItem::Pdf(_source) => (_item_icon_rsx(MdPictureAsPdf), "PDF".to_string(), 0),
+        DocumentSourceItem::Email(_source) => {
+            (_item_icon_rsx(MdEmail), "Email".to_string(), 0)
+        }
+        DocumentSourceItem::Image(_source) => {
+            (_item_icon_rsx(MdImage), "Image".to_string(), 0)
+        }
+        DocumentSourceItem::Audio(_source) => {
+            (_item_icon_rsx(MdAudiotrack), "Audio".to_string(), 0)
+        }
+        DocumentSourceItem::Video(_source) => {
+            (_item_icon_rsx(MdSwitchVideo), "Video".to_string(), 0)
+        }
+        _ => (_item_icon_rsx(MdQuestionAnswer), format!("{:?}", source), 0),
     };
     let text_color = if selected { "#111" } else { "#333" };
-    let dot_icon = if selected { "✔" } else { "●" };
+    let dot_icon = if selected { _item_icon_rsx(MdCheck) } else { _item_icon_rsx(MdRadioButtonUnchecked) };
 
     let count = if count == 0 {
         "".to_string()
@@ -189,8 +202,19 @@ fn SourceItemRow(source: ReadSignal<DocumentSourceItem>, selected: bool) -> Elem
 
     rsx! {
         div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px;", {dot_icon} }
-        div { style: "font-size: 16px; line-height: 24px; width: 24px;", "{icon}" }
+        div { style: "font-size: 16px; line-height: 24px; width: 24px;", {icon} }
         div { style: "flex-grow: 1; flex-shrink: 1; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
         div { style: "flex-shrink: 0;color: #333; font-weight: 400; font-size: 20px; line-height: 24px; margin-left: 4px;", "{count}" }
+    }
+}
+
+fn _item_icon_rsx<T: IconShape + Clone + PartialEq + 'static>(icon: T) -> Element {
+    rsx! {
+        dioxus_free_icons::Icon {
+            icon: icon,
+            style: "width: 24px; height: 24px;",
+            width: 24,
+            height: 24,
+        }
     }
 }

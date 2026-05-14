@@ -20,7 +20,6 @@ pub struct PreviewExtraSections {
     pub wrapper_fn: fn(Element, Element) -> Element,
 }
 
-
 #[component]
 pub fn ProvidePreviewExtraSections(
     find_query_input_box: Element,

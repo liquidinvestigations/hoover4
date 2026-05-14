@@ -9,8 +9,7 @@ pub const SQL_FROM_CLAUSE: &str = "
     AND doc_text_pages.file_hash = doc_metadata.file_hash
 ";
 
-pub const SQL_OPTIONS_CLAUSE: &str =
-    "OPTION agent_query_timeout=60000,max_query_time=60000";
+pub const SQL_OPTIONS_CLAUSE: &str = "OPTION agent_query_timeout=60000,max_query_time=60000";
 
 pub fn build_sql_where_clause(query: &SearchQuery) -> String {
     // automatically quote all @ symbols in the query string to avoid problems with FIELD SELECTOR manticore operator

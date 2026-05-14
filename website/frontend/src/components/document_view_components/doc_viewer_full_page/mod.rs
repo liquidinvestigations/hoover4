@@ -11,9 +11,7 @@ use crate::{
     components::document_view_components::{
         doc_preview_for_search::{
             doc_preview_find_query::DocPreviewFindQueryInputBox,
-            doc_preview_source_selector::
-                DocumentPreviewSourceSelectorList
-            ,
+            doc_preview_source_selector::DocumentPreviewSourceSelectorList,
         },
         doc_title_bar::DocTitleBar,
         doc_viewer_full_page::{
@@ -21,9 +19,7 @@ use crate::{
             raw_metadata_collector::RawMetadataCollector,
         },
     },
-    data_definitions::
-        doc_viewer_state::{ViewerRightTabSelection, ViewerRightTabState}
-    ,
+    data_definitions::doc_viewer_state::{ViewerRightTabSelection, ViewerRightTabState},
     routes::Route,
 };
 

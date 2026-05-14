@@ -51,11 +51,12 @@ fn _do_decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
                 return;
             }
             if let Some(last) = spans.last_mut()
-                && last.is_highlighted == highlighted {
-                    last.text.push_str(buffer);
-                    buffer.clear();
-                    return;
-                }
+                && last.is_highlighted == highlighted
+            {
+                last.text.push_str(buffer);
+                buffer.clear();
+                return;
+            }
             spans.push(HighlightTextSpan {
                 text: std::mem::take(buffer),
                 is_highlighted: highlighted,

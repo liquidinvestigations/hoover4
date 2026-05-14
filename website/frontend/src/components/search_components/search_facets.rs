@@ -19,9 +19,7 @@ use crate::{
     components::{error_boundary::ComponentErrorDisplay, suspend_boundary::SuspendWrapper},
 };
 use dioxus_free_icons::icons::{
-    go_icons::GoDatabase,
-    md_communication_icons::MdLocationOn,
-    md_editor_icons::MdInsertDriveFile,
+    go_icons::GoDatabase, md_communication_icons::MdLocationOn, md_editor_icons::MdInsertDriveFile,
     md_navigation_icons::MdArrowDropDown,
 };
 

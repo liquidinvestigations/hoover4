@@ -4,9 +4,7 @@ use common::search_const::{MAX_PAGINATION_DOCUMENT_LIMIT, PAGE_SIZE};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::md_navigation_icons::{
-        MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward,
-    },
+    icons::md_navigation_icons::{MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward},
 };
 use dioxus_primitives::{ContentAlign, ContentSide};
 

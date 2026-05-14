@@ -1,6 +1,6 @@
 use common::{document_sources::DocumentPdfSourceItem, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
-use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
+use dioxus_free_icons::{IconShape, icons::{md_action_icons::{MdZoomIn, MdZoomOut}, md_navigation_icons::{MdArrowDownward, MdArrowUpward}}};
 
 use crate::{
     components::{
@@ -159,7 +159,12 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
         div {
             style: "position: relative; width: 0; height: 0; bottom: 0; right: 0; float: right; z-index: 100;",
             div {
-                style: "position: absolute; bottom: 20px; right: 20px; background: white; border: 1px solid #ccc; border-radius: 8px; display: flex; flex-direction: column; align-items: center; padding: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 40px;",
+                    style: "
+                    position: absolute; bottom: 20px;
+                    right: 20px; background: white; border: 1px solid #ccc; border-radius: 8px; display: flex;
+                    flex-direction: column; align-items: center; padding: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    width: 40px;
+                ",
 
                 div {
                     style: "font-size: 14px; font-weight: bold; margin-bottom: 4px; padding: 4px; border-bottom: 1px solid #eee; width: 100%; text-align: center;",
@@ -194,7 +199,7 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                         set_page.call(current_page() - 1);
                     },
                     disabled: current_page() <= 1,
-                    "🔼"
+                    {_icon_rsx(MdArrowUpward)}
                 }
 
                 button {
@@ -203,7 +208,7 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                         set_page.call(current_page() + 1);
                     },
                     disabled: current_page() >= total_pages(),
-                    "🔽"
+                    {_icon_rsx(MdArrowDownward)}
                 }
 
                 button {
@@ -211,18 +216,37 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                     onclick: move |_| {
                         zoom_in.call(());
                     },
-                    "➕"
+                    {_icon_rsx(MdZoomIn)}
                 }
-                div {"{zoom_state()}"}
+                div {
+                    style: "width: 100%; container-type:size; height: 28px; text-align: center;",
+                    div {
+                        style: "font-size: 14px; min-height: 28px; text-align: center; line-height: 28px;",
+                        "{zoom_state()}"
+                    }
+                }
 
                 button {
                     style: "background: none; border: none; cursor: default; font-size: 20px; padding: 4px; margin: 2px 0; opacity: 0.3;",
                     onclick: move |_| {
                         zoom_out.call(());
                     },
-                    "➖"
+                    {_icon_rsx(MdZoomOut)}
                 }
             }
+        }
+    }
+}
+
+
+
+fn _icon_rsx<T: IconShape + Clone + PartialEq + 'static>(icon: T) -> Element {
+    rsx! {
+        dioxus_free_icons::Icon {
+            icon: icon,
+            style: "width: 24px; height: 24px;",
+            width: 24,
+            height: 24,
         }
     }
 }

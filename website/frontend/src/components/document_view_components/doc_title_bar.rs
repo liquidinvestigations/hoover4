@@ -138,7 +138,7 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     });
     rsx! {
         div {
-            style: "display: flex; flex-direction: row; align-items: center; gap: 6px; text-overflow: ellipsis;",
+            style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;",
 
             "{file_path}"
         }

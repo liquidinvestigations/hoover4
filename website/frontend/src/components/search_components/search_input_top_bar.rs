@@ -1,17 +1,9 @@
 //! Search input and controls in the top bar.
 
-use crate::{
-    components::search_components::search_facets::FacetButtonStrip,
-    routes::Route,
-};
+use crate::{components::search_components::search_facets::FacetButtonStrip, routes::Route};
 use common::search_query::SearchQuery;
 use dioxus::prelude::*;
-use dioxus_free_icons::{
-    Icon,
-    icons::{
-        md_action_icons::MdSearch,
-    },
-};
+use dioxus_free_icons::{Icon, icons::md_action_icons::MdSearch};
 
 #[component]
 pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {

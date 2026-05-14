@@ -356,7 +356,7 @@ fn FileBrowserContent(
             //     }
             //     navigator().push(next);
             // } else {
-                navigator().replace(next);
+            navigator().replace(next);
             // }
         }),
     });
@@ -720,7 +720,6 @@ fn FileRow(
 
 #[component]
 fn PreviewPane(selected_file: ReadSignal<Option<DocumentIdentifier>>) -> Element {
-
     dioxus::logger::tracing::info!("PreviewPane selected_file: {:?}", selected_file);
     rsx! {
         DocumentPreviewForSearchRoot {
