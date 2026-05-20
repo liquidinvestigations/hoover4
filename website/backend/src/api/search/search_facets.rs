@@ -39,7 +39,7 @@ pub async fn search_string_facet(
         LIMIT 0
 
         {SQL_OPTIONS_CLAUSE}
-        
+
         FACET {} DISTINCT file_hash ORDER BY count(distinct file_hash) DESC LIMIT 21
         ;",
         column,
@@ -214,7 +214,7 @@ pub async fn search_mva_facet(
     Ok(result)
 }
 
-async fn fetch_db_terms_for_ints(
+pub async fn fetch_db_terms_for_ints(
     ints: Vec<u64>,
     field_name: String,
 ) -> anyhow::Result<HashMap<u64, String>> {

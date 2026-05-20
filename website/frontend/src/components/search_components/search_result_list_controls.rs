@@ -246,18 +246,20 @@ fn ControlNextPrevPage() -> Element {
         // current page counter
         div {
             style: "
-                font-size: 16px;
-                line-height: 21px;
+                font-size: 20px;
+                line-height: 28px;
                 font-weight: 400;
-                background-color: white;
-                border-radius: 2px;
-                border-left: 1px solid rgba(0,0,0,0.1);
-                border-right: 1px solid rgba(0,0,0,0.1);
-                padding: 4px 26px;
-                margin-left: -28px;
-                margin-right: -28px;
+                background-color: rgba(255,255,255,0.8);
+                border-radius: 16px;
+                padding: 0px 50px;
+                margin-left: -48px;
+                margin-right: -48px;
                 align-items: center;
                 align-content: center;
+                height:36px;
+                width: fit-content;
+                border-left: 2px solid rgba(0,0,0,0.0);
+                border-right: 2px solid rgba(0,0,0,0.0);
             ",
             "{selected_page()}"
             span {
@@ -334,14 +336,23 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                 align: ContentAlign::Center,
                 div {
                     style: "
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: center;
+                        text-align:center;
                         color:{tooltip_color};
                         background-color:white;
                         padding:10px;
-                        border-radius:5px;
-                        border: 1px solid black;
-                        width: fit-content;
+                        // border-radius:5px;
+                        // border: 1px solid black;
+                        width: 100%;
+                        font-size: 21px;
                     ",
+
+                    div {style:"flex-grow: 1;"}
                     "{label}",
+                    div {style:"flex-grow: 1;"}
                 }
             }
         }

@@ -67,3 +67,14 @@ pub enum DocumentSourceItem {
     FileLocations,
     Metadata,
 }
+
+impl Eq for DocumentSourceItem {}
+
+impl Ord for DocumentSourceItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, PartialOrd, Default)]
+pub struct ItemHitCounts(pub Vec<(DocumentSourceItem, u64)>);

@@ -156,14 +156,20 @@ fn IconLink<T: IconShape + Clone + PartialEq + 'static>(
                 align: ContentAlign::Start,
                 div {
                     style: "
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: center;
+                        text-align:center;
                         color:black;
                         background-color:white;
                         padding:10px;
-                        border-radius:5px;
-                        border: 1px solid black;
-                        width: fit-content;
+                        width: 100%;
+                        font-size: 21px;
                     ",
+                    div {style:"flex-grow: 1;"}
                     "{label}",
+                    div {style:"flex-grow: 1;"}
                 }
             }
 

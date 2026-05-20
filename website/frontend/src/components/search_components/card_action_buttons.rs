@@ -6,7 +6,9 @@ use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::{
-        md_action_icons::MdOpenInNew, md_editor_icons::MdInsertLink, md_file_icons::MdFileDownload,
+        md_action_icons::MdOpenInNew,
+        md_editor_icons::MdInsertLink,
+        md_file_icons::{MdFileDownload, MdFolder},
         md_navigation_icons::MdMoreVert,
     },
 };
@@ -51,7 +53,10 @@ pub fn DocCardActionButtonOpenNewTab(
 }
 
 #[component]
-pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+pub fn DocCardActionButtonMore(
+    document_identifier: ReadSignal<DocumentIdentifier>,
+    show_finder: bool,
+) -> Element {
     let mut is_expanded = use_signal(|| false);
     let do_copy_link = use_callback(move |_: ()| {
         let url = web_sys::window().unwrap().location().href().unwrap();
@@ -92,6 +97,7 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                     navigator().push(Route::file_browser_page(
                         document_identifier.collection_dataset.clone(),
                         parent,
+                        Some(document_identifier.clone()),
                     ));
                 }
                 Err(e) => {
@@ -149,8 +155,8 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                     position: absolute;
                     top: 0px;
                     left: 0px;
-                    width: 100vw;
-                    height: 100vh;
+                    width: 500vw;
+                    height: 500vh;
                     padding: 0px;
                     margin: 0px;
                     overflow: hidden;
@@ -259,44 +265,58 @@ pub fn DocCardActionButtonMore(document_identifier: ReadSignal<DocumentIdentifie
                             },
                             "Download Document"
                         },
-                        div {
-                            style: "width: 100%; border-bottom: 1px solid rgba(0, 0, 0, 0.5);",
-                        }
-                        div {
-                            style: "
-                            padding: 2px;
-                            padding-left: 10px;
-                            margin: 2px;
-                            cursor: pointer;
-                            display: flex;
-                            flex-direction: row;
-                            align-items: center;
-                            gap: 10px;
-                            ",
-                            class: "hoover4-hover-shadow-background",
-                            onclick: move |_e| {
-                                _e.prevent_default();
-                                _e.stop_propagation();
-                                do_open_in_file_browser.call(());
-                                *is_expanded.write() = false;
-                            },
 
-                            span {
-                                style: "
-                                    font-size: 18px;
-                                    width: 20px;
-                                    height: 20px;
-                                    display: inline-flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                ",
-                                "📁"
+                        if show_finder {
+                            div {
+                                style: "width: 100%; border-bottom: 1px solid rgba(0, 0, 0, 0.5);",
                             }
-                            "Open in File Browser"
-                        },
+                            div {
+                                style: "
+                                padding: 2px;
+                                padding-left: 10px;
+                                margin: 2px;
+                                cursor: pointer;
+                                display: flex;
+                                flex-direction: row;
+                                align-items: center;
+                                gap: 10px;
+                                ",
+                                class: "hoover4-hover-shadow-background",
+                                onclick: move |_e| {
+                                    _e.prevent_default();
+                                    _e.stop_propagation();
+                                    do_open_in_file_browser.call(());
+                                    *is_expanded.write() = false;
+                                },
+
+                                span {
+                                    style: "
+                                        font-size: 18px;
+                                        width: 20px;
+                                        height: 20px;
+                                        display: inline-flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                    ",
+                                    {folder_icon()}
+                                }
+                                "Open in File Browser"
+                            }
+                        }
+
                     }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn folder_icon() -> Element {
+    rsx! {
+        Icon {
+            icon: MdFolder,
+            style: "width: 20px; height: 20px;"
         }
     }
 }

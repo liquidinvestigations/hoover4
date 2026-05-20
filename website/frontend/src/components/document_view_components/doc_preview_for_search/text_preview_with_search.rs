@@ -190,7 +190,7 @@ fn SearchHitSelector() -> Element {
             NavigationButton { icon: MdArrowUpward, label: "Previous Hit", disabled: disable_previous, onclick: move |_| {
                 *current_highlighted_word_index.write() -= 1;
             } }
-            div { style: "min-width: 60px; font-size: 20px; line-height: 28px;", "{hit_string()}" }
+            div { style: "min-width: 60px; font-size: 20px; line-height: 28px;text-align:center;", "{hit_string()}" }
             NavigationButton { icon: MdArrowDownward, label: "Next Hit", disabled: disable_next, onclick: move |_| {
                 *current_highlighted_word_index.write() += 1;
             } }

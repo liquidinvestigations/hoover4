@@ -123,7 +123,10 @@ pub fn SearchResultItemCard(
                         flex-shrink: 0;
                     ",
                     DocCardActionButtonOpenNewTab {document_identifier: result().document_identifier()}
-                    DocCardActionButtonMore {document_identifier: result().document_identifier()}
+                    DocCardActionButtonMore {
+                        document_identifier: result().document_identifier(),
+                        show_finder: true,
+                    }
                 }
             }
         }

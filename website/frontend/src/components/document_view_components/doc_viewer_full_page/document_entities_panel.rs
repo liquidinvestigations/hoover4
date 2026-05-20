@@ -158,7 +158,7 @@ fn EntityChip(item: DocumentEntityItem) -> Element {
             }
             div {
                 style: "
-                    font-size: 12px;
+                    font-size: 13px;
                     color: rgba(0,0,0,0.65);
                     border-left: 1px solid rgba(0,0,0,0.15);
                     padding-left: 8px;

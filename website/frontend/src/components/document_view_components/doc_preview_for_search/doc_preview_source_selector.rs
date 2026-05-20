@@ -1,12 +1,44 @@
-use common::document_sources::DocumentSourceItem;
+use common::{
+    document_sources::{DocumentSourceItem, ItemHitCounts},
+    search_result::DocumentIdentifier,
+};
 use dioxus::prelude::*;
-use dioxus_free_icons::{IconShape, icons::{md_action_icons::MdQuestionAnswer, md_communication_icons::MdEmail, md_file_icons::MdTextSnippet, md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo}, md_navigation_icons::MdCheck, md_toggle_icons::MdRadioButtonUnchecked}};
+use dioxus_free_icons::{
+    IconShape,
+    icons::{
+        md_action_icons::MdQuestionAnswer,
+        md_communication_icons::MdEmail,
+        md_file_icons::MdTextSnippet,
+        md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
+        md_navigation_icons::MdCheck,
+        md_toggle_icons::MdRadioButtonUnchecked,
+    },
+};
 
 use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
+
+#[server]
+pub async fn search_document_item_hit_counts(
+    _document_identifier: DocumentIdentifier,
+    _find_query: String,
+    _sources: Vec<DocumentSourceItem>,
+) -> Result<ItemHitCounts, ServerFnError> {
+    if _find_query.is_empty() || _sources.is_empty() {
+        return Ok(ItemHitCounts(Vec::new()));
+    }
+    backend::api::documents::search_document_itemcount::search_document_item_count(
+        _document_identifier,
+        _find_query,
+        _sources,
+    )
+    .await
+    .map_err(|e| ServerFnError::from(e))
+}
 
 #[component]
 pub fn DocumentPreviewSourceSelectorDropdown(
     sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
     selected_source: ReadSignal<Option<DocumentSourceItem>>,
     on_source_selected: Callback<DocumentSourceItem>,
 ) -> Element {
@@ -34,6 +66,7 @@ pub fn DocumentPreviewSourceSelectorDropdown(
                 SelectedItemDropdownDisplay {
                     selected_item: selected_source.clone(),
                     expand,
+                    item_hit_counts: item_hit_counts,
                 }
             }
             PopoverContent {
@@ -43,7 +76,8 @@ pub fn DocumentPreviewSourceSelectorDropdown(
                     on_source_selected: move |source: DocumentSourceItem| {
                         on_source_selected.call(source);
                         expand.set(false);
-                    }
+                    },
+                    item_hit_counts: item_hit_counts,
                 }
             }
         }
@@ -55,6 +89,7 @@ pub fn DocumentPreviewSourceSelectorList(
     sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
     selected_source: ReadSignal<Option<DocumentSourceItem>>,
     on_source_selected: Callback<DocumentSourceItem>,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     let sources = sources.read().clone().unwrap_or_default();
     if sources.is_empty() {
@@ -73,7 +108,8 @@ pub fn DocumentPreviewSourceSelectorList(
             selected_source,
             on_source_selected: move |source: DocumentSourceItem| {
                 on_source_selected.call(source);
-            }
+            },
+            item_hit_counts: item_hit_counts,
         }
     }
 }
@@ -83,6 +119,7 @@ fn SelectedItemList(
     sources: Vec<DocumentSourceItem>,
     selected_source: ReadSignal<DocumentSourceItem>,
     on_source_selected: Callback<DocumentSourceItem>,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     rsx! {
         ul {
@@ -112,6 +149,7 @@ fn SelectedItemList(
                         SourceItemRow {
                             source: source.clone(),
                             selected: source == selected_source.read().clone(),
+                            item_hit_counts: item_hit_counts,
                         }
                     }
                 }
@@ -132,6 +170,7 @@ fn _should_display(source: &DocumentSourceItem) -> bool {
 fn SelectedItemDropdownDisplay(
     selected_item: ReadSignal<DocumentSourceItem>,
     expand: Signal<bool>,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     rsx! {
         div {
@@ -160,6 +199,7 @@ fn SelectedItemDropdownDisplay(
             SourceItemRow {
                 source: selected_item.clone(),
                 selected: false,
+                item_hit_counts: item_hit_counts,
             }
             span { style: "color: #666; margin-left: 4px; font-size: 12px;", "▼" }
 
@@ -168,33 +208,34 @@ fn SelectedItemDropdownDisplay(
 }
 
 #[component]
-fn SourceItemRow(source: ReadSignal<DocumentSourceItem>, selected: bool) -> Element {
+fn SourceItemRow(
+    source: ReadSignal<DocumentSourceItem>,
+    selected: bool,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
+) -> Element {
     let source = source.read().clone();
-    let (icon, label, count) = match source {
-        DocumentSourceItem::Text(source) => (
-            _item_icon_rsx(MdTextSnippet),
-            source.extracted_by.clone(),
-            0,
-        ),
-        DocumentSourceItem::Pdf(_source) => (_item_icon_rsx(MdPictureAsPdf), "PDF".to_string(), 0),
-        DocumentSourceItem::Email(_source) => {
-            (_item_icon_rsx(MdEmail), "Email".to_string(), 0)
+    let item_hit_counts = item_hit_counts.read().clone();
+    let item_hit_counts = std::collections::BTreeMap::from_iter(item_hit_counts.0);
+    let count = item_hit_counts.get(&source).unwrap_or(&0);
+    let (icon, label) = match source {
+        DocumentSourceItem::Text(source) => {
+            (_item_icon_rsx(MdTextSnippet), source.extracted_by.clone())
         }
-        DocumentSourceItem::Image(_source) => {
-            (_item_icon_rsx(MdImage), "Image".to_string(), 0)
-        }
-        DocumentSourceItem::Audio(_source) => {
-            (_item_icon_rsx(MdAudiotrack), "Audio".to_string(), 0)
-        }
-        DocumentSourceItem::Video(_source) => {
-            (_item_icon_rsx(MdSwitchVideo), "Video".to_string(), 0)
-        }
-        _ => (_item_icon_rsx(MdQuestionAnswer), format!("{:?}", source), 0),
+        DocumentSourceItem::Pdf(_source) => (_item_icon_rsx(MdPictureAsPdf), "PDF".to_string()),
+        DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),
+        DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),
+        DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), "Audio".to_string()),
+        DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), "Video".to_string()),
+        _ => (_item_icon_rsx(MdQuestionAnswer), format!("{:?}", source)),
     };
     let text_color = if selected { "#111" } else { "#333" };
-    let dot_icon = if selected { _item_icon_rsx(MdCheck) } else { _item_icon_rsx(MdRadioButtonUnchecked) };
+    let dot_icon = if selected {
+        _item_icon_rsx(MdCheck)
+    } else {
+        _item_icon_rsx(MdRadioButtonUnchecked)
+    };
 
-    let count = if count == 0 {
+    let count = if *count == 0 {
         "".to_string()
     } else {
         count.to_string()

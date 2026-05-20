@@ -74,11 +74,15 @@ impl Route {
 
     /// Construct a [`Route::FileBrowserPage`] for navigating to a folder,
     /// with no document selected and the default viewer state.
-    pub fn file_browser_page(collection: String, path: PathDescriptor) -> Self {
+    pub fn file_browser_page(
+        collection: String,
+        path: PathDescriptor,
+        selected: Option<DocumentIdentifier>,
+    ) -> Self {
         Self::FileBrowserPage {
             collection,
             path: UrlParam::from(path),
-            selected_result_hash: UrlParam::from(None),
+            selected_result_hash: UrlParam::from(selected),
             doc_viewer_state: UrlParam::from(None),
         }
     }

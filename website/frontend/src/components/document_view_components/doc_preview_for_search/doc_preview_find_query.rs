@@ -28,7 +28,7 @@ pub fn DocPreviewFindQueryInputBox(on_find_query_changed: Callback<String>) -> E
                     r#type: "text",
                     placeholder: "Search in document",
                     style: "
-                        width: 100%;
+                        width: calc(100% - 24px);
                         height: 100%;
                         border: none;
                         outline: none;

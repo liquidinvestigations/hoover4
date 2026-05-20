@@ -119,5 +119,14 @@ pub async fn search_document_text_for_hit_count(
             }
         })
         .collect::<Vec<_>>();
-    Ok(result)
+
+    let mut dedup = vec![];
+    let mut seen = std::collections::BTreeSet::new();
+
+    for r in result.into_iter().rev() {
+        if seen.insert((r.extracted_by.clone(), r.page_id)) {
+            dedup.push(r.clone());
+        }
+    }
+    Ok(dedup)
 }

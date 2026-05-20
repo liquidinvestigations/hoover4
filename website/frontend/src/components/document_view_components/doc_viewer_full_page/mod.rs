@@ -3,7 +3,7 @@
 mod document_entities_panel;
 mod raw_metadata_collector;
 
-use common::document_sources::DocumentSourceItem;
+use common::document_sources::{DocumentSourceItem, ItemHitCounts};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
@@ -11,7 +11,9 @@ use crate::{
     components::document_view_components::{
         doc_preview_for_search::{
             doc_preview_find_query::DocPreviewFindQueryInputBox,
-            doc_preview_source_selector::DocumentPreviewSourceSelectorList,
+            doc_preview_source_selector::{
+                DocumentPreviewSourceSelectorList, search_document_item_hit_counts,
+            },
         },
         doc_title_bar::DocTitleBar,
         doc_viewer_full_page::{
@@ -100,6 +102,36 @@ pub fn DocViewerRoot(
         });
     });
 
+    // ================ ITEM HIT COUNTS: ================
+    let mut item_hit_counts = use_signal(move || ItemHitCounts(Vec::new()));
+    let mut _r = use_resource(move || {
+        let document_identifier = document_identifier.read().clone();
+        let sources = doc_sources.read().clone().unwrap_or_default();
+        let find_query = control
+            .doc_viewer_state
+            .read()
+            .clone()
+            .unwrap_or_default()
+            .find_query;
+        async move {
+            {
+                item_hit_counts.set(ItemHitCounts(Vec::new()));
+            }
+            let item = search_document_item_hit_counts(document_identifier, find_query, sources)
+                .await
+                .unwrap_or_default();
+            {
+                item_hit_counts.set(item);
+            }
+        }
+    });
+    use_effect(move || {
+        let _document_identifier = document_identifier.read().clone();
+        let _sources = doc_sources.read().clone().unwrap_or_default();
+        _r.clear();
+        _r.restart();
+    });
+
     use_context_provider(move || ViewerPageControls {
         document_identifier,
         sources: doc_sources,
@@ -108,6 +140,7 @@ pub fn DocViewerRoot(
         on_find_query_changed,
         viewer_right_tab_state,
         on_viewer_right_tab_selected,
+        item_hit_counts: item_hit_counts.into(),
     });
 
     let content_view_inner = match currently_selected_source.read().clone() {
@@ -238,6 +271,7 @@ fn LeftControls(
     on_source_selected: Callback<DocumentSourceItem>,
     on_find_query_changed: Callback<String>,
     controls: Element,
+    item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     rsx! {
         div {
@@ -262,7 +296,8 @@ fn LeftControls(
                 DocumentPreviewSourceSelectorList {
                     sources,
                     selected_source,
-                    on_source_selected
+                    on_source_selected,
+                    item_hit_counts,
                 }
             }
         }
@@ -273,6 +308,7 @@ fn LeftControls(
 struct ViewerPageControls {
     pub document_identifier: ReadSignal<DocumentIdentifier>,
     pub sources: ReadSignal<Option<Vec<DocumentSourceItem>>>,
+    pub item_hit_counts: ReadSignal<ItemHitCounts>,
     pub selected_source: ReadSignal<Option<DocumentSourceItem>>,
     pub on_source_selected: Callback<DocumentSourceItem>,
     pub on_find_query_changed: Callback<String>,
@@ -287,6 +323,7 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
         selected_source,
         on_source_selected,
         on_find_query_changed,
+        item_hit_counts,
         ..
     } = use_context::<ViewerPageControls>();
     rsx! {
@@ -323,7 +360,8 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
                         selected_source: selected_source,
                         on_source_selected,
                         on_find_query_changed,
-                        controls
+                        controls,
+                        item_hit_counts,
                     }
                 }
                 div {
@@ -334,7 +372,7 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
                         overflow: hidden;
                     ",
 
-                    DocTitleBar { document_identifier, show_new_tab_button: false }
+                    DocTitleBar { document_identifier, show_new_tab_button: false, show_finder: true }
                     div {
                         style: "width: 100%; height: calc(100% - 54px); border: 1px solid transparent; padding: 8px;",
                         {page}

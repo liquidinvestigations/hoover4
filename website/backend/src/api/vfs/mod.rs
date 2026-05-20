@@ -1,5 +1,7 @@
 //! Virtual file system browsing endpoints.
 
+use std::collections::BTreeSet;
+
 use common::search_result::DocumentIdentifier;
 use common::vfs::{PathDescriptor, VfsDirectoryEntry, VfsFileEntry, VfsListing};
 
@@ -67,7 +69,7 @@ pub async fn list_folder_children(
           AND length(path) > length(?)
           AND position(substring(path, length(?) + 1), '/') = 0
         ORDER BY path
-        LIMIT 100
+        LIMIT 5000
     ";
     let dir_paths: Vec<String> = client
         .query(dir_sql)
@@ -88,7 +90,7 @@ pub async fn list_folder_children(
           AND length(path) > length(?)
           AND position(substring(path, length(?) + 1), '/') = 0
         ORDER BY path
-        LIMIT 100
+        LIMIT 5000
     ";
     let file_rows: Vec<(String, String, u64)> = client
         .query(file_sql)
@@ -114,6 +116,11 @@ pub async fn list_folder_children(
         })
         .collect();
 
+    let file_hashes = BTreeSet::from_iter(file_rows.iter().map(|(_, hash, _)| hash.clone()));
+    let container_hashes = _get_container_hashes(collection_dataset.clone(), file_hashes)
+        .await
+        .unwrap_or_default();
+
     let files = file_rows
         .into_iter()
         .map(|(full_path, hash, file_size_bytes)| {
@@ -124,8 +131,9 @@ pub async fn list_folder_children(
                     container_hash: path.container_hash.clone(),
                     path: full_path,
                 },
-                hash,
+                hash: hash.clone(),
                 file_size_bytes,
+                is_container: container_hashes.contains(&hash),
             }
         })
         .collect();
@@ -136,4 +144,24 @@ pub async fn list_folder_children(
         directories,
         files,
     })
+}
+
+async fn _get_container_hashes(
+    collection_dataset: String,
+    file_hashes: BTreeSet<String>,
+) -> anyhow::Result<BTreeSet<String>> {
+    let client = get_clickhouse_client();
+    let sql = "
+        SELECT DISTINCT container_hash
+        FROM vfs_files
+        WHERE collection_dataset = ?
+          AND container_hash IN (?)
+    ";
+    let rows: Vec<String> = client
+        .query(sql)
+        .bind(&collection_dataset)
+        .bind(&file_hashes)
+        .fetch_all()
+        .await?;
+    Ok(BTreeSet::from_iter(rows.into_iter()))
 }

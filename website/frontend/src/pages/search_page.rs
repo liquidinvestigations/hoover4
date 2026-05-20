@@ -136,7 +136,7 @@ fn SearchPageRootComponent(
                         min-width: 300px;
                         width: 40%;
                     ",
-                    SuspendWrapper{DocumentPreviewForSearchRoot {query, selected_result_hash}}
+                    SuspendWrapper{DocumentPreviewForSearchRoot {query, selected_result_hash, show_finder: true}}
 
                 }
             }

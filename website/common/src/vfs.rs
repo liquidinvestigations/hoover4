@@ -68,6 +68,7 @@ pub struct VfsFileEntry {
     pub path: PathDescriptor,
     pub hash: String,
     pub file_size_bytes: u64,
+    pub is_container: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

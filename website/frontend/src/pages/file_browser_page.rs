@@ -4,14 +4,16 @@ use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
 use common::vfs::{PathDescriptor, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::go_icons::GoDatabase;
+use dioxus_free_icons::icons::md_editor_icons::MdInsertDriveFile;
+use dioxus_free_icons::icons::md_file_icons::MdFolder;
 
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
-use crate::components::document_view_components::doc_preview_for_search::no_document_selected::NoDocumentSelected;
 use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
 };
-use crate::components::suspend_boundary::SuspendWrapper;
-use crate::data_definitions::doc_viewer_state::{DocViewerState, ViewerRightTabState};
+use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
 use crate::routes::Route;
@@ -288,16 +290,27 @@ fn CollectionRow(collection: String) -> Element {
                 navigator().push(Route::file_browser_page(
                     target_collection.clone(),
                     PathDescriptor::root(),
+                    None,
                 ));
             },
             td {
                 style: TD_NAME_STYLE,
                 div {
                     style: NAME_INNER_STYLE,
-                    span { style: ICON_STYLE, "🗄️" }
+                    span { style: ICON_STYLE, {dataset_icon()} }
                     span { style: FOLDER_LINK_STYLE, "{collection}" }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn dataset_icon() -> Element {
+    rsx! {
+        Icon {
+            icon: GoDatabase,
+            style: "width: 18px; height: 18px;"
         }
     }
 }
@@ -390,7 +403,7 @@ fn FileBrowserContent(
             ListingTable {
                 collection: collection_value.clone(),
                 listing,
-                selected_file: selected_value.clone(),
+                selected_file: selected_result_hash,
                 on_file_click,
             }
         },
@@ -399,7 +412,7 @@ fn FileBrowserContent(
     rsx! {
         div {
             style: PAGE_STYLE,
-            CollectionsSidebar { current_collection: collection_value.clone() }
+            CollectionsSidebar { current_collection:collection }
             div {
                 style: MAIN_AREA_STYLE,
                 div {
@@ -423,8 +436,13 @@ fn FileBrowserContent(
 }
 
 #[component]
-fn CollectionsSidebar(current_collection: String) -> Element {
-    let collections_resource = use_resource(move || async move { list_collections().await });
+fn CollectionsSidebar(current_collection: ReadSignal<String>) -> Element {
+    let mut collections_resource = use_resource(move || async move { list_collections().await });
+    use_effect(move || {
+        let _ = current_collection.read().clone();
+        collections_resource.clear();
+        collections_resource.restart();
+    });
 
     let body = match collections_resource.read().clone() {
         None => rsx! { div { padding: "10px 16px", color: "#6B7280", "Loading..." } },
@@ -438,7 +456,7 @@ fn CollectionsSidebar(current_collection: String) -> Element {
                         SidebarCollectionItem {
                             key: "side-coll-{collection}",
                             collection: collection.clone(),
-                            is_current: collection == &current_collection,
+                            is_current: collection == &current_collection.read().clone(),
                         }
                     }
                 }
@@ -456,18 +474,18 @@ fn CollectionsSidebar(current_collection: String) -> Element {
 }
 
 #[component]
-fn SidebarCollectionItem(collection: String, is_current: bool) -> Element {
-    let item_style = if is_current {
+fn SidebarCollectionItem(collection: String, is_current: ReadSignal<bool>) -> Element {
+    let item_style = if is_current.read().clone() {
         SIDEBAR_ITEM_CURRENT
     } else {
         SIDEBAR_ITEM_BASE
     };
     rsx! {
         Link {
-            to: Route::file_browser_page(collection.clone(), PathDescriptor::root()),
+            to: Route::file_browser_page(collection.clone(), PathDescriptor::root(), None),
             style: item_style,
             class: ROW_HOVER_CLASS,
-            span { style: ICON_STYLE, "🗄️" }
+            span { style: ICON_STYLE, {dataset_icon()} }
             span { "{collection}" }
         }
     }
@@ -486,7 +504,7 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 "Browsing"
             }
             Link {
-                to: Route::file_browser_page(collection.clone(), PathDescriptor::root()),
+                to: Route::file_browser_page(collection.clone(), PathDescriptor::root(), None),
                 style: CRUMB_LINK_STYLE,
                 "{collection}"
             }
@@ -500,7 +518,7 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 span { style: CRUMB_SEP_STYLE, "›" }
                 Link {
                     key: "crumb-{descriptor}",
-                    to: Route::file_browser_page(collection.clone(), descriptor.clone()),
+                    to: Route::file_browser_page(collection.clone(), descriptor.clone(), None),
                     style: CRUMB_LINK_STYLE,
                     "{name}"
                 }
@@ -547,7 +565,7 @@ fn ContainerBreadcrumb(collection: String, container_hash: String) -> Element {
     rsx! {
         span { style: CRUMB_SEP_STYLE, "›" }
         Link {
-            to: Route::file_browser_page(collection.clone(), parent_descriptor),
+            to: Route::file_browser_page(collection.clone(), parent_descriptor, None),
             style: CRUMB_LINK_STYLE,
             title: "{descriptor.path}",
             "📦 {label}"
@@ -596,18 +614,41 @@ fn format_size(bytes: u64) -> String {
 fn ListingTable(
     collection: String,
     listing: VfsListing,
-    selected_file: Option<DocumentIdentifier>,
+    selected_file: ReadSignal<Option<DocumentIdentifier>>,
     on_file_click: Callback<DocumentIdentifier>,
 ) -> Element {
     if listing.directories.is_empty() && listing.files.is_empty() {
         return rsx! { p { padding: "20px", color: "#6B7280", "(empty folder)" } };
     }
+    let mut mounts = use_signal(move || std::collections::HashMap::new());
+    let onmounted = Callback::new(move |(_id, _d): (DocumentIdentifier, Event<MountedData>)| {
+        mounts.write().insert(_id, _d.data());
+    });
+    use_effect(move || {
+        let selected = selected_file.read().clone();
+        let dict = mounts.read().clone();
+        if let Some(selected) = selected {
+            if let Some(data) = dict.get(&selected) {
+                let _x = data.scroll_to_with_options(ScrollToOptions {
+                    behavior: ScrollBehavior::Smooth,
+                    vertical: ScrollLogicalPosition::Center,
+                    horizontal: ScrollLogicalPosition::Center,
+                });
+                spawn(async move {
+                    let _r_ = _x.await;
+                    dioxus::logger::tracing::info!("scrolled to selected file");
+                });
+            }
+        }
+    });
+
     rsx! {
         table {
             style: TABLE_STYLE,
             thead {
                 tr {
                     th { style: TH_NAME_STYLE, "Name" }
+                    th { style: TH_NAME_STYLE, "" }
                     th { style: TH_SIZE_STYLE, "Size" }
                     th { style: TH_ACTIONS_STYLE, "" }
                 }
@@ -630,6 +671,8 @@ fn ListingTable(
                             id.collection_dataset == collection && id.file_hash == file.hash
                         }),
                         on_file_click,
+                        onmounted: onmounted,
+                        is_container: file.is_container,
                     }
                 }
             }
@@ -649,18 +692,42 @@ fn DirRow(collection: String, name: String, path: PathDescriptor) -> Element {
                 navigator().push(Route::file_browser_page(
                     target_collection.clone(),
                     target_path.clone(),
+                    None,
                 ));
             },
             td {
                 style: TD_NAME_STYLE,
                 div {
                     style: NAME_INNER_STYLE,
-                    span { style: ICON_STYLE, "📁" }
+                    span { style: ICON_STYLE, {folder_icon()}}
                     span { style: FOLDER_LINK_STYLE, "{name}" }
                 }
             }
+            td {
+                // no container for dir
+            }
             td { style: TD_SIZE_STYLE, "" }
             td { style: TD_ACTIONS_STYLE, "" }
+        }
+    }
+}
+
+#[component]
+fn folder_icon() -> Element {
+    rsx! {
+        Icon {
+            icon: MdFolder,
+            style: "width: 20px; height: 20px;"
+        }
+    }
+}
+
+#[component]
+fn file_icon() -> Element {
+    rsx! {
+        Icon {
+            icon: MdInsertDriveFile,
+            style: "width: 20px; height: 20px;"
         }
     }
 }
@@ -671,6 +738,8 @@ fn FileRow(
     file: VfsFileEntry,
     is_selected: bool,
     on_file_click: Callback<DocumentIdentifier>,
+    onmounted: Callback<(DocumentIdentifier, Event<MountedData>)>,
+    is_container: bool,
 ) -> Element {
     let row_style = if is_selected {
         ROW_SELECTED_STYLE
@@ -685,6 +754,7 @@ fn FileRow(
     let click_doc_id = use_signal(move || click_doc_id.clone());
     rsx! {
         tr {
+            onmounted: move |_d| onmounted.call((click_doc_id.read().clone(), _d)),
             style: row_style,
             class: row_class,
             onclick: move |_| {
@@ -695,8 +765,15 @@ fn FileRow(
                 style: TD_NAME_STYLE,
                 div {
                     style: NAME_INNER_STYLE,
-                    span { style: ICON_STYLE, "📄" }
+                    span { style: ICON_STYLE, {file_icon()} }
                     span { style: FILE_NAME_STYLE, "{file.name}" }
+                }
+            }
+            td {
+                if is_container {
+                    OpenContainerLink {
+                        doc_id: click_doc_id.clone(),
+                    }
                 }
             }
             td { style: TD_SIZE_STYLE, "{format_size(file.file_size_bytes)}" }
@@ -708,10 +785,29 @@ fn FileRow(
                         document_identifier:click_doc_id
                     }
                     DocCardActionButtonMore {
-                        document_identifier: click_doc_id
+                        document_identifier: click_doc_id,
+                        show_finder: false,
                     }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn OpenContainerLink(doc_id: ReadSignal<DocumentIdentifier>) -> Element {
+    let doc_id = doc_id.read().clone();
+    let collection = doc_id.collection_dataset.clone();
+    let file_hash = doc_id.file_hash.clone();
+    let path = PathDescriptor {
+        container_hash: file_hash.clone(),
+        path: "/".to_string(),
+    };
+    rsx! {
+        a {
+            style: "padding: 10px; border: 1px solid black; border-radius: 16px;",
+            href: Route::file_browser_page(collection, path, None).to_string(),
+            "Open Container"
         }
     }
 }
@@ -725,6 +821,7 @@ fn PreviewPane(selected_file: ReadSignal<Option<DocumentIdentifier>>) -> Element
         DocumentPreviewForSearchRoot {
             query: SearchQuery::default(),
             selected_result_hash: selected_file,
+            show_finder: false,
         }
     }
 }

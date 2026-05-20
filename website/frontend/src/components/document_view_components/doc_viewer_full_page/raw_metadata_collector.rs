@@ -2,6 +2,7 @@
 
 use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
+use dioxus_free_icons::{Icon, icons::go_icons::GoCopy};
 use std::collections::BTreeMap;
 
 use crate::components::{
@@ -178,13 +179,37 @@ fn RawMetadataTable(value: serde_json::Value) -> Element {
                                         .clipboard()
                                         .write_text(&v);
                                     dioxus::logger::tracing::info!("Data copied to clipboard: {:#?}", v);
+                                    let k = truncate_for_table(&k, 16);
+
+                                    let toast_api = dioxus_primitives::toast::consume_toast();
+                                    toast_api.info(
+                                        "Data copied to clipboard.".to_string(),
+
+                                        dioxus_primitives::toast::ToastOptions::new()
+                                            .description(format!("The data for key = '{k}' has been copied to your clipboard."))
+                                            .duration(std::time::Duration::from_secs(7))
+                                            .permanent(false),
+                                    );
+
                                 },
-                                span { style: "font-size: 16px; line-height: 18px;", "📋" }
+                                CopyIcon{}
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn CopyIcon() -> Element {
+    rsx! {
+        Icon {
+            icon: GoCopy,
+            style: "width: 24px; height: 24px;",
+            width: 24,
+            height: 24,
         }
     }
 }

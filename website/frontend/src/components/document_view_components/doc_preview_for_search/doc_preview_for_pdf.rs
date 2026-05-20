@@ -1,6 +1,12 @@
 use common::{document_sources::DocumentPdfSourceItem, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
-use dioxus_free_icons::{IconShape, icons::{md_action_icons::{MdZoomIn, MdZoomOut}, md_navigation_icons::{MdArrowDownward, MdArrowUpward}}};
+use dioxus_free_icons::{
+    IconShape,
+    icons::{
+        md_action_icons::{MdZoomIn, MdZoomOut},
+        md_navigation_icons::{MdArrowDownward, MdArrowUpward},
+    },
+};
 
 use crate::{
     components::{
@@ -119,6 +125,7 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
                     min-width: 60px;
                     font-size: 20px;
                     line-height: 28px;
+                    text-align:center;
                 ",
                 if search_hit_count() == 0 {
                     h1 { "- / -"}
@@ -237,8 +244,6 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
         }
     }
 }
-
-
 
 fn _icon_rsx<T: IconShape + Clone + PartialEq + 'static>(icon: T) -> Element {
     rsx! {

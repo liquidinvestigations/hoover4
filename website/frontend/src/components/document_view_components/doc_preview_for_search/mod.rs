@@ -9,13 +9,13 @@ pub mod no_document_selected;
 mod text_data_viewer;
 pub mod text_preview_with_search;
 
-use common::document_sources::DocumentSourceItem;
+use common::document_sources::{DocumentSourceItem, ItemHitCounts};
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_find_query::DocPreviewFindQueryInputBox;
-use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::DocumentPreviewSourceSelectorDropdown;
+use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::{DocumentPreviewSourceSelectorDropdown, search_document_item_hit_counts};
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::doc_preview_shared::{
     DocSourceDispatch, PreviewExtraSections, ProvidePreviewExtraSections
@@ -27,6 +27,7 @@ use crate::pages::search_page::DocViewerStateControl;
 pub fn DocumentPreviewForSearchRoot(
     query: ReadSignal<SearchQuery>,
     selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
+    show_finder: bool,
 ) -> Element {
     let Some(document_identifier_value) = selected_result_hash.read().clone() else {
         return rsx! {
@@ -34,7 +35,7 @@ pub fn DocumentPreviewForSearchRoot(
         };
     };
     rsx! {
-        DocumentPreviewForSearchContent {query, document_identifier: document_identifier_value}
+        DocumentPreviewForSearchContent {query, document_identifier: document_identifier_value, show_finder}
     }
 }
 
@@ -42,6 +43,7 @@ pub fn DocumentPreviewForSearchRoot(
 fn DocumentPreviewForSearchContent(
     query: ReadSignal<SearchQuery>,
     document_identifier: ReadSignal<DocumentIdentifier>,
+    show_finder: bool,
 ) -> Element {
     dioxus::logger::tracing::info!(
         "DocumentPreviewForSearchRoot selected_result_hash: {:?}",
@@ -90,14 +92,6 @@ fn DocumentPreviewForSearchContent(
         control.set_doc_viewer_state.call(state);
     });
 
-    let preview_selector = rsx! {
-        DocumentPreviewSourceSelectorDropdown {
-            sources: doc_sources,
-            selected_source: currently_selected_source,
-            on_source_selected
-        }
-    };
-
     let on_find_query_changed = Callback::new(move |query: String| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
         state.find_query = query;
@@ -107,6 +101,45 @@ fn DocumentPreviewForSearchContent(
     let find_query_input_box = rsx! {
         DocPreviewFindQueryInputBox {
             on_find_query_changed: on_find_query_changed.clone(),
+        }
+    };
+
+    // ================ ITEM HIT COUNTS: ================
+    let mut item_hit_counts = use_signal(move || ItemHitCounts(Vec::new()));
+    let mut _r = use_resource(move || {
+        let document_identifier = document_identifier.read().clone();
+        let sources = doc_sources.read().clone().unwrap_or_default();
+        let find_query = control
+            .doc_viewer_state
+            .read()
+            .clone()
+            .unwrap_or_default()
+            .find_query;
+        async move {
+            {
+                item_hit_counts.set(ItemHitCounts(Vec::new()));
+            }
+            let item = search_document_item_hit_counts(document_identifier, find_query, sources)
+                .await
+                .unwrap_or_default();
+            {
+                item_hit_counts.set(item);
+            }
+        }
+    });
+    use_effect(move || {
+        let _document_identifier = document_identifier.read().clone();
+        let _sources = doc_sources.read().clone().unwrap_or_default();
+        _r.clear();
+        _r.restart();
+    });
+
+    let preview_selector = rsx! {
+        DocumentPreviewSourceSelectorDropdown {
+            sources: doc_sources,
+            selected_source: currently_selected_source,
+            on_source_selected,
+            item_hit_counts,
         }
     };
 
@@ -120,7 +153,7 @@ fn DocumentPreviewForSearchContent(
                     find_query_input_box,
                     preview_selector,
                     children: rsx! {
-                        DocTitleBar { document_identifier, show_new_tab_button: true }
+                        DocTitleBar { document_identifier, show_new_tab_button: true, show_finder }
                         DocSourceDispatch { document_identifier, source: selected_source.clone() },
                     },
                     wrapper_fn: _make_preview_wrapper,

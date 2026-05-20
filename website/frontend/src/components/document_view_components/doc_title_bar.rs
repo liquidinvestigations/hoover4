@@ -16,6 +16,7 @@ use crate::components::search_components::card_action_buttons::{
 pub fn DocTitleBar(
     document_identifier: ReadSignal<DocumentIdentifier>,
     show_new_tab_button: bool,
+    show_finder: bool,
 ) -> Element {
     rsx! {
         div {
@@ -51,7 +52,7 @@ pub fn DocTitleBar(
                 if show_new_tab_button {
                     DocCardActionButtonOpenNewTab {document_identifier: document_identifier()}
                 }
-                DocCardActionButtonMore {document_identifier: document_identifier()}
+                DocCardActionButtonMore {document_identifier: document_identifier(), show_finder}
             }
 
         }

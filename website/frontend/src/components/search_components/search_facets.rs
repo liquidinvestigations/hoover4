@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use common::{search_query::SearchQuery, search_result::FacetOriginalValue};
-use dioxus::prelude::*;
+use dioxus::{logger::tracing, prelude::*};
 use dioxus_free_icons::{
     Icon,
     icons::{
@@ -316,15 +316,7 @@ fn FacetSelectorList(
         .difference(&returned_values)
         .cloned()
         .collect::<Vec<_>>();
-    for value in missing_values {
-        search_result
-            .facet_values
-            .push(common::search_result::SearchResultFacetItem {
-                display_string: format!("Missing: {:?}", value),
-                original_value: value,
-                count: 0,
-            });
-    }
+
     rsx! {
         ul {
             for result in search_result.facet_values {
@@ -339,9 +331,101 @@ fn FacetSelectorList(
                     }
                 }
             }
-
+            ResolveMissingItems {
+                modified_search_query,
+                missing_values,
+                facet_field_name,
+                map_string_terms,
+            }
         }
     }
+}
+
+#[component]
+fn ResolveMissingItems(
+    modified_search_query: Signal<SearchQuery>,
+    missing_values: ReadSignal<Vec<FacetOriginalValue>>,
+    facet_field_name: ReadSignal<String>,
+    map_string_terms: ReadSignal<Option<String>>,
+) -> Element {
+    if missing_values.read().is_empty() {
+        return rsx! {};
+    }
+    let ints = use_memo(move || {
+        let mut ints = Vec::new();
+        for value in missing_values.read().clone() {
+            if let FacetOriginalValue::Int(i) = value {
+                ints.push(i);
+            }
+        }
+        ints
+    });
+    let ints = ints();
+    if ints.is_empty() {
+        return rsx! {};
+    }
+    tracing::info!("ints: {:?}", ints);
+    tracing::info!("facet_field_name: {:?}", facet_field_name());
+    tracing::info!("map_string_terms: {:?}", map_string_terms());
+    let map = use_resource(move || {
+        let ints = ints.clone();
+        let field_name = map_string_terms().unwrap_or_default();
+
+        async move {
+            fetch_db_terms_for_ints(ints, field_name)
+                .await
+                .unwrap_or_default()
+        }
+    });
+    let map = map().unwrap_or_default();
+    tracing::info!("map: {:?}", map);
+
+    let mut facet_values = Vec::new();
+    for value in missing_values.read().clone() {
+        facet_values.push(common::search_result::SearchResultFacetItem {
+            display_string: match &value {
+                FacetOriginalValue::Int(i) => {
+                    if let Some(s) = map.get(&i) {
+                        s.clone()
+                    } else {
+                        format!("Missing2: {:?}", &value)
+                    }
+                }
+                FacetOriginalValue::String(s) => s.clone(),
+            },
+            original_value: value,
+            count: 0,
+        });
+    }
+    rsx! {
+        ul {
+            for result in facet_values {
+                li {
+                    key: "{result.display_string}-{result.count}-{result.original_value:?}",
+                    FacetCheckbox {
+                        query: modified_search_query,
+                        facet_name: facet_field_name,
+                        facet_value: result.original_value.clone(),
+                        result_count: result.count,
+                        result_display_string: result.display_string.clone(),
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[server]
+async fn fetch_db_terms_for_ints(
+    ints: Vec<u64>,
+    field_name: String,
+) -> Result<std::collections::HashMap<u64, String>, ServerFnError> {
+    let x = backend::api::search::fetch_db_terms_for_ints(ints, field_name).await;
+    x.map_err(|e| ServerFnError::ServerError {
+        message: e.to_string(),
+        code: 500,
+        details: None,
+    })
 }
 
 #[component]
