@@ -5,6 +5,7 @@ use common::{
     document_entities::{DocumentEntitiesResponse, DocumentEntityItem, DocumentEntityType},
     search_result::DocumentIdentifier,
 };
+use futures::{StreamExt, stream::FuturesUnordered};
 use serde::Deserialize;
 
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
@@ -30,6 +31,45 @@ fn normalize_entity_type(s: &str) -> DocumentEntityType {
 }
 
 pub async fn get_document_entities(
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<DocumentEntitiesResponse> {
+
+    let _ents = _get_document_entities(document_identifier.clone()).await?;
+    
+    // these ents maybe don't match properly, so let's skip them and fix match count
+
+    let mut fut = FuturesUnordered::new();
+    for item in _ents.items {
+        fut.push(_adjust_hit_item_count(document_identifier.clone(), item));
+    }
+    let mut v2 = vec![];
+    while let Some(item) =  fut.next().await {
+        let item = item?;
+        if item.hit_count > 0 {
+            v2.push(item);
+        }
+    }
+    v2.sort_by_key(|item| {
+        (item.entity_type, item.hit_count, item.value.clone())
+    });
+    v2.reverse();
+
+    Ok(DocumentEntitiesResponse{items:v2})
+}
+
+async fn _adjust_hit_item_count(document_identifier: DocumentIdentifier, 
+mut item: DocumentEntityItem) -> anyhow::Result<DocumentEntityItem>{
+    let find_query = format!("\"{}\"", item.value);
+    use crate::api::documents::search_document_text::search_document_text_for_hit_count;
+
+    let _counts = search_document_text_for_hit_count(document_identifier, find_query).await?;
+    let _count_sum = _counts.into_iter().map(|x| x.hit_count).sum::<u64>();
+    item.hit_count = _count_sum;
+    
+    Ok(item)
+}
+
+async fn _get_document_entities(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<DocumentEntitiesResponse> {
     let client = get_clickhouse_client();

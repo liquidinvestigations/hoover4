@@ -1,7 +1,7 @@
 //! Endpoint for retrieving document text snippets.
 
 use common::{
-    document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem},
+    document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
     search_result::DocumentIdentifier,
 };
 use serde::{Deserialize, Serialize};
@@ -134,7 +134,8 @@ pub async fn search_document_text_for_hit_count(
 
 pub async fn get_document_text_by_id_and_source(
     document_identifier: DocumentIdentifier, 
-source: DocumentTextSourceItem,
+extracted_by: String,
+page_id: u32,
 ) -> anyhow::Result<String> {
 
 
@@ -151,8 +152,8 @@ source: DocumentTextSourceItem,
     let query = client.query(query)
     .bind(&document_identifier.collection_dataset)
     .bind(&document_identifier.file_hash)
-    .bind(&source.extracted_by)
-    .bind(&source.min_page);
+    .bind(&extracted_by)
+    .bind(&page_id);
 
     let rows = query.fetch_all::<String>().await?;
 

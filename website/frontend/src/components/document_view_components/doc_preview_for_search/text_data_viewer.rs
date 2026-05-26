@@ -9,7 +9,6 @@ use crate::{
     components::{
         document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore, error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator
     },
-    pages::search_page::DocViewerStateControl,
 };
 
 #[component]
@@ -40,25 +39,12 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
     let current_text_data = use_context::<DocumentViewerResultStore>().current_text_data;
     let document_identifier = use_context::<DocumentViewerResultStore>().document_identifier;
     let source = use_context::<DocumentViewerResultStore>().source;
-    // let current_query = use_context::<DocViewerStateControl>()
-    //     .doc_viewer_state
-    //     .read()
-    //     .as_ref()
-    //     .map(|state| state.find_query.clone())
-    //     .unwrap_or("".to_string());
+
     let text_data = match current_text_data.read().clone() {
         Some(Ok(text_data)) => {
             if text_data.is_empty() {
                 return rsx! {
                     TextDataFallback{document_identifier, source}
-
-                    // div {
-                    //     style: "padding: 12px; margin: 12px; font-size: 26px;",
-                    //     "No matches found for "
-                    //     i { b {
-                    //         "{current_query}"
-                    //     } }
-                    // }
                 };
             }
             text_data[0].clone()
@@ -77,17 +63,20 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
         }
     };
 
+    let document_identifier = document_identifier.peek().clone();
+    let source = source.peek().clone();
     let spans = text_data
         .highlight_text_spans
-        .iter()
-        .map(|i| {
+        .iter().enumerate()
+        .map(|(nth, i)| {
             let i = i.clone();
             let index = i.index as u32;
+            let key = format!("{document_identifier:?}-{nth}-{source:?}");
             rsx! {
                 if i.is_highlighted {
-                    TextDataSpan { mounts, index, text: i.text }
+                    TextDataSpan { mounts, index, text: i.text,  key2: key.clone() }
                 } else {
-                    TextDataSpanClean { text: i.text }
+                    TextDataSpanClean { text: i.text,  key2: key.clone() }
                 }
             }
         })
@@ -119,7 +108,7 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
 async fn get_document_text_by_id_and_source(document_identifier: DocumentIdentifier, 
 source: DocumentTextSourceItem,
 ) -> Result<String, ServerFnError> {
-    backend::api::documents::search_document_text::get_document_text_by_id_and_source(document_identifier, source).await.map_err(|e| ServerFnError::new(format!("{e:#?}")))
+    backend::api::documents::search_document_text::get_document_text_by_id_and_source(document_identifier, source.extracted_by.clone(), source.min_page).await.map_err(|e| ServerFnError::new(format!("{e:#?}")))
 }
 
 #[component]
@@ -151,6 +140,11 @@ fn TextDataFallback(
         }}
     };
 
+    
+    let document_identifier = document_identifier.read().clone();
+    let source = source.read().clone();
+    let fb = format!("fallback-{document_identifier:?}-{source:?}");
+
 
     rsx! {
          div {
@@ -167,7 +161,7 @@ fn TextDataFallback(
                     font-weight: 400;
                     color: rgb(0, 0, 0);
                 ",
-                TextDataSpanClean { text }
+                TextDataSpanClean { text, key2: "{fb}" }
             }
         }
         
@@ -179,33 +173,57 @@ fn TextDataSpan(
     mounts: Signal<BTreeMap<u32, Event<MountedData>>>,
     index: u32,
     text: String,
+    key2: String,
 ) -> Element {
     let current_highlighted_word_index =
         use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
-    let color = use_memo(move || {
-        if index == *current_highlighted_word_index.read() as u32 {
-            return "black";
-        }
-        return "transparent";
+    let is_selected = use_memo(move || {
+        index == *current_highlighted_word_index.read() as u32
     });
+
+    let is_selected = is_selected();
+
+    let text = text_to_span_html(text, true, is_selected);
 
     rsx! {
         span {
+            key: "{key2}",
             onmounted:  move |event| async move {
                 mounts.write().insert(index, event.clone());
             },
-            style: "background-color: #eb3f004d; color: rgb(0, 0, 0); white-space:pre-wrap; word-wrap: break-word; border: 2px dotted {color};",
-            "{text}"
+            
+            dangerous_inner_html: text,
         }
     }
 }
 
 #[component]
-fn TextDataSpanClean(text: String) -> Element {
+fn TextDataSpanClean(text: String, key2: String) -> Element {
+    let text = text_to_span_html(text, false, false);
+
     rsx! {
         span {
-            style: "color: rgb(0, 0, 0); white-space:pre-wrap; word-wrap: break-word;",
-            "{text}"
+            key: "{key2}-clean",
+            dangerous_inner_html: text,
         }
     }
+}
+
+
+fn text_to_span_html(text: String, is_match: bool, is_active_match: bool) -> String {
+    // the "b" bug #105 - dioxus bug where it doesn't encode/decode html
+    // and markup breaks. instead, we generate our own html here.
+    let class = if is_match {
+        if is_active_match {
+            "x-hit-span-active-match"
+        } else {
+            "x-hit-span-inacti-match"
+        }
+    } else {
+        "x-hit-span-non-match"
+    };
+
+    let text = html_escape::encode_text(&text).to_string();
+
+    format!(r#"<span class="{class}">{text}</span>"#)
 }

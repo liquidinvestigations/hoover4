@@ -121,3 +121,25 @@ html, body, #main {
     accent-color: #000293;
     background-color: #ebebeb !important;
 }
+
+.x-hit-span-non-match {
+    color: rgb(0, 0, 0);
+    white-space:pre-wrap;
+    word-wrap: break-word;
+}
+.x-hit-span-inacti-match {           
+    background-color: #eb3f004d;
+    color: rgb(0, 0, 0);
+    white-space:pre-wrap;
+    word-wrap: break-word;
+
+    border: 2px dotted transparent;
+}
+.x-hit-span-active-match {                
+    background-color: #eb3f0077;
+    color: rgb(0, 0, 0);
+    white-space:pre-wrap;
+    word-wrap: break-word;
+
+    border: 2px dotted black;
+}

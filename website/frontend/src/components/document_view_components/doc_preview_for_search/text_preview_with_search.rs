@@ -223,12 +223,19 @@ async fn search_document_text_for_hits(
     extracted_by: String,
     page_id: u32,
 ) -> Result<Vec<DocumentTextSourceHit>, ServerFnError> {
-    backend::api::documents::search_document_text::search_document_text_for_hits(
+    use dioxus::logger::tracing;
+
+    let t=  backend::api::documents::search_document_text::search_document_text_for_hits(
         document_identifier,
         find_query,
         extracted_by,
         page_id,
     )
     .await
-    .map_err(|e| ServerFnError::from(e))
+    .map_err(|e| ServerFnError::from(e));
+if let Ok(t) = &t {
+
+tracing::info!("{t:#?}");
+}
+    t
 }
