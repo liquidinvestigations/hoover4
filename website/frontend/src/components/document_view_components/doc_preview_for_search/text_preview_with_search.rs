@@ -19,6 +19,9 @@ pub struct DocumentViewerResultStore {
     pub current_text_data: ReadSignal<Option<Result<Vec<DocumentTextSourceHit>, ServerFnError>>>,
     pub max_highlighted_word_index: ReadSignal<u32>,
     pub current_highlighted_word_index: Signal<u32>,
+
+    pub     document_identifier: ReadSignal<DocumentIdentifier>,
+    pub source: ReadSignal<DocumentTextSourceItem>,
 }
 
 #[component]
@@ -125,6 +128,8 @@ pub fn DocumentPreviewTextWithSearch(
         current_text_data: current_text_data.into(),
         max_highlighted_word_index: max_highlighted_word_index.into(),
         current_highlighted_word_index,
+        document_identifier,
+        source,
     });
 
     rsx! {

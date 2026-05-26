@@ -1,12 +1,12 @@
 //! Endpoint for retrieving document text snippets.
 
 use common::{
-    document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
+    document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount, DocumentTextSourceItem},
     search_result::DocumentIdentifier,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::api::search::search_sql::SQL_OPTIONS_CLAUSE;
+use crate::{api::search::search_sql::SQL_OPTIONS_CLAUSE, db_utils::clickhouse_utils::get_clickhouse_client};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
 };
@@ -129,4 +129,36 @@ pub async fn search_document_text_for_hit_count(
         }
     }
     Ok(dedup)
+}
+
+
+pub async fn get_document_text_by_id_and_source(
+    document_identifier: DocumentIdentifier, 
+source: DocumentTextSourceItem,
+) -> anyhow::Result<String> {
+
+
+    let client = get_clickhouse_client();
+
+    let query = "
+    SELECT text from text_content
+    WHERE collection_dataset = ?
+    AND file_hash = ?
+    AND extracted_by = ?
+    AND page_id = ?   
+    LIMIT 1 
+    ";
+    let query = client.query(query)
+    .bind(&document_identifier.collection_dataset)
+    .bind(&document_identifier.file_hash)
+    .bind(&source.extracted_by)
+    .bind(&source.min_page);
+
+    let rows = query.fetch_all::<String>().await?;
+
+    if let Some(row) = rows.into_iter().next() {
+        Ok(row)
+    }  else {
+        anyhow::bail!("document not found!")
+    }
 }

@@ -16,8 +16,8 @@ body {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --dark: initial;
-    --light: ;
+    /* --dark: initial; */
+    --light: initial;
   }
 }
 

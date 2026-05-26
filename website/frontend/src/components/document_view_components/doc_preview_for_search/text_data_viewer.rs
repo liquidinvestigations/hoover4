@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
+use common::{document_sources::DocumentTextSourceItem, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 
 use crate::{
     components::{
-        document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore,
-        suspend_boundary::LoadingIndicator,
+        document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore, error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator
     },
     pages::search_page::DocViewerStateControl,
 };
@@ -38,23 +38,27 @@ pub fn TextDataViewer() -> Element {
 #[component]
 fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Element {
     let current_text_data = use_context::<DocumentViewerResultStore>().current_text_data;
-    let current_query = use_context::<DocViewerStateControl>()
-        .doc_viewer_state
-        .read()
-        .as_ref()
-        .map(|state| state.find_query.clone())
-        .unwrap_or("".to_string());
+    let document_identifier = use_context::<DocumentViewerResultStore>().document_identifier;
+    let source = use_context::<DocumentViewerResultStore>().source;
+    // let current_query = use_context::<DocViewerStateControl>()
+    //     .doc_viewer_state
+    //     .read()
+    //     .as_ref()
+    //     .map(|state| state.find_query.clone())
+    //     .unwrap_or("".to_string());
     let text_data = match current_text_data.read().clone() {
         Some(Ok(text_data)) => {
             if text_data.is_empty() {
                 return rsx! {
-                    div {
-                        style: "padding: 12px; margin: 12px; font-size: 26px;",
-                        "No matches found for "
-                        i { b {
-                            "{current_query}"
-                        } }
-                    }
+                    TextDataFallback{document_identifier, source}
+
+                    // div {
+                    //     style: "padding: 12px; margin: 12px; font-size: 26px;",
+                    //     "No matches found for "
+                    //     i { b {
+                    //         "{current_query}"
+                    //     } }
+                    // }
                 };
             }
             text_data[0].clone()
@@ -108,6 +112,65 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
             }
 
         }
+    }
+}
+
+#[server]
+async fn get_document_text_by_id_and_source(document_identifier: DocumentIdentifier, 
+source: DocumentTextSourceItem,
+) -> Result<String, ServerFnError> {
+    backend::api::documents::search_document_text::get_document_text_by_id_and_source(document_identifier, source).await.map_err(|e| ServerFnError::new(format!("{e:#?}")))
+}
+
+#[component]
+fn TextDataFallback(
+
+         document_identifier: ReadSignal<DocumentIdentifier>,
+     source: ReadSignal<DocumentTextSourceItem>,
+
+) -> Element {
+
+    let _data = use_resource(move || {
+        let document_identifier = document_identifier.read().clone();
+        let source = source.read().clone();
+        get_document_text_by_id_and_source(document_identifier, source)
+    });
+
+    let text=   _data.read();
+    let text = match text.as_ref() {
+        Some(Ok(v)) => {
+            v
+        }
+        Some(Err(e)) =>{ return rsx!{
+            ComponentErrorDisplay {
+                error_txt: "{e:#?}",
+            }
+        }}
+        None => {return rsx!{
+            LoadingIndicator {  }
+        }}
+    };
+
+
+    rsx! {
+         div {
+            style: "
+                height: 100%;
+                width: 100%;
+                overflow-y: scroll;
+            ",
+            pre {
+                style: "
+                    white-space: pre-wrap; word-wrap: break-word;
+                    font-size: 16px;
+                    line-height: 23px;
+                    font-weight: 400;
+                    color: rgb(0, 0, 0);
+                ",
+                TextDataSpanClean { text }
+            }
+        }
+        
     }
 }
 
