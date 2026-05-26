@@ -288,6 +288,12 @@ fn FacetSelectorList(
     facet_field_name: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
 ) -> Element {
+    use_effect(move || {
+        let x = facet_field_name.read().clone();
+
+    tracing::info!("FacetSelectorList(facet_field_name={x})");
+    });
+
     let search_result = use_resource(move || {
         let q = original_query.read().clone();
         search_string_facet(

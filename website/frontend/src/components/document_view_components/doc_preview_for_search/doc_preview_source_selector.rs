@@ -124,7 +124,7 @@ fn SelectedItemList(
     rsx! {
         ul {
             style: "
-            width: 350px;
+            width: 300px;
             height: fit-content;
             position: relative; top: 0px; left: 0px;",
 

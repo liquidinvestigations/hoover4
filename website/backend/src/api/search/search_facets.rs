@@ -1,7 +1,7 @@
 //! Search facets endpoint and response shaping.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     u64,
 };
 
@@ -20,6 +20,37 @@ use common::{
 use serde::{Deserialize, Serialize};
 
 pub async fn search_string_facet(
+    query: SearchQuery,
+    column: String,
+    map_string_terms: Option<String>,
+) -> anyhow::Result<SearchResultFacets> {
+
+    let x = _search_string_facet(query, column.clone(), map_string_terms).await?;
+    if column == "collection_dataset" {
+        return Ok(_search_enrich_collection_list(x).await?)
+    }
+    Ok(x)
+}
+
+async fn _search_enrich_collection_list(mut x: SearchResultFacets) -> anyhow::Result< SearchResultFacets> {
+    let collection_list = crate::api::list_datasets::list_dataset_ids().await?;
+    let mut collection_list
+    : BTreeSet<_> = collection_list.into_iter().collect();
+
+    for z in &x.facet_values {
+        if let FacetOriginalValue::String(z) = &z.original_value {
+            let _r = collection_list.remove(z);
+        }
+    }
+    for z in collection_list {
+        x.facet_values.push(SearchResultFacetItem { display_string: z.clone(), original_value: FacetOriginalValue::String(z.clone()), count: 0 });
+    }
+
+
+    Ok(x)
+}
+
+async fn _search_string_facet(
     mut query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
