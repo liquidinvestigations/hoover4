@@ -28,6 +28,20 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
             modified_search_query.read().clone(),
         ));
     };
+    let apply_filter_button_background = use_memo(move || {
+        if query_has_changed() {
+            "rgba(0,0,255,1.0)"
+        } else {
+            "rgba(137,191,255,1.0)"
+        }
+    });
+    let apply_filter_button_cursor = use_memo(move || {
+        if query_has_changed() {
+            "pointer"
+        } else {
+            "disabled"
+        }
+    });
     let search_oninput = move |event: Event<FormData>| {
         let new_q = event.value();
         modified_search_query.write().query_string = new_q;
@@ -85,7 +99,24 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 oninput: search_oninput,
                 onkeydown: search_onkeydown,
             }
+
         }
-        FacetButtonStrip{original_query, modified_search_query, trigger_search}
+        button {
+                style: "
+                font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
+                background-color: {apply_filter_button_background()};
+                color:white;
+                border-radius:100px; height: 42px;
+                margin-left: 10px;
+                cursor: {apply_filter_button_cursor()},
+                ",
+                onclick: move |_e| {
+                    _e.prevent_default();
+                    _e.stop_propagation();
+                    trigger_search(());
+                },
+                "Apply Filters"
+        }
+        FacetButtonStrip{original_query, modified_search_query}
     }
 }

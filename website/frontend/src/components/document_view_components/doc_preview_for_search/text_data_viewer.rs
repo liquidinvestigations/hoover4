@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use common::{document_sources::DocumentTextSourceItem, search_result::DocumentIdentifier};
-use dioxus::prelude::*;
+use dioxus::{logger::tracing, prelude::*};
 
 use crate::{
     components::{
@@ -65,6 +65,11 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
 
     let document_identifier = document_identifier.peek().clone();
     let source = source.peek().clone();
+    let onclick = Callback::new(move |clicked_index| {
+        tracing::info!("Clicked index {clicked_index}");
+        let mut current_highlighted_word_index = use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
+        current_highlighted_word_index.set(clicked_index);
+    });
     let spans = text_data
         .highlight_text_spans
         .iter().enumerate()
@@ -74,7 +79,7 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
             let key = format!("{document_identifier:?}-{nth}-{source:?}");
             rsx! {
                 if i.is_highlighted {
-                    TextDataSpan { mounts, index, text: i.text,  key2: key.clone() }
+                    TextDataSpan { mounts, index, text: i.text,  key2: key.clone() , onclick}
                 } else {
                     TextDataSpanClean { text: i.text,  key2: key.clone() }
                 }
@@ -174,6 +179,7 @@ fn TextDataSpan(
     index: u32,
     text: String,
     key2: String,
+    onclick: Callback<u32>,
 ) -> Element {
     let current_highlighted_word_index =
         use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
@@ -191,6 +197,7 @@ fn TextDataSpan(
             onmounted:  move |event| async move {
                 mounts.write().insert(index, event.clone());
             },
+            onclick: move |_| onclick.call(index),
             
             dangerous_inner_html: text,
         }

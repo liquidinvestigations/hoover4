@@ -134,6 +134,7 @@ html, body, #main {
     word-wrap: break-word;
 
     border: 2px dotted transparent;
+    cursor: pointer;
 }
 .x-hit-span-active-match {                
     background-color: #eb3f0077;
@@ -142,4 +143,12 @@ html, body, #main {
     word-wrap: break-word;
 
     border: 2px dotted black;
+}
+
+.x-hover-color-red {
+    border: 1px solid transparent;
+}
+.x-hover-color-red:hover {
+    color:red;
+    border: 1px solid rgba(255, 0, 0, 0.308);
 }

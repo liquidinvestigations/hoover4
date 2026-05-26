@@ -7,7 +7,7 @@ use dioxus::{logger::tracing, prelude::*};
 use dioxus_free_icons::{
     Icon,
     icons::{
-        md_action_icons::MdInfo,
+        md_action_icons::{MdDelete, MdInfo},
         md_communication_icons::MdBusiness,
         md_social_icons::MdPerson,
         md_toggle_icons::{MdCheckBox, MdCheckBoxOutlineBlank},
@@ -35,20 +35,20 @@ struct FacetContext {
 pub fn FacetButtonStrip(
     original_query: ReadSignal<SearchQuery>,
     modified_search_query: Signal<SearchQuery>,
-    trigger_search: Callback<()>,
+    // trigger_search: Callback<()>,
 ) -> Element {
     let mut expanded_facet = use_signal(|| "".to_string());
     let set_expanded_facet: Callback<String> = Callback::new(move |facet: String| {
         expanded_facet.set(facet.clone());
 
-        if facet.is_empty() {
-            // check if the facet is changed - if so, run a new search
-            let new_query = modified_search_query.peek().clone();
-            let old_query = original_query.peek().clone();
-            if new_query != old_query {
-                trigger_search(());
-            }
-        }
+        // if facet.is_empty() {
+        //     // check if the facet is changed - if so, run a new search
+        //     let new_query = modified_search_query.peek().clone();
+        //     let old_query = original_query.peek().clone();
+        //     if new_query != old_query {
+        //         trigger_search(());
+        //     }
+        // }
     });
     use_context_provider(|| FacetContext {
         original_query,
@@ -153,22 +153,24 @@ fn FacetButton<I: dioxus_free_icons::IconShape + 'static + Clone + PartialEq>(
     let expanded_facet = facet_context.expanded_facet;
     let set_expanded_facet = facet_context.set_expanded_facet;
     let original_query = facet_context.original_query;
-    let modified_search_query = facet_context.modified_search_query;
+    let mut modified_search_query = facet_context.modified_search_query;
+
+    let filter_values_present = use_memo(move || {
+        let m= modified_search_query.read();
+        let m: BTreeSet<_>  = m.facet_filters.keys().collect();
+        let field = facet_field_name.read().clone();
+        m.contains(&field)
+    });
+
+
 
     let is_expanded =
         use_memo(move || expanded_facet.read().clone() == facet_display_name.read().clone());
     let button_z_level = use_memo(move || if is_expanded() { 1000 } else { 888 });
-    let is_filtered = use_memo(move || {
-        !modified_search_query
-            .read()
-            .facet_filters
-            .get(&facet_field_name.read().clone())
-            .unwrap_or(&BTreeSet::new())
-            .is_empty()
-    });
+   
     let border_color = use_memo(move || {
-        if is_filtered() {
-            "rgba(0,0,255,0.9)"
+        if filter_values_present() {
+            "rgba(243,140,104,0.95)"
         } else {
             "rgba(0,0,0,0.5)"
         }
@@ -240,7 +242,7 @@ fn FacetButton<I: dioxus_free_icons::IconShape + 'static + Clone + PartialEq>(
                 justify-content: center;
                 gap: 6px;
                 flex-direction:row;
-                border: 2px solid {border_color()};
+                border: 3px solid {border_color()};
                 border-radius: 1000px;
                 background-color: white;
                 box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
@@ -272,11 +274,36 @@ fn FacetButton<I: dioxus_free_icons::IconShape + 'static + Clone + PartialEq>(
                     flex-shrink: 0;
                 ",
                 Icon {
-                    icon: facet_icon, style: "width: 20px; height: 20px; color:rgba(0,0,0,0.9); background:white;"
+                    icon: facet_icon, style: "width: 20px; height: 20px; color:{border_color()}; background:white;"
                 }
             },
             "{facet_display_name}"
             Icon { icon: MdArrowDropDown, style: "width: 20px; height: 20px; color:rgba(0,0,0,0.9);" }
+
+            if filter_values_present() {
+                div {
+                    onclick: move |_e| {
+                        _e.prevent_default();
+                        _e.stop_propagation();
+                        tracing::info!("Filter delete button clicked!");
+
+
+                    let _val = modified_search_query
+                        .write()
+                        .facet_filters
+                        .remove(&facet_field_name.read().clone());
+                    tracing::info!("Removed values: {_val:?}");
+
+
+                    },
+                    class: "x-hover-color-red",
+                    style: "cursor: pointer;",
+                    Icon {
+                        icon: MdDelete,
+                        style:"width:20px;height:20px;",
+                    }
+                }
+            }
         }
     }
 }
