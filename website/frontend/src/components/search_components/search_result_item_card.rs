@@ -42,7 +42,7 @@ pub fn SearchResultItemCard(
     let background_color = if we_are_selected {
         "#4096FF33"
     } else {
-        "white"
+        "rgba(255,255,255,1.0)"
     };
 
     rsx! {

@@ -195,6 +195,7 @@ fn FacetButton<I: dioxus_free_icons::IconShape + 'static + Clone + PartialEq>(
                         background-color: white;
                         box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
                         z-index: 1000;
+                        overflow-y: scroll;
                     ",
                     SuspendWrapper {
                         FacetSelectorList {
@@ -297,7 +298,7 @@ fn FacetSelectorList(
     })
     .suspend()?
     .cloned();
-    let mut search_result = match search_result {
+    let search_result = match search_result {
         Err(e) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
         Ok(s) => s,
     };

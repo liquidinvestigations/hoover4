@@ -236,45 +236,64 @@ fn ControlNextPrevPage() -> Element {
     let can_go_to_next_page = use_memo(move || selected_page() < *max_pages.read());
 
     rsx! {
-        // prev page
-        NavigationButton {
-            icon: MdArrowBack,
-            label: "Previous Page",
-            disabled: !can_go_to_previous_page(),
-            onclick: move |_| {set_current_page(search_result_page() - 1);}
-        }
-        // current page counter
         div {
             style: "
-                font-size: 20px;
-                line-height: 28px;
-                font-weight: 400;
-                background-color: rgba(255,255,255,0.8);
-                border-radius: 16px;
-                padding: 0px 50px;
-                margin-left: -48px;
-                margin-right: -48px;
-                align-items: center;
-                align-content: center;
-                height:36px;
-                width: fit-content;
-                border-left: 2px solid rgba(0,0,0,0.0);
-                border-right: 2px solid rgba(0,0,0,0.0);
+                display: flex;
+                flex-direction:row;
+                background-color:rgba(255,255,255,0.9);
+                border: 2px solid rgba(128,128,128,0.0);
+                        box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.16);
+
+                    align-items: center;
+                    align-content: center;
+                    justify-content: center;
+                    justify-items: center;
+                border-radius: 12px;
+                gap: 4px;
+                height: 32px;
+
+                    margin-top: -2px;
+
             ",
-            "{selected_page()}"
-            span {
-                style: "color: rgba(0,0,0,0.5);",
-                "/{*max_pages.read()}"
+
+
+
+            // prev page
+            NavigationButton2 {
+                icon: MdArrowBack,
+                label: "Previous Page",
+                disabled: !can_go_to_previous_page(),
+                onclick: move |_| {set_current_page(search_result_page() - 1);}
             }
-        }
-        // next page
-        NavigationButton {
-            icon: MdArrowForward,
-            label: "Next Page",
-            disabled: !can_go_to_next_page(),
-            onclick: move |_| {
-                // dioxus::logger::tracing::info!("NEXT PAGE!");
-                set_current_page(search_result_page() + 1);
+            div {style: "width: 1px; height: 32px; background: rgba(128,128,128,0.5);"}
+            // current page counter
+            div {
+                style: "
+                    font-size: 20px;
+                    line-height: 28px;
+                    font-weight: 400;
+                    align-items: center;
+                    align-content: center;
+                    height:31px;
+                    width: fit-content;
+                ",
+                "{selected_page()}"
+                span {
+                    style: "color: rgba(0,0,0,0.5);",
+                    "/{*max_pages.read()}"
+                }
+            }
+            div {style: "width: 1px; height: 32px; background: rgba(128,128,128,0.5);"}
+
+            // next page
+            NavigationButton2 {
+                icon: MdArrowForward,
+                label: "Next Page",
+                disabled: !can_go_to_next_page(),
+                onclick: move |_| {
+                    // dioxus::logger::tracing::info!("NEXT PAGE!");
+                    set_current_page(search_result_page() + 1);
+                }
             }
         }
     }
@@ -346,6 +365,81 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                         padding:10px;
                         // border-radius:5px;
                         // border: 1px solid black;
+                        width: 100%;
+                        font-size: 21px;
+                    ",
+
+                    div {style:"flex-grow: 1;"}
+                    "{label}",
+                    div {style:"flex-grow: 1;"}
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + 'static>(
+    icon: I,
+    label: String,
+    disabled: ReadSignal<bool>,
+    onclick: Callback<()>,
+) -> Element {
+    let btn_color = use_memo(move || {
+        if *disabled.read() {
+            "rgba(0,0,0,0.3)"
+        } else {
+            "rgba(0,0,0,1)"
+        }
+    });
+    let tooltip_color = use_memo(move || {
+        if *disabled.read() {
+            "rgba(0,0,0,0.6)"
+        } else {
+            "rgba(0,0,0,1)"
+        }
+    });
+    let btn_cursor = use_memo(move || {
+        if *disabled.read() {
+            "not-allowed"
+        } else {
+            "pointer"
+        }
+    });
+    rsx! {
+        HoverCard {
+            HoverCardTrigger {
+                button {
+                    disabled: *disabled.read(),
+                    style: "
+                        width: 32px;
+                        height: 32px;
+                        background: transparent;
+                        padding: 4px;
+                        cursor: {btn_cursor};
+                    ",
+                    onclick: move |_| {
+                        if !*disabled.read() {
+                            onclick(());
+                        }
+                    },
+                    Icon { icon: icon, style: "width: 26px; height: 26px; color: {btn_color};" }
+                },
+
+            },
+            HoverCardContent {
+                side: ContentSide::Bottom,
+                align: ContentAlign::Center,
+                div {
+                    style: "
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: center;
+                        text-align:center;
+                        color:{tooltip_color};
+                        background-color:white;
+                        padding:10px;
                         width: 100%;
                         font-size: 21px;
                     ",

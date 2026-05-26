@@ -13,6 +13,7 @@ const THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
 #[component]
 pub fn App() -> Element {
     rsx! {
+        document::Meta { name: "color-scheme", content: "light" }
         // TODO: replace google fonts with local fonts
         document::Link { rel: "preconnect", href: "https://fonts.googleapis.com" }
         document::Link { rel: "preconnect", href: "https://fonts.gstatic.com" }

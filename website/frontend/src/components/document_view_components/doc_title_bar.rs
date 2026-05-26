@@ -24,6 +24,8 @@ pub fn DocTitleBar(
                 display: flex;
                 flex-direction: row;
                 gap: 12px;
+                padding-right: 6px;
+                padding-left: 0px;
                 align-items: center;
                 justify-content: space-between;
                 height: 54px;
@@ -139,7 +141,7 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     });
     rsx! {
         div {
-            style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;",
+            style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.75)",
 
             "{file_path}"
         }

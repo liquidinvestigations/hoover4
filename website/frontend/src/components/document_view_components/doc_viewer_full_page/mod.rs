@@ -198,7 +198,7 @@ fn RightTabButton(
         "1px solid rgba(0,0,0,0.25)"
     };
     let bg = if is_active {
-        "white"
+        "rgba(255,255,255,1.0)"
     } else {
         "rgba(0,0,0,0.03)"
     };
