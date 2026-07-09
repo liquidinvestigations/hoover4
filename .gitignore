@@ -1,2 +1,9 @@
 testdata
 .env.development
+copilot-instructions.md
+.context
+context-*.md
+*-context.md
+CLAUDE.md
+AGENTS.md
+gain.ndjson
