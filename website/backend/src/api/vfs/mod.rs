@@ -2,15 +2,19 @@
 
 use std::collections::BTreeSet;
 
+use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
 use common::vfs::{PathDescriptor, VfsDirectoryEntry, VfsFileEntry, VfsListing};
 
+use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 /// Look up the first VFS path for a given document identifier.
 pub async fn get_first_vfs_path(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<PathDescriptor> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_clickhouse_client();
     let sql = "
         SELECT path, container_hash
@@ -43,9 +47,11 @@ pub async fn get_first_vfs_path(
 /// `path.container_hash` selects the archive/email container that owns the
 /// folder; empty string means top-level VFS.
 pub async fn list_folder_children(
+    user: &CurrentUser,
     collection_dataset: String,
     path: PathDescriptor,
 ) -> anyhow::Result<VfsListing> {
+    permissions::assert_can_read(user, &collection_dataset).await?;
     if path.path.is_empty() {
         anyhow::bail!("path must not be empty; use \"/\" for the root folder");
     }

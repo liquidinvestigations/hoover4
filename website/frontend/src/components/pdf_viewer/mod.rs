@@ -233,7 +233,9 @@ async fn search_document_pdf(
     document_identifier: DocumentIdentifier,
     query: String,
 ) -> anyhow::Result<PdfSearchResults> {
+    let user = crate::api::server_auth::extract_user().await?;
     let results = backend::api::documents::search_document_pdf::search_document_pdf(
+        &user,
         document_identifier,
         query,
     )

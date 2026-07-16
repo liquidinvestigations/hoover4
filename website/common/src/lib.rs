@@ -2,6 +2,8 @@
 
 extern crate serde;
 
+pub mod admin_types;
+pub mod current_user;
 pub mod document_entities;
 pub mod document_metadata;
 pub mod document_sources;

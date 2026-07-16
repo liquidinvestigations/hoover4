@@ -5,15 +5,21 @@ use crate::{
     api::search::search_sql::build_sql_where_clause,
     db_utils::manticore_utils::manticore_search_sql,
 };
-use common::search_query::SearchQuery;
+use common::{current_user::CurrentUser, search_query::SearchQuery};
 use serde::{Deserialize, Serialize};
+
+use crate::auth::permissions;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchForResultsHitCountResponse {
     pub total_count: u64,
 }
 
-pub async fn search_for_results_hit_count(query: SearchQuery) -> anyhow::Result<u64> {
+pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<u64> {
+    let perms = permissions::resolve_permissions(user).await?;
+    let Some(query) = permissions::sanitize_query(query, &perms) else {
+        return Ok(0);
+    };
     let sql_where_clause = build_sql_where_clause(&query);
     let sql = format!(
         "

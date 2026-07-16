@@ -515,9 +515,8 @@ fn Breadcrumbs(collection: String, path: PathDescriptor) -> Element {
                 }
             }
             for (name, descriptor) in segments.iter() {
-                span { style: CRUMB_SEP_STYLE, "›" }
+                span { key: "crumb-{descriptor}", style: CRUMB_SEP_STYLE, "›" }
                 Link {
-                    key: "crumb-{descriptor}",
                     to: Route::file_browser_page(collection.clone(), descriptor.clone(), None),
                     style: CRUMB_LINK_STYLE,
                     "{name}"
@@ -833,35 +832,26 @@ async fn list_folder_children(
     collection_dataset: String,
     path: PathDescriptor,
 ) -> Result<VfsListing, ServerFnError> {
-    backend::api::vfs::list_folder_children(collection_dataset, path)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::list_folder_children(&user, collection_dataset, path)
         .await
-        .map_err(|e| ServerFnError::ServerError {
-            message: e.to_string(),
-            code: 500,
-            details: None,
-        })
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[server]
 async fn lookup_container_descriptor(
     document_identifier: DocumentIdentifier,
 ) -> Result<PathDescriptor, ServerFnError> {
-    backend::api::vfs::get_first_vfs_path(document_identifier)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::get_first_vfs_path(&user, document_identifier)
         .await
-        .map_err(|e| ServerFnError::ServerError {
-            message: e.to_string(),
-            code: 500,
-            details: None,
-        })
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[server]
 async fn list_collections() -> Result<Vec<String>, ServerFnError> {
-    backend::api::list_datasets::list_dataset_ids()
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::list_datasets::list_permitted_dataset_ids(&user)
         .await
-        .map_err(|e| ServerFnError::ServerError {
-            message: e.to_string(),
-            code: 500,
-            details: None,
-        })
+        .map_err(crate::api::error_util::to_server_fn_error)
 }

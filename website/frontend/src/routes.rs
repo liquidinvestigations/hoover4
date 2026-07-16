@@ -9,6 +9,12 @@ use crate::data_definitions::doc_viewer_state::{DocViewerState, ViewerRightTabSt
 use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
+use crate::pages::admin::{
+    collection_detail::AdminCollectionPage, collections_list::AdminCollectionsPage,
+    dashboard::AdminDashboardPage, dataset_detail::AdminDatasetPage,
+    group_detail::AdminGroupPage, groups_list::AdminGroupsPage, settings::AdminSettingsPage,
+    user_detail::AdminUserPage, users_list::AdminUsersPage,
+};
 use crate::pages::chatbot_page::ChatbotPage;
 use crate::pages::file_browser_page::{FileBrowserCollectionsPage, FileBrowserPage};
 use crate::pages::home_page::HomePage;
@@ -59,6 +65,33 @@ pub enum Route {
 
     #[route("/pdfdemo")]
     PdfDemoPage {  },
+
+    #[route("/admin")]
+    AdminDashboardPage {},
+
+    #[route("/admin/collections")]
+    AdminCollectionsPage {},
+
+    #[route("/admin/collections/:collection_id")]
+    AdminCollectionPage { collection_id: String },
+
+    #[route("/admin/collections/:collection_id/datasets/:dataset_id")]
+    AdminDatasetPage { collection_id: String, dataset_id: String },
+
+    #[route("/admin/users")]
+    AdminUsersPage {},
+
+    #[route("/admin/users/:username")]
+    AdminUserPage { username: String },
+
+    #[route("/admin/user_groups")]
+    AdminGroupsPage {},
+
+    #[route("/admin/user_groups/:groupname")]
+    AdminGroupPage { groupname: String },
+
+    #[route("/admin/settings")]
+    AdminSettingsPage {},
 
 }
 

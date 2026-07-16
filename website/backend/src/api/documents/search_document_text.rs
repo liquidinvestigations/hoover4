@@ -1,11 +1,13 @@
 //! Endpoint for retrieving document text snippets.
 
 use common::{
+    current_user::CurrentUser,
     document_sources::{DocumentTextSourceHit, DocumentTextSourceHitCount},
     search_result::DocumentIdentifier,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::auth::permissions;
 use crate::{api::search::search_sql::SQL_OPTIONS_CLAUSE, db_utils::clickhouse_utils::get_clickhouse_client};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
@@ -19,11 +21,13 @@ struct DocumentHits {
 }
 
 pub async fn search_document_text_for_hits(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     find_query: String,
     extracted_by: String,
     page_id: u32,
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let sql = format!(
         r#"
             SELECT
@@ -65,9 +69,11 @@ pub async fn search_document_text_for_hits(
 }
 
 pub async fn search_document_text_for_hit_count(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     find_query: String,
 ) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let sql = format!(
         r#"
         SELECT
@@ -133,12 +139,12 @@ pub async fn search_document_text_for_hit_count(
 
 
 pub async fn get_document_text_by_id_and_source(
-    document_identifier: DocumentIdentifier, 
-extracted_by: String,
-page_id: u32,
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    extracted_by: String,
+    page_id: u32,
 ) -> anyhow::Result<String> {
-
-
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_clickhouse_client();
 
     let query = "
@@ -153,7 +159,7 @@ page_id: u32,
     .bind(&document_identifier.collection_dataset)
     .bind(&document_identifier.file_hash)
     .bind(&extracted_by)
-    .bind(&page_id);
+    .bind(page_id);
 
     let rows = query.fetch_all::<String>().await?;
 

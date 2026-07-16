@@ -14,26 +14,33 @@ use crate::{
     },
 };
 use common::{
+    current_user::CurrentUser,
     search_query::SearchQuery,
     search_result::{FacetOriginalValue, SearchResultFacetItem, SearchResultFacets},
 };
+
+use crate::auth::permissions;
 use serde::{Deserialize, Serialize};
 
 pub async fn search_string_facet(
+    user: &CurrentUser,
     query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
 ) -> anyhow::Result<SearchResultFacets> {
 
-    let x = _search_string_facet(query, column.clone(), map_string_terms).await?;
+    let x = _search_string_facet(user, query, column.clone(), map_string_terms).await?;
     if column == "collection_dataset" {
-        return Ok(_search_enrich_collection_list(x).await?)
+        return _search_enrich_collection_list(user, x).await;
     }
     Ok(x)
 }
 
-async fn _search_enrich_collection_list(mut x: SearchResultFacets) -> anyhow::Result< SearchResultFacets> {
-    let collection_list = crate::api::list_datasets::list_dataset_ids().await?;
+async fn _search_enrich_collection_list(
+    user: &CurrentUser,
+    mut x: SearchResultFacets,
+) -> anyhow::Result<SearchResultFacets> {
+    let collection_list = crate::api::list_datasets::list_permitted_dataset_ids(user).await?;
     let mut collection_list
     : BTreeSet<_> = collection_list.into_iter().collect();
 
@@ -51,12 +58,21 @@ async fn _search_enrich_collection_list(mut x: SearchResultFacets) -> anyhow::Re
 }
 
 async fn _search_string_facet(
-    mut query: SearchQuery,
+    user: &CurrentUser,
+    query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
 ) -> anyhow::Result<SearchResultFacets> {
+    let perms = permissions::resolve_permissions(user).await?;
+    let Some(mut query) = permissions::sanitize_query(query, &perms) else {
+        return Ok(SearchResultFacets {
+            query: SearchQuery::default(),
+            facet_field: column,
+            facet_values: Vec::new(),
+        });
+    };
     if map_string_terms.is_some() {
-        return search_mva_facet(query, column, map_string_terms).await;
+        return search_mva_facet(user, query, column, map_string_terms).await;
     }
     // remove all filters on current column, as we don't want to filter out unselected values from the facet
     query.facet_filters.remove(&column);
@@ -156,10 +172,19 @@ struct SearchMvaFacetResponse {
 }
 
 pub async fn search_mva_facet(
-    mut query: SearchQuery,
+    user: &CurrentUser,
+    query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
 ) -> anyhow::Result<SearchResultFacets> {
+    let perms = permissions::resolve_permissions(user).await?;
+    let Some(mut query) = permissions::sanitize_query(query, &perms) else {
+        return Ok(SearchResultFacets {
+            query: SearchQuery::default(),
+            facet_field: column,
+            facet_values: Vec::new(),
+        });
+    };
     // remove all filters on current column, as we don't want to filter out unselected values from the facet
     query.facet_filters.remove(&column);
 

@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use common::{
+    current_user::CurrentUser,
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
         DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
@@ -9,11 +10,14 @@ use common::{
     search_result::DocumentIdentifier,
 };
 
+use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 pub(crate) async fn get_text_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentTextSourceItem>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_clickhouse_client();
     let query = r#"
     SELECT extracted_by,min(page_id) as min_page,max(page_id) as max_page FROM text_content
@@ -43,9 +47,11 @@ use common::document_metadata::DocumentMetadataTableInfo;
 use crate::api::documents::get_raw_metadata::get_raw_metadata;
 
 pub(crate) async fn get_pdf_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentPdfSourceItem>> {
     let meta = get_raw_metadata(
+        user,
         document_identifier,
         DocumentMetadataTableInfo::new("pdfs", "pdf_hash"),
     )
@@ -61,6 +67,7 @@ pub(crate) async fn get_pdf_sources(
 }
 
 async fn get_email_sources(
+    _user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentEmailSourceItem>> {
     let client = get_clickhouse_client();
@@ -94,9 +101,11 @@ async fn get_email_sources(
 
 #[tracing::instrument(level = "debug", err(Debug))]
 async fn get_image_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentImageSourceItem>> {
     let meta = get_raw_metadata(
+        user,
         document_identifier,
         DocumentMetadataTableInfo::new3("image", "image_hash", vec!["image_metadata"]),
     )
@@ -131,9 +140,11 @@ async fn get_image_sources(
 }
 
 async fn get_video_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentVideoSourceItem>> {
     let meta = get_raw_metadata(
+        user,
         document_identifier,
         DocumentMetadataTableInfo::new3("video_metadata", "hash", vec!["video_metadata_json"]),
     )
@@ -163,9 +174,11 @@ async fn get_video_sources(
 }
 
 async fn get_audio_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentAudioSourceItem>> {
     let meta = get_raw_metadata(
+        user,
         document_identifier,
         DocumentMetadataTableInfo::new3("audio_metadata", "hash", vec!["audio_metadata_json"]),
     )
@@ -186,15 +199,17 @@ async fn get_audio_sources(
 
 #[allow(for_loops_over_fallibles)]
 pub async fn get_document_sources(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentSourceItem>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let (txt, pdf, email, img, vid, aud) = tokio::join!(
-        get_text_sources(document_identifier.clone()),
-        get_pdf_sources(document_identifier.clone()),
-        get_email_sources(document_identifier.clone()),
-        get_image_sources(document_identifier.clone()),
-        get_video_sources(document_identifier.clone()),
-        get_audio_sources(document_identifier.clone()),
+        get_text_sources(user, document_identifier.clone()),
+        get_pdf_sources(user, document_identifier.clone()),
+        get_email_sources(user, document_identifier.clone()),
+        get_image_sources(user, document_identifier.clone()),
+        get_video_sources(user, document_identifier.clone()),
+        get_audio_sources(user, document_identifier.clone()),
     );
 
     let mut sources = vec![];

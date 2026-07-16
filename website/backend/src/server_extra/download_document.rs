@@ -3,9 +3,10 @@ use std::pin::Pin;
 use anyhow::Context;
 use axum::{
     body::Body,
-    extract::Path,
+    extract::{Extension, Path},
     response::{IntoResponse, Response},
 };
+use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
 use futures::TryStreamExt;
 use minio::s3::types::S3Api;
@@ -14,6 +15,7 @@ use tracing::info;
 
 use crate::{
     api::documents::download_document::{BlobInfo, BlobValue, get_blob_filename},
+    auth::{guard, permissions},
     db_utils::clickhouse_utils::get_clickhouse_client,
 };
 
@@ -100,15 +102,17 @@ async fn get_document_content_stream(
 }
 
 async fn _download_document(
+    user: &CurrentUser,
     Path((collection_dataset, file_hash)): Path<(String, String)>,
 ) -> anyhow::Result<impl IntoResponse> {
     info!("Downloading document: {}/{}", collection_dataset, file_hash);
 
     let document_identifier = DocumentIdentifier {
-        collection_dataset,
+        collection_dataset: collection_dataset.clone(),
         file_hash,
     };
-    let filename = get_blob_filename(document_identifier.clone()).await?;
+    permissions::assert_can_read(user, &collection_dataset).await?;
+    let filename = get_blob_filename(user, document_identifier.clone()).await?;
 
     let (stream_size, stream) = get_document_content_stream(document_identifier.clone()).await?;
 
@@ -129,11 +133,15 @@ async fn _download_document(
 }
 
 pub async fn download_document(
-    Path((collection_dataset, file_hash)): Path<(String, String)>,
+    Extension(user): Extension<CurrentUser>,
+    path: Path<(String, String)>,
 ) -> Response {
-    match _download_document(Path((collection_dataset, file_hash))).await {
+    match _download_document(&user, path).await {
         Ok(response) => response.into_response(),
         Err(e) => {
+            if guard::is_forbidden(&e) {
+                return (StatusCode::FORBIDDEN, Body::from(e.to_string())).into_response();
+            }
             tracing::error!("download_document: request failed: {:#?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Body::from(e.to_string())).into_response()
         }

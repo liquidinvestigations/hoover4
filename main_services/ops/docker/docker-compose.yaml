@@ -191,6 +191,7 @@ services:
       - hoover4
     ports:
       - 127.0.0.1:7233:7233
+      - 127.0.0.1:7243:7243
     labels:
       kompose.volume.type: configMap
     healthcheck:

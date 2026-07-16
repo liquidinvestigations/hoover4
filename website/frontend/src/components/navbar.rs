@@ -127,7 +127,7 @@ fn NavbarBottomIconLinks() -> Element {
                 justify-content: center;
             ",
 
-            IconLink { to: Route::HomePage { }, icon: MdPerson, label: "Profile" }
+            IconLink { to: Route::AdminDashboardPage { }, icon: MdPerson, label: "Admin" }
         }
     }
 }

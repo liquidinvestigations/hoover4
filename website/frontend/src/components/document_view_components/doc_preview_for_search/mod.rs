@@ -178,11 +178,10 @@ fn DocumentPreviewForSearchContent(
 pub async fn get_document_sources(
     document_identifier: DocumentIdentifier,
 ) -> Result<Vec<DocumentSourceItem>, ServerFnError> {
-    let sources =
-        backend::api::documents::get_document_sources::get_document_sources(document_identifier)
-            .await
-            .map_err(|e| ServerFnError::from(e))?;
-    Ok(sources)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_document_sources::get_document_sources(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 fn _make_preview_wrapper(controls: Element, page: Element) -> Element {

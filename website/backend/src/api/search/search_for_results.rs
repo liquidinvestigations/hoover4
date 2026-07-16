@@ -5,9 +5,13 @@ use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
 };
 use common::{
+    current_user::CurrentUser,
     search_query::SearchQuery,
     search_result::{DocumentIdentifier, SearchResultDocumentItem, SearchResultDocuments},
 };
+
+use crate::auth::permissions;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,9 +31,20 @@ struct SearchForResultsResponse {
 }
 
 pub async fn search_for_results(
+    user: &CurrentUser,
     query: SearchQuery,
     current_search_result_page: u64,
 ) -> anyhow::Result<SearchResultDocuments> {
+    let perms = permissions::resolve_permissions(user).await?;
+    let Some(query) = permissions::sanitize_query(query, &perms) else {
+        return Ok(SearchResultDocuments {
+            query: SearchQuery::default(),
+            results: vec![],
+            prev_hash: None,
+            next_hash: None,
+            page_number: current_search_result_page,
+        });
+    };
     let sql_where_clause = build_sql_where_clause(&query);
     let mut offset = current_search_result_page * common::search_const::PAGE_SIZE;
     let mut limit = common::search_const::PAGE_SIZE + 1;

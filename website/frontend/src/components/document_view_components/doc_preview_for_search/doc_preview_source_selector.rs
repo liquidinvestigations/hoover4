@@ -26,13 +26,15 @@ pub async fn search_document_item_hit_counts(
     if _find_query.is_empty() || _sources.is_empty() {
         return Ok(ItemHitCounts(Vec::new()));
     }
+    let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::search_document_itemcount::search_document_item_count(
+        &user,
         _document_identifier,
         _find_query,
         _sources,
     )
     .await
-    .map_err(|e| ServerFnError::from(e))
+    .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[component]

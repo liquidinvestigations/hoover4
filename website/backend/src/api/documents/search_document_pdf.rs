@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use common::{pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
+use common::{current_user::CurrentUser, pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -14,16 +14,21 @@ struct SearchPdfResultsSet {
     result_set: PdfSearchResults,
 }
 
+use crate::auth::permissions;
+
 pub async fn search_document_pdf(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     query: String,
 ) -> anyhow::Result<PdfSearchResults> {
-    let text_sources = get_text_sources(document_identifier.clone()).await?;
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let text_sources = get_text_sources(user, document_identifier.clone()).await?;
     tracing::info!("TEXT SOURCES COUNT: {:?}", text_sources.len());
     let mut text_results = vec![];
     for source in text_sources {
         for page_id in source.min_page..=source.max_page {
             let results = search_document_text_for_hits(
+                user,
                 document_identifier.clone(),
                 query.clone(),
                 source.extracted_by.clone(),

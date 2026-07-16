@@ -1,4 +1,5 @@
 use common::{
+    current_user::CurrentUser,
     document_sources::{DocumentSourceItem, ItemHitCounts},
     search_result::DocumentIdentifier,
 };
@@ -7,12 +8,15 @@ use crate::api::documents::{
     search_document_pdf::search_document_pdf,
     search_document_text::search_document_text_for_hit_count,
 };
+use crate::auth::permissions;
 
 pub async fn search_document_item_count(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     find_query: String,
     sources: Vec<DocumentSourceItem>,
 ) -> anyhow::Result<ItemHitCounts> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     if find_query.is_empty() {
         return Ok(ItemHitCounts(Vec::new()));
     }
@@ -40,20 +44,26 @@ pub async fn search_document_item_count(
         .cloned()
         .cloned();
 
+    let doc_id = document_identifier.clone();
+    let query = find_query.clone();
     let pdf_task = if has_pdf {
-        Some(tokio::task::spawn(search_document_pdf(
-            document_identifier.clone(),
-            find_query.clone(),
-        )))
+        let user = user.clone();
+        let doc_id = doc_id.clone();
+        let query = query.clone();
+        Some(tokio::task::spawn(async move {
+            search_document_pdf(&user, doc_id, query).await
+        }))
     } else {
         None
     };
 
     let txt_task = if has_txt {
-        Some(tokio::task::spawn(search_document_text_for_hit_count(
-            document_identifier.clone(),
-            find_query.clone(),
-        )))
+        let user = user.clone();
+        let doc_id = doc_id.clone();
+        let query = query.clone();
+        Some(tokio::task::spawn(async move {
+            search_document_text_for_hit_count(&user, doc_id, query).await
+        }))
     } else {
         None
     };
@@ -98,11 +108,8 @@ pub async fn search_document_item_count(
     }
 
     if let Some(email) = has_email {
-        let txt_entry = rv.iter().find(|(item, _)| matches!(item, DocumentSourceItem::Text(_x) if _x.extracted_by == "email_parser".to_string()));
-        rv.push((
-            email,
-            *txt_entry.map(|(_, count)| count).unwrap_or(&0) as u64,
-        ));
+        let txt_entry = rv.iter().find(|(item, _)| matches!(item, DocumentSourceItem::Text(_x) if _x.extracted_by == "email_parser"));
+        rv.push((email, *txt_entry.map(|(_, count)| count).unwrap_or(&0)));
     }
 
     Ok(ItemHitCounts(rv))

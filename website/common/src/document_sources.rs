@@ -70,6 +70,9 @@ pub enum DocumentSourceItem {
 
 impl Eq for DocumentSourceItem {}
 
+// Ord can't be derived because the variants carry f32 fields (no total order);
+// PartialOrd stays derived and NaN-shaped comparisons fall back to Less.
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for DocumentSourceItem {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)

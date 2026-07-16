@@ -113,7 +113,8 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
 async fn get_document_text_by_id_and_source(document_identifier: DocumentIdentifier, 
 source: DocumentTextSourceItem,
 ) -> Result<String, ServerFnError> {
-    backend::api::documents::search_document_text::get_document_text_by_id_and_source(document_identifier, source.extracted_by.clone(), source.min_page).await.map_err(|e| ServerFnError::new(format!("{e:#?}")))
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::search_document_text::get_document_text_by_id_and_source(&user, document_identifier, source.extracted_by.clone(), source.min_page).await.map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[component]

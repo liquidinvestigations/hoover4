@@ -2,10 +2,12 @@ use std::pin::Pin;
 
 use anyhow::Context;
 use clickhouse::Row;
+use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
+use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Row)]
@@ -22,7 +24,11 @@ pub struct BlobValue {
     pub blob_length: u64,
 }
 
-pub async fn get_blob_filename(document_identifier: DocumentIdentifier) -> anyhow::Result<String> {
+pub async fn get_blob_filename(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<String> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_clickhouse_client();
     let query = "SELECT path FROM vfs_files WHERE collection_dataset = ? AND hash = ? LIMIT 1";
     let query = client
@@ -38,11 +44,13 @@ pub async fn get_blob_filename(document_identifier: DocumentIdentifier) -> anyho
 }
 
 pub async fn get_document_content_stream(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<(
     usize,
     Pin<Box<dyn futures::Stream<Item = anyhow::Result<bytes::Bytes>> + Send + 'static>>,
 )> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let path = format!(
         "http://127.0.0.1:8080{}",
         document_identifier.get_absolute_url_path()

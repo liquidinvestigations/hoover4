@@ -325,11 +325,8 @@ fn folder_icon() -> Element {
 async fn get_document_first_vfs_path(
     document_identifier: DocumentIdentifier,
 ) -> Result<PathDescriptor, ServerFnError> {
-    backend::api::vfs::get_first_vfs_path(document_identifier)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::get_first_vfs_path(&user, document_identifier)
         .await
-        .map_err(|e| ServerFnError::ServerError {
-            message: e.to_string(),
-            code: 500,
-            details: None,
-        })
+        .map_err(crate::api::error_util::to_server_fn_error)
 }

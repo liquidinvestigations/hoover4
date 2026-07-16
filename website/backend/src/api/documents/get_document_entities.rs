@@ -2,12 +2,14 @@
 
 use clickhouse::Row;
 use common::{
+    current_user::CurrentUser,
     document_entities::{DocumentEntitiesResponse, DocumentEntityItem, DocumentEntityType},
     search_result::DocumentIdentifier,
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use serde::Deserialize;
 
+use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 #[derive(Debug, Clone, Deserialize, Row)]
@@ -31,8 +33,10 @@ fn normalize_entity_type(s: &str) -> DocumentEntityType {
 }
 
 pub async fn get_document_entities(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<DocumentEntitiesResponse> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
 
     let _ents = _get_document_entities(document_identifier.clone()).await?;
     
@@ -40,7 +44,7 @@ pub async fn get_document_entities(
 
     let mut fut = FuturesUnordered::new();
     for item in _ents.items {
-        fut.push(_adjust_hit_item_count(document_identifier.clone(), item));
+        fut.push(_adjust_hit_item_count(user, document_identifier.clone(), item));
     }
     let mut v2 = vec![];
     while let Some(item) =  fut.next().await {
@@ -57,12 +61,15 @@ pub async fn get_document_entities(
     Ok(DocumentEntitiesResponse{items:v2})
 }
 
-async fn _adjust_hit_item_count(document_identifier: DocumentIdentifier, 
-mut item: DocumentEntityItem) -> anyhow::Result<DocumentEntityItem>{
+async fn _adjust_hit_item_count(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier, 
+    mut item: DocumentEntityItem,
+) -> anyhow::Result<DocumentEntityItem> {
     let find_query = format!("\"{}\"", item.value);
     use crate::api::documents::search_document_text::search_document_text_for_hit_count;
 
-    let _counts = search_document_text_for_hit_count(document_identifier, find_query).await?;
+    let _counts = search_document_text_for_hit_count(user, document_identifier, find_query).await?;
     let _count_sum = _counts.into_iter().map(|x| x.hit_count).sum::<u64>();
     item.hit_count = _count_sum;
     

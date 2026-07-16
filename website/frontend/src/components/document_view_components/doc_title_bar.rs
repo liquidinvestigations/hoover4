@@ -175,7 +175,8 @@ fn FileTypeIcon() -> Element {
 
 #[server]
 async fn get_file_path(document_identifier: DocumentIdentifier) -> Result<String, ServerFnError> {
-    backend::api::documents::get_file_path::get_file_path(document_identifier)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_file_path::get_file_path(&user, document_identifier)
         .await
-        .map_err(|e| ServerFnError::from(e))
+        .map_err(crate::api::error_util::to_server_fn_error)
 }

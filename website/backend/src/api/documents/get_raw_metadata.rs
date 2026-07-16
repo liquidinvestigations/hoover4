@@ -1,15 +1,22 @@
 //! Endpoint for retrieving raw document metadata.
 
 use clickhouse::sql;
-use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
+use common::{
+    current_user::CurrentUser,
+    document_metadata::DocumentMetadataTableInfo,
+    search_result::DocumentIdentifier,
+};
 use tokio::io::AsyncBufReadExt;
 
+use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_clickhouse_client;
 
 pub async fn get_raw_metadata(
+    user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     table_info: DocumentMetadataTableInfo,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_clickhouse_client();
 
     let query = "SELECT * FROM ? WHERE ? = ? AND collection_dataset = ? LIMIT 11";

@@ -208,12 +208,14 @@ async fn search_document_text_for_hit_count(
     document_identifier: DocumentIdentifier,
     find_query: String,
 ) -> Result<Vec<DocumentTextSourceHitCount>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::search_document_text::search_document_text_for_hit_count(
+        &user,
         document_identifier,
         find_query,
     )
     .await
-    .map_err(|e| ServerFnError::from(e))
+    .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[server]
@@ -225,14 +227,16 @@ async fn search_document_text_for_hits(
 ) -> Result<Vec<DocumentTextSourceHit>, ServerFnError> {
     use dioxus::logger::tracing;
 
-    let t=  backend::api::documents::search_document_text::search_document_text_for_hits(
+    let user = crate::api::server_auth::extract_user().await?;
+    let t = backend::api::documents::search_document_text::search_document_text_for_hits(
+        &user,
         document_identifier,
         find_query,
         extracted_by,
         page_id,
     )
     .await
-    .map_err(|e| ServerFnError::from(e));
+    .map_err(crate::api::error_util::to_server_fn_error);
 if let Ok(t) = &t {
 
 tracing::info!("{t:#?}");

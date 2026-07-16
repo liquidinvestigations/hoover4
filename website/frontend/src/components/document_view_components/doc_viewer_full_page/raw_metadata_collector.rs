@@ -276,7 +276,8 @@ async fn get_raw_metadata(
     document_identifier: DocumentIdentifier,
     table_info: DocumentMetadataTableInfo,
 ) -> Result<Vec<serde_json::Value>, ServerFnError> {
-    backend::api::documents::get_raw_metadata::get_raw_metadata(document_identifier, table_info)
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_raw_metadata::get_raw_metadata(&user, document_identifier, table_info)
         .await
-        .map_err(|e| ServerFnError::from(e))
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
