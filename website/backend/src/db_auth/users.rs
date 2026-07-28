@@ -1,7 +1,7 @@
 //! User table CRUD.
 
 use crate::db_auth::{insert_row, now};
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_global_client;
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 pub struct UserRow {
@@ -17,7 +17,7 @@ pub struct UserRow {
 }
 
 pub async fn get_user(username: &str) -> anyhow::Result<Option<UserRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let mut rows = client
         .query("SELECT username, fullname, email, is_admin, created_at, updated_at, is_deleted FROM users FINAL WHERE username = ? AND is_deleted = 0")
         .bind(username)
@@ -27,7 +27,7 @@ pub async fn get_user(username: &str) -> anyhow::Result<Option<UserRow>> {
 }
 
 pub async fn list_users() -> anyhow::Result<Vec<UserRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     client
         .query("SELECT username, fullname, email, is_admin, created_at, updated_at, is_deleted FROM users FINAL WHERE is_deleted = 0 ORDER BY username")
         .fetch_all::<UserRow>()

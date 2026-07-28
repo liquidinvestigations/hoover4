@@ -306,85 +306,6 @@ services:
     restart: unless-stopped
 
 
-# ========================
-#          Milvus
-# ========================
-
-  etcd:
-    container_name: milvus-etcd
-    image: quay.io/coreos/etcd:v3.5.18
-    environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
-    volumes:
-      - milvus_etcd:/etcd
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - hoover4
-    memswap_limit: 9000M
-    mem_limit: 9000M
-    restart: unless-stopped
-
-  minio:
-    container_name: milvus-minio
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    # ports:
-      # - "9001:9001"
-      # - "9000:9000"
-    volumes:
-      - milvus_minio:/minio_data
-    command: minio server /minio_data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - hoover4
-    memswap_limit: 9000M
-    mem_limit: 9000M
-    restart: unless-stopped
-
-  milvus-standalone:
-    container_name: milvus-standalone
-    image: milvusdb/milvus:v2.6.1
-    command: ["milvus", "run", "standalone"]
-    security_opt:
-    - seccomp:unconfined
-    environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
-      MQ_TYPE: woodpecker
-    volumes:
-      - milvus_standalone:/var/lib/milvus
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      start_period: 90s
-      timeout: 20s
-      retries: 3
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-    depends_on:
-      - "etcd"
-      - "minio"
-    restart: unless-stopped
-    networks:
-      - hoover4
-    memswap_limit: 39000M
-    mem_limit: 39000M
-
   # docker run -it --rm --gpus all -e CUDA_DEVICE_ORDER=PCI_BUS_ID -v "D:\huggingface_cache":/root/.cache/huggingface -p 8001:8001 --ipc=host --entrypoint bash vllm/vllm-openai:latest -c "pip install bitblas>=0.1.0 && vllm serve oodapow/phi-4-gptq-4k-en-hb --tensor-parallel-size 2 --gpu-memory-utilization 0.98 --enforce-eager --max-model-len 4096 --max-num-seqs 15"
   # vllm:
   #   container_name: vllm
@@ -545,7 +466,11 @@ services:
     memswap_limit: 29000M
     mem_limit: 29000M
     volumes:
-      - /opt/hoover4-testdata:/testdata
+      # Host path for ingest test data. Defaults to the in-repo (git-tracked)
+      # testdata dir so the stack comes up out of the box; override with
+      # HOOVER4_TESTDATA_DIR to point at a larger external dataset. The source
+      # must EXIST — podman refuses to auto-create a missing bind-mount source.
+      - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata
       - ../../processing:/app
     depends_on:
       temporal:
@@ -554,6 +479,8 @@ services:
         condition: service_healthy
     environment:
       - "NER_URL=${NER_URL}"
+      # The full research agent, for the P_agent ResearchTask workflow. Same network.
+      - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
 
   hoover4-website:
     # image: hoover4-website
@@ -579,6 +506,23 @@ services:
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
       - S3_ENDPOINT=http://minio-s3:9000
+      # Temporal's HTTP API, used to start workflows from the admin UI. The code
+      # defaults to localhost:7243 for running the website outside Docker; inside the
+      # container localhost is the container itself, so it must be set explicitly.
+      - TEMPORAL_HTTP_URL=http://temporal:7243
+      # Temporal's *UI*, used only to build deep links rendered in the admin pages.
+      # Unlike the API above this is followed by the admin's browser, so it has to be
+      # an address reachable from the host, not from inside the container network.
+      - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:8081}
+      # Demo switch: when true, anonymous guest-* sessions are treated as admins.
+      - HOOVER4_DEMO_MODE=${HOOVER4_DEMO_MODE:-false}
+      # Max concurrent Manticore queries during search fan-out (default 8).
+      # - HOOVER4_SEARCH_MAX_PARALLELISM=8
+      # AI Chat: the research agent from ai_services/docker-compose.yaml, reached over
+      # the shared `hoover4` network. Chat returns an error message in the transcript
+      # when this is unreachable, so the site works fine without the AI tier running.
+      - HOOVER4_AGENT_URL=${HOOVER4_AGENT_URL:-http://hoover4-internal-search-agent:8000}
+      - HOOVER4_AGENT_TIMEOUT_SECONDS=${HOOVER4_AGENT_TIMEOUT_SECONDS:-300}
     networks:
       - hoover4
     depends_on:
@@ -616,12 +560,6 @@ volumes:
   temporal_elasticsearch:
     driver: local
   temporal_cassandra:
-    driver: local
-  milvus_etcd:
-    driver: local
-  milvus_minio:
-    driver: local
-  milvus_standalone:
     driver: local
   clickhouse_monitoring:
     driver: local

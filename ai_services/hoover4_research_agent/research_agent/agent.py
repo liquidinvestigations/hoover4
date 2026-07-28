@@ -30,6 +30,35 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
+#: Headers the ACL-aware MCP servers read to scope a call to one user. The agent never
+#: decides these: they are handed to it per request by the website backend, which is the
+#: only component that can resolve group and public permissions.
+ACL_COLLECTIONS_HEADER = "X-Hoover4-Collections"
+ACL_USER_HEADER = "X-Hoover4-User"
+
+
+def llm_streaming_enabled() -> bool:
+    """Whether the LLM is configured to stream tokens. See `_create_graph` for why the
+    default is off (vLLM's streamed tool-call deltas do not accumulate)."""
+    return os.getenv("LLM_STREAMING", "false").lower() in ("1", "true", "yes")
+
+
+def acl_headers(username: Optional[str], allowed_collections: Optional[List[str]]) -> Dict[str, str]:
+    """Build the per-request MCP headers carrying the caller's identity and ACL.
+
+    An empty collection list is sent as an empty header rather than omitted: "this user
+    may read nothing" and "no ACL was supplied" must not look the same to the MCP
+    server, which denies the second outright.
+    """
+    headers = {ACL_COLLECTIONS_HEADER: ",".join(allowed_collections or [])}
+    if username:
+        headers[ACL_USER_HEADER] = username
+    secret = os.getenv("MCP_SHARED_SECRET", "").strip()
+    if secret:
+        headers["Authorization"] = f"Bearer {secret}"
+    return headers
+
+
 class MCPGatewayAgent:
     """An agent that gateways to other agents via MCP."""
 
@@ -41,6 +70,11 @@ class MCPGatewayAgent:
         self.llm_model = llm_model
         self.tools_type_adapter = TypeAdapter(Dict[str, Any])
         self.graph = None
+        # Graphs are cached per ACL, not shared: the MCP connection carries the caller's
+        # permissions in its headers, so one graph per distinct ACL is the unit that can
+        # safely be reused. Reusing a single graph across users would let one user's
+        # tool connection serve another user's question.
+        self._graphs: Dict[str, Any] = {}
         self.langfuse_handler = self._create_langfuse_handler()
 
     def _create_langfuse_handler(self) -> Optional[CallbackHandler]:
@@ -63,23 +97,49 @@ class MCPGatewayAgent:
                 return None
         return None
 
-    async def initialize(self):
-        """Initialize the agent graph with MCP tools."""
-        if self.graph is None:
-            self.graph = await self._create_graph()
+    async def initialize(self, username: str = None, allowed_collections: List[str] = None):
+        """Build (or reuse) the graph for one caller's ACL.
 
-    async def _create_graph(self):
-        """Create the agent graph with MCP tools."""
-        # Set up MCP servers
+        Kept async and idempotent so the API can call it at startup with no ACL just to
+        fail fast on an unreachable MCP server, and again per request with the real one.
+        """
+        self.graph = await self._graph_for(username, allowed_collections)
+        return self.graph
+
+    @staticmethod
+    def _acl_key(username: Optional[str], allowed_collections: Optional[List[str]]) -> str:
+        # Sorted so that ["a","b"] and ["b","a"] share one cached graph.
+        return f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
+
+    async def _graph_for(self, username: Optional[str], allowed_collections: Optional[List[str]]):
+        key = self._acl_key(username, allowed_collections)
+        if key not in self._graphs:
+            self._graphs[key] = await self._create_graph(username, allowed_collections)
+        return self._graphs[key]
+
+    async def _create_graph(
+        self,
+        username: Optional[str] = None,
+        allowed_collections: Optional[List[str]] = None,
+    ):
+        """Create the agent graph with MCP tools, scoped to one caller's ACL."""
+        # Set up MCP servers. The ACL travels as connection headers so the MCP server
+        # enforces it on every tool call — the model cannot widen its own permissions,
+        # because it never sees or supplies them.
+        headers = acl_headers(username, allowed_collections)
         servers = {
-            f"mcp_server_{i}": {"url": url, "transport": "streamable_http"}
+            f"mcp_server_{i}": {
+                "url": url,
+                "transport": "streamable_http",
+                "headers": headers,
+            }
             for i, url in enumerate(self.mcp_servers)
         }
-        
+
         # Create MCP client and get tools
         client = MultiServerMCPClient(servers)
         tools = await client.get_tools()
-        
+
         # Get LLM configuration from environment variables
         llm_api_key = os.getenv("LLM_API_KEY")
         llm_base_url = os.getenv("LLM_BASE_URL")
@@ -89,12 +149,32 @@ class MCPGatewayAgent:
         if not llm_api_key:
             raise ValueError("LLM_API_KEY environment variable is required")
         
-        # Create ChatOpenAI instance with environment configuration
+        # Token streaming is OFF by default, and that is a correctness decision, not a
+        # performance one.
+        #
+        # vLLM's streaming tool-call deltas send the function name with `arguments`
+        # absent, which langchain turns into a `tool_call_chunk` with `args=None`. Those
+        # chunks never accumulate into the final AIMessage, so `message.tool_calls` comes
+        # back empty, `should_continue` routes straight to END, and the agent answers
+        # nothing at all having silently skipped every tool. Non-streaming responses are
+        # parsed server-side by vLLM's tool-call parser and arrive intact.
+        #
+        # Cost: the SSE endpoint emits one response event per turn instead of per token.
+        # Set LLM_STREAMING=true to trade tool calling back for token streaming if a
+        # future model/vLLM pair fixes the delta shape.
+        #
+        # `disable_streaming` is the switch that actually matters, not `streaming`: the
+        # latter only affects `invoke`, while langgraph drives the model through
+        # `astream_events`, which calls `astream` and streams regardless. With
+        # `disable_streaming=True`, `astream` degenerates to a single `invoke` and the
+        # node emits a whole `AIMessage` with its `tool_calls` intact.
+        streaming = llm_streaming_enabled()
         llm_kwargs = {
-            "api_key": llm_api_key, 
+            "api_key": llm_api_key,
             "model": llm_model_env,
             "temperature": llm_temperature,
-            "streaming": True,
+            "streaming": streaming,
+            "disable_streaming": not streaming,
             "stream_usage": True,
         }
         if llm_base_url:
@@ -127,10 +207,18 @@ class MCPGatewayAgent:
 
         return builder.compile()
 
-    async def stream(self, query: str, chat_history: List[Dict[str, str]] = None, session_id: str = None, user_id: str = None) -> AsyncIterable[dict[str, Any]]:
-        # Initialize the agent if not already done
-        await self.initialize()
-        
+    async def stream(
+        self,
+        query: str,
+        chat_history: List[Dict[str, str]] = None,
+        session_id: str = None,
+        user_id: str = None,
+        username: str = None,
+        allowed_collections: List[str] = None,
+    ) -> AsyncIterable[dict[str, Any]]:
+        # Build (or reuse) the graph whose MCP connections carry this caller's ACL.
+        graph = await self._graph_for(username or user_id, allowed_collections)
+
         # Build messages from chat history and current query
         messages = []
         if chat_history:
@@ -161,7 +249,7 @@ class MCPGatewayAgent:
 
         all_content = ""
 
-        async for event in self.graph.astream_events(inputs, version="v2", config=config):
+        async for event in graph.astream_events(inputs, version="v2", config=config):
             kind = event["event"]
             node = event["metadata"].get("langgraph_node")
 
@@ -213,6 +301,30 @@ class MCPGatewayAgent:
                             }
                             all_content += chunk_content
 
+                # With streaming off (the default — see `_create_graph`) there are no
+                # per-token events, only this one at the end of each turn. Emitting the
+                # whole message here is what makes the non-streaming path produce an
+                # answer instead of silence.
+                if kind == "on_chat_model_end" and not llm_streaming_enabled():
+                    message = event["data"].get("output")
+                    content = getattr(message, "content", "") or ""
+                    if isinstance(content, list):
+                        content = "".join(
+                            x["text"] for x in content if isinstance(x, dict) and x.get("type") == "text"
+                        )
+                    if content:
+                        yield {
+                            "is_task_complete": False,
+                            "type": "start_response",
+                            "content": "",
+                        }
+                        yield {
+                            "is_task_complete": False,
+                            "type": "response",
+                            "content": content,
+                        }
+                        all_content += content
+
             if node == "tools":
                 llm_started = False
                 if kind == "on_tool_start":
@@ -232,6 +344,52 @@ class MCPGatewayAgent:
             "is_task_complete": True,
             "type": "end",
             "content": all_content,
+        }
+
+
+    async def run(
+        self,
+        query: str,
+        chat_history: List[Dict[str, str]] = None,
+        session_id: str = None,
+        user_id: str = None,
+        username: str = None,
+        allowed_collections: List[str] = None,
+    ) -> Dict[str, Any]:
+        """Run to completion and return the whole trajectory in one object.
+
+        The streaming endpoint is the right shape for a browser; a server-side caller
+        (the Hoover4 website backend) wants the finished answer plus the tool calls it
+        made, so it does not have to reassemble SSE fragments in Rust.
+        """
+        answer_parts: List[str] = []
+        reasoning_parts: List[str] = []
+        tool_calls: List[Dict[str, Any]] = []
+
+        async for chunk in self.stream(
+            query=query,
+            chat_history=chat_history,
+            session_id=session_id,
+            user_id=user_id,
+            username=username,
+            allowed_collections=allowed_collections,
+        ):
+            kind = chunk.get("type")
+            if kind == "response":
+                answer_parts.append(chunk.get("content") or "")
+            elif kind == "reasoning":
+                reasoning_parts.append(str(chunk.get("content") or ""))
+            elif kind == "start_tool":
+                tool_calls.append({"phase": "start", "content": chunk.get("content")})
+            elif kind == "end_tool":
+                tool_calls.append({"phase": "end", "content": chunk.get("content")})
+            elif kind == "error":
+                raise RuntimeError(chunk.get("content"))
+
+        return {
+            "answer": "".join(answer_parts),
+            "reasoning": "".join(reasoning_parts),
+            "tool_calls": tool_calls,
         }
 
 

@@ -50,6 +50,7 @@ def _duration_seconds(meta: Dict[str, Any]) -> float:
 
 @dataclass
 class ParseAudioParams:
+    collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
@@ -58,9 +59,9 @@ class ParseAudioParams:
 
 @activity.defn
 def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     log.info("[P3] Parsing audio metadata for %s", params.file_path)
 
@@ -68,8 +69,8 @@ def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
     meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
     duration = _duration_seconds(meta)
 
-    processed_at = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         tbl_meta = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "hash": pa.array([params.file_hash], type=pa.string()),

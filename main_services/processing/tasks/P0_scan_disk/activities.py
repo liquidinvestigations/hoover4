@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import logging
 log = logging.getLogger(__name__)
 
-from database.clickhouse import get_clickhouse_client
+from database.clickhouse import get_collection_client
 from database.minio import BUCKET_NAME, get_minio_client, ensure_bucket
 
 
@@ -86,6 +86,7 @@ def _rel_to_abs(dataset_path: str, rel_path: str) -> str:
 
 @dataclass
 class ListDiskFolderParams:
+    collectionname: str
     collection_dataset: str
     dataset_path: str
     folder_path: str
@@ -133,6 +134,7 @@ def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, List[Dict[str, A
 
 @dataclass
 class InsertVfsDirectoriesParams:
+    collectionname: str
     collection_dataset: str
     dir_paths: List[str]
     container_hash: str = ""
@@ -152,7 +154,7 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
 
     # Deduplicate against existing
     existing_paths: Set[str] = set()
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         in_list = ",".join([f"'{_escape(p)}'" for p in dir_paths])
         sql = f"""
             SELECT path
@@ -177,13 +179,14 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
         "path": pa.array(to_insert, type=pa.string()),
         "user_id": pa.array(["system"] * len(to_insert), type=pa.string()),
     })
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         client.insert_arrow("vfs_directories", table)
     return len(to_insert)
 
 
 @dataclass
 class IngestFilesBatchParams:
+    collectionname: str
     collection_dataset: str
     dataset_path: str
     file_paths: List[str]
@@ -206,7 +209,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     # 1) Filter out vfs_files duplicates by path
     existing_paths: Set[str] = set()
     if file_paths:
-        with get_clickhouse_client() as client:
+        with get_collection_client(params.collectionname) as client:
             in_list = ",".join([f"'{_escape(p)}'" for p in file_paths])
             sql = f"""
                 SELECT path
@@ -249,7 +252,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     unique_hashes = list(dict.fromkeys(hashes))
     existing_blob_hashes: Set[str] = set()
     existing_blob_values: Set[str] = set()
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         if unique_hashes:
             in_hashes = ",".join([f"'{_escape(h)}'" for h in unique_hashes])
             # Existing blobs for this dataset
@@ -359,7 +362,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             blob_rows_inch.append(0)
 
     # 5) Insert blobs and blob_values
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         if blob_rows_hash:
             table_blobs = pa.table({
                 "collection_dataset": pa.array(blob_rows_cd, type=pa.string()),
@@ -389,7 +392,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         (root_path_prefix.rstrip("/") + p) if root_path_prefix else p
         for p in todo_paths
     ]
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         table_files = pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(final_paths), type=pa.string()),
             "container_hash": pa.array([container_hash] * len(final_paths), type=pa.string()),

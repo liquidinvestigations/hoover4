@@ -11,6 +11,11 @@ pub struct SearchResultDocuments {
     pub prev_hash: Option<DocumentIdentifier>,
     pub next_hash: Option<DocumentIdentifier>,
     pub page_number: u64,
+    /// True when at least one shard could not be searched (see the fan-out
+    /// partial-failure policy) — the result list may be missing documents and the
+    /// UI shows a notice.
+    #[serde(default)]
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash, Eq, PartialOrd, Ord)]
@@ -52,6 +57,23 @@ pub struct SearchResultFacets {
     pub query: SearchQuery,
     pub facet_field: String,
     pub facet_values: Vec<SearchResultFacetItem>,
+    /// True when at least one shard could not be searched (see the fan-out
+    /// partial-failure policy) — buckets from the failed shard are missing, so
+    /// counts may be lower than the real ones.
+    #[serde(default)]
+    pub partial: bool,
+}
+
+/// Hit-count endpoint response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchResultHitCount {
+    /// Sum of `count(distinct file_hash)` over all searched shards. Upper bound
+    /// normally (the same file_hash can exist in two collections); a lower bound
+    /// when `partial` is true, because the failed shards' counts are missing.
+    pub total: u64,
+    /// True when at least one shard could not be searched.
+    #[serde(default)]
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -68,8 +68,9 @@ fn ControlNextPrevDocument() -> Element {
     let hit_count = use_memo(move || {
         hit_count
             .read()
-            .cloned()
-            .unwrap_or(Ok(0))
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(|h| h.total)
             .unwrap_or(0)
             .min(MAX_PAGINATION_DOCUMENT_LIMIT)
     });
@@ -214,8 +215,9 @@ fn ControlNextPrevPage() -> Element {
     let hit_count = use_memo(move || {
         hit_count
             .read()
-            .cloned()
-            .unwrap_or(Ok(0))
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(|h| h.total)
             .unwrap_or(0)
             .min(MAX_PAGINATION_DOCUMENT_LIMIT)
     });
@@ -455,14 +457,16 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
 
 #[component]
 fn SearchForResultsHitCountString(
-    hit_count: ReadSignal<Option<Result<u64, ServerFnError>>>,
+    hit_count: ReadSignal<Option<Result<common::search_result::SearchResultHitCount, ServerFnError>>>,
 ) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let hit_count = search_results_state.hit_count;
 
     match hit_count.read().cloned() {
         Some(Err(e)) => return rsx! { "! error: {e:?}" },
-        Some(Ok(s)) => return rsx! { "{s} documents found" },
+        // partial: the total is a lower bound — some shards could not be searched.
+        Some(Ok(s)) if s.partial => return rsx! { "≥ {s.total} documents found (some collections could not be searched)" },
+        Some(Ok(s)) => return rsx! { "{s.total} documents found" },
         None => return rsx! {"..."},
     };
 }

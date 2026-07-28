@@ -119,3 +119,98 @@ fn _do_decompose_text_into_spans(text: String) -> Vec<HighlightTextSpan> {
 
     spans
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spans_of(text: &str) -> Vec<(String, bool, u64)> {
+        decompose_text_into_spans(text.to_string())
+            .into_iter()
+            .map(|s| (s.text, s.is_highlighted, s.index))
+            .collect()
+    }
+
+    #[test]
+    fn empty_input_yields_no_spans() {
+        assert_eq!(spans_of(""), vec![]);
+        assert_eq!(spans_of("   "), vec![]);
+    }
+
+    #[test]
+    fn plain_text_without_tags_is_single_plain_span() {
+        assert_eq!(
+            spans_of("hello world"),
+            vec![("hello world".to_string(), false, 0)]
+        );
+    }
+
+    #[test]
+    fn stray_closing_tag_is_preserved_as_literal_text() {
+        assert_eq!(
+            spans_of("a </hoover4_strong> b"),
+            vec![("a </hoover4_strong> b".to_string(), false, 0)]
+        );
+    }
+
+    #[test]
+    fn single_highlight_splits_into_three_spans() {
+        assert_eq!(
+            spans_of("before <hoover4_strong>hit</hoover4_strong> after"),
+            vec![
+                ("before ".to_string(), false, 0),
+                ("hit".to_string(), true, 0),
+                (" after".to_string(), false, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn highlight_indices_increment_across_spans() {
+        let spans = decompose_text_into_spans(
+            "<hoover4_strong>one</hoover4_strong> mid <hoover4_strong>two</hoover4_strong>"
+                .to_string(),
+        );
+        let highlighted: Vec<u64> = spans
+            .iter()
+            .filter(|s| s.is_highlighted)
+            .map(|s| s.index)
+            .collect();
+        assert_eq!(highlighted, vec![0, 1]);
+    }
+
+    #[test]
+    fn nested_open_tags_keep_text_highlighted_until_all_closed() {
+        assert_eq!(
+            spans_of(
+                "<hoover4_strong>a <hoover4_strong>b</hoover4_strong> c</hoover4_strong> d"
+            ),
+            vec![
+                ("a b c".to_string(), true, 0),
+                (" d".to_string(), false, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn unmatched_open_tag_highlights_trailing_text() {
+        assert_eq!(
+            spans_of("x <hoover4_strong>rest"),
+            vec![
+                ("x ".to_string(), false, 0),
+                ("rest".to_string(), true, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn adjacent_spans_with_same_state_are_merged() {
+        // A close immediately followed by an open must not split the highlight run.
+        assert_eq!(
+            spans_of(
+                "<hoover4_strong>a</hoover4_strong><hoover4_strong>b</hoover4_strong>"
+            ),
+            vec![("ab".to_string(), true, 0)]
+        );
+    }
+}

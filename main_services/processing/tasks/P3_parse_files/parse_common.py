@@ -23,6 +23,7 @@ def _split_utf8_bytes_to_chunks(data: bytes, max_bytes: int) -> List[str]:
 
 
 def insert_text_chunks(
+    collectionname: str,
     collection_dataset: str,
     file_hash: str,
     extracted_by: str,
@@ -33,9 +34,10 @@ def insert_text_chunks(
 ) -> int:
     """Split text into <=max_bytes UTF-8 chunks and insert into text_content.
 
+    Writes to the collection database selected by ``collectionname``.
     Returns number of chunks inserted. Page IDs start at start_page_id.
     """
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
 
     if isinstance(text_or_bytes, bytes):
@@ -52,7 +54,7 @@ def insert_text_chunks(
 
     log.info("[P3] Inserting %d text chunks for %s", len(chunks), file_hash)
 
-    with get_clickhouse_client() as client:
+    with get_collection_client(collectionname) as client:
         rows_cd = [collection_dataset] * len(chunks)
         rows_hash = [file_hash] * len(chunks)
         rows_src = [extracted_by] * len(chunks)
@@ -167,6 +169,7 @@ async def record_errors_from_results(
     *,
     task_ids: Sequence[str],
     starts: Sequence[Any],
+    collectionname: str,
     collection_dataset: str,
     item_hashes: Sequence[str],
     default_task_name: str = "unknown_task",
@@ -211,7 +214,7 @@ async def record_errors_from_results(
 
     await _wf.execute_activity(
         _record_processing_errors,
-        _RecordProcessingErrorsParams(errors=error_rows),
+        _RecordProcessingErrorsParams(collectionname=collectionname, errors=error_rows),
         start_to_close_timeout=_td(seconds=start_to_close_timeout_seconds),
         retry_policy=_RetryPolicy(maximum_attempts=3),
     )

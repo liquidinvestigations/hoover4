@@ -5,7 +5,6 @@ Comprehensive throughput tests for batch operations using real connections.
 This test suite measures the performance of batch operations for:
 - Hoover4EmbeddingsClient: Batch embedding generation
 - Hoover4NERClient: Batch entity extraction
-- Hoover4MilvusVectorStore: Batch document insertion, search, and deletion
 
 All tests use real connections (no mocks) and include proper cleanup.
 """
@@ -17,10 +16,8 @@ import time
 from typing import Dict, List, Tuple
 
 import pytest
-from langchain_core.documents import Document
 
 from hoover4_ai_clients.embeddings_client import Hoover4EmbeddingsClient
-from hoover4_ai_clients.milvus_client import Hoover4MilvusVectorStore
 from hoover4_ai_clients.ner_client import Hoover4NERClient
 
 # Configure logging for throughput tests
@@ -80,7 +77,6 @@ class ThroughputMetrics:
 @pytest.mark.throughput
 @pytest.mark.embeddings
 @pytest.mark.ner
-@pytest.mark.milvus
 class TestBatchThroughput:
     """Comprehensive throughput tests for batch operations."""
     
@@ -229,93 +225,6 @@ class TestBatchThroughput:
             assert stats['success_rate'] >= 0.95, f"Success rate too low: {stats['success_rate']:.2%}"
             assert stats['documents_per_second'] > 0.5, f"Throughput too low: {stats['documents_per_second']:.2f} docs/sec"
     
-    def test_milvus_batch_throughput(self, throughput_milvus_client, server_health_check, milvus_health_check):
-        """Test batch Milvus operations throughput."""
-        if not server_health_check or not milvus_health_check:
-            pytest.skip("Required services not available")
-        
-        logger.info("Starting Milvus batch throughput test...")
-        
-        # Setup: Create and load collection
-        assert throughput_milvus_client.connect(), "Failed to connect to Milvus"
-        assert throughput_milvus_client.create_collection(), "Failed to create collection"
-        assert throughput_milvus_client.load_collection(), "Failed to load collection"
-        
-        try:
-            self._test_milvus_batch_insertion(throughput_milvus_client)
-            
-        finally:
-            # Cleanup: Drop collection
-            try:
-                throughput_milvus_client.drop_collection()
-                logger.info("Cleaned up test collection")
-            except Exception as e:
-                logger.warning(f"Failed to clean up collection: {e}")
-    
-    def _test_milvus_batch_insertion(self, milvus_client):
-        """Test batch document insertion throughput using optimized client."""
-        logger.info("Testing Milvus batch insertion with optimized client...")
-        
-        batch_sizes = [50, 100, 200]
-        total_docs = 200
-        
-        for batch_size in batch_sizes:
-            logger.info(f"Testing insertion batch size: {batch_size}")
-            metrics = ThroughputMetrics()
-            
-            # Generate test documents - no need to pre-process NER or embeddings
-            texts = self.generate_test_texts(total_docs)
-            documents = []
-            
-            for i, text in enumerate(texts):
-                doc = Document(
-                    id=f"doc_{i}",
-                    page_content=text,
-                    metadata={
-                        "source_collection": "throughput_test",
-                        "source_file_hash": f"hash_{i}",
-                        "source_page_id": i,
-                        "source_extracted_by": "throughput_test",
-                        "chunk_index": i,
-                        "start_char": 0,
-                        "end_char": len(text),
-                        # Let the optimized client handle NER extraction internally
-                    }
-                )
-                documents.append(doc)
-            
-            # Process in batches - optimized client handles embeddings and NER internally
-            for i in range(0, len(documents), batch_size):
-                batch_docs = documents[i:i + batch_size]
-                
-                start_time = time.time()
-                try:
-                    doc_ids = milvus_client.add_documents(batch_docs)
-                    end_time = time.time()
-                    
-                    # Validate results
-                    assert len(doc_ids) == len(batch_docs)
-                    
-                    metrics.add_operation(end_time - start_time, documents_processed=len(batch_docs), success=True)
-                    
-                except Exception as e:
-                    end_time = time.time()
-                    metrics.add_operation(end_time - start_time, documents_processed=len(batch_docs), success=False, error=str(e))
-            
-            # Report metrics
-            stats = metrics.get_stats()
-            logger.info(f"Insertion batch size {batch_size} results:")
-            logger.info(f"  Documents/sec: {stats['documents_per_second']:.2f}")
-            logger.info(f"  Operations/sec: {stats['operations_per_second']:.2f}")
-            logger.info(f"  Avg documents per batch: {stats['avg_documents_per_operation']:.1f}")
-            logger.info(f"  Avg time per batch: {stats['avg_time_per_operation']:.3f}s")
-            logger.info(f"  Success rate: {stats['success_rate']:.2%}")
-            logger.info(f"  Total documents processed: {stats['total_documents']}")
-            logger.info(f"  Total time: {stats['total_time']:.2f}s")
-            
-            # Assert minimum performance thresholds
-            assert stats['success_rate'] >= 0.95, f"Success rate too low: {stats['success_rate']:.2%}"
-            assert stats['documents_per_second'] > 0.1, f"Throughput too low: {stats['documents_per_second']:.2f} docs/sec"
 
 if __name__ == "__main__":
     # Run the tests with pytest

@@ -1,5 +1,0 @@
-[tool.poetry]
-# Poetry configuration for this project
-
-[virtualenvs]
-in-project = true

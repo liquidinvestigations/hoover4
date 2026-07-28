@@ -2,7 +2,7 @@
 
 import click
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import pyarrow as pa
 import logging
@@ -14,48 +14,86 @@ def _slugify_dataset_name(name: str) -> str:
     return slug or "dataset"
 
 
-def add_disk_dataset(dataset_name: str, path: str):
-    from database.clickhouse import get_clickhouse_client
+def compose_collection_dataset(collectionname: str, dataset_name: str) -> str:
+    """Globally unique dataset id, composed as ``<collectionname>_<dataset_name>``.
+
+    Not a parsing contract: never split this string to recover the collection
+    (a dataset name may contain ``_``). Resolve via the ``dataset`` table instead.
+    """
+    return f"{collectionname}_{dataset_name}"
+
+
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str):
+    from database.clickhouse import (
+        get_global_client,
+        migrate_collection,
+        validate_collectionname,
+    )
     from temporalio.client import Client as TemporalClient
     import temporalio.common
     import os
 
-    collection_dataset = _slugify_dataset_name(dataset_name)
-    if collection_dataset != dataset_name:
-        raise click.ClickException("Dataset name must contain only lowercase alphanumeric characters and underscores.\n         For example, use the name '{}' instead of '{}'".format(collection_dataset, dataset_name))
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    from tasks.visibility import dataset_search_attributes
+
+    collection_dataset = compose_collection_dataset(collectionname, dataset_name)
+    if _slugify_dataset_name(dataset_name) != dataset_name:
+        raise click.ClickException("Dataset name must contain only lowercase alphanumeric characters and underscores.\n         For example, use the name '{}' instead of '{}'".format(_slugify_dataset_name(dataset_name), dataset_name))
     path = os.path.abspath(path).replace("\\", "/")
     if not os.path.isdir(path):
         raise click.ClickException("Path does not exist or is not a directory: {}. Aborting.".format(path))
-    log.info("Adding disk dataset: %s", collection_dataset)
+    log.info("Adding disk dataset: %s (collection %s)", collection_dataset, collectionname)
     log.info("Path: %s", path)
 
-    # Check duplicates and insert dataset row using Arrow
-    now = datetime.utcnow()
-    with get_clickhouse_client() as client:
-        # Duplicate check
-        existing = client.query_arrow(
-            f"""
-            SELECT collection_dataset, dataset_name, dataset_path
-            FROM dataset
-            WHERE dataset_name = '{dataset_name.replace("'", "''")}'
-               OR dataset_path = '{path.replace("'", "''")}'
-            LIMIT 1
-            """
+    # The collection row must exist already; a typo must not silently create a
+    # stray collection and database.
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT count() FROM collections FINAL "
+            "WHERE collectionname = {name:String} AND is_deleted = 0",
+            parameters={"name": collectionname},
+        ).result_rows
+    if not rows or not rows[0][0]:
+        raise click.ClickException(
+            f"Collection '{collectionname}' does not exist. Create it in the admin UI "
+            "or with `main.py ensure-collection` first. Aborting."
         )
-        if existing and existing.num_rows > 0:
-            # raise click.ClickException("Dataset with same name or path already exists. Aborting.")
-            log.warning("Dataset with same path already exists. Re-running once more!")
+
+    # Idempotent: a collection created before this refactor still gets its DB.
+    migrate_collection(collectionname)
+
+    # Duplicate check and dataset row insert go to the GLOBAL database.
+    # ClickHouse DateTime columns are naive UTC; datetime.now(timezone.utc)
+    # without the tzinfo drop would insert with an offset-naive mismatch.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_global_client() as client:
+        existing = client.query(
+            "SELECT count() FROM dataset FINAL "
+            "WHERE collection_dataset = {cd:String} AND is_deleted = 0",
+            parameters={"cd": collection_dataset},
+        ).result_rows
+        if existing and existing[0][0]:
+            raise click.ClickException(
+                f"Dataset '{collection_dataset}' already exists. Aborting."
+            )
         log.info("Creating dataset row")
 
         table = pa.table({
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
+            "collectionname": pa.array([collectionname], type=pa.string()),
             "dataset_name": pa.array([dataset_name], type=pa.string()),
+            "dataset_display_name": pa.array([dataset_name], type=pa.string()),
             "dataset_type": pa.array(["disk"], type=pa.string()),
             "dataset_path": pa.array([path], type=pa.string()),
             "dataset_access_json": pa.array([None], type=pa.string()),
             "user_id": pa.array(["system"], type=pa.string()),
             "date_created": pa.array([now], type=pa.timestamp("s")),
             "date_modified": pa.array([now], type=pa.timestamp("s")),
+            "is_deleted": pa.array([0], type=pa.uint8()),
         })
         client.insert_arrow("dataset", table)
         log.info("Dataset row created")
@@ -68,6 +106,7 @@ def add_disk_dataset(dataset_name: str, path: str):
         await client.execute_workflow(
             IngestDiskDataset.run,
             {
+                "collectionname": collectionname,
                 "collection_dataset": collection_dataset,
                 "dataset_path": path,
             },
@@ -75,6 +114,7 @@ def add_disk_dataset(dataset_name: str, path: str):
             task_queue="processing-common-queue",
             id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+            search_attributes=dataset_search_attributes(collection_dataset),
         )
         log.info("Temporal workflow finished.")
 

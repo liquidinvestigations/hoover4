@@ -19,12 +19,12 @@ use crate::{
 };
 use common::{
     search_query::SearchQuery,
-    search_result::{DocumentIdentifier, SearchResultDocuments},
+    search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount},
 };
 #[derive(Copy, Clone)]
 pub struct SearchResultsState {
     // pub query: ReadSignal<SearchQuery>,
-    pub hit_count: ReadSignal<Option<Result<u64, ServerFnError>>>,
+    pub hit_count: ReadSignal<Option<Result<SearchResultHitCount, ServerFnError>>>,
     pub search_result: ReadSignal<Option<Result<SearchResultDocuments, ServerFnError>>>,
     pub current_search_result_page: ReadSignal<u64>,
     pub set_current_page: Callback<u64>,
@@ -147,6 +147,14 @@ fn SearchResultsView() -> Element {
     };
 
     let result_list = search_result.results.clone();
+    // Partial hit count: one or more shards failed, so the total is a lower bound.
+    let hit_count_partial = search_results_state
+        .hit_count
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|h| h.partial)
+        .unwrap_or(false);
     let mut result_mounted_thing =
         use_signal(move || BTreeMap::<DocumentIdentifier, Event<MountedData>>::new());
     use_effect(move || {
@@ -164,6 +172,24 @@ fn SearchResultsView() -> Element {
     });
 
     rsx! {
+        // Partial-results notice: one or more shards could not be searched (see the
+        // backend fan-out partial-failure policy) — the list and the hit count may
+        // be incomplete.
+        if search_result.partial || hit_count_partial {
+            div {
+                style: "
+                    width: 100%;
+                    padding: 8px 12px;
+                    margin-bottom: 4px;
+                    border: 1px solid rgba(200, 120, 0, 0.6);
+                    border-radius: 6px;
+                    background-color: rgba(255, 180, 60, 0.15);
+                    color: rgb(120, 70, 0);
+                    font-size: 14px;
+                ",
+                "Some collections could not be searched — results may be incomplete."
+            }
+        }
         ul {
             id: "x-search-panel-results-wrapper",
             style: "

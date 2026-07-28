@@ -3,12 +3,11 @@
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{
-    admin_delete_dataset, admin_get_dataset, admin_list_collections, admin_trigger_workflow,
-    admin_update_dataset,
+    admin_delete_dataset, admin_get_dataset, admin_trigger_workflow, admin_update_dataset,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_DANGER, C_HEADER, HELP_TEXT, INPUT,
-    LABEL, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT,
+    LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -39,9 +38,7 @@ pub fn AdminDatasetPage(collection_id: String, dataset_id: String) -> Element {
 fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
     let dataset_id_for_res = dataset_id.clone();
     let mut detail_res = use_resource(move || admin_get_dataset(dataset_id_for_res.clone()));
-    let cols_res = use_resource(admin_list_collections);
-    let mut dataset_name = use_signal(String::new);
-    let mut collection_sel = use_signal(String::new);
+    let mut display_name = use_signal(String::new);
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
     let pending = use_signal(|| false);
@@ -55,8 +52,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
 
     if let Some(ref d) = detail {
         if !*form_seeded.read() {
-            dataset_name.set(d.dataset.dataset_name.clone());
-            collection_sel.set(d.collectionname.clone().unwrap_or_default());
+            display_name.set(d.dataset.dataset_display_name.clone());
             form_seeded.set(true);
         }
     }
@@ -76,11 +72,6 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
         };
     };
 
-    let all_collections = cols_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned();
     let is_disk = detail.dataset.dataset_type == "disk";
 
     rsx! {
@@ -94,8 +85,12 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             h2 { style: MODULE_CAPTION, "Metadata" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 10px; max-width: 640px;",
                 label { style: LABEL,
-                    span { style: "width: 90px; color: #666;", "Name" }
-                    input { style: "{INPUT} flex: 1;", value: "{dataset_name}", oninput: move |e| dataset_name.set(e.value()) }
+                    span { style: "width: 90px; color: #666;", "Display name" }
+                    input { style: "{INPUT} flex: 1;", value: "{display_name}", oninput: move |e| display_name.set(e.value()) }
+                }
+                div { style: "display: flex; font-size: 13px;",
+                    span { style: "width: 96px; color: #666;", "Name" }
+                    span { "{detail.dataset.dataset_name}" }
                 }
                 div { style: "display: flex; font-size: 13px;",
                     span { style: "width: 96px; color: #666;", "Type" }
@@ -109,19 +104,16 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                     span { style: "width: 96px; color: #666;", "Created" }
                     span { "{detail.dataset.date_created}" }
                 }
-                if let Some(cols) = all_collections {
-                    label { style: LABEL,
-                        span { style: "width: 90px; color: #666;", "Collection" }
-                        select {
-                            style: SELECT,
-                            value: "{collection_sel}",
-                            onchange: move |e| collection_sel.set(e.value()),
-                            option { value: "", "(unassigned)" }
-                            for c in cols {
-                                option { key: "{c.collectionname}", value: "{c.collectionname}", "{c.collectionname}" }
-                            }
-                        }
+                div { style: "display: flex; font-size: 13px; align-items: baseline;",
+                    span { style: "width: 96px; color: #666;", "Collection" }
+                    Link {
+                        to: Route::AdminCollectionPage { collection_id: detail.collectionname.clone() },
+                        style: LINK,
+                        "{detail.collectionname}"
                     }
+                }
+                p { style: "{HELP_TEXT} margin: 0;",
+                    "A dataset's collection is fixed when it is created and cannot be changed."
                 }
                 div {
                     button {
@@ -130,13 +122,11 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                             let cd = dataset_id.clone();
                             move |_| {
                                 let cd = cd.clone();
-                                let name = dataset_name.read().clone();
-                                let col = collection_sel.read().clone();
-                                let cn = if col.is_empty() { None } else { Some(col) };
+                                let dn = display_name.read().clone();
                                 spawn(async move {
                                     msg.set(None);
                                     error_msg.set(None);
-                                    match admin_update_dataset(cd, name, cn).await {
+                                    match admin_update_dataset(cd, dn).await {
                                         Ok(()) => {
                                             msg.set(Some("The dataset was changed successfully.".to_string()));
                                             detail_res.restart();

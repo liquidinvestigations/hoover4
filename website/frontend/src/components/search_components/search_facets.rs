@@ -86,28 +86,28 @@ pub fn FacetButtonStrip(
 
             FacetButton {
                 facet_display_name: "File Types".to_string(),
-                facet_field_name: "doc_metadata.file_types".to_string(),
+                facet_field_name: "file_types".to_string(),
                 map_string_terms: Some("filetype".to_string()),
                 facet_icon: MdInsertDriveFile,
             }
 
             // FacetButton {
             //     facet_display_name: "Mime Types".to_string(),
-            //     facet_field_name: "doc_metadata.file_mime_types".to_string(),
+            //     facet_field_name: "file_mime_types".to_string(),
             //     map_string_terms: Some("mime_type".to_string()),
             //     facet_icon: MdLocationOn,
             // }
 
             // FacetButton {
             //     facet_display_name: "File Extensions".to_string(),
-            //     facet_field_name: "doc_metadata.file_extensions".to_string(),
+            //     facet_field_name: "file_extensions".to_string(),
             //     map_string_terms: Some("extension".to_string()),
             //     facet_icon: MdApps,
             // }
 
             // FacetButton {
             //     facet_display_name: "File Paths".to_string(),
-            //     facet_field_name: "doc_metadata.file_paths".to_string(),
+            //     facet_field_name: "file_paths".to_string(),
             //     map_string_terms: Some("parent_paths".to_string()),
             //     facet_icon: MdLocationOn,
             // }
@@ -352,6 +352,23 @@ fn FacetSelectorList(
         .collect::<Vec<_>>();
 
     rsx! {
+        // Partial-results notice: one or more shards could not be searched, so these
+        // buckets and counts may be missing the failed shard's contribution.
+        if search_result.partial {
+            div {
+                style: "
+                    width: 100%;
+                    padding: 6px 10px;
+                    margin-bottom: 4px;
+                    border: 1px solid rgba(200, 120, 0, 0.6);
+                    border-radius: 6px;
+                    background-color: rgba(255, 180, 60, 0.15);
+                    color: rgb(120, 70, 0);
+                    font-size: 13px;
+                ",
+                "Some collections could not be searched — facet counts may be incomplete."
+            }
+        }
         ul {
             for result in search_result.facet_values {
                 li {
@@ -419,10 +436,10 @@ fn ResolveMissingItems(
         facet_values.push(common::search_result::SearchResultFacetItem {
             display_string: match &value {
                 FacetOriginalValue::Int(i) => {
-                    if let Some(s) = map.get(&i) {
+                    if let Some(s) = map.get(i) {
                         s.clone()
                     } else {
-                        format!("Missing2: {:?}", &value)
+                        format!("Missing2: {:?}", value)
                     }
                 }
                 FacetOriginalValue::String(s) => s.clone(),
@@ -454,7 +471,11 @@ async fn fetch_db_terms_for_ints(
     ints: Vec<u64>,
     field_name: String,
 ) -> Result<std::collections::HashMap<u64, String>, ServerFnError> {
-    let x = backend::api::search::fetch_db_terms_for_ints(ints, field_name).await;
+    let user = crate::api::server_auth::extract_user().await?;
+    let collections = backend::db_utils::clickhouse_utils::list_permitted_collections(&user)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)?;
+    let x = backend::api::search::fetch_db_terms_for_ints(&collections, ints, field_name).await;
     x.map_err(|e| ServerFnError::ServerError {
         message: e.to_string(),
         code: 500,

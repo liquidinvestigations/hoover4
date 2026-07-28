@@ -1,7 +1,7 @@
 //! Server settings CRUD.
 
 use crate::db_auth::{insert_row, now};
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_global_client;
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 pub struct SettingRow {
@@ -13,7 +13,7 @@ pub struct SettingRow {
 }
 
 pub async fn get_setting(key: &str) -> anyhow::Result<Option<String>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let mut rows = client
         .query("SELECT key, value, updated_at, is_deleted FROM server_settings FINAL WHERE key = ? AND is_deleted = 0")
         .bind(key)
@@ -23,7 +23,7 @@ pub async fn get_setting(key: &str) -> anyhow::Result<Option<String>> {
 }
 
 pub async fn list_settings() -> anyhow::Result<Vec<SettingRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     client
         .query("SELECT key, value, updated_at, is_deleted FROM server_settings FINAL WHERE is_deleted = 0 ORDER BY key")
         .fetch_all::<SettingRow>()

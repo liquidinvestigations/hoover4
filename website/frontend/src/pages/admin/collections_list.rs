@@ -2,11 +2,9 @@
 
 use dioxus::prelude::*;
 
-use crate::api::admin_api::{
-    admin_create_collection, admin_list_collections, admin_list_unassigned_datasets,
-};
+use crate::api::admin_api::{admin_create_collection, admin_list_collections};
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_PRIMARY, HELP_TEXT, INPUT, LINK, MODULE,
+    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_PRIMARY, INPUT, LINK, MODULE,
     MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -30,7 +28,6 @@ pub fn AdminCollectionsPage() -> Element {
 #[component]
 fn CollectionsListContent() -> Element {
     let mut cols_res = use_resource(admin_list_collections);
-    let mut unassigned_res = use_resource(admin_list_unassigned_datasets);
     let mut collectionname = use_signal(String::new);
     let mut fullname = use_signal(String::new);
     let mut error_msg = use_signal(|| None::<String>);
@@ -62,7 +59,6 @@ fn CollectionsListContent() -> Element {
                                     collectionname.set(String::new());
                                     fullname.set(String::new());
                                     cols_res.restart();
-                                    unassigned_res.restart();
                                 }
                                 Err(e) => error_msg.set(Some(e.to_string())),
                             }
@@ -81,6 +77,8 @@ fn CollectionsListContent() -> Element {
                             th { style: TH, "Display name" }
                             th { style: TH, "Datasets" }
                             th { style: TH, "Groups with access" }
+                            th { style: TH, "Access" }
+                            th { style: TH, "Database" }
                         }
                     }
                     tbody {
@@ -92,6 +90,20 @@ fn CollectionsListContent() -> Element {
                                 td { style: TD, "{c.fullname}" }
                                 td { style: TD, "{c.dataset_count}" }
                                 td { style: TD, "{c.group_count}" }
+                                td { style: TD,
+                                    if c.is_public {
+                                        span { style: "color: #2f6f9f; font-weight: 700;", "public" }
+                                    } else {
+                                        span { style: "color: #666;", "restricted" }
+                                    }
+                                }
+                                td { style: TD,
+                                    if c.db_ready {
+                                        span { style: "color: #5fa25f; font-weight: 700;", "\u{2714} ready" }
+                                    } else {
+                                        span { style: "color: #ba2121;", "\u{2026} provisioning" }
+                                    }
+                                }
                             }
                         }
                     }
@@ -99,26 +111,6 @@ fn CollectionsListContent() -> Element {
             },
             Some(Err(e)) => rsx! { ErrorBar { message: "{e}" } },
             None => rsx! { "Loading..." },
-        }
-        div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Unassigned datasets" }
-            div { style: MODULE_BODY,
-                match &*unassigned_res.read() {
-                    Some(Ok(list)) if list.is_empty() => rsx! {
-                        p { style: "{HELP_TEXT} margin: 0;", "Every dataset is assigned to a collection." }
-                    },
-                    Some(Ok(list)) => rsx! {
-                        p { style: "{HELP_TEXT} margin: 0 0 8px;", "These datasets belong to no collection and are invisible to non-admin users. Open a collection page to attach them." }
-                        ul { style: "margin: 0; padding-left: 20px; font-size: 13px; color: #333;",
-                            for ds in list.clone() {
-                                li { key: "{ds}", "{ds}" }
-                            }
-                        }
-                    },
-                    Some(Err(e)) => rsx! { ErrorBar { message: "{e}" } },
-                    None => rsx! { "Loading\u{2026}" },
-                }
-            }
         }
     }
 }

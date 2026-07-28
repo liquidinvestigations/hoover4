@@ -10,12 +10,13 @@ use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::admin::{
-    collection_detail::AdminCollectionPage, collections_list::AdminCollectionsPage,
-    dashboard::AdminDashboardPage, dataset_detail::AdminDatasetPage,
-    group_detail::AdminGroupPage, groups_list::AdminGroupsPage, settings::AdminSettingsPage,
-    user_detail::AdminUserPage, users_list::AdminUsersPage,
+    collection_detail::AdminCollectionPage, collection_processing::AdminCollectionProcessingPage,
+    collections_list::AdminCollectionsPage, dashboard::AdminDashboardPage,
+    dataset_detail::AdminDatasetPage, group_detail::AdminGroupPage, groups_list::AdminGroupsPage,
+    metrics::AdminMetricsPage, settings::AdminSettingsPage, user_detail::AdminUserPage,
+    user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
 };
-use crate::pages::chatbot_page::ChatbotPage;
+use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::file_browser_page::{FileBrowserCollectionsPage, FileBrowserPage};
 use crate::pages::home_page::HomePage;
 use crate::pages::pdfdemo_page::PdfDemoPage;
@@ -60,8 +61,19 @@ pub enum Route {
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
 
-    #[route("/chatbot")]
-    ChatbotPage {  },
+    // /ai_chat/history must be declared before any /ai_chat/:param catch-all.
+    #[route("/ai_chat")]
+    AiChatPage {},
+
+    #[route("/ai_chat/history")]
+    AiChatHistoryPage {},
+
+    #[route("/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state")]
+    AiChatSessionPage {
+        session_id: String,
+        selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
+        doc_viewer_state: UrlParam<Option<DocViewerState>>,
+    },
 
     #[route("/pdfdemo")]
     PdfDemoPage {  },
@@ -75,11 +87,17 @@ pub enum Route {
     #[route("/admin/collections/:collection_id")]
     AdminCollectionPage { collection_id: String },
 
+    #[route("/admin/collections/:collection_id/processing")]
+    AdminCollectionProcessingPage { collection_id: String },
+
     #[route("/admin/collections/:collection_id/datasets/:dataset_id")]
     AdminDatasetPage { collection_id: String, dataset_id: String },
 
     #[route("/admin/users")]
     AdminUsersPage {},
+
+    #[route("/admin/users/:username/llm")]
+    AdminUserLlmPage { username: String },
 
     #[route("/admin/users/:username")]
     AdminUserPage { username: String },
@@ -92,6 +110,9 @@ pub enum Route {
 
     #[route("/admin/settings")]
     AdminSettingsPage {},
+
+    #[route("/admin/metrics")]
+    AdminMetricsPage {},
 
 }
 
@@ -117,6 +138,19 @@ impl Route {
             path: UrlParam::from(path),
             selected_result_hash: UrlParam::from(selected),
             doc_viewer_state: UrlParam::from(None),
+        }
+    }
+
+    /// Open a chat session, optionally with a document selected in the preview pane.
+    pub fn ai_chat_session(
+        session_id: String,
+        selected: Option<DocumentIdentifier>,
+        doc_viewer_state: Option<DocViewerState>,
+    ) -> Self {
+        Self::AiChatSessionPage {
+            session_id,
+            selected_result_hash: UrlParam::from(selected),
+            doc_viewer_state: UrlParam::from(doc_viewer_state),
         }
     }
 }

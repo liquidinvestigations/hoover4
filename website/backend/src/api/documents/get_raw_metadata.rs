@@ -9,7 +9,7 @@ use common::{
 use tokio::io::AsyncBufReadExt;
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 pub async fn get_raw_metadata(
     user: &CurrentUser,
@@ -17,7 +17,7 @@ pub async fn get_raw_metadata(
     table_info: DocumentMetadataTableInfo,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
     let query = "SELECT * FROM ? WHERE ? = ? AND collection_dataset = ? LIMIT 11";
     let query = client

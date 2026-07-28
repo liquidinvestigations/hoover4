@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
         list_disk_folder, insert_vfs_directories, ingest_files_batch,
         ListDiskFolderParams, InsertVfsDirectoriesParams, IngestFilesBatchParams,
     )
+    from tasks.visibility import dataset_search_attributes
 
 
 def _batch_seq(items: List[Any], batch_size: int) -> List[List[Any]]:
@@ -69,6 +70,7 @@ def _child_workflow_id(prefix: str, params: Any) -> str:
 
 @dataclass
 class HandleFilesParams:
+    collectionname: str
     collection_dataset: str
     dataset_path: str
     file_paths: List[str]
@@ -89,6 +91,7 @@ class HandleFiles:
         result = await workflow.execute_activity(
             ingest_files_batch,
             IngestFilesBatchParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=params.dataset_path,
                 file_paths=file_paths,
@@ -104,6 +107,7 @@ class HandleFiles:
 
 @dataclass
 class HandleFoldersParams:
+    collectionname: str
     collection_dataset: str
     dataset_path: str
     folder_paths: List[str]
@@ -126,6 +130,7 @@ class HandleFolders:
                 workflow.execute_activity(
                     list_disk_folder,
                     ListDiskFolderParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         dataset_path=params.dataset_path,
                         folder_path=folder_rel,
@@ -152,6 +157,7 @@ class HandleFolders:
             await workflow.execute_activity(
                 insert_vfs_directories,
                 InsertVfsDirectoriesParams(
+                    collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     dir_paths=all_dirs,
                     container_hash=(params.container_hash or ""),
@@ -168,6 +174,7 @@ class HandleFolders:
         child_futs = []
         for folder_batch in child_folder_batches:
             params_obj = HandleFoldersParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=params.dataset_path,
                 folder_paths=folder_batch,
@@ -180,12 +187,14 @@ class HandleFolders:
                     params_obj,
                     id=_child_workflow_id("HandleFolders", params_obj),
                     task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params_obj.collection_dataset),
                 )
             )
 
         for file_batch in child_file_batches:
             file_paths = [f["path"] for f in file_batch]
             params_obj = HandleFilesParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=params.dataset_path,
                 file_paths=file_paths,
@@ -198,6 +207,7 @@ class HandleFolders:
                     params_obj,
                     id=_child_workflow_id("HandleFiles", params_obj),
                     task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params_obj.collection_dataset),
                 )
             )
 
@@ -210,6 +220,7 @@ class HandleFolders:
 
 @dataclass
 class IngestDiskDatasetParams:
+    collectionname: str
     collection_dataset: str
     dataset_path: str
 
@@ -224,6 +235,7 @@ class IngestDiskDataset:
 
         # Seed with root folder
         args = {
+            "collectionname": params.collectionname,
             "collection_dataset": params.collection_dataset,
             "dataset_path": params.dataset_path,
             "folder_paths": ["/"],
@@ -233,6 +245,7 @@ class IngestDiskDataset:
             args,
             task_queue="processing-common-queue",
             id=_child_workflow_id("HandleFolders", args),
+            search_attributes=dataset_search_attributes(params.collection_dataset),
         )
         log.info("Finished disk ingestion for %s", params.collection_dataset)
 

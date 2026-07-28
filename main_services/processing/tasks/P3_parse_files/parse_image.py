@@ -44,6 +44,7 @@ def _first_stream_resolution(meta: Dict[str, Any]) -> Any:
 
 @dataclass
 class ParseImageParams:
+    collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
@@ -52,9 +53,9 @@ class ParseImageParams:
 
 @activity.defn
 def parse_image_metadata_and_store(params: ParseImageParams) -> str:
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     log.info("[P3] Parsing image metadata for %s", params.file_path)
 
@@ -65,9 +66,12 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
 
     meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
     width, height = _first_stream_resolution(meta)
+    # TODO(plan 2, part 1): if ffprobe reports a 0x0 resolution here the image
+    # may be undecodable; consider routing it through
+    # tasks/P3_parse_files/image_loader.load_image_rgb like parse_ocr.py does.
 
-    processed_at = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         # Upsert into image table
         tbl_img = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),

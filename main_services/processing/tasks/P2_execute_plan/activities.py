@@ -3,7 +3,7 @@
 from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import shutil
 import logging
@@ -20,6 +20,7 @@ def _escape(v: str) -> str:
 
 @dataclass
 class ListPendingPlansParams:
+    collectionname: str
     collection_dataset: str
     starting_plan_hash: str | None = None
 
@@ -27,7 +28,7 @@ class ListPendingPlansParams:
 @activity.defn
 def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
     """Activity that lists up to 1001 pending plan hashes to execute."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     starting_plan_hash: str = params.starting_plan_hash or ""
 
@@ -46,7 +47,7 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
         ORDER BY p.plan_hash ASC
         LIMIT 1001
     """
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl = client.query_arrow(sql)
         results: List[str] = []
         if tbl and tbl.num_rows:
@@ -58,6 +59,7 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
 
 @dataclass
 class GetPlanItemsMetadataParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
 
@@ -65,7 +67,7 @@ class GetPlanItemsMetadataParams:
 @activity.defn
 def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str, Any]]:
     """Activity that joins plan hits with file types and blob metadata."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
 
@@ -81,7 +83,7 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
         ORDER BY h.item_hash ASC
     """
 
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl = client.query_arrow(sql)
         results: List[Dict[str, Any]] = []
         if not tbl or tbl.num_rows == 0:
@@ -120,6 +122,7 @@ def _parse_s3_url(s3_url: str) -> Tuple[str, str]:
 
 @dataclass
 class DownloadPlanFilesParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
     items: List[Dict[str, Any]]
@@ -130,7 +133,7 @@ class DownloadPlanFilesParams:
 def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     """Activity that downloads plan files locally from S3 or ClickHouse."""
     from database.minio import get_minio_client, ensure_bucket
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
     items: List[Dict[str, Any]] = params.items
@@ -185,7 +188,7 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
             WHERE collection_dataset = '{_escape(collection_dataset)}'
               AND blob_hash IN ({in_list})
         """
-        with get_clickhouse_client() as client:
+        with get_collection_client(params.collectionname) as client:
             tbl = client.query_arrow(sql)
             if not tbl or tbl.num_rows == 0:
                 continue
@@ -232,6 +235,7 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
 
 @dataclass
 class CleanupPlanDirParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
     base_temp_dir: str
@@ -266,6 +270,7 @@ def ensure_temp_dir_exists(params: EnsureTempDirExistsParams) -> str:
 
 @dataclass
 class MarkPlanFinishedParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
 
@@ -273,11 +278,11 @@ class MarkPlanFinishedParams:
 @activity.defn
 def mark_plan_finished(params: MarkPlanFinishedParams) -> str:
     """Activity that records the completion of a processing plan."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
-    now = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
             "plan_hash": pa.array([plan_hash], type=pa.string()),
@@ -289,6 +294,7 @@ def mark_plan_finished(params: MarkPlanFinishedParams) -> str:
 
 @dataclass
 class RecordProcessingErrorsParams:
+    collectionname: str
     errors: List[Dict[str, Any]]
 
 
@@ -296,13 +302,25 @@ class RecordProcessingErrorsParams:
 def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     """Activity that records multiple processing error rows into ClickHouse in one insert.
 
+    Writes to the collection database selected by ``params.collectionname``.
     Expected params:
       - errors: List[Dict[str, Any]] where each item has keys:
           collection_dataset, hash, task_name, run_time_ms, error_logs
     """
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     errors: List[Dict[str, Any]] = list(params.errors or [])
     if not errors:
+        return 0
+
+    if not params.collectionname:
+        # Never write per-collection rows to the global database: if the
+        # collection is unknown, drop the rows instead.
+        import sys
+        print(
+            f"[P2] record_processing_errors: no collectionname, dropping "
+            f"{len(errors)} error rows",
+            file=sys.stderr,
+        )
         return 0
 
     coll_vals: List[str] = []
@@ -312,7 +330,7 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     logs_vals: List[str] = []
     ts_vals: List[datetime] = []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for e in errors:
         coll_vals.append((e.get("collection_dataset") or ""))
@@ -328,7 +346,7 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
         logs_vals.append((e.get("error_logs") or ""))
         ts_vals.append(now)
 
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
             "collection_dataset": pa.array(coll_vals, type=pa.string()),
             "hash": pa.array(hash_vals, type=pa.string()),

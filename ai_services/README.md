@@ -1,18 +1,120 @@
-# OCR, NER and RAG services
+# Hoover4 AI services
 
-This section contains:
-- A OCR service based on EasyOCR and TesseractOCR, supporting text and PDF content, running on the GPU.
-- A NER service that tags text as `PER` (person), `ORG` (organization), `LOC` (place) or `MISC` type semantic entities, running on the GPU.
-- A comprehensive RAG (Retrieval-Augmented Generation) system with document ingestion, vector search, advanced reranking, and interactive chat interface. Built with Milvus vector store, Hoover4 AI services, and LiteLLM integration.
+GPU-backed embeddings / NER / reranking, a local LLM, a set of MCP tool servers, and
+the LangGraph research agents that use them.
 
+> **Deployment note (plan 3).** These services used to run across several hosts behind a
+> VPN and addressed each other by `10.69.x.x`. That network is gone. Everything now runs
+> on **one machine with one GPU**, joining the `hoover4` podman network created by
+> `main_services/ops/docker/docker-compose.yaml`. Bring the main stack up first, then
+> this one.
 
-## Requirements
+## What runs here
 
-Hardware: minimum of 1 x RTX 3090 with 24gb of video RAM (or better). Minimum of 64gb of system RAM or better. CPU with at least 8 CPU cores.
+| Service | Port (loopback) | Purpose |
+|---|---|---|
+| `hoover4-ai-server` | 8821 | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
+| `hoover4-vllm` | 8011 | Local LLM (Qwen3-4B-Instruct), OpenAI-compatible. Replaces the old LiteLLM proxy. |
+| `hoover4-mcp-collections` | 8085 | **The RAG path.** ACL-bounded search over the user's collections. |
+| `hoover4-mcp-ddg` / `-wikipedia` / `-whois` | 8889 / 8093 / 8092 | Open-web tools. |
+| `hoover4-mcp-milvus` | 18081 | Vector search. **Behind the `milvus` profile — nothing populates Milvus yet.** |
+| `hoover4-internal-search-agent` | 9099 | Collection-only agent. What the website's AI Chat page calls. |
+| `hoover4-full-research-agent` | 9090 | Collections + open web. Target of the Temporal `ResearchTask`. |
 
-Software: Running these services requires `nvidia-docker` and `CUDA 12.8` installed.
+## How access control works
 
+An agent answering for a user must only reach collections that user could read in the
+search UI. The chain is:
 
+1. The **website backend** resolves the user's permitted collections (group grants union
+   public collections). It is the only component that can — it owns the auth tables.
+2. It passes that list to the agent as `allowed_collections`.
+3. The agent opens its MCP connections with `X-Hoover4-Collections: <list>` and
+   `Authorization: Bearer $MCP_SHARED_SECRET`, and caches one graph **per ACL** so a
+   connection is never reused across users.
+4. `hoover4-mcp-collections` enforces the header on every tool call. A request for a
+   collection outside it is an error, not a silently-narrowed filter.
+
+The model never sees or supplies its own permissions. Set `MCP_SHARED_SECRET` in `.env`;
+without it the MCP servers accept any caller and log a warning (the ports are bound to
+127.0.0.1, which is the only reason that is survivable locally).
+
+## Why search goes through Manticore, not Milvus
+
+The ingestion pipeline writes extracted text to ClickHouse and search documents to
+Manticore shards. It **never writes vectors to Milvus** — `text_chunks_milvus` and
+`entity_hits_milvus` exist but are unused. So `hoover4-mcp-collections` searches
+Manticore and reads text from ClickHouse, which is where the data actually is. The
+Milvus MCP server is kept and still builds, behind the `milvus` compose profile, for
+whenever a chunk-and-embed stage is added to the pipeline.
+
+## Quick start
+
+```bash
+# 1. the main stack must be up first — it creates the `hoover4` network
+../main_services/start-docker.sh
+
+# 2. configure once
+cp env.example .env
+$EDITOR .env          # at minimum, set MCP_SHARED_SECRET
+
+# 3. start
+./start-docker.sh                       # add --build to rebuild images
+```
+
+The first start downloads model weights (~2 GB for the embedding model, ~8 GB for the
+LLM), so `hoover4-ai-server` and `hoover4-vllm` take several minutes to report healthy.
+`start-docker.sh` waits for health and prints what is still coming up.
+
+### Use `start-docker.sh`, not bare `docker compose up`
+
+A plain `docker compose up -d` in this directory fails in two ways that are easy to
+misread, and the script checks both before starting anything:
+
+1. **`network hoover4 not found`** — the network is declared `external` here and is
+   created by the main stack. That has to be up first.
+2. **`crun: cannot stat /usr/lib/libnvidia-*.so.<driver>: OCI runtime attempted to
+   invoke a command that was not found`** — `/etc/cdi/nvidia.yaml` lists library mounts
+   derived from the running driver version, and a partial driver upgrade (on this host:
+   `nvidia-utils` at `610.57.04` while `nvidia-settings` is still at `610.43.03`) leaves
+   entries pointing at files that were never installed. A CDI mount is a bind, so `crun`
+   refuses to start the container at all. Only the two **GPU** services fail while the
+   six others come up, which looks like a GPU problem and is not.
+
+   The script prunes mounts whose host path does not exist, keeping a timestamped backup
+   of the spec. The entries this hits in practice (`libnvidia-gtk3`,
+   `libnvidia-wayland-client`) belong to `nvidia-settings` and are irrelevant to CUDA.
+   **The durable fix is to bring every `nvidia-*` package to the same version**; until
+   then `nvidia-ctk cdi generate` will reintroduce the bad entries.
+
+The compose project name is pinned to `ai_services` so the model caches
+(`ai_services_ai_models_cache` ~6 GB, `ai_services_vllm_huggingface_cache` ~16 GB) stay
+attached. Changing it orphans them and re-downloads every weight.
+
+### Podman specifics
+
+* GPUs are requested with `devices: nvidia.com/gpu=all` (CDI). The
+  `deploy.resources.reservations.devices` block docker-compose uses is **silently
+  ignored** by podman-compose — services appeared to start and then ran on CPU.
+* `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
+  in the compose file.
+* Both GPU services share one 24 GB card. `VLLM_GPU_FRACTION` (default `0.45`) is the
+  knob to turn down first if either OOMs.
+
+### Testing
+
+Python here runs **in containers only**. To run the collection-search server's tests:
+
+```bash
+podman run --rm hoover4-mcp-collections:local python -m pytest tests/ -q
+```
+
+---
+
+# Legacy notes
+
+The sections below describe the original multi-host RAG design. Kept for reference;
+the Milvus-based ingestion path they describe is not wired up.
 
 ## Features
 

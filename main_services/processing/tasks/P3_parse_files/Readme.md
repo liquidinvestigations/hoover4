@@ -28,4 +28,5 @@ Parsing uses type-based routing derived from detector results. Archives, PDFs, e
 
 - [Go Back](../Readme.md)
 - [P2 - Execute Plan](../P2_execute_plan/Readme.md)
-- [P4 - Index Data](../P4_index_data/Readme.md)
+- [P4 - Extract Entities](../P4_extract_entities/Readme.md)
+- [P5 - Index Data](../P5_index_data/Readme.md)

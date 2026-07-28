@@ -11,14 +11,14 @@ use common::{
 };
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 pub(crate) async fn get_text_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentTextSourceItem>> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = r#"
     SELECT extracted_by,min(page_id) as min_page,max(page_id) as max_page FROM text_content
     WHERE file_hash = ? AND collection_dataset = ?
@@ -70,7 +70,7 @@ async fn get_email_sources(
     _user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentEmailSourceItem>> {
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = r#"
         SELECT
             subject,

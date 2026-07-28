@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ParseEmailHeadersParams:
+    collectionname: str
     collection_dataset: str
     email_hash: str
     file_path: str
@@ -26,7 +27,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     from email.parser import BytesParser
     from email.utils import parsedate_to_datetime
     from datetime import datetime, timezone
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
     log.info("[P3] Parsing email headers for %s", params.file_path)
     with open(params.file_path, "rb") as f:
@@ -54,7 +55,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     addresses_str = "; ".join(addresses)
 
     # Save email container row
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl_e = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "email_hash": pa.array([params.email_hash], type=pa.string()),
@@ -93,7 +94,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
         page_id = 0
         total = 0
         for t in texts:
-            total += insert_text_chunks(params.collection_dataset, params.email_hash, "email_parser", t or "", start_page_id=page_id)
+            total += insert_text_chunks(params.collectionname, params.collection_dataset, params.email_hash, "email_parser", t or "", start_page_id=page_id)
             page_id = total
 
     return f"email {params.email_hash}"
@@ -102,6 +103,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
 
 @dataclass
 class ExtractEmailAttachmentsParams:
+    collectionname: str
     collection_dataset: str
     email_hash: str
     file_path: str
@@ -160,6 +162,7 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
 
 @dataclass
 class EmailExtractionWorkflowParams:
+    collectionname: str
     collection_dataset: str
     email_hash: str
     timeout_seconds: int
@@ -182,7 +185,7 @@ class EmailExtractionAndScan:
         # 1) Extract headers + text content
         await workflow.execute_activity(
             parse_email_extract_text_headers,
-            ParseEmailHeadersParams(collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path),
+            ParseEmailHeadersParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -190,7 +193,7 @@ class EmailExtractionAndScan:
         # 2) Extract attachments to temp dir
         res = await workflow.execute_activity(
             extract_email_attachments_to_temp,
-            ExtractEmailAttachmentsParams(collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path, timeout_seconds=params.timeout_seconds),
+            ExtractEmailAttachmentsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path, timeout_seconds=params.timeout_seconds),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -199,9 +202,11 @@ class EmailExtractionAndScan:
         # 3) Scan extracted attachments via P0 as child workflow
         with workflow.unsafe.imports_passed_through():
             from tasks.P0_scan_disk.workflows import HandleFolders, HandleFoldersParams
+            from tasks.visibility import dataset_search_attributes
         await workflow.execute_child_workflow(
             HandleFolders.run,
             HandleFoldersParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=out_dir,
                 folder_paths=["/"],
@@ -210,6 +215,7 @@ class EmailExtractionAndScan:
             ),
             id=f"scan-email-{params.collection_dataset}-{params.email_hash}",
             task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
         # 4) Cleanup temp dir (reuse cleanup_temp_dir from archives module)

@@ -10,7 +10,7 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use serde::Deserialize;
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 #[derive(Debug, Clone, Deserialize, Row)]
 struct EntityRow {
@@ -79,7 +79,7 @@ async fn _adjust_hit_item_count(
 async fn _get_document_entities(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<DocumentEntitiesResponse> {
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
     // Match migration schema:
     // - entity_type: String

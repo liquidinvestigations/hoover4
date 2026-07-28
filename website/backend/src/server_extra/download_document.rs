@@ -16,13 +16,13 @@ use tracing::info;
 use crate::{
     api::documents::download_document::{BlobInfo, BlobValue, get_blob_filename},
     auth::{guard, permissions},
-    db_utils::clickhouse_utils::get_clickhouse_client,
+    db_utils::clickhouse_utils::get_client_for_dataset,
 };
 
 async fn get_document_s3_blob_download_path(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<BlobInfo> {
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = "SELECT blob_size_bytes, s3_path, stored_in_clickhouse FROM blobs WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1";
     let query = client
         .query(query)
@@ -39,7 +39,7 @@ async fn get_document_s3_blob_download_path(
 async fn get_document_blob_content_from_clickhouse(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<BlobValue> {
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = "SELECT blob_value, blob_length FROM blob_values WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1";
     let query = client
         .query(query)

@@ -23,6 +23,10 @@ fn title_ellipsis(title: String) -> String {
     }
 }
 
+/// Re-export so existing `use crate::pages::search_page::DocViewerStateControl` imports
+/// keep compiling after the type moved to `data_definitions::doc_viewer_state`.
+pub use crate::data_definitions::doc_viewer_state::DocViewerStateControl;
+
 /// Home page
 #[component]
 pub fn SearchPage(
@@ -44,11 +48,7 @@ pub fn SearchPage(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub struct DocViewerStateControl {
-    pub doc_viewer_state: ReadSignal<Option<DocViewerState>>,
-    pub set_doc_viewer_state: Callback<DocViewerState>,
-}
+// DocViewerStateControl lives in data_definitions::doc_viewer_state (re-exported above).
 
 #[component]
 fn SearchPageRootComponent(

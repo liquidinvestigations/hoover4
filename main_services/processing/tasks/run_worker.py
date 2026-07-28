@@ -38,11 +38,24 @@ async def run_common_worker():
     from .P3_parse_files.parse_image import parse_image_metadata_and_store
     from .P3_parse_files.parse_audio import parse_audio_metadata_and_store
     from .P3_parse_files.parse_video import VideoProcessingAndScan, video_ffprobe_and_store, video_extract_frames_and_subtitles
-    from .P4_index_data.activities import fetch_plan_hashes, index_metadatas
-    from .P4_index_data.workflows import IndexDatasetPlan
+    from .plan_utils import fetch_plan_hashes
+    from .P4_extract_entities.workflows import ExtractEntitiesForPlan
+    from .P5_index_data.workflows import IndexDatasetPlan
+    from .P_admin.activities import (
+        drop_collection_database,
+        ensure_collection_database,
+        purge_dataset_from_clickhouse,
+        purge_dataset_from_manticore,
+        recompute_shard_ledger_activity,
+    )
+    from .P_admin.workflows import DropCollectionDatabase, EnsureCollectionDatabase, PurgeDataset
+    from .P_agent.activities import run_research_agent, write_chat_message
+    from .P_agent.workflows import ResearchTask
+    from .visibility import ensure_search_attributes
 
     log.info("Starting common worker...")
     client = await Client.connect("temporal:7233")
+    await ensure_search_attributes(client)
     CONCURRENCY = 8
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
@@ -61,7 +74,12 @@ async def run_common_worker():
             EmailExtractionAndScan,
             PdfProcessingAndScan,
             VideoProcessingAndScan,
+            ExtractEntitiesForPlan,
             IndexDatasetPlan,
+            EnsureCollectionDatabase,
+            DropCollectionDatabase,
+            PurgeDataset,
+            ResearchTask,
           ],
           activities=[
             list_disk_folder,
@@ -92,9 +110,19 @@ async def run_common_worker():
             detect_mime_with_gnu_file,
             detect_mime_with_magika,
 
-            # P4 Index Data
+            # Shared plan helpers
             fetch_plan_hashes,
-            index_metadatas,
+
+            # P_admin collection database lifecycle
+            ensure_collection_database,
+            drop_collection_database,
+            purge_dataset_from_manticore,
+            purge_dataset_from_clickhouse,
+            recompute_shard_ledger_activity,
+
+            # P_agent long-running AI research tasks
+            run_research_agent,
+            write_chat_message,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
@@ -109,9 +137,11 @@ async def run_common_worker():
 async def run_tika_worker():
     # Localized import for Tika-only worker
     from .P3_parse_files.parse_tika import run_tika_and_store
+    from .visibility import ensure_search_attributes
 
     log.info("Starting Tika worker...")
     client = await Client.connect("temporal:7233")
+    await ensure_search_attributes(client)
     CONCURRENCY = 8
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
@@ -132,9 +162,11 @@ async def run_tika_worker():
 async def run_easyocr_worker():
     # Localized import for EasyOCR-only worker
     from .P3_parse_files.parse_ocr import run_easyocr_and_store
+    from .visibility import ensure_search_attributes
 
     log.info("Starting EasyOCR worker...")
     client = await Client.connect("temporal:7233")
+    await ensure_search_attributes(client)
     CONCURRENCY = 4
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
@@ -152,17 +184,64 @@ async def run_easyocr_worker():
         await worker.run()
 
 
+async def run_nlp_worker():
+  # Localized import for NLP-only worker
+  from .P4_extract_entities.activities import extract_entities_for_hashes
+  from .visibility import ensure_search_attributes
+  log.info("Starting NLP worker...")
+  client = await Client.connect("temporal:7233")
+  await ensure_search_attributes(client)
+  # The NER service is remote; concurrency here is about pipelining HTTP,
+  # not local CPU.
+  CONCURRENCY = 2
+  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+    worker = Worker(
+      client,
+      task_queue="processing-nlp-queue",
+      workflows=[],
+      activities=[extract_entities_for_hashes],
+      activity_executor=activity_executor,
+      max_concurrent_activities=CONCURRENCY,
+    )
+    await worker.run()
+
+
 async def run_indexing_worker():
-  from .P4_index_data.activities import index_text_content
+  from .P5_index_data.activities import index_metadata, index_text_pages
+  from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
+  await ensure_search_attributes(client)
   CONCURRENCY = 1
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
       task_queue="processing-indexing-queue",
       workflows=[],
-      activities=[index_text_content],
+      activities=[index_text_pages, index_metadata],
+      activity_executor=activity_executor,
+      max_concurrent_activities=CONCURRENCY,
+    )
+    await worker.run()
+
+
+async def run_index_planner_worker():
+  # WARNING: run EXACTLY ONE process of this worker. plan_shards reads and
+  # rewrites the per-collection shard ledger (manticore_shards); two concurrent
+  # planner activities for the same collection would corrupt it. The dedicated
+  # queue plus max_concurrent_activities=1 is the whole concurrency story.
+  from .P5_index_data.shard_planner import finalize_index_batch, plan_shards, record_indexed
+  from .visibility import ensure_search_attributes
+  log.info("Starting Index planner worker...")
+  client = await Client.connect("temporal:7233")
+  await ensure_search_attributes(client)
+  CONCURRENCY = 1
+  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+    worker = Worker(
+      client,
+      task_queue="processing-index-planner-queue",
+      workflows=[],
+      activities=[plan_shards, finalize_index_batch, record_indexed],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

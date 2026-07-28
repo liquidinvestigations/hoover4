@@ -1,0 +1,6 @@
+The quick brown fox jumps over the lazy dog.
+
+This tiny fixture file exists so the integration tests have a known word to
+search for: zanzibar. Zanzibar appears here twice, deliberately. The pipeline
+must parse this file, extract its entities, index it into a Manticore shard,
+and the website search must find it again.

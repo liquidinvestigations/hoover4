@@ -1,11 +1,9 @@
 //! Search count endpoint for result totals.
 
-use crate::api::search::search_sql::{SQL_FROM_CLAUSE, SQL_OPTIONS_CLAUSE};
-use crate::{
-    api::search::search_sql::build_sql_where_clause,
-    db_utils::manticore_utils::manticore_search_sql,
-};
-use common::{current_user::CurrentUser, search_query::SearchQuery};
+use crate::api::search::fanout::{self, FanoutTarget};
+use crate::api::search::search_sql::sql_options_clause;
+use crate::db_utils::manticore_utils::manticore_search_sql;
+use common::{current_user::CurrentUser, search_query::SearchQuery, search_result::SearchResultHitCount};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::permissions;
@@ -15,25 +13,57 @@ pub struct SearchForResultsHitCountResponse {
     pub total_count: u64,
 }
 
-pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<u64> {
+/// Sum of `count(distinct file_hash)` across all shards of all searched
+/// collections.
+///
+/// **Upper bound, not an exact total:** the same `file_hash` can exist in two
+/// collections (the same file ingested twice), so per-shard distinct counts are
+/// not strictly additive. When one or more shards fail (`partial` in the
+/// response) the failed shards' counts are missing and the total is a *lower*
+/// bound instead.
+pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
-        return Ok(0);
+        return Ok(SearchResultHitCount { total: 0, partial: false });
     };
-    let sql_where_clause = build_sql_where_clause(&query);
-    let sql = format!(
-        "
-        SELECT count(distinct file_hash) as total_count
-        {SQL_FROM_CLAUSE}
-        {sql_where_clause}
-        {SQL_OPTIONS_CLAUSE}
-        ;",
-    );
-    let response = manticore_search_sql::<SearchForResultsHitCountResponse>(sql).await?;
-    let response = response.hits.hits;
-    if response.is_empty() {
-        return Ok(0);
+    let collections = fanout::permitted_search_collections(user, &query).await?;
+    let targets = fanout::shard_targets(&collections).await;
+    if targets.is_empty() {
+        return Ok(SearchResultHitCount { total: 0, partial: false });
     }
-    let response = response[0]._source.total_count;
-    Ok(response)
+
+    let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
+        let query = query.clone();
+        async move {
+            let parts = fanout::shard_query_parts(&target, &query).await?;
+            let from_clause = &parts.from_clause;
+            let sql_where_clause = &parts.where_clause;
+            let options_clause = sql_options_clause(1000);
+            let sql = format!(
+                "
+                SELECT count(distinct file_hash) as total_count
+                {from_clause}
+                {sql_where_clause}
+                {options_clause}
+                ;",
+            );
+            manticore_search_sql::<SearchForResultsHitCountResponse>(sql, &parts.salt).await
+        }
+    })
+    .await?;
+    let partial = outcome.is_partial();
+
+    let total_count_upper_bound: u64 = outcome
+        .results
+        .into_iter()
+        .map(|(_, response)| {
+            response
+                .hits
+                .hits
+                .first()
+                .map(|hit| hit._source.total_count)
+                .unwrap_or(0)
+        })
+        .sum();
+    Ok(SearchResultHitCount { total: total_count_upper_bound, partial })
 }

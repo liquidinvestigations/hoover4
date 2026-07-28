@@ -35,11 +35,14 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P1_compute_plans.workflows import ComputePlans
     from tasks.P3_parse_files.workflows import ParseSingleFile
     from tasks.P3_parse_files.parse_common import record_errors_from_results
-    from tasks.P4_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
+    from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
+    from tasks.P5_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
+    from tasks.visibility import dataset_search_attributes
 
 
 @dataclass
 class ExecutePlansParams:
+    collectionname: str
     collection_dataset: str
     base_temp_dir: str
     starting_plan_hash: str | None = None
@@ -70,7 +73,7 @@ class ExecutePlans:
         # 1) Fetch up to 1001 plan hashes (to know if we need to execute_as_new)
         plan_hashes = await workflow.execute_activity(
             list_pending_plans,
-            ListPendingPlansParams(collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or "")),
+            ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or "")),
             start_to_close_timeout=timedelta(minutes=15),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -79,21 +82,23 @@ class ExecutePlans:
             # Check if there are new unplanned blobs; if so, compute more plans and restart
             count = await workflow.execute_activity(
                 count_new_blobs,
-                CountNewBlobsParams(collection_dataset=params.collection_dataset),
+                CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
                 start_to_close_timeout=timedelta(minutes=15),
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             if count:
                 await workflow.execute_child_workflow(
                     ComputePlans.run,
-                    {"collection_dataset": params.collection_dataset},
+                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset},
                     id=f"compute-plans-{params.collection_dataset}",
                     task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
                 # execute_as_new with no starting hash
                 return await workflow.execute_child_workflow(
                     ExecutePlans.run,
                     {
+                        "collectionname": params.collectionname,
                         "collection_dataset": params.collection_dataset,
                         "starting_plan_hash": None,
                         "base_temp_dir": params.base_temp_dir,
@@ -101,6 +106,7 @@ class ExecutePlans:
                     },
                     id=f"execute-plans-{params.collection_dataset}-restart",
                     task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
             log.info(f"[P2] No plans to execute")
             return "no plans"
@@ -121,9 +127,10 @@ class ExecutePlans:
                 futs.append(
                     workflow.execute_child_workflow(
                         ExecuteSinglePlan.run,
-                        {"collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
+                        {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
                         id=f"execute-plan-{params.collection_dataset}-{ph}",
                         task_queue="processing-common-queue",
+                        search_attributes=dataset_search_attributes(params.collection_dataset),
                     )
                 )
             if futs:
@@ -134,6 +141,7 @@ class ExecutePlans:
             return await workflow.execute_child_workflow(
                 ExecutePlans.run,
                 {
+                    "collectionname": params.collectionname,
                     "collection_dataset": params.collection_dataset,
                     "starting_plan_hash": continuation_hash,
                     "base_temp_dir": params.base_temp_dir,
@@ -141,26 +149,29 @@ class ExecutePlans:
                 },
                 id=f"execute-plans-{params.collection_dataset}-cont-{continuation_hash}",
                 task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
             )
 
         # After finishing this batch, check for newly created blobs -> compute new plans and restart
         count = await workflow.execute_activity(
             count_new_blobs,
-            CountNewBlobsParams(collection_dataset=params.collection_dataset),
+            CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=15),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         if count:
             await workflow.execute_child_workflow(
                 ComputePlans.run,
-                {"collection_dataset": params.collection_dataset},
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset},
                 id=f"compute-plans-{params.collection_dataset}",
                 task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
             )
             try:
                 return await workflow.execute_child_workflow(
                     ExecutePlans.run,
                     {
+                        "collectionname": params.collectionname,
                         "collection_dataset": params.collection_dataset,
                         "starting_plan_hash": None,
                         "base_temp_dir": params.base_temp_dir,
@@ -168,6 +179,7 @@ class ExecutePlans:
                     },
                     id=f"execute-plans-{params.collection_dataset}-restart-{recursivity_depth+1}",
                     task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
             except Exception as e:
                 log.error(f"[P2] Error executing restart plans: {e}")
@@ -178,6 +190,7 @@ class ExecutePlans:
 
 @dataclass
 class ExecuteSinglePlanParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
     base_temp_dir: str
@@ -193,7 +206,7 @@ class ExecuteSinglePlan:
         # 1) Join metadata
         items = await workflow.execute_activity(
             get_plan_items_metadata,
-            GetPlanItemsMetadataParams(collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            GetPlanItemsMetadataParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -216,7 +229,7 @@ class ExecuteSinglePlan:
         # 2) Download locally (TODO: pin activity to worker)
         dl = await workflow.execute_activity(
             download_plan_files,
-            DownloadPlanFilesParams(collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=items, base_temp_dir=params.base_temp_dir),
+            DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=items, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=dl_secs),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -225,6 +238,7 @@ class ExecuteSinglePlan:
         await workflow.execute_child_workflow(
             ProcessItemsBatched.run,
             ProcessItemsBatchedParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 plan_hash=params.plan_hash,
                 out_dir=dl.get("out_dir"),
@@ -232,6 +246,7 @@ class ExecuteSinglePlan:
             ),
             id=f"process-batches-{params.collection_dataset}-{params.plan_hash}",
             task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
         # Delete timeout: time at 100 kbps
@@ -240,22 +255,35 @@ class ExecuteSinglePlan:
         # 4) Cleanup (TODO: pin activity to worker)
         await workflow.execute_activity(
             cleanup_plan_dir,
-            CleanupPlanDirParams(collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
+            CleanupPlanDirParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=del_secs),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
+        # 5) NLP stage: extract entities. Must complete before indexing starts -
+        # the indexing stage reads the entity_hit rows and nlp_processed
+        # watermarks written here.
         await workflow.execute_child_workflow(
-            IndexDatasetPlan.run,
-            IndexDatasetPlanParams(collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            id=f"index-dataset-plan-{params.collection_dataset}-{params.plan_hash}",
+            ExtractEntitiesForPlan.run,
+            ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            id=f"extract-entities-{params.collection_dataset}-{params.plan_hash}",
             task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 5) Mark finished (global activity)
+        # 6) Indexing stage
+        await workflow.execute_child_workflow(
+            IndexDatasetPlan.run,
+            IndexDatasetPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            id=f"index-dataset-plan-{params.collection_dataset}-{params.plan_hash}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        )
+
+        # 7) Mark finished
         await workflow.execute_activity(
             mark_plan_finished,
-            MarkPlanFinishedParams(collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            MarkPlanFinishedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=25),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -267,6 +295,7 @@ class ExecuteSinglePlan:
 
 @dataclass
 class ProcessItemsBatchedParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
     out_dir: str
@@ -291,6 +320,7 @@ class ProcessItemsBatched:
             item_hashes = []
             for it in batch:
                 args = ParseSingleFileParams(
+                    collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash,
                     item_hash=it.get('item_hash'),
@@ -303,6 +333,7 @@ class ProcessItemsBatched:
                         args,
                         id=f"parse-file-{params.collection_dataset}-{params.plan_hash}-{it.get('item_hash')}",
                         task_queue="processing-common-queue",
+                        search_attributes=dataset_search_attributes(params.collection_dataset),
                     )
                 )
                 starts.append(workflow.now())
@@ -313,6 +344,7 @@ class ProcessItemsBatched:
                 results,
                 task_ids=["P3_ParseSingleFile"] * len(batch),
                 starts=starts,
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 item_hashes=item_hashes,
             )

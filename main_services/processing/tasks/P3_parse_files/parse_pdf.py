@@ -56,11 +56,11 @@ def _maybe_pdftotext(path: str) -> Optional[str]:
     return None
 
 
-def _insert_text_via_helper(collection_dataset: str, pdf_hash: str, text_content: Optional[str]) -> int:
+def _insert_text_via_helper(collectionname: str, collection_dataset: str, pdf_hash: str, text_content: Optional[str]) -> int:
     if not text_content:
         return 0
     from tasks.P3_parse_files.parse_common import insert_text_chunks
-    return insert_text_chunks(collection_dataset, pdf_hash, "qpdf", text_content)
+    return insert_text_chunks(collectionname, collection_dataset, pdf_hash, "qpdf", text_content)
 
 
 def _extract_images_with_qpdf(input_pdf: str, out_dir: str) -> List[str]:
@@ -92,6 +92,7 @@ def _compute_pages_per_chunk(file_size_bytes: int, page_count: int) -> int:
 
 @dataclass
 class PdfMetaParams:
+    collectionname: str
     collection_dataset: str
     pdf_hash: str
     file_path: str
@@ -99,9 +100,9 @@ class PdfMetaParams:
 
 @activity.defn
 def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     collection_dataset: str = params.collection_dataset
     pdf_hash: str = params.pdf_hash
@@ -153,10 +154,10 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
     if date_created_dt is None:
         # ClickHouse non-nullable DateTime; use epoch
         from datetime import datetime
-        date_created_dt = datetime.utcfromtimestamp(0)
+        date_created_dt = datetime(1970, 1, 1)
 
-    processed_at = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         # pdfs row
         tbl_pdfs = pa.table({
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
@@ -182,6 +183,7 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
 
 @dataclass
 class PdfSmallParams:
+    collectionname: str
     collection_dataset: str
     pdf_hash: str
     file_path: str
@@ -191,7 +193,7 @@ class PdfSmallParams:
 @activity.defn
 def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     """For small PDFs, attempt text extraction and extract images to temp dir."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
 
     log.info("[P3] Extracting text and images for PDF %s", params.file_path)
@@ -208,7 +210,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     # Try to extract text (fallback to pdftotext if present)
     text_content = (_maybe_pdftotext(file_path) or "").strip()
     if text_content and len(text_content) > 1:
-        _insert_text_via_helper(collection_dataset, pdf_hash, text_content)
+        _insert_text_via_helper(params.collectionname, collection_dataset, pdf_hash, text_content)
 
     # Extract images via qpdf (best-effort)
     image_paths = _extract_images_with_qpdf(file_path, out_dir)
@@ -247,7 +249,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
             rows_link_img.append(ih)
 
         if rows_img_hash:
-            with get_clickhouse_client() as client:
+            with get_collection_client(params.collectionname) as client:
                 tbl_img = pa.table({
                     "collection_dataset": pa.array(rows_img_cd, type=pa.string()),
                     "image_hash": pa.array(rows_img_hash, type=pa.string()),
@@ -270,6 +272,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
 
 @dataclass
 class PdfLargeParams:
+    collectionname: str
     collection_dataset: str
     pdf_hash: str
     file_path: str
@@ -322,6 +325,7 @@ def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
 
 @dataclass
 class PdfProcessingWorkflowParams:
+    collectionname: str
     collection_dataset: str
     pdf_hash: str
     file_path: str
@@ -338,6 +342,7 @@ class PdfProcessingAndScan:
         meta = await workflow.execute_activity(
             pdf_get_metadata_and_store,
             PdfMetaParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 pdf_hash=params.pdf_hash,
                 file_path=params.file_path,
@@ -358,6 +363,7 @@ class PdfProcessingAndScan:
             res = await workflow.execute_activity(
                 pdf_small_extract_text_and_images,
                 PdfSmallParams(
+                    collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     pdf_hash=params.pdf_hash,
                     file_path=params.file_path,
@@ -371,6 +377,7 @@ class PdfProcessingAndScan:
             res = await workflow.execute_activity(
                 pdf_large_split_to_chunks,
                 PdfLargeParams(
+                    collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     pdf_hash=params.pdf_hash,
                     file_path=params.file_path,
@@ -385,6 +392,7 @@ class PdfProcessingAndScan:
         # 3) Scan the out_dir via P0 as a container, then cleanup
         if out_dir:
             args = HandleFoldersParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=out_dir,
                 folder_paths=["/"],
@@ -395,11 +403,13 @@ class PdfProcessingAndScan:
                 from tasks.P0_scan_disk.workflows import HandleFolders
                 from tasks.P3_parse_files.parse_archives import cleanup_temp_dir
                 from tasks.P3_parse_files.parse_archives import record_archive_container
+                from tasks.visibility import dataset_search_attributes
 
             # Record an archive-like container row for discoverability
             await workflow.execute_activity(
                 record_archive_container,
                 RecordArchiveContainerParams(
+                    collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     archive_hash=params.pdf_hash,
                     archive_types=["pdf"],
@@ -413,6 +423,7 @@ class PdfProcessingAndScan:
                 args,
                 id=f"scan-pdf-{params.collection_dataset}-{params.pdf_hash}",
                 task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
             )
 
             await workflow.execute_activity(

@@ -21,7 +21,7 @@ The workflow starts at the dataset root and recursively enumerates folders in ba
 
 ## Usage
 
-- Register and ingest a dataset via `python main.py add-disk-dataset <dataset_name> <path>`.
+- Register and ingest a dataset via `python main.py add-disk-dataset <collectionname> <dataset_name> <path>` (the collection must exist first). The dataset row is written to the global database; VFS/blob data goes to `Hoover4_Collection_<collectionname>`.
 - The worker queue is `processing-common-queue` (see `tasks/run_worker.py`).
 
 ## Navigation

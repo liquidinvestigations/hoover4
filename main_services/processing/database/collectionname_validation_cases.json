@@ -1,0 +1,27 @@
+{
+  "comment": "Canonical collectionname validation matrix, shared by the Python (database.clickhouse.validate_collectionname) and Rust (api::admin::collections::collectionname_valid) implementations. Both runtimes validate independently, so both test suites load this one list: tests/unit/test_db_naming.py (always) and api/admin/collections.rs tests (when main_services is reachable from the cargo workspace, i.e. on a dev checkout). Max length is 48; the 48-x name is valid, the 49-x name invalid. No '-': Manticore table names are interpolated unquoted, so dashed collection names would not parse.",
+  "valid": [
+    "testdata",
+    "a",
+    "my_collection_2024x",
+    "nara2",
+    "under_score",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  ],
+  "invalid": [
+    "",
+    "Testdata",
+    "bad name",
+    "my-collection-2024",
+    "../etc",
+    "a; DROP DATABASE x",
+    "a.b",
+    "a`b",
+    "x_1",
+    "x_42",
+    "x_pages",
+    "x_meta",
+    "processing",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  ]
+}

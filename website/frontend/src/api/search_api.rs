@@ -2,7 +2,7 @@
 
 use common::{
     search_query::SearchQuery,
-    search_result::{SearchResultDocuments, SearchResultFacets},
+    search_result::{SearchResultDocuments, SearchResultFacets, SearchResultHitCount},
 };
 use dioxus::prelude::*;
 
@@ -21,7 +21,7 @@ pub async fn search_for_results(
 }
 
 #[server]
-pub async fn search_for_results_hit_count(input: SearchQuery) -> Result<u64, ServerFnError> {
+pub async fn search_for_results_hit_count(input: SearchQuery) -> Result<SearchResultHitCount, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::search::search_for_results_hit_count(&user, input)
         .await

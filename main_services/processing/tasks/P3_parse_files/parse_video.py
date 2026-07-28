@@ -70,6 +70,7 @@ def _duration_seconds(meta: Dict[str, Any]) -> float:
 
 @dataclass
 class VideoMetaParams:
+    collectionname: str
     collection_dataset: str
     video_hash: str
     file_path: str
@@ -77,9 +78,9 @@ class VideoMetaParams:
 
 @activity.defn
 def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     collection_dataset: str = params.collection_dataset
     video_hash: str = params.video_hash
@@ -100,8 +101,8 @@ def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
     width, height = _resolution(meta)
     duration = _duration_seconds(meta)
 
-    processed_at = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         tbl_meta = pa.table({
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
             "hash": pa.array([video_hash], type=pa.string()),
@@ -115,6 +116,7 @@ def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
 
 @dataclass
 class VideoExtractParams:
+    collectionname: str
     collection_dataset: str
     video_hash: str
     file_path: str
@@ -183,6 +185,7 @@ def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, 
 
 @dataclass
 class VideoProcessingWorkflowParams:
+    collectionname: str
     collection_dataset: str
     video_hash: str
     file_path: str
@@ -203,6 +206,7 @@ class VideoProcessingAndScan:
         _ = await workflow.execute_activity(
             video_ffprobe_and_store,
             VideoMetaParams(
+                collectionname=params.collectionname,
                 collection_dataset=collection_dataset,
                 video_hash=video_hash,
                 file_path=file_path,
@@ -215,6 +219,7 @@ class VideoProcessingAndScan:
         res = await workflow.execute_activity(
             video_extract_frames_and_subtitles,
             VideoExtractParams(
+                collectionname=params.collectionname,
                 collection_dataset=collection_dataset,
                 video_hash=video_hash,
                 file_path=file_path,
@@ -227,6 +232,7 @@ class VideoProcessingAndScan:
         # 3) Record an archive-like container and scan folder
         if out_dir:
             args = HandleFoldersParams(
+                collectionname=params.collectionname,
                 collection_dataset=collection_dataset,
                 dataset_path=out_dir,
                 folder_paths=["/"],
@@ -237,10 +243,12 @@ class VideoProcessingAndScan:
                 from tasks.P0_scan_disk.workflows import HandleFolders
                 from tasks.P3_parse_files.parse_archives import cleanup_temp_dir
                 from tasks.P3_parse_files.parse_archives import record_archive_container
+                from tasks.visibility import dataset_search_attributes
 
             await workflow.execute_activity(
                 record_archive_container,
                 RecordArchiveContainerParams(
+                    collectionname=params.collectionname,
                     collection_dataset=collection_dataset,
                     archive_hash=video_hash,
                     archive_types=["video"],
@@ -254,6 +262,7 @@ class VideoProcessingAndScan:
                 args,
                 id=f"scan-video-{collection_dataset}-{video_hash}",
                 task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(collection_dataset),
             )
 
             await workflow.execute_activity(

@@ -3,14 +3,14 @@
 use common::{current_user::CurrentUser, search_result::DocumentIdentifier};
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 pub async fn get_file_path(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<String> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = "SELECT path FROM vfs_files WHERE hash = ? AND collection_dataset = ? LIMIT 1";
     let query = client
         .query(query)

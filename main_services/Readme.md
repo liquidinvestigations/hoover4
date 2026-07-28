@@ -7,7 +7,7 @@ This directory contains the core data plane for Hoover4. It includes database in
 - Processing pipelines and workers that scan datasets, parse files, and index results.
 - Database schema definitions and migrations for ClickHouse and Manticore.
 - Operational assets for running dependencies via Docker Compose (Temporal, ClickHouse, Manticore, MinIO, Tika, Redis, and monitoring UIs).
-- Convenience scripts (`run.sh`, `start-docker.sh`, `reset-docker.sh`, `run-uv.sh`) for local orchestration.
+- Convenience scripts (`run.sh`, `start-docker.sh`, `reset-docker.sh`, `run-uv.sh`) for local orchestration, plus `verify-stack.sh` for end-to-end smoke checks against a live stack (migrations, ingestion, sharding invariants, website search).
 
 ## Subdirectories
 

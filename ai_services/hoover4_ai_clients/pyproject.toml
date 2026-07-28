@@ -8,7 +8,7 @@ license = "MIT"
 homepage = "https://github.com/yourusername/hoover4-ai-clients"
 repository = "https://github.com/yourusername/hoover4-ai-clients"
 documentation = "https://github.com/yourusername/hoover4-ai-clients#readme"
-keywords = ["ai", "rag", "embeddings", "ner", "reranking", "milvus", "langchain"]
+keywords = ["ai", "rag", "embeddings", "ner", "reranking", "langchain"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,7 +27,6 @@ packages = [{include = "hoover4_ai_clients"}]
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0.0"
 requests = "^2.31.0"
-pymilvus = "^2.6.1"
 langchain-core = "^0.3.0"
 python-dotenv = "^1.0.0"
 dotenv = "^0.9.9"

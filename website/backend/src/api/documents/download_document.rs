@@ -8,7 +8,7 @@ use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Row)]
 pub struct BlobInfo {
@@ -29,7 +29,7 @@ pub async fn get_blob_filename(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<String> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let query = "SELECT path FROM vfs_files WHERE collection_dataset = ? AND hash = ? LIMIT 1";
     let query = client
         .query(query)

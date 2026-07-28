@@ -1,0 +1,127 @@
+"""Activities for long-running AI research tasks.
+
+A chat message is answered synchronously by the website (seconds to a couple of
+minutes). A *research* task is the other mode: the full research agent searching
+exhaustively across collections and the open web, which can run far longer than an HTTP
+request should. Those runs live here, in Temporal, so they survive a browser reload, a
+website restart, and a worker crash.
+
+The ACL travels with the task. This activity never resolves permissions itself — the
+website resolved them when the task was submitted and passed the resulting collection
+list in, exactly as it does for a synchronous chat.
+"""
+
+import json
+import logging
+import os
+from dataclasses import dataclass, field
+
+import requests
+from temporalio import activity
+
+log = logging.getLogger(__name__)
+
+#: Where the full research agent lives on the shared `hoover4` network.
+AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://hoover4-full-research-agent:8000")
+
+#: One HTTP call to the agent. Generous, because an exhaustive research run is the point
+#: of this path, but still bounded so a wedged agent fails the activity and lets
+#: Temporal's retry policy take over instead of hanging a worker thread forever.
+AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
+
+
+@dataclass
+class ResearchTaskParams:
+    """Input for one research run.
+
+    `username` and `session_id` identify where the answer is written back to, and
+    `allowed_collections` is the ACL the agent is bounded by.
+    """
+
+    username: str
+    session_id: str
+    query: str
+    allowed_collections: list[str] = field(default_factory=list)
+    #: `seq` of the first row this task may write. The website reserves it when it
+    #: submits, so a concurrent synchronous message cannot land on the same position.
+    start_seq: int = 0
+
+
+@activity.defn
+def run_research_agent(params: ResearchTaskParams) -> str:
+    """Call the full research agent and return its answer.
+
+    Raises on any failure so Temporal retries. Writing the answer into the chat is a
+    separate activity: a retried research run must not append a second transcript.
+    """
+    activity.heartbeat("calling research agent")
+    response = requests.post(
+        f"{AGENT_URL}/chat",
+        json={
+            "session_id": params.session_id,
+            "user_id": params.username,
+            "message_id": f"{params.session_id}-{params.start_seq}",
+            "query": params.query,
+            "chat_history": [],
+            "username": params.username,
+            "allowed_collections": params.allowed_collections,
+        },
+        timeout=AGENT_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    log.info(
+        "[P_agent] research run finished for %s: %d chars, %d tool events",
+        params.username,
+        len(payload.get("answer", "")),
+        len(payload.get("tool_calls", [])),
+    )
+    return json.dumps(payload)
+
+
+@dataclass
+class WriteResultParams:
+    username: str
+    session_id: str
+    seq: int
+    role: str
+    content: str
+    tool_name: str = ""
+
+
+@activity.defn
+def write_chat_message(params: WriteResultParams) -> int:
+    """Append one row to the global `chat_messages` table.
+
+    The chat tables are global (a conversation spans collections), so this writes to
+    `Hoover4_Processing`. Idempotent on retry: `chat_messages` is a ReplacingMergeTree
+    keyed on `(username, session_id, seq)`, so re-writing the same row replaces it
+    rather than duplicating it.
+    """
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        client.insert(
+            "chat_messages",
+            [[
+                params.session_id,
+                params.username,
+                params.seq,
+                params.role,
+                params.content,
+                params.tool_name,
+            ]],
+            column_names=[
+                "session_id",
+                "username",
+                "seq",
+                "role",
+                "content",
+                "tool_name",
+            ],
+        )
+    log.info(
+        "[P_agent] wrote %s message seq=%d to session %s",
+        params.role, params.seq, params.session_id,
+    )
+    return params.seq

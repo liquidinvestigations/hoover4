@@ -7,10 +7,7 @@ import pytest
 import requests
 from dotenv import load_dotenv
 
-from pymilvus import MilvusClient
-
 from hoover4_ai_clients.embeddings_client import Hoover4EmbeddingsClient
-from hoover4_ai_clients.milvus_client import Hoover4MilvusVectorStore
 from hoover4_ai_clients.ner_client import Hoover4NERClient
 from hoover4_ai_clients.reranker_client import Hoover4RerankClient
 
@@ -19,9 +16,6 @@ load_dotenv()
 
 # Test configuration with environment variables and sensible defaults
 EMBEDDING_SERVER_URL = os.getenv("EMBEDDING_SERVER_URL", "http://localhost:8821/v1")
-MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
-MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
-TEST_COLLECTION_NAME = os.getenv("TEST_COLLECTION_NAME", "test_integration_collection")
 
 
 def pytest_configure(config):
@@ -40,9 +34,6 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "reranker: mark test as requiring reranker server"
-    )
-    config.addinivalue_line(
-        "markers", "milvus: mark test as requiring Milvus database"
     )
 
 
@@ -81,18 +72,6 @@ def pytest_addoption(parser):
         default=None,
         help=f"Base URL for the AI server (default: {EMBEDDING_SERVER_URL})"
     )
-    parser.addoption(
-        "--milvus-host",
-        action="store",
-        default=None,
-        help=f"Milvus host (default: {MILVUS_HOST})"
-    )
-    parser.addoption(
-        "--milvus-port",
-        action="store",
-        default=None,
-        help=f"Milvus port (default: {MILVUS_PORT})"
-    )
 
 
 class MockEmbeddings:
@@ -127,35 +106,6 @@ def server_health_check(request) -> bool:
         return False
 
 
-@pytest.fixture(scope="session")
-def milvus_health_check(request) -> bool:
-    """Check if Milvus is available."""
-    # Use command line options if provided, otherwise use environment variables
-    host = request.config.getoption("--milvus-host") or MILVUS_HOST
-    port = int(request.config.getoption("--milvus-port") or MILVUS_PORT)
-
-    try:
-        # Use the project's Milvus client instead of pymilvus directly
-        client = Hoover4MilvusVectorStore(
-            collection_name="health_check",
-            host=host,
-            port=port,
-            connection_alias="health_check"
-        )
-        success = client.connect()
-        if success:
-            # Disconnect after successful connection
-            client.disconnect()
-            print(f" Milvus is available at {host}:{port}")
-            return True
-        else:
-            print(f" Milvus connection failed at {host}:{port}")
-            return False
-    except Exception as e:
-        print(f" Milvus is not available at {host}:{port}: {e}")
-        return False
-
-
 @pytest.fixture
 def embeddings_client(request) -> Hoover4EmbeddingsClient:
     """Create embeddings client for testing."""
@@ -178,31 +128,6 @@ def reranker_client(request) -> Hoover4RerankClient:
     # Use command line option if provided, otherwise use environment variable
     base_url = request.config.getoption("--server-url") or EMBEDDING_SERVER_URL
     return Hoover4RerankClient(base_url=base_url)
-
-
-@pytest.fixture
-def milvus_client(request) -> Hoover4MilvusVectorStore:
-    """Create Milvus client for testing."""
-    # Use command line options if provided, otherwise use environment variables
-    host = request.config.getoption("--milvus-host") or MILVUS_HOST
-    port = int(request.config.getoption("--milvus-port") or MILVUS_PORT)
-
-    # Use real embeddings client for Milvus tests
-    base_url = request.config.getoption("--server-url") or EMBEDDING_SERVER_URL
-    embeddings_client = Hoover4EmbeddingsClient(base_url=base_url)
-
-    # Create NER client for Milvus tests
-    ner_client = Hoover4NERClient(base_url=base_url)
-
-    return Hoover4MilvusVectorStore(
-        collection_name=TEST_COLLECTION_NAME,
-        host=host,
-        port=port,
-        embedding_dim=1024,
-        embedding=embeddings_client,
-        ner_client=ner_client,
-        use_ner_for_entities=True
-    )
 
 
 @pytest.fixture
@@ -229,18 +154,6 @@ def test_queries():
     ]
 
 
-@pytest.fixture(autouse=True)
-def cleanup_test_collection(milvus_client):
-    """Clean up test collection after each test."""
-    yield
-    try:
-        # Try to delete the test collection
-        milvus_client.drop_collection()
-        print(f"🧹 Cleaned up test collection: {TEST_COLLECTION_NAME}")
-    except Exception as e:
-        print(f"⚠️  Could not clean up test collection: {e}")
-
-
 @pytest.fixture(scope="class")
 def throughput_test_collection_name():
     """Generate unique test collection name for throughput tests."""
@@ -264,32 +177,6 @@ def throughput_ner_client(request) -> Hoover4NERClient:
     """Create NER client for throughput testing."""
     base_url = request.config.getoption("--server-url") or EMBEDDING_SERVER_URL
     return Hoover4NERClient(base_url=base_url)
-
-
-@pytest.fixture(scope="class")
-def throughput_milvus_client(request, throughput_test_collection_name) -> Hoover4MilvusVectorStore:
-    """Create Milvus client for throughput testing."""
-    host = request.config.getoption("--milvus-host") or MILVUS_HOST
-    port = int(request.config.getoption("--milvus-port") or MILVUS_PORT)
-    base_url = request.config.getoption("--server-url") or EMBEDDING_SERVER_URL
-
-    embeddings_client = Hoover4EmbeddingsClient(
-        base_url=base_url,
-        timeout=60,
-        max_retries=5
-    )
-    ner_client = Hoover4NERClient(base_url=base_url)
-
-    return Hoover4MilvusVectorStore(
-        collection_name=throughput_test_collection_name,
-        host=host,
-        port=port,
-        embedding_dim=1024,
-        embedding=embeddings_client,
-        ner_client=ner_client,
-        use_ner_for_entities=True,
-        search_mode="hybrid"
-    )
 
 
 @pytest.fixture(autouse=True)

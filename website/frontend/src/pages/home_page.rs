@@ -197,38 +197,57 @@ fn SearchCardInput() -> Element {
 #[component]
 fn AiChatCard() -> Element {
     rsx! {
-        div {
-            id: "x-card-ai-chat",
-            style: "
-                display:flex;
-                flex-direction: column;
-                gap: 12px;
-                width: 520px;
-                min-height: 280px;
-                border-radius: 22px;
-                padding: 22px 22px 26px 22px;
-                background: linear-gradient(135deg, #0B7A2B 0%, #23A340 60%, #178E35 100%);
-                color: white;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-            ",
-
+        Link {
+            to: Route::AiChatPage {},
+            style: "text-decoration: none;",
             div {
+                id: "x-card-ai-chat",
                 style: "
-                    font-size: 26px;
-                    font-weight: 500;
+                    display:flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    width: 520px;
+                    min-height: 280px;
+                    border-radius: 22px;
+                    padding: 22px 22px 26px 22px;
+                    background: linear-gradient(135deg, #0B7A2B 0%, #23A340 60%, #178E35 100%);
+                    color: white;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                    cursor: pointer;
                 ",
-                "Coming soon: Try Liquid Labs"
-            }
 
-            div {
-                style: "
-                    font-size: 20px;
-                    font-weight: 500;
-                    line-height: 1.6;
-                    color: rgba(255,255,255,0.96);
-                    max-width: 510px;
-                ",
-                "An AI powered journalistic search which connects insights across multiple sources. It will provide a new way to search by asking questions about your data and get clear, contextual answers."
+                div {
+                    style: "
+                        font-size: 30px;
+                        font-weight: 500;
+                    ",
+                    "AI Chat"
+                }
+
+                div {
+                    style: "
+                        font-size: 20px;
+                        font-weight: 500;
+                        line-height: 1.6;
+                        color: rgba(255,255,255,0.96);
+                        max-width: 510px;
+                    ",
+                    "Ask questions about your data and get clear, contextual answers. The assistant searches the collections you have access to, reads what it finds, and cites its sources."
+                }
+
+                div { style: "height: 8px; padding-top: 7px; margin-top: 7px; border-top: 1px solid white; width: 100%;" }
+
+                div {
+                    style: "
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        font-size: 16px;
+                        color: rgba(255,255,255,0.92);
+                    ",
+                    Icon { icon: MdChat, style: "width: 20px; height: 20px;" }
+                    "Start a new chat or pick up an earlier one \u{2192}"
+                }
             }
         }
     }

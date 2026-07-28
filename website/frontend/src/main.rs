@@ -20,6 +20,13 @@ fn main() {
                 tokio::runtime::RuntimeFlavor::MultiThread,
                 rt_handle.runtime_flavor()
             );
+
+            // Fail loudly if the database is unreachable rather than serving a
+            // site where every DB-backed route silently fails.
+            if let Err(e) = backend::startup::ensure_clickhouse_reachable().await {
+                dioxus::logger::tracing::error!("FATAL: {e}");
+                std::process::exit(1);
+            }
             let _pdf_search_server = tokio::spawn(async move {
                 let res =
                     backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;

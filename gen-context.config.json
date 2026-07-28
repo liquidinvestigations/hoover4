@@ -25,11 +25,10 @@
     "main_services/processing",
     "ai_services/hoover4_ai_clients",
     "ai_services/hoover4_ai_server",
+    "ai_services/hoover4_mcp/collection_search_server",
     "ai_services/hoover4_mcp/ddg_search_server",
-    "ai_services/hoover4_mcp/milvus_search_server",
     "ai_services/hoover4_mcp/whois_search_server",
     "ai_services/hoover4_mcp/wikipedia_search_server",
-    "ai_services/hoover4_rag",
     "ai_services/hoover4_research_agent"
   ],
   "exclude": [

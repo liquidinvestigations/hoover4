@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::db_auth::{insert_row, now};
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_global_client;
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 pub struct GroupRow {
@@ -30,7 +30,7 @@ pub struct MembershipRow {
 }
 
 pub async fn list_groups() -> anyhow::Result<Vec<GroupRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     client
         .query("SELECT groupname, fullname, created_at, updated_at, is_deleted FROM user_groups FINAL WHERE is_deleted = 0 ORDER BY groupname")
         .fetch_all::<GroupRow>()
@@ -39,7 +39,7 @@ pub async fn list_groups() -> anyhow::Result<Vec<GroupRow>> {
 }
 
 pub async fn get_group(groupname: &str) -> anyhow::Result<Option<GroupRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let mut rows = client
         .query("SELECT groupname, fullname, created_at, updated_at, is_deleted FROM user_groups FINAL WHERE groupname = ? AND is_deleted = 0")
         .bind(groupname)
@@ -70,7 +70,7 @@ pub async fn soft_delete_group(groupname: &str) -> anyhow::Result<()> {
 }
 
 pub async fn list_memberships_for_user(username: &str) -> anyhow::Result<Vec<MembershipRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     client
         .query("SELECT username, groupname, is_group_admin, origin, created_at, updated_at, is_deleted FROM user_group_membership FINAL WHERE username = ? AND is_deleted = 0 ORDER BY groupname")
         .bind(username)
@@ -80,7 +80,7 @@ pub async fn list_memberships_for_user(username: &str) -> anyhow::Result<Vec<Mem
 }
 
 pub async fn list_memberships_for_group(groupname: &str) -> anyhow::Result<Vec<MembershipRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     client
         .query("SELECT username, groupname, is_group_admin, origin, created_at, updated_at, is_deleted FROM user_group_membership FINAL WHERE groupname = ? AND is_deleted = 0 ORDER BY username")
         .bind(groupname)
@@ -90,7 +90,7 @@ pub async fn list_memberships_for_group(groupname: &str) -> anyhow::Result<Vec<M
 }
 
 pub async fn get_membership(username: &str, groupname: &str) -> anyhow::Result<Option<MembershipRow>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let mut rows = client
         .query("SELECT username, groupname, is_group_admin, origin, created_at, updated_at, is_deleted FROM user_group_membership FINAL WHERE username = ? AND groupname = ? AND is_deleted = 0")
         .bind(username)

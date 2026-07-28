@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ExtractPlaintextParams:
+    collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
@@ -22,6 +23,6 @@ def extract_plaintext_chunks(params: ExtractPlaintextParams) -> int:
     log.info("[P3] Extracting plaintext chunks for %s", params.file_path)
     with open(params.file_path, "rb") as f:
         data = f.read()
-    return insert_text_chunks(params.collection_dataset, params.file_hash, "raw_text", data)
+    return insert_text_chunks(params.collectionname, params.collection_dataset, params.file_hash, "raw_text", data)
 
 

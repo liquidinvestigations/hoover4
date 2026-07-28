@@ -1,6 +1,7 @@
 //! State definitions for the document viewer.
 
 use common::document_sources::DocumentSourceItem;
+use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,6 +29,14 @@ impl Default for DocViewerState {
             selected_source_page: None,
         }
     }
+}
+
+/// Shared control so search, file-browser, and AI-chat pages can drive the document
+/// preview pane through URL state. Each page provides a setter that pushes its own route.
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub struct DocViewerStateControl {
+    pub doc_viewer_state: ReadSignal<Option<DocViewerState>>,
+    pub set_doc_viewer_state: Callback<DocViewerState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

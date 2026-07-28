@@ -1,266 +1,294 @@
+# Hoover4 AI services — single-host deployment.
+#
+# Rewritten for the current setup (plan 3): the services used to sit behind a VPN and
+# address each other by `10.69.x.x`; that network is gone. Everything now runs on one
+# box with one GPU, joining the **external** `hoover4` network created by
+# `main_services/ops/docker/docker-compose.yaml` so the AI tier can reach `clickhouse`,
+# `manticore` and `temporal` by name. Bring the main stack up first.
+#
+# Podman notes:
+#   * GPUs are requested with `devices: nvidia.com/gpu=all` (CDI). The
+#     `deploy.resources.reservations.devices` block docker-compose uses is silently
+#     ignored by podman-compose, which is why the old file appeared to start fine and
+#     then ran on CPU.
+#   * `HEALTHCHECK` from a Dockerfile is dropped for OCI images, so the healthchecks
+#     that matter are declared here.
+#   * MCP servers and the agent bind to 127.0.0.1 only. They accept a bearer token, but
+#     the ACL they enforce is supplied by their caller, so they must not be reachable
+#     from off-box.
+
 services:
-  # AI Server - FastAPI embedding/reranking/NER server
+
+  # ---------------------------------------------------------------- GPU: embeddings
+  # Embeddings, reranking and NER. The processing pipeline's P4 stage calls this too
+  # (NER_URL in main_services), so it is not optional infrastructure.
   hoover4-ai-server:
     build:
       context: .
       dockerfile: ./hoover4_ai_server/Dockerfile
+    image: hoover4-ai-server:local
     container_name: hoover4-ai-server
     ports:
-      - "${AI_SERVER_PORT}:${AI_SERVER_PORT}"
+      - "${AI_SERVER_PORT:-8821}:8000"
     environment:
-      - HOST=${AI_SERVER_HOST}
-      - PORT=${AI_SERVER_PORT}
-      - OPTIMAL_BATCH_SIZE=${AI_SERVER_OPTIMAL_BATCH_SIZE}
-      - MAX_SEQUENCE_LENGTH=${AI_SERVER_MAX_SEQUENCE_LENGTH}
-      - ENABLE_HALF_PRECISION=${AI_SERVER_ENABLE_HALF_PRECISION}
-      - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE}
-      - LOG_LEVEL=${LOG_LEVEL}
-    env_file:
-      - .env
+      - HOST=0.0.0.0
+      - PORT=8000
+      - OPTIMAL_BATCH_SIZE=${AI_SERVER_OPTIMAL_BATCH_SIZE:-32}
+      - MAX_SEQUENCE_LENGTH=${AI_SERVER_MAX_SEQUENCE_LENGTH:-512}
+      - ENABLE_HALF_PRECISION=${AI_SERVER_ENABLE_HALF_PRECISION:-true}
+      # torch.compile costs several minutes of startup for a modest throughput gain and
+      # has been the most common cause of "the AI server never becomes healthy".
+      - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
-      - ai_models_cache:/root/.cache/huggingface/transformers
-      - ai_models_cache:/root/.cache/torch/sentence_transformers
+      - ai_models_cache:/root/.cache/huggingface
+    devices:
+      - nvidia.com/gpu=all
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
+      timeout: 15s
+      retries: 5
+      # Cold start downloads ~2 GB of model weights on first run.
+      start_period: 600s
     networks:
-      - hoover4-network
+      - hoover4
 
+  # ---------------------------------------------------------------- GPU: local LLM
+  # Replaces the LiteLLM proxy at 10.69.70.5 that no longer exists. Qwen3-4B-Instruct
+  # fits comfortably next to the embedding model on one 24 GB card as long as vLLM is
+  # told not to claim the whole device — hence the explicit memory fraction, which is
+  # the setting to lower first if either service OOMs.
+  hoover4-vllm:
+    image: vllm/vllm-openai:v0.11.0
+    container_name: hoover4-vllm
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8011}:8000"
+    ipc: host
+    command: >
+      --model ${LLM_MODEL_NAME:-Qwen/Qwen3-4B-Instruct-2507}
+      --served-model-name ${LLM_SERVED_NAME:-qwen3-4b}
+      --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.45}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-16384}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+    environment:
+      - VLLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - DO_NOT_TRACK=1
+      - VLLM_NO_USAGE_STATS=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - vllm_huggingface_cache:/root/.cache/huggingface
+    devices:
+      - nvidia.com/gpu=all
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 900s
+    networks:
+      - hoover4
 
-  # DuckDuckGo Search MCP Server
+  # ------------------------------------------------------- MCP: Hoover4 collections
+  # The RAG path. Searches the Manticore shards and ClickHouse text of exactly the
+  # collections the calling user may read (see hoover4_mcp/collection_search_server).
+  hoover4-mcp-collections:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/collection_search_server/Dockerfile
+    image: hoover4-mcp-collections:local
+    container_name: hoover4-mcp-collections
+    ports:
+      - "127.0.0.1:${COLLECTION_MCP_PORT:-8085}:8085"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8085
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - MANTICORE_URL=${MANTICORE_URL:-http://manticore:9308}
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-8}
+      - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - hoover4
+
+  # --------------------------------------------------------------- MCP: open web
   hoover4-mcp-ddg:
     build:
       context: .
       dockerfile: ./hoover4_mcp/ddg_search_server/Dockerfile
+    image: hoover4-mcp-ddg:local
     container_name: hoover4-mcp-ddg
     ports:
-      - "${DDG_SERVER_PORT}:${DDG_SERVER_PORT}"
+      - "127.0.0.1:${DDG_SERVER_PORT:-8889}:8080"
     environment:
-      - HOST=${DDG_SERVER_HOST}
-      - PORT=${DDG_SERVER_PORT}
-      - SERVER_NAME=${DDG_SERVER_NAME}
-      - SERVER_INSTRUCTIONS=${DDG_SERVER_INSTRUCTIONS}
-      - DDG_DEFAULT_REGION=${DDG_DEFAULT_REGION}
-      - DDG_DEFAULT_MAX_RESULTS=${DDG_DEFAULT_MAX_RESULTS}
-      - DDG_DEFAULT_SAFESEARCH=${DDG_DEFAULT_SAFESEARCH}
-      - DDG_DEFAULT_TIMELIMIT=${DDG_DEFAULT_TIMELIMIT}
-      - DDG_PROXY_URL=${DDG_PROXY_URL}
-      - DDG_TIMEOUT=${DDG_TIMEOUT}
-      - LOG_LEVEL=${LOG_LEVEL}
-    env_file:
-      - .env
+      - HOST=0.0.0.0
+      - PORT=8080
+      - SERVER_NAME=${DDG_SERVER_NAME:-ddgs}
+      - SERVER_INSTRUCTIONS=${DDG_SERVER_INSTRUCTIONS:-Web and news search using DuckDuckGo.}
+      - DDG_DEFAULT_REGION=${DDG_DEFAULT_REGION:-wt-wt}
+      - DDG_DEFAULT_MAX_RESULTS=${DDG_DEFAULT_MAX_RESULTS:-3}
+      - DDG_DEFAULT_SAFESEARCH=${DDG_DEFAULT_SAFESEARCH:-off}
+      - DDG_DEFAULT_TIMELIMIT=${DDG_DEFAULT_TIMELIMIT:-}
+      - DDG_PROXY_URL=${DDG_PROXY_URL:-}
+      - DDG_TIMEOUT=${DDG_TIMEOUT:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${DDG_SERVER_PORT}/health')"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
     networks:
-      - hoover4-network
+      - hoover4
 
-  # Milvus Search MCP Server
-  hoover4-mcp-milvus:
-    build:
-      context: .
-      dockerfile: ./hoover4_mcp/milvus_search_server/Dockerfile
-    container_name: hoover4-mcp-milvus
-    ports:
-      - "${MILVUS_MCP_PORT}:${MILVUS_MCP_PORT}"
-    environment:
-      - HOST=${MILVUS_MCP_HOST}
-      - PORT=${MILVUS_MCP_PORT}
-      - SERVER_NAME=${MILVUS_MCP_SERVER_NAME}
-      - SERVER_INSTRUCTIONS=${MILVUS_MCP_SERVER_INSTRUCTIONS}
-      - MILVUS_HOST=${MILVUS_HOST}
-      - MILVUS_PORT=${MILVUS_PORT}
-      - MILVUS_COLLECTION_NAME=${MILVUS_COLLECTION_NAME}
-      - EMBEDDING_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
-      - EMBEDDING_DIM=${EMBEDDING_DIM}
-      - NER_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
-      - RERANKER_SERVER_URL=http://hoover4-ai-server:${AI_SERVER_PORT}/v1
-      - SEARCH_MODE=${SEARCH_MODE}
-      - SEARCH_INITIAL_K=${SEARCH_INITIAL_K}
-      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS}
-      - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS}
-      - SEARCH_RRF_K=${SEARCH_RRF_K}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - LOG_FORMAT=${LOG_FORMAT}
-    env_file:
-      - .env
-    depends_on:
-      - hoover4-ai-server
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${MILVUS_MCP_PORT}/health')"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
-    networks:
-      - hoover4-network
-
-  # WHOIS Search MCP Server
-  hoover4-mcp-whois:
-    build:
-      context: .
-      dockerfile: ./hoover4_mcp/whois_search_server/Dockerfile
-    container_name: hoover4-mcp-whois
-    ports:
-      - "${WHOIS_SERVER_PORT}:${WHOIS_SERVER_PORT}"
-    environment:
-      - HOST=${WHOIS_SERVER_HOST}
-      - PORT=${WHOIS_SERVER_PORT}
-      - SERVER_NAME=${WHOIS_SERVER_NAME}
-      - SERVER_INSTRUCTIONS=${WHOIS_SERVER_INSTRUCTIONS}
-      - WHOIS_RATE_LIMITING=${WHOIS_RATE_LIMITING}
-      - WHOIS_RATE_LIMIT_MS=${WHOIS_RATE_LIMIT_MS}
-      - WHOIS_TIMEOUT=${WHOIS_TIMEOUT}
-      - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - LOG_FORMAT=${LOG_FORMAT}
-    env_file:
-      - .env
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${WHOIS_SERVER_PORT}/health')"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
-    networks:
-      - hoover4-network
-
-  # Wikipedia Search MCP Server
   hoover4-mcp-wikipedia:
     build:
       context: .
       dockerfile: ./hoover4_mcp/wikipedia_search_server/Dockerfile
+    image: hoover4-mcp-wikipedia:local
     container_name: hoover4-mcp-wikipedia
     ports:
-      - "${WIKIPEDIA_SERVER_PORT}:${WIKIPEDIA_SERVER_PORT}"
+      - "127.0.0.1:${WIKIPEDIA_SERVER_PORT:-8093}:8083"
     environment:
-      - HOST=${WIKIPEDIA_SERVER_HOST}
-      - PORT=${WIKIPEDIA_SERVER_PORT}
-      - SERVER_NAME=${WIKIPEDIA_SERVER_NAME}
-      - SERVER_INSTRUCTIONS=${WIKIPEDIA_SERVER_INSTRUCTIONS}
-      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE}
-      - WIKIPEDIA_MAX_RESULTS=${WIKIPEDIA_MAX_RESULTS}
-      - WIKIPEDIA_MAX_ALLOWED_RESULTS=${WIKIPEDIA_MAX_ALLOWED_RESULTS}
-      - WIKIPEDIA_SUMMARY_SENTENCES=${WIKIPEDIA_SUMMARY_SENTENCES}
-      - WIKIPEDIA_MAX_SUMMARY_SENTENCES=${WIKIPEDIA_MAX_SUMMARY_SENTENCES}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - LOG_FORMAT=${LOG_FORMAT}
-    env_file:
-      - .env
+      - HOST=0.0.0.0
+      - PORT=8083
+      - SERVER_NAME=${WIKIPEDIA_SERVER_NAME:-hoover4_wikipedia_search}
+      - SERVER_INSTRUCTIONS=${WIKIPEDIA_SERVER_INSTRUCTIONS:-Wikipedia article and summary search.}
+      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
+      - WIKIPEDIA_MAX_RESULTS=${WIKIPEDIA_MAX_RESULTS:-3}
+      - WIKIPEDIA_MAX_ALLOWED_RESULTS=${WIKIPEDIA_MAX_ALLOWED_RESULTS:-50}
+      - WIKIPEDIA_SUMMARY_SENTENCES=${WIKIPEDIA_SUMMARY_SENTENCES:-5}
+      - WIKIPEDIA_MAX_SUMMARY_SENTENCES=${WIKIPEDIA_MAX_SUMMARY_SENTENCES:-10}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${WIKIPEDIA_SERVER_PORT}/health')"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
     networks:
-      - hoover4-network
+      - hoover4
 
-  # Full Research Agent API Server (access to all MCP servers)
-  hoover4-full-research-agent:
+  hoover4-mcp-whois:
     build:
       context: .
-      dockerfile: ./hoover4_research_agent/Dockerfile
-    container_name: hoover4-full-research-agent
+      dockerfile: ./hoover4_mcp/whois_search_server/Dockerfile
+    image: hoover4-mcp-whois:local
+    container_name: hoover4-mcp-whois
     ports:
-      - "${FULL_RESEARCH_AGENT_PORT}:${FULL_RESEARCH_AGENT_PORT}"
+      - "127.0.0.1:${WHOIS_SERVER_PORT:-8092}:8082"
     environment:
-      - HOST=${FULL_RESEARCH_AGENT_HOST}
-      - PORT=${FULL_RESEARCH_AGENT_PORT}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME}
-      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT}
-      - MCP_SERVERS=http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-milvus:8081/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
-      - RELOAD=false
-      - LOG_LEVEL=${LOG_LEVEL}
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
-      - LANGFUSE_HOST=${LANGFUSE_HOST}
-    env_file:
-      - .env
-    depends_on:
-      - hoover4-mcp-ddg
-      - hoover4-mcp-milvus
-      - hoover4-mcp-whois
-      - hoover4-mcp-wikipedia
+      - HOST=0.0.0.0
+      - PORT=8082
+      - SERVER_NAME=${WHOIS_SERVER_NAME:-whois_lookup}
+      - SERVER_INSTRUCTIONS=${WHOIS_SERVER_INSTRUCTIONS:-Domain registration lookup.}
+      - WHOIS_RATE_LIMITING=${WHOIS_RATE_LIMITING:-true}
+      - WHOIS_RATE_LIMIT_MS=${WHOIS_RATE_LIMIT_MS:-100}
+      - WHOIS_TIMEOUT=${WHOIS_TIMEOUT:-30.0}
+      - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${FULL_RESEARCH_AGENT_PORT}/health')"]
-      interval: 30s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
     networks:
-      - hoover4-network
+      - hoover4
 
-  # Internal Search Agent API Server (access only to Milvus)
+  # ------------------------------------------------------------------- Agents
+  # Internal search agent: collection RAG only. This is what the website's AI Chat page
+  # talks to, and the reason its tool set is narrow — a chat about the user's documents
+  # should not quietly turn into a web search.
   hoover4-internal-search-agent:
     build:
       context: .
       dockerfile: ./hoover4_research_agent/Dockerfile
+    image: hoover4-research-agent:local
     container_name: hoover4-internal-search-agent
     ports:
-      - "${INTERNAL_SEARCH_AGENT_PORT}:${INTERNAL_SEARCH_AGENT_PORT}"
+      - "127.0.0.1:${INTERNAL_SEARCH_AGENT_PORT:-9099}:8000"
     environment:
-      - HOST=${INTERNAL_SEARCH_AGENT_HOST}
-      - PORT=${INTERNAL_SEARCH_AGENT_PORT}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME}
-      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT}
-      - MCP_SERVERS=http://hoover4-mcp-milvus:8081/mcp
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://hoover4-vllm:8000/v1}
+      - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
+      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-You are Hoover4's document research assistant. Answer only from the user's document collections. Call list_collections first, then search_collections with well-phrased search sentences, searching several times from different angles. Read promising hits with get_document_text before citing them. Always cite the file path or file_hash of every document you rely on. If the collections contain no answer, say so plainly instead of guessing.}
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
       - RELOAD=false
-      - LOG_LEVEL=${LOG_LEVEL}
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
-      - LANGFUSE_HOST=${LANGFUSE_HOST}
-    env_file:
-      - .env
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
     depends_on:
-      - hoover4-mcp-milvus
+      - hoover4-mcp-collections
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${INTERNAL_SEARCH_AGENT_PORT}/health')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s
-      timeout: 30s
-      retries: 3
+      timeout: 10s
+      retries: 5
       start_period: 60s
     networks:
-      - hoover4-network
+      - hoover4
 
+  # Full research agent: collections plus the open-web tools. Not used by the chat page
+  # yet; it is the target for the Temporal long-running research task.
+  hoover4-full-research-agent:
+    build:
+      context: .
+      dockerfile: ./hoover4_research_agent/Dockerfile
+    image: hoover4-research-agent:local
+    container_name: hoover4-full-research-agent
+    ports:
+      - "127.0.0.1:${FULL_RESEARCH_AGENT_PORT:-9090}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://hoover4-vllm:8000/v1}
+      - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
+      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-You are a comprehensive research assistant with access to the user's document collections and to public web sources. Search as many times as needed, in parallel where possible, and go deeper on every lead. Produce an exhaustive, well-cited report. Always distinguish what came from the user's own documents from what came from the open web.}
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    depends_on:
+      - hoover4-mcp-collections
+      - hoover4-mcp-ddg
+      - hoover4-mcp-whois
+      - hoover4-mcp-wikipedia
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hoover4
 
 volumes:
   ai_models_cache:
     driver: local
-  ai_models_cache_2:
-    driver: local
-  ai_models_cache_3:
+  vllm_huggingface_cache:
     driver: local
 
 networks:
-  hoover4-network:
-    driver: bridge
+  # Created by main_services/ops/docker/docker-compose.yaml. Declared external so this
+  # file joins it instead of creating a second, isolated `hoover4-network` — which is
+  # what previously made `clickhouse` and `manticore` unreachable from these services.
+  hoover4:
+    name: hoover4
+    external: true

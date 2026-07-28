@@ -9,7 +9,6 @@ use axum::middleware::Next;
 use axum::response::Response;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use common::current_user::CurrentUser;
-use rand::Rng;
 use time::OffsetDateTime;
 
 use crate::db_auth::{
@@ -96,6 +95,20 @@ fn parse_headers(request: &Request) -> Option<HeaderIdentity> {
 
 fn is_admin_from_groups(groups: &[String]) -> bool {
     groups.iter().any(|g| g == "admin" || g == "superuser")
+}
+
+/// Demo deployments set a single env switch so that anonymous `guest-*`
+/// sessions are treated as administrators. This is the only place the switch is
+/// read; everything downstream (the frontend `AdminGuard` and every backend
+/// `require_admin` call) keys off the resulting `CurrentUser::is_admin`.
+///
+/// Wired up in Docker via the `HOOVER4_DEMO_MODE` environment variable on the
+/// `hoover4-website` service. Accepts `1`, `true`, `yes`, or `on`
+/// (case-insensitive); anything else — including unset — means normal auth.
+pub fn demo_mode() -> bool {
+    std::env::var("HOOVER4_DEMO_MODE")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
 }
 
 fn should_sync(username: &str) -> bool {
@@ -190,9 +203,14 @@ fn cache_user(session_id: &str, user: &CurrentUser) {
     );
 }
 
-fn guest_username() -> String {
-    let n: u32 = rand::rng().random_range(1..=1_000_000_000);
-    format!("guest-{n}")
+/// Derive a stable guest username from the session id.
+///
+/// The session id lives in the browser cookie, so deriving the username from it
+/// means a refresh always resolves to the *same* guest — even if the backing DB
+/// row is momentarily unreadable — instead of minting a new random identity.
+fn guest_username_for_session(session_id: &str) -> String {
+    let suffix: String = session_id.chars().take(12).collect();
+    format!("guest-{suffix}")
 }
 
 struct NewCookie {
@@ -222,13 +240,24 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
         });
 
     let existing_session: Option<SessionRow> = if let Some(ref sid) = cookie_session_id {
-        sessions::get_session(sid).await.ok().flatten()
+        match sessions::get_session(sid).await {
+            Ok(session) => session,
+            Err(e) => {
+                // A DB error here is not the same as "no session" — surface it so a
+                // down/unreachable ClickHouse is visible instead of silently
+                // dropping the user to a fresh guest every request.
+                tracing::error!("session lookup failed for cookie session: {e}");
+                None
+            }
+        }
     } else {
         None
     };
 
     let current_user = if let Some(identity) = parse_headers(&request) {
-        let _ = sync_header_user(&identity).await;
+        if let Err(e) = sync_header_user(&identity).await {
+            tracing::error!("header identity sync failed for {}: {e}", identity.username);
+        }
 
         let needs_new_session = existing_session
             .as_ref()
@@ -287,16 +316,34 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
                 groups: identity.groups,
             }
         }
-    } else if let Some(session) = existing_session {
-        let sid = session.session_id.clone();
-        if let Some(cached) = get_cached_user(&sid) {
+    } else {
+        // Anonymous guest. The session cookie is the durable anchor: whatever id
+        // the browser already holds is reused, so a page refresh resolves to the
+        // *same* guest instead of minting a new one. Only when there is no cookie
+        // at all do we generate a fresh session id.
+        let session_id = cookie_session_id
+            .clone()
+            .unwrap_or_else(sessions::generate_session_id);
+
+        // Prefer the username already stored for this session; otherwise derive a
+        // stable one from the session id. Deriving (rather than randomising) means
+        // the identity survives even if the DB row can't be read this request.
+        let username = existing_session
+            .as_ref()
+            .map(|s| s.username.clone())
+            .unwrap_or_else(|| guest_username_for_session(&session_id));
+
+        let user = if let Some(cached) = get_cached_user(&session_id) {
             cached
-        } else if let Ok(user) = build_current_user_from_db(&session.username).await {
-            cache_user(&sid, &user);
-            user
         } else {
-            let username = guest_username();
-            let _ = users::upsert_user(UserRow {
+            let expires_at =
+                OffsetDateTime::now_utc() + time::Duration::seconds(session_expiration as i64);
+
+            // Best-effort persistence so the admin user list stays populated and
+            // the session survives server restarts. A failure here must NOT change
+            // the identity the browser sees — the cookie already fixes it — but it
+            // is logged so a broken DB is never invisible.
+            if let Err(e) = users::upsert_user(UserRow {
                 username: username.clone(),
                 fullname: String::new(),
                 email: String::new(),
@@ -305,53 +352,50 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
                 updated_at: OffsetDateTime::now_utc(),
                 is_deleted: 0,
             })
-            .await;
-            let expires_at =
-                OffsetDateTime::now_utc() + time::Duration::seconds(session_expiration as i64);
-            if let Ok(s) = sessions::create_session(&username, expires_at).await {
-                new_cookie = Some(NewCookie {
-                    session_id: s.session_id,
-                    max_age: session_expiration,
-                });
+            .await
+            {
+                tracing::error!("guest user upsert failed for {username}: {e}");
             }
-            CurrentUser {
+            if let Err(e) = sessions::upsert_session(&session_id, &username, expires_at).await {
+                tracing::error!("guest session upsert failed for {username}: {e}");
+            }
+
+            let groups = match load_groups_for_user(&username).await {
+                Ok(groups) => groups,
+                Err(e) => {
+                    tracing::error!("loading groups for guest {username} failed: {e}");
+                    Vec::new()
+                }
+            };
+            let user = CurrentUser {
                 username,
                 fullname: String::new(),
                 email: String::new(),
                 is_admin: false,
                 is_guest: true,
-                groups: vec![],
-            }
-        }
-    } else {
-        let username = guest_username();
-        let _ = users::upsert_user(UserRow {
-            username: username.clone(),
-            fullname: String::new(),
-            email: String::new(),
-            is_admin: false,
-            created_at: OffsetDateTime::now_utc(),
-            updated_at: OffsetDateTime::now_utc(),
-            is_deleted: 0,
-        })
-        .await;
-        let expires_at =
-            OffsetDateTime::now_utc() + time::Duration::seconds(session_expiration as i64);
-        if let Ok(session) = sessions::create_session(&username, expires_at).await {
+                groups,
+            };
+            cache_user(&session_id, &user);
+            user
+        };
+
+        // Hand the browser this session id whenever it isn't already the one it
+        // sent (first visit, or a stale/expired cookie being re-anchored).
+        if cookie_session_id.as_deref() != Some(session_id.as_str()) {
             new_cookie = Some(NewCookie {
-                session_id: session.session_id,
+                session_id: session_id.clone(),
                 max_age: session_expiration,
             });
         }
-        CurrentUser {
-            username,
-            fullname: String::new(),
-            email: String::new(),
-            is_admin: false,
-            is_guest: true,
-            groups: vec![],
-        }
+
+        user
     };
+
+    // Single demo switch: in demo mode, anonymous guests are administrators.
+    let mut current_user = current_user;
+    if current_user.is_guest && demo_mode() {
+        current_user.is_admin = true;
+    }
 
     request.extensions_mut().insert(current_user);
     let mut response = next.run(request).await;

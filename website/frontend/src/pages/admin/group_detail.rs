@@ -9,7 +9,7 @@ use crate::api::admin_api::{
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_DANGER, BTN_SMALL_DANGER, HELP_TEXT,
-    INPUT, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
+    INPUT, LABEL, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -90,7 +90,10 @@ fn GroupDetailContent(groupname: String) -> Element {
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Group" }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
-                input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                label { style: LABEL,
+                    "Display name"
+                    input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                }
                 button {
                     style: BTN,
                     onclick: {

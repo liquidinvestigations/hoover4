@@ -12,6 +12,7 @@ with workflow.unsafe.imports_passed_through():
     from dataclasses import dataclass
 @dataclass
 class ComputePlansWorkflowParams:
+    collectionname: str
     collection_dataset: str
 
 
@@ -23,7 +24,7 @@ class ComputePlans:
         # 1) Count new blobs
         count = await workflow.execute_activity(
             count_new_blobs,
-            CountNewBlobsParams(collection_dataset=params.collection_dataset),
+            CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -40,7 +41,7 @@ class ComputePlans:
 
         planned = await workflow.execute_activity(
             compute_plans,
-            ComputePlansParams(collection_dataset=params.collection_dataset),
+            ComputePlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(seconds=time_budget_seconds),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )

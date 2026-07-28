@@ -7,7 +7,7 @@ use common::search_result::DocumentIdentifier;
 use common::vfs::{PathDescriptor, VfsDirectoryEntry, VfsFileEntry, VfsListing};
 
 use crate::auth::permissions;
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 /// Look up the first VFS path for a given document identifier.
 pub async fn get_first_vfs_path(
@@ -15,7 +15,7 @@ pub async fn get_first_vfs_path(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<PathDescriptor> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let sql = "
         SELECT path, container_hash
         FROM vfs_files
@@ -56,7 +56,7 @@ pub async fn list_folder_children(
         anyhow::bail!("path must not be empty; use \"/\" for the root folder");
     }
 
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&collection_dataset).await?;
 
     // Children of `path` are rows whose path begins with `prefix` (i.e. `path.path`
     // with a trailing slash) and whose remainder contains no further `/`.
@@ -123,7 +123,7 @@ pub async fn list_folder_children(
         .collect();
 
     let file_hashes = BTreeSet::from_iter(file_rows.iter().map(|(_, hash, _)| hash.clone()));
-    let container_hashes = _get_container_hashes(collection_dataset.clone(), file_hashes)
+    let container_hashes = _get_container_hashes(&client, collection_dataset.clone(), file_hashes)
         .await
         .unwrap_or_default();
 
@@ -153,10 +153,10 @@ pub async fn list_folder_children(
 }
 
 async fn _get_container_hashes(
+    client: &clickhouse::Client,
     collection_dataset: String,
     file_hashes: BTreeSet<String>,
 ) -> anyhow::Result<BTreeSet<String>> {
-    let client = get_clickhouse_client();
     let sql = "
         SELECT DISTINCT container_hash
         FROM vfs_files

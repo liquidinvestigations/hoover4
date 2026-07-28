@@ -23,13 +23,53 @@ Schedules plan chunks for distributed execution and manages temporary download a
 
 Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-based extraction) and writes structured content.
 
-### P4 - Index Data
+### P4 - Extract Entities (NLP/NER)
 
-Aggregates metadata and text content into search and vector indexes, and performs NER enrichment where needed.
+Runs named-entity recognition over parsed text content via the remote NER service, before indexing. Writes `entity_hit` rows and `nlp_processed` watermarks (including `text_bytes`). Texts are sent to the NER service in batches of `NLP_BATCH_TEXTS = 64`. NER failures are retried and then recorded in `processing_errors` — never silently swallowed.
+
+### P5 - Index Data
+
+Aggregates metadata and text content into search indexes, reading the entity rows and watermarks written by P4. Pure I/O — no remote model calls.
+
+Search indexes are sharded: a single planner activity (`plan_shards`, on
+`processing-index-planner-queue`, exactly one worker process) assigns every document
+to a shard, persisting the `manticore_shards` ledger and `manticore_shard_assignments`
+in the collection database, and creates the Manticore tables `<collectionname>_<n>_pages`
+/ `<collectionname>_<n>_meta`. A shard stays open until the next document would push it
+over `MAX_SHARD_TEXT_BYTES = 1_000_000_000` (1 GB of extracted text), then it is sealed
+and a new shard opens. Re-indexing overwrites documents in place — a document never
+moves between shards and never appears in two shards.
+
+## Administrative Workflows
+
+### P_admin - Collection database lifecycle
+
+Not a pipeline stage. Creates and drops the per-collection ClickHouse databases
+(`Hoover4_Collection_<collectionname>`) on demand, from the admin UI or `main.py ensure-collection`.
+Runs on `processing-common-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
 
 ## Worker Queues
 
-Workers are split into dedicated queues for common processing, Tika parsing, OCR, and indexing to control throughput and resource usage.
+Workers are split into dedicated queues to control throughput and resource usage:
+
+- `processing-common-queue` — all workflows plus the common activities.
+- `processing-tika-queue` — Tika parsing.
+- `processing-easyocr-queue` — OCR.
+- `processing-nlp-queue` — P4 entity extraction against the remote NER service
+  (`main.py worker nlp`, concurrency 2 — concurrency here pipelines HTTP, not local CPU).
+- `processing-indexing-queue` — P5 Manticore writes.
+- `processing-index-planner-queue` — P5 shard planning (`plan_shards`). MUST run at
+  exactly one worker process: the planner does a read-modify-write on the shard ledger
+  and assignments, which is only race-free when serialized.
+
+## Database Routing
+
+Every params dataclass that carries `collection_dataset` also carries `collectionname`.
+It is resolved once at the workflow entry point (or CLI submission, e.g.
+`main.py add-disk-dataset <collectionname> <dataset_name> <path>`) and threaded through
+every child workflow and activity — never re-derived inside an activity. Activities open
+per-collection ClickHouse clients with `get_collection_client(params.collectionname)`;
+global tables (dataset registry, collections) use `get_global_client()`.
 
 ## Navigation
 

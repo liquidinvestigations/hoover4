@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ExtractArchiveParams:
+    collectionname: str
     collection_dataset: str
     archive_hash: str
     archive_types: List[str]
@@ -28,7 +29,13 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
 
     log.info("[P3] Extracting archive to %s", out_dir)
     cmd = ["7z", "x", "-y", f"-o{out_dir}", params.archive_path]
-    res = subprocess.run(cmd, capture_output=True)
+    # stdin=DEVNULL: 7z prompts interactively for missing volumes of split
+    # archives and would block the worker thread forever waiting on stdin.
+    # timeout: belt-and-braces so a wedged extractor fails instead of hanging.
+    try:
+        res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"7z extraction timed out for {params.archive_path}")
     if res.returncode != 0:
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")
 
@@ -37,6 +44,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
 
 @dataclass
 class RecordArchiveContainerParams:
+    collectionname: str
     collection_dataset: str
     archive_hash: str
     archive_types: List[str]
@@ -45,10 +53,10 @@ class RecordArchiveContainerParams:
 @activity.defn
 def record_archive_container(params: RecordArchiveContainerParams) -> str:
     """Activity that inserts a single archive container row into ClickHouse."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
     log.info("[P3] Recording archive container for %s", params.archive_hash)
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl_arch = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "archive_hash": pa.array([params.archive_hash], type=pa.string()),
@@ -76,6 +84,7 @@ def cleanup_temp_dir(params: CleanupTempDirParams) -> str:
 
 @dataclass
 class ArchiveExtractionWorkflowParams:
+    collectionname: str
     collection_dataset: str
     archive_hash: str
     archive_types: List[str]
@@ -92,6 +101,7 @@ class ArchiveExtractionAndScan:
         res = await workflow.execute_activity(
             extract_archive_to_temp,
             ExtractArchiveParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 archive_hash=params.archive_hash,
                 archive_types=params.archive_types,
@@ -106,6 +116,7 @@ class ArchiveExtractionAndScan:
         await workflow.execute_activity(
             record_archive_container,
             RecordArchiveContainerParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 archive_hash=params.archive_hash,
                 archive_types=params.archive_types,
@@ -119,9 +130,11 @@ class ArchiveExtractionAndScan:
         # Import within sandbox
         with workflow.unsafe.imports_passed_through():
             from tasks.P0_scan_disk.workflows import HandleFolders, HandleFoldersParams
+            from tasks.visibility import dataset_search_attributes
         await workflow.execute_child_workflow(
             HandleFolders.run,
             HandleFoldersParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=out_dir,
                 folder_paths=["/"],
@@ -130,6 +143,7 @@ class ArchiveExtractionAndScan:
             ),
             id=f"scan-archive-{params.collection_dataset}-{params.archive_hash}",
             task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
         # 4) Cleanup temp dir

@@ -29,8 +29,27 @@ def migrate():
 
 
 @cli.command()
+@click.argument("collectionname", type=str)
+def ensure_collection(collectionname: str):
+    """Create a collection's ClickHouse database if missing and migrate it.
+
+    Idempotent. Note this does NOT create the `collections` row - collections are
+    created in the admin UI; this only provisions the database for one that exists.
+    """
+    from database.clickhouse import collection_db_name, migrate_collection
+
+    try:
+        db_name = collection_db_name(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    migrate_collection(collectionname)
+    log.info("Collection database ready: %s", db_name)
+    print(db_name)
+
+
+@cli.command()
 def test_extract_ner_from_text():
-    from tasks.P4_index_data.extract_ner_from_text import extract_ner_from_texts
+    from tasks.P4_extract_entities.extract_ner_from_text import extract_ner_from_texts
     with open('/etc/dictionaries-common/words') as f:
         words = f.readlines()
     import random
@@ -41,21 +60,109 @@ def test_extract_ner_from_text():
 
 
 @cli.command()
+@click.argument("collectionname", type=str)
 @click.argument("dataset_name", type=str)
 @click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=str))
-def add_disk_dataset(dataset_name: str, path: str):
-    """Create dataset row and start disk ingestion workflow."""
-    from tasks.P0_scan_disk.submit_job import add_disk_dataset
-    add_disk_dataset(dataset_name, path)
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str):
+    """Create a dataset inside an existing collection and start disk ingestion."""
+    from tasks.P0_scan_disk.submit_job import add_disk_dataset, compose_collection_dataset
+    add_disk_dataset(collectionname, dataset_name, path)
+    collection_dataset = compose_collection_dataset(collectionname, dataset_name)
 
     from tasks.P1_compute_plans.submit_job import submit_compute_plans
-    asyncio.run(submit_compute_plans(dataset_name))
+    asyncio.run(submit_compute_plans(collectionname, collection_dataset))
 
     from tasks.P2_execute_plan.submit_job import submit_execute_plans
-    asyncio.run(submit_execute_plans(dataset_name))
+    asyncio.run(submit_execute_plans(collectionname, collection_dataset))
+
+
+@cli.command(name="reindex-collection")
+@click.argument("collectionname", type=str)
+def reindex_collection(collectionname: str):
+    """Drop a collection's Manticore tables + shard ledger and re-index every finished plan.
+
+    Recovery path for a lost Manticore volume, for a change to
+    MAX_SHARD_TEXT_BYTES, and for shard fragmentation. This is the substitute
+    for a compaction feature: shards are never compacted or renumbered in
+    place, they are rebuilt from scratch here.
+
+    WARNING: this truncates the shard ledger, the assignments and index_state
+    with no guard against in-flight indexing. Stop the indexing workers first,
+    or ensure no IndexDatasetPlan workflow is running for this collection —
+    otherwise an in-flight writer can record index_state rows into shards the
+    reindex is about to drop.
+    """
+    from database.clickhouse import get_collection_client, validate_collectionname
+    from database.manticore import drop_collection_tables
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    dropped = drop_collection_tables(collectionname)
+    log.info("Dropped %d Manticore shard tables of %s", len(dropped), collectionname)
+
+    with get_collection_client(collectionname) as client:
+        client.command("TRUNCATE TABLE manticore_shards")
+        client.command("TRUNCATE TABLE manticore_shard_assignments")
+        client.command("TRUNCATE TABLE index_state")
+        plans = client.query(
+            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+            "ORDER BY collection_dataset, plan_hash"
+        ).result_rows
+
+    if not plans:
+        log.warning("No finished plans found for %s - nothing to re-index", collectionname)
+        return
+
+    async def _start_workflows():
+        from temporalio.client import Client as TemporalClient
+        import temporalio.common
+        from tasks.P5_index_data.workflows import IndexDatasetPlan
+        from tasks.P5_index_data.params import IndexDatasetPlanParams
+        from tasks.visibility import dataset_search_attributes
+
+        client = await TemporalClient.connect("temporal:7233")
+        for collection_dataset, plan_hash in plans:
+            await client.start_workflow(
+                IndexDatasetPlan.run,
+                IndexDatasetPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
+                id=f"reindex-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                # Every CLI invocation must actually re-index: allow reusing the id of
+                # a previous (completed) run, and dedupe only concurrent invocations
+                # while one is still running.
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            log.info("Re-index queued: %s plan %s", collection_dataset, plan_hash[:8])
+
+    asyncio.run(_start_workflows())
+    print(f"reindex of {collectionname}: {len(plans)} plan(s) queued")
+
+
+@cli.command(name="list-collections")
+def list_collections_cmd():
+    """Print each collection's name, ClickHouse database and dataset count."""
+    from database.clickhouse import collection_db_name, get_global_client
+
+    with get_global_client() as client:
+        collections = client.query(
+            "SELECT collectionname FROM collections FINAL "
+            "WHERE is_deleted = 0 ORDER BY collectionname"
+        ).result_rows
+        counts = dict(client.query(
+            "SELECT collectionname, count() FROM dataset FINAL "
+            "WHERE is_deleted = 0 GROUP BY collectionname"
+        ).result_rows)
+
+    for (collectionname,) in collections:
+        print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "easyocr", "indexing"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "easyocr", "nlp", "indexing", "index-planner"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all."""
     import sys
@@ -73,9 +180,15 @@ def worker(worker_type: str | None = None):
         elif worker_type == "easyocr":
             from tasks.run_worker import run_easyocr_worker
             asyncio.run(run_easyocr_worker())
+        elif worker_type == "nlp":
+            from tasks.run_worker import run_nlp_worker
+            asyncio.run(run_nlp_worker())
         elif worker_type == "indexing":
             from tasks.run_worker import run_indexing_worker
             asyncio.run(run_indexing_worker())
+        elif worker_type == "index-planner":
+            from tasks.run_worker import run_index_planner_worker
+            asyncio.run(run_index_planner_worker())
         else:
             raise click.ClickException(f"Unknown worker type: {worker_type}")
         return
@@ -86,8 +199,9 @@ def worker(worker_type: str | None = None):
     workers = []  # [{ 'type': str, 'cmd': List[str], 'proc': Popen|None, 'restart_at': float|None }]
     shutting_down = False
 
-    # Initial spawn set
-    for wt in ["tika", "easyocr", "indexing"] + ["common"] * 2:
+    # Initial spawn set. "index-planner" MUST stay at exactly one process:
+    # a second planner worker would corrupt the Manticore shard ledger.
+    for wt in ["tika", "easyocr", "nlp", "indexing", "index-planner"] + ["common"] * 2:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

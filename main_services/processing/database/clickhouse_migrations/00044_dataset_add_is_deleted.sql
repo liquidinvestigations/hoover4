@@ -1,1 +1,0 @@
-ALTER TABLE dataset ADD COLUMN IF NOT EXISTS is_deleted UInt8 DEFAULT 0;

@@ -1,7 +1,7 @@
 import os
 import asyncio
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import List, Optional, Dict, Any, Union
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -24,6 +24,28 @@ class ChatRequest(BaseModel):
     message_id: str = Field(description="The message id, which is a unique identifier for the message, must be 32 lowercase hex char")
     query: str = Field(description="The query to the agent")
     chat_history: List[ChatMessage] = Field(description="The chat history, which is a list of messages of type dict with type and content")
+    username: Optional[str] = Field(
+        default=None,
+        description="Hoover4 username on whose behalf the agent acts. Forwarded to the MCP servers for audit.",
+    )
+    allowed_collections: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Collections this user may read, resolved by the caller (the Hoover4 "
+            "website backend). The agent forwards it to the MCP servers, which refuse "
+            "anything outside it. An empty list means the agent can search nothing."
+        ),
+    )
+
+
+class ChatResult(BaseModel):
+    """Whole-trajectory result of a non-streaming run."""
+
+    answer: str = Field(description="The assistant's final answer")
+    reasoning: str = Field(default="", description="Reasoning trace, when the model emits one")
+    tool_calls: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Tool calls made, in order, start and end events"
+    )
 
 class ChatResponse(BaseModel):
     type: MessageType = Field(description="The type of the message, either human or ai")
@@ -50,6 +72,29 @@ class SessionFeedBackRequest(BaseModel):
 class HealthResponse(BaseModel):
     status: str = Field(description="The status of the health check")
     message: str = Field(description="The message of the health check")
+
+@contextmanager
+def _trace_span(agent, message_id: str, query: str):
+    """Yield a Langfuse span, or `None` when tracing is not configured.
+
+    Langfuse is optional infrastructure. Making the chat endpoint depend on it — as it
+    did — turns "no observability credentials" into "no chat", which is the wrong
+    trade-off for a self-hosted deployment.
+    """
+    handler = getattr(agent, "langfuse_handler", None)
+    if handler is None or getattr(handler, "client", None) is None:
+        yield None
+        return
+    try:
+        with handler.client.start_as_current_span(
+            name=agent.name, trace_context={"trace_id": message_id}
+        ) as span:
+            span.update_trace(input=query)
+            yield span
+    except Exception as exc:  # noqa: BLE001 - tracing must never break the request
+        print(f"Warning: Langfuse tracing disabled for this request: {exc}")
+        yield None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -145,24 +190,24 @@ async def chat_stream(request: ChatRequest):
             try:
                 # Convert Pydantic objects to Python dicts using model_dump()
                 chat_history_dicts = [msg.model_dump() for msg in request.chat_history]
-                with agent.langfuse_handler.client.start_as_current_span(
-                    name=agent.name,
-                    trace_context={"trace_id": request.message_id}
-                ) as span:
-                    span.update_trace(
-                        input=request.query,
-                    )
+                # Tracing is optional: this deployment runs without Langfuse, and
+                # previously an unconfigured handler made every chat request fail with
+                # AttributeError on `None.client`.
+                with _trace_span(agent, request.message_id, request.query) as span:
+                    last_chunk = None
                     async for chunk in agent.stream(
                         query=request.query,
                         chat_history=chat_history_dicts,
                         session_id=request.session_id,
                         user_id=request.user_id,
+                        username=request.username,
+                        allowed_collections=request.allowed_collections,
                     ):
+                        last_chunk = chunk
                         # Format as Server-Sent Events with proper JSON
                         yield f"data: {json.dumps(chunk)}\n\n"
-                    span.update_trace(
-                        output=chunk["content"],
-                    )
+                    if span is not None and last_chunk is not None:
+                        span.update_trace(output=last_chunk["content"])
             except Exception as e:
                 error_chunk = {
                     "is_task_complete": True,
@@ -185,6 +230,44 @@ async def chat_stream(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/chat", response_model=ChatResult)
+async def chat(request: ChatRequest):
+    """Run the agent to completion and return the full trajectory as one JSON object.
+
+    This is what the Hoover4 website backend calls. It exists alongside `/chat/stream`
+    because a server-side consumer wants a finished result, not an SSE stream it would
+    have to reassemble.
+    """
+    if not hasattr(app.state, "agent") or app.state.agent is None:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+
+    try:
+        result = await app.state.agent.run(
+            query=request.query,
+            chat_history=[msg.model_dump() for msg in request.chat_history],
+            session_id=request.session_id,
+            user_id=request.user_id,
+            username=request.username,
+            allowed_collections=request.allowed_collections,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return ChatResult(**result)
+
+
+def _require_langfuse(agent):
+    """Return the Langfuse client, or 503 if tracing/feedback is not configured."""
+    handler = getattr(agent, "langfuse_handler", None)
+    client = getattr(handler, "client", None) if handler else None
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Feedback requires Langfuse, which is not configured on this deployment",
+        )
+    return client
+
+
 @app.post("/feedback/message", response_model=FeedBackResponse)
 async def feedback_message(request: MessageFeedBackRequest):
     """Feedback endpoint."""
@@ -197,9 +280,10 @@ async def feedback_message(request: MessageFeedBackRequest):
             )
 
         agent = app.state.agent
+        client = _require_langfuse(agent)
 
         # Update the trace with feedback
-        agent.langfuse_handler.client.create_score(
+        client.create_score(
             score_id=request.score_id,
             trace_id=request.message_id,
             user_id=request.user_id,
@@ -225,9 +309,10 @@ async def feedback_session(request: SessionFeedBackRequest):
             )
 
         agent = app.state.agent
+        client = _require_langfuse(agent)
 
         # Update the trace with feedback
-        agent.langfuse_handler.client.create_score(
+        client.create_score(
             score_id=request.score_id,
             session_id=request.session_id,
             user_id=request.user_id,
@@ -253,9 +338,10 @@ async def delete_feedback(score_id: str):
             )
 
         agent = app.state.agent
+        client = _require_langfuse(agent)
 
         # Delete the score
-        agent.langfuse_handler.client.api.score.delete(score_id)
+        client.api.score.delete(score_id)
         return FeedBackResponse(message="Feedback deleted")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

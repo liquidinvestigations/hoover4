@@ -3,20 +3,17 @@
 from temporalio import activity
 from typing import Dict, Any
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import pyarrow as pa
 
-from database.clickhouse import get_clickhouse_client
-
-
-def _escape(v: str) -> str:
-    return v.replace("'", "''")
+from database.clickhouse import get_collection_client
 
 
 @dataclass
 class CountNewBlobsParams:
+    collectionname: str
     collection_dataset: str
 
 
@@ -24,10 +21,10 @@ class CountNewBlobsParams:
 def count_new_blobs(params: CountNewBlobsParams) -> int:
     """Activity that counts blobs not yet included in any processing plan."""
     collection_dataset: str = params.collection_dataset
-    sql = f"""
+    sql = """
         SELECT count()
         FROM blobs b
-        WHERE b.collection_dataset = '{_escape(collection_dataset)}'
+        WHERE b.collection_dataset = {collection_dataset:String}
           AND NOT EXISTS (
               SELECT 1
               FROM processing_plan_hits h
@@ -35,8 +32,8 @@ def count_new_blobs(params: CountNewBlobsParams) -> int:
                 AND h.item_hash = b.blob_hash
           )
     """
-    with get_clickhouse_client() as client:
-        tbl = client.query_arrow(sql)
+    with get_collection_client(params.collectionname) as client:
+        tbl = client.query_arrow(sql, parameters={"collection_dataset": collection_dataset})
         if tbl and tbl.num_rows:
             return int(tbl.column(0)[0].as_py())
         return 0
@@ -44,6 +41,7 @@ def count_new_blobs(params: CountNewBlobsParams) -> int:
 
 @dataclass
 class ComputePlansParams:
+    collectionname: str
     collection_dataset: str
 
 
@@ -67,8 +65,8 @@ def compute_plans(params: ComputePlansParams) -> int:
         sorted_hashes = sorted(item_hashes)
         payload = json.dumps(sorted_hashes, separators=(",", ":")).encode("utf-8")
         plan_hash = hashlib.sha1(payload).hexdigest()
-        now = datetime.utcnow()
-        with get_clickhouse_client() as client:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with get_collection_client(params.collectionname) as client:
             # Insert into processing_plans
             tbl_plan = pa.table({
                 "collection_dataset": pa.array([collection_dataset], type=pa.string()),
@@ -92,17 +90,17 @@ def compute_plans(params: ComputePlansParams) -> int:
     cur_bytes = 0
 
     # One big SQL session: stream all new blobs ordered by size for better packing
-    sql = f"""
+    sql = """
         SELECT b.blob_hash, b.blob_size_bytes
         FROM blobs b
         LEFT JOIN processing_plan_hits h
           ON h.collection_dataset = b.collection_dataset AND h.item_hash = b.blob_hash
-        WHERE b.collection_dataset = '{_escape(collection_dataset)}'
+        WHERE b.collection_dataset = {collection_dataset:String}
           AND h.item_hash = ''  AND h.plan_hash = ''
         ORDER BY b.blob_size_bytes ASC
     """
-    with get_clickhouse_client() as client:
-        with client.query_arrow_stream(sql) as stream:
+    with get_collection_client(params.collectionname) as client:
+        with client.query_arrow_stream(sql, parameters={"collection_dataset": collection_dataset}) as stream:
             for batch in stream:
                 if not batch or batch.num_rows == 0:
                     continue

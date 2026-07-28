@@ -10,4 +10,5 @@ mod search_facets;
 pub use search_facets::fetch_db_terms_for_ints;
 pub use search_facets::search_string_facet;
 
+pub mod fanout;
 pub mod search_sql;

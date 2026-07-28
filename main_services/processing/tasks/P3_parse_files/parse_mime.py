@@ -10,6 +10,7 @@ import os
 
 @dataclass
 class DetectMimeParams:
+    collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
@@ -103,7 +104,7 @@ def _extract_extensions(file_path: str) -> List[str]:
 @activity.defn
 def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
     """Activity that runs `file` to detect MIME/encoding, stores to file_types, and returns lists."""
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     import pyarrow as pa
 
@@ -115,7 +116,7 @@ def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
     extensions: List[str] = sorted(set(ext_list + _extract_extensions(params.file_path)))
 
     # Insert into ClickHouse file_types with arrays and extracted_by='file'
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "hash": pa.array([params.file_hash], type=pa.string()),
@@ -142,7 +143,7 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
     Writes a row to file_types with extracted_by='magika' and returns lists.
     """
     # Import locally to avoid hard dependency at import time
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     import pyarrow as pa
     try:
@@ -188,7 +189,7 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
     coarse_types = sorted(set(coarse_types + coarse_types2) - set(""))
     extensions = sorted(set(extensions))
 
-    with get_clickhouse_client() as client:
+    with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "hash": pa.array([params.file_hash], type=pa.string()),

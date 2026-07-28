@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class RunTikaParams:
+    collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
@@ -25,31 +26,71 @@ def _coarse_from_mime(mime: str) -> str:
         return ""
 
 
+# Hard cap for a single Extractous call, regardless of the activity timeout.
+_EXTRACTOUS_SUBPROCESS_TIMEOUT_S = 600
+
+
+def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
+    """Run Extractous in a subprocess with a hard timeout.
+
+    Extractous (native Tika + Tesseract) wedges forever on some formats (camera
+    RAW, PSD, TGA, ...). A stuck native call cannot be interrupted from Python
+    and blocks the worker's activity threads — and every later Extractor() call
+    with it. A subprocess can always be killed. A timeout is raised as a
+    non-retryable ApplicationError so the file lands in processing_errors after
+    one attempt instead of stalling the batch for hours.
+    """
+    import subprocess
+    import sys
+    from temporalio.exceptions import ApplicationError
+
+    helper = (
+        "import json, sys;"
+        "from extractous import Extractor, TesseractOcrConfig;"
+        "ex = Extractor().set_ocr_config(TesseractOcrConfig().set_language('eng'));"
+        "text, meta = ex.extract_file_to_string(sys.argv[1]);"
+        "sys.stdout.write(json.dumps({'text': text or '', 'metadata': meta or {}}, default=str))"
+    )
+    try:
+        res = subprocess.run(
+            [sys.executable, "-c", helper, file_path],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=_EXTRACTOUS_SUBPROCESS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        raise ApplicationError(
+            f"extractous timed out after {_EXTRACTOUS_SUBPROCESS_TIMEOUT_S}s for {file_path}",
+            non_retryable=True,
+        )
+    if res.returncode != 0:
+        raise RuntimeError(f"extractous failed for {file_path}: {res.stderr[-300:]!r}")
+    out = json.loads(res.stdout.decode("utf-8", "replace") or "{}")
+    return out.get("text") or "", out.get("metadata") or {}
+
+
 @activity.defn
 def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
     """Activity that uses Extractous to extract text and metadata and stores results.
 
     Also writes detected file types to file_types with extracted_by='tika' and returns lists.
     """
-    from extractous import Extractor, TesseractOcrConfig
-    from database.clickhouse import get_clickhouse_client
+    from database.clickhouse import get_collection_client
     import pyarrow as pa
 
     log.info("[P3] Running Extractous for %s", params.file_path)
 
-    # Extract text and metadata using Extractous
-    extractor = Extractor().set_ocr_config(TesseractOcrConfig().set_language("eng"))
-    result_text, metadata = extractor.extract_file_to_string(params.file_path)
+    # Extract text and metadata using Extractous (subprocess: interruptible)
+    result_text, meta_parsed = _extract_with_extractous(params.file_path)
     content_text = result_text or ""
-    meta_parsed = metadata or {}
 
     # Single ClickHouse session for both inserts
-    from datetime import datetime
-    processed_at = datetime.utcnow()
-    with get_clickhouse_client() as client:
+    from datetime import datetime, timezone
+    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
         if content_text.strip():
             from tasks.P3_parse_files.parse_common import insert_text_chunks
-            insert_text_chunks(params.collection_dataset, params.file_hash, "extractous", content_text)
+            insert_text_chunks(params.collectionname, params.collection_dataset, params.file_hash, "extractous", content_text)
 
         tbl_m = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),

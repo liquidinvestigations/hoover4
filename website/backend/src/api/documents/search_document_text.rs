@@ -1,4 +1,10 @@
 //! Endpoint for retrieving document text snippets.
+//!
+//! These queries search **within one document**, so they know the
+//! `collection_dataset` up front: the owning collection is resolved via the global
+//! dataset registry and the document's shard via that collection's
+//! `manticore_shard_assignments` table. Only that one `<shard>_pages` table is
+//! queried — no fan-out, and the results never cross collection boundaries.
 
 use common::{
     current_user::CurrentUser,
@@ -8,7 +14,10 @@ use common::{
 use serde::{Deserialize, Serialize};
 
 use crate::auth::permissions;
-use crate::{api::search::search_sql::SQL_OPTIONS_CLAUSE, db_utils::clickhouse_utils::get_clickhouse_client};
+use crate::db_utils::clickhouse_utils::{
+    find_shard_for_document, get_client_for_dataset, resolve_collection, shard_generation,
+};
+use crate::{api::search::search_sql::{shard_table_names, sql_options_clause}};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
 };
@@ -20,6 +29,26 @@ struct DocumentHits {
     text: String,
 }
 
+/// The `<shard>_pages` table holding this document, plus the cache salt for its
+/// collection. `Ok(None)` means the document has not been indexed yet.
+async fn pages_table_for_document(
+    document_identifier: &DocumentIdentifier,
+) -> anyhow::Result<Option<(String, String)>> {
+    let collectionname = resolve_collection(&document_identifier.collection_dataset).await?;
+    let Some(shard_name) = find_shard_for_document(
+        &collectionname,
+        &document_identifier.collection_dataset,
+        &document_identifier.file_hash,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    let (pages_table, _) = shard_table_names(&shard_name)?;
+    let generation = shard_generation(&collectionname).await?;
+    Ok(Some((pages_table, format!("{collectionname}@{generation}"))))
+}
+
 pub async fn search_document_text_for_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -28,6 +57,10 @@ pub async fn search_document_text_for_hits(
     page_id: u32,
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
+        return Ok(vec![]);
+    };
+    let options_clause = sql_options_clause(1000);
     let sql = format!(
         r#"
             SELECT
@@ -42,11 +75,11 @@ pub async fn search_document_text_for_hits(
                     after_match='</hoover4_strong>',
                     force_snippets=1
                 }}) as text
-            FROM doc_text_pages
+            FROM {pages_table}
             WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {} AND page_id = {}
             AND MATCH({})
             LIMIT 1000
-            {SQL_OPTIONS_CLAUSE}
+            {options_clause}
         "#,
         format_sql_query::QuotedData(&document_identifier.file_hash),
         format_sql_query::QuotedData(&document_identifier.collection_dataset),
@@ -54,7 +87,7 @@ pub async fn search_document_text_for_hits(
         page_id,
         format_sql_query::QuotedData(&find_query),
     );
-    let response = manticore_search_sql::<DocumentHits>(sql).await?;
+    let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
     let hits = response.hits.hits;
     let result = hits
         .into_iter()
@@ -74,6 +107,10 @@ pub async fn search_document_text_for_hit_count(
     find_query: String,
 ) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
+        return Ok(vec![]);
+    };
+    let options_clause = sql_options_clause(1000);
     let sql = format!(
         r#"
         SELECT
@@ -88,17 +125,17 @@ pub async fn search_document_text_for_hit_count(
                 after_match='</hoover4_strong>',
                 force_snippets=1
             }}) as text
-        FROM doc_text_pages
+        FROM {pages_table}
         WHERE file_hash = {} AND collection_dataset = {}
         AND MATCH({})
         LIMIT 1000
-        {SQL_OPTIONS_CLAUSE}
+        {options_clause}
     "#,
         format_sql_query::QuotedData(&document_identifier.file_hash),
         format_sql_query::QuotedData(&document_identifier.collection_dataset),
         format_sql_query::QuotedData(&find_query),
     );
-    let response = manticore_search_sql::<DocumentHits>(sql).await?;
+    let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
     let hits = response.hits.hits;
     let result = hits
         .into_iter()
@@ -145,7 +182,7 @@ pub async fn get_document_text_by_id_and_source(
     page_id: u32,
 ) -> anyhow::Result<String> {
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let client = get_clickhouse_client();
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
     let query = "
     SELECT text from text_content

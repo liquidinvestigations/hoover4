@@ -31,10 +31,12 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_video import VideoProcessingAndScan
     from tasks.P3_parse_files.parse_ocr import run_easyocr_and_store, RunEasyOCRParams
     from tasks.P2_execute_plan.activities import record_processing_errors
+    from tasks.visibility import dataset_search_attributes
 
 
 @dataclass
 class ParseSingleFileParams:
+    collectionname: str
     collection_dataset: str
     plan_hash: str
     item_hash: str
@@ -59,6 +61,7 @@ class ParseSingleFile:
         mime_fut = workflow.execute_activity(
             detect_mime_with_gnu_file,
             DetectMimeParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 file_hash=params.item_hash,
                 file_path=params.file_path,
@@ -71,6 +74,7 @@ class ParseSingleFile:
         tika_fut = workflow.execute_activity(
             run_tika_and_store,
             RunTikaParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 file_hash=params.item_hash,
                 file_path=params.file_path,
@@ -85,6 +89,7 @@ class ParseSingleFile:
         magika_fut = workflow.execute_activity(
             detect_mime_with_magika,
             DetectMimeParams(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 file_hash=params.item_hash,
                 file_path=params.file_path,
@@ -114,6 +119,7 @@ class ParseSingleFile:
                         await workflow.execute_activity(
                             record_processing_errors,
                             {
+                                "collectionname": params.collectionname,
                                 "collection_dataset": params.collection_dataset,
                                 "item_hashes": [params.item_hash],
                                 "task_ids": [f"detector_error_{det_name}"],
@@ -152,6 +158,7 @@ class ParseSingleFile:
                 workflow.execute_child_workflow(
                     ArchiveExtractionAndScan.run,
                     {
+                        "collectionname": params.collectionname,
                         "collection_dataset": params.collection_dataset,
                         "archive_hash": params.item_hash,
                         "archive_types": mime_types,
@@ -159,7 +166,8 @@ class ParseSingleFile:
                         "timeout_seconds": proc_secs,
                     },
                     task_queue="processing-common-queue",
-                    id=child_id
+                    id=child_id,
+                    search_attributes=dataset_search_attributes(params.collection_dataset)
                 )
             )
             task_ids.append('archive_scan')
@@ -171,13 +179,15 @@ class ParseSingleFile:
                 workflow.execute_child_workflow(
                     EmailExtractionAndScan.run,
                     EmailExtractionWorkflowParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         email_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
                     ),
                     task_queue="processing-common-queue",
-                    id=child_id
+                    id=child_id,
+                    search_attributes=dataset_search_attributes(params.collection_dataset)
                 )
             )
             task_ids.append('email_scan')
@@ -189,6 +199,7 @@ class ParseSingleFile:
                 workflow.execute_activity(
                     extract_plaintext_chunks,
                     ExtractPlaintextParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         file_hash=params.item_hash,
                         file_path=params.file_path,
@@ -207,6 +218,7 @@ class ParseSingleFile:
                 workflow.execute_child_workflow(
                     PdfProcessingAndScan.run,
                     PdfProcessingWorkflowParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         pdf_hash=params.item_hash,
                         file_path=params.file_path,
@@ -214,6 +226,7 @@ class ParseSingleFile:
                     ),
                     task_queue="processing-common-queue",
                     id=child_id,
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
             )
             task_ids.append("pdf_process")
@@ -224,6 +237,7 @@ class ParseSingleFile:
                 workflow.execute_activity(
                     parse_image_metadata_and_store,
                     ParseImageParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         file_hash=params.item_hash,
                         file_path=params.file_path,
@@ -241,6 +255,7 @@ class ParseSingleFile:
                 workflow.execute_activity(
                     run_easyocr_and_store,
                     RunEasyOCRParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         file_hash=params.item_hash,
                         file_path=params.file_path,
@@ -259,6 +274,7 @@ class ParseSingleFile:
                 workflow.execute_activity(
                     parse_audio_metadata_and_store,
                     ParseAudioParams(
+                        collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         file_hash=params.item_hash,
                         file_path=params.file_path,
@@ -277,6 +293,7 @@ class ParseSingleFile:
                 workflow.execute_child_workflow(
                     VideoProcessingAndScan.run,
                     {
+                        "collectionname": params.collectionname,
                         "collection_dataset": params.collection_dataset,
                         "video_hash": params.item_hash,
                         "file_path": params.file_path,
@@ -284,6 +301,7 @@ class ParseSingleFile:
                     },
                     task_queue="processing-common-queue",
                     id=child_id,
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
             )
             task_ids.append("video_process")
@@ -297,6 +315,7 @@ class ParseSingleFile:
             results,
             task_ids=task_ids,
             starts=starts,
+            collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=[params.item_hash] * len(task_ids),
             start_to_close_timeout_seconds=proc_secs,

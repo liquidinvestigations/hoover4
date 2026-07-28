@@ -1,6 +1,6 @@
 //! Utilities for Manticore query formatting and results.
 
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_global_client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 
@@ -39,10 +39,19 @@ pub struct RawSearchResultHit<T> {
     pub _score: u64,
 }
 
+/// Run one SQL statement against Manticore's `/sql` endpoint, with response caching.
+///
+/// This is the single-table primitive; the search fan-out (`api/search/fanout.rs`)
+/// calls it once per shard. `cache_salt` is mixed into the cache key: the fan-out
+/// passes the target collection's shard-ledger generation, so a shard change
+/// invalidates that collection's cached searches without touching the others (and
+/// each sub-query is cached separately, so adding a collection does not invalidate
+/// existing cache entries).
 pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     sql: String,
+    cache_salt: &str,
 ) -> anyhow::Result<RawSarchResult<T>> {
-    let query_hash = sha256::digest(sql.clone());
+    let query_hash = sha256::digest(format!("{cache_salt}\n{sql}"));
     if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await
         && let Ok(response) = serde_json::from_str::<RawSarchResult<T>>(&cached_response)
     {
@@ -82,7 +91,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
 }
 
 async fn get_cached_response(query_hash: &String, query_string: &String) -> anyhow::Result<String> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let sql = "
     SELECT result_json
     FROM search_manticore_cache
@@ -110,7 +119,7 @@ async fn insert_cache(
     response_txt: &String,
     dt_ms: u32,
 ) -> anyhow::Result<()> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let sql = "
     INSERT INTO search_manticore_cache (query_hash, query_string, result_json, duration_ms)
     VALUES (?, ?, ?, ?)

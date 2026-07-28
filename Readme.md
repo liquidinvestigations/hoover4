@@ -37,7 +37,7 @@ Hoover4 is designed for investigative teams, analysts, and organizations that ne
 
 ### Staged pipeline architecture.
 
-Processing is decomposed into discrete, independently scalable stages: filesystem scanning and deduplication, plan computation, plan execution and scheduling, type-specific parsing, and indexing. Each stage is a [Temporal](https://temporal.io/) workflow with dedicated worker queues. See the [processing code](main_services/processing/Readme.md) for more details.
+Processing is decomposed into discrete, independently scalable stages: P0 filesystem scanning and deduplication, P1 plan computation, P2 plan execution and scheduling, P3 type-specific parsing, P4 named-entity extraction (NLP/NER against a remote service, on its own queue), and P5 indexing. Each stage is a [Temporal](https://temporal.io/) workflow with dedicated worker queues. See the [processing code](main_services/processing/Readme.md) for more details.
 
 ### Content-type routing.
 
@@ -45,7 +45,11 @@ Files are classified by MIME type using multiple detectors ([`file`/`libmagic`](
 
 ### Deduplication and blob-level storage.
 
-File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a single streaming pass. Small blobs are stored inline in ClickHouse; large blobs are offloaded to MinIO. Processing operates on deduplicated blobs, not raw files.
+File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a single streaming pass. Small blobs are stored inline in ClickHouse; large blobs are offloaded to MinIO. Processing operates on deduplicated blobs, not raw files. In ClickHouse this data is partitioned per collection into `Hoover4_Collection_<collectionname>` databases, with only global state (users, groups, collections, the dataset registry, sessions, settings, search cache) in `Hoover4_Processing`.
+
+### Sharded full-text indexes.
+
+Manticore search indexes are sharded per collection: each shard is a `<collectionname>_<n>_pages` / `<collectionname>_<n>_meta` table pair that stays open until it would exceed `MAX_SHARD_TEXT_BYTES` (1 GB of extracted text), then seals. A ledger in the collection's ClickHouse database (`manticore_shards`, `manticore_shard_assignments`) records which shard owns each document, and the website fans searches out to the live shards and merges the results. See [tasks/Readme.md](main_services/processing/tasks/Readme.md).
 
 ### Separation of compute concerns.
 

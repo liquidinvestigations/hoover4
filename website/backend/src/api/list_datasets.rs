@@ -3,10 +3,10 @@
 use common::current_user::CurrentUser;
 
 use crate::auth::permissions::{self, PermissionSet};
-use crate::db_utils::clickhouse_utils::get_clickhouse_client;
+use crate::db_utils::clickhouse_utils::get_global_client;
 
 pub async fn list_dataset_ids() -> anyhow::Result<Vec<String>> {
-    let client = get_clickhouse_client();
+    let client = get_global_client();
     let mut result = client
         .query("SELECT DISTINCT collection_dataset FROM dataset FINAL WHERE is_deleted = 0")
         .fetch_all()

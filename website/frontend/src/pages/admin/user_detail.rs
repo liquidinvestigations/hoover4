@@ -96,8 +96,14 @@ fn UserDetailContent(username: String) -> Element {
                     "For header-authenticated users, full name, email and superuser status are overwritten at next login."
                 }
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
-                    input { style: INPUT, placeholder: "full name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
-                    input { style: INPUT, placeholder: "email", value: "{email}", oninput: move |e| email.set(e.value()) }
+                    label { style: LABEL,
+                        "Full name"
+                        input { style: INPUT, placeholder: "full name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                    }
+                    label { style: LABEL,
+                        "Email"
+                        input { style: INPUT, placeholder: "email", value: "{email}", oninput: move |e| email.set(e.value()) }
+                    }
                     label { style: LABEL,
                         input { r#type: "checkbox", checked: *is_admin.read(), onchange: move |_| is_admin.toggle() }
                         "Superuser"

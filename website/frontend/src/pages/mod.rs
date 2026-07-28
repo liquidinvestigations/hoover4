@@ -1,7 +1,7 @@
 //! Frontend pages module.
 
 pub mod admin;
-pub mod chatbot_page;
+pub mod ai_chat;
 pub mod file_browser_page;
 pub mod home_page;
 pub mod pdfdemo_page;
