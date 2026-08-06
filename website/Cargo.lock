@@ -381,6 +381,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-extra",
+ "base64",
  "bytes",
  "clickhouse",
  "common",
@@ -755,6 +756,7 @@ name = "common"
 version = "0.0.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
