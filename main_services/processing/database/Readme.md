@@ -63,10 +63,17 @@ consequences:
 - Collections created at different times converge on the same schema at the next
   `migrate` run, because each has its own independent `schema_versions`.
 
-Both sets were collapsed and renumbered from `00001` when storage was split, so every
-`ALTER` was folded into the `CREATE TABLE` it modified and neither directory contains an
-`ALTER TABLE`. `tests/test_migrations_parity.py` asserts that, plus that no table is
-declared in both directories.
+Both sets were collapsed and renumbered from `00001` when storage was split, and
+**re-collapsed again** in Part 2 Phase 0: every `ALTER` accumulated since is folded back
+into the `CREATE TABLE` it modified, the Milvus create-then-drop trio is deleted outright,
+and both directories are contiguous from `00001` with no `ALTER TABLE` and no `DROP TABLE`
+anywhere. `COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is now
+`{global: 20, collection: 31}` — files at or below those numbers are the collapsed
+baseline and must never be edited again.
+
+The re-collapse was a deliberate, one-time break of the never-edit-history rule, paid for
+by a full `./deploy --reset`: it drops all data, and `testdata` is reindexed. There is no
+migration path from a pre-collapse database and none is wanted (D1/D2 of `plans/1-part-2.md`).
 
 ## Manticore infix indexing (`min_infix_len='3'`)
 

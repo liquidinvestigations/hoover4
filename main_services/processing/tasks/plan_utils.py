@@ -1,4 +1,4 @@
-"""Helpers shared by more than one pipeline stage (P4 NLP, P5 indexing).
+"""Helpers shared by more than one pipeline stage (P4 NLP, P6 indexing).
 
 Neither stage owns these; keep them stage-neutral.
 """
@@ -6,6 +6,7 @@ Neither stage owns these; keep them stage-neutral.
 from dataclasses import dataclass
 
 from temporalio import activity
+from tasks.heartbeat import with_heartbeat
 
 
 @dataclass
@@ -16,6 +17,7 @@ class FetchPlanHashesParams:
 
 
 @activity.defn
+@with_heartbeat
 def fetch_plan_hashes(params: FetchPlanHashesParams) -> list[str]:
     """Return the sorted, de-duplicated item hashes of one processing plan."""
     collection_dataset: str = params.collection_dataset

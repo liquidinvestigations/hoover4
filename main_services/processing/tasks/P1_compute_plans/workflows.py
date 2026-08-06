@@ -8,6 +8,7 @@ log = logging.getLogger(__name__)
 
 # Import our activities, passing them through the sandbox
 with workflow.unsafe.imports_passed_through():
+    from tasks.heartbeat import HEARTBEAT_TIMEOUT
     from tasks.P1_compute_plans.activities import count_new_blobs, compute_plans, CountNewBlobsParams, ComputePlansParams
     from dataclasses import dataclass
 @dataclass
@@ -26,6 +27,7 @@ class ComputePlans:
             count_new_blobs,
             CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -43,6 +45,7 @@ class ComputePlans:
             compute_plans,
             ComputePlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(seconds=time_budget_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 

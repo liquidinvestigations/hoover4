@@ -16,9 +16,13 @@ import tasks
 
 # Modules excluded from the walk: import-time side effects (model loading) and no
 # params dataclasses.
-_SKIP_MODULES = {
-    "tasks.P3_parse_files.parse_ocr_models",  # loads the EasyOCR model at import time
-}
+#
+# Empty since OCR moved behind HTTP. `parse_ocr_models` used to be the only entry: it
+# built an `easyocr.Reader` at import time, which downloaded ~98 MB of weights the first
+# time any worker process touched it. The set stays because the hazard it documents is
+# structural — a module that does real work at import breaks this walk and, more
+# importantly, does that work inside an activity's first call.
+_SKIP_MODULES: set[str] = set()
 
 
 def _task_module_names() -> list[str]:

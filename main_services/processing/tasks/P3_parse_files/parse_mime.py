@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple, Set
 import subprocess
 import mimetypes
 import os
+from tasks.heartbeat import with_heartbeat
 
 
 @dataclass
@@ -102,6 +103,7 @@ def _extract_extensions(file_path: str) -> List[str]:
 
 
 @activity.defn
+@with_heartbeat
 def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
     """Activity that runs `file` to detect MIME/encoding, stores to file_types, and returns lists."""
     from database.clickhouse import get_collection_client
@@ -137,6 +139,7 @@ def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
 
 
 @activity.defn
+@with_heartbeat
 def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
     """Activity that uses Google Magika to detect content type and stores it.
 

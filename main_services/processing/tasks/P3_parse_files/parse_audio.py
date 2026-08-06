@@ -7,6 +7,7 @@ import subprocess
 import json
 import os
 import logging
+from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class ParseAudioParams:
 
 
 @activity.defn
+@with_heartbeat
 def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
     from database.clickhouse import get_collection_client
     import pyarrow as pa

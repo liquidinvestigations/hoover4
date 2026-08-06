@@ -11,6 +11,7 @@ import logging
 from temporalio import activity
 
 from tasks.P_admin.eta_collector import CollectEtaSamplesParams, CollectEtaSamplesResult
+from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class PurgeDatasetParams:
 
 
 @activity.defn
+@with_heartbeat
 def ensure_collection_database(params: CollectionDatabaseParams) -> str:
     """Create the collection's ClickHouse database if missing and migrate it.
 
@@ -40,6 +42,7 @@ def ensure_collection_database(params: CollectionDatabaseParams) -> str:
 
 
 @activity.defn
+@with_heartbeat
 def drop_collection_database(params: CollectionDatabaseParams) -> str:
     """Drop the collection's ClickHouse database and Manticore tables. Destructive.
 
@@ -59,6 +62,7 @@ def drop_collection_database(params: CollectionDatabaseParams) -> str:
 
 
 @activity.defn
+@with_heartbeat
 def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:
     """Delete a dataset's rows from every shard table of its collection."""
     from database.manticore import get_manticore_client, list_shard_tables
@@ -82,6 +86,7 @@ def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:
 
 
 @activity.defn
+@with_heartbeat
 def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
     """Delete a dataset's rows from every collection-DB table that has a
     ``collection_dataset`` column (lightweight deletes)."""
@@ -107,6 +112,7 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
 
 
 @activity.defn
+@with_heartbeat
 def recompute_shard_ledger_activity(params: CollectionDatabaseParams) -> str:
     """Recompute the shard ledger's fill levels from ``index_state``.
 
@@ -114,13 +120,14 @@ def recompute_shard_ledger_activity(params: CollectionDatabaseParams) -> str:
     deleted dataset contributed to. Never re-opens sealed shards, compacts, or
     renumbers.
     """
-    from tasks.P5_index_data.shard_planner import recompute_shard_ledger
+    from tasks.P6_index_data.shard_planner import recompute_shard_ledger
 
     recompute_shard_ledger(params.collectionname)
     return "ok"
 
 
 @activity.defn
+@with_heartbeat
 def collect_eta_samples(params: "CollectEtaSamplesParams") -> "CollectEtaSamplesResult":
     """One ETA sampling pass over all collections (see ``eta_collector``)."""
     from tasks.P_admin.eta_collector import run_collection_pass

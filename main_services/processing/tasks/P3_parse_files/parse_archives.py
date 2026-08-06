@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import os
 import asyncio
 import logging
+from tasks.heartbeat import HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -21,8 +22,10 @@ class ExtractArchiveParams:
 
 
 @activity.defn
+@with_heartbeat
 def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     """Activity that extracts an archive to a temp directory using 7z."""
+    import shutil
     import subprocess
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
     out_dir = make_temp_dir(params.collection_dataset, "extract", params.archive_hash)
@@ -32,11 +35,26 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     # stdin=DEVNULL: 7z prompts interactively for missing volumes of split
     # archives and would block the worker thread forever waiting on stdin.
     # timeout: belt-and-braces so a wedged extractor fails instead of hanging.
+    # KEEP THIS TIMEOUT. The heartbeat pump below proves the pump THREAD is
+    # alive, which is not the same as proving 7z is making progress -- on a
+    # corrupt archive the pump would heartbeat happily forever. Removing a
+    # subprocess timeout because "we heartbeat now" is the one way this change
+    # makes reliability worse (plans/1-part-3.md 2.5).
     try:
-        res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
+        with heartbeat_pump(f"7z {params.archive_hash[:8]}"):
+            res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
     except subprocess.TimeoutExpired:
+        shutil.rmtree(out_dir, ignore_errors=True)
         raise RuntimeError(f"7z extraction timed out for {params.archive_path}")
+    except BaseException:
+        # Heartbeating is how Temporal DELIVERS cancellation to a sync activity,
+        # so this path is now reachable where it never used to be. Without the
+        # cleanup, a retry finds a half-extracted directory from the previous
+        # attempt and two 7z processes write to the same path.
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
     if res.returncode != 0:
+        shutil.rmtree(out_dir, ignore_errors=True)
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")
 
     return {"out_dir": out_dir}
@@ -51,6 +69,7 @@ class RecordArchiveContainerParams:
 
 
 @activity.defn
+@with_heartbeat
 def record_archive_container(params: RecordArchiveContainerParams) -> str:
     """Activity that inserts a single archive container row into ClickHouse."""
     from database.clickhouse import get_collection_client
@@ -73,6 +92,7 @@ class CleanupTempDirParams:
 
 
 @activity.defn
+@with_heartbeat
 def cleanup_temp_dir(params: CleanupTempDirParams) -> str:
     """Activity that deletes a temporary directory recursively."""
     import shutil
@@ -108,6 +128,7 @@ class ArchiveExtractionAndScan:
                 archive_path=params.archive_path,
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         out_dir = res.get("out_dir")
@@ -122,6 +143,7 @@ class ArchiveExtractionAndScan:
                 archive_types=params.archive_types,
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -151,6 +173,7 @@ class ArchiveExtractionAndScan:
             cleanup_temp_dir,
             CleanupTempDirParams(out_dir=out_dir),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 

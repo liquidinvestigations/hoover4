@@ -33,15 +33,15 @@ exactly one source of truth in Python.
 
 `CollectEtaSamples` is a singleton workflow (id `collect-eta-samples`, started at worker
 bootstrap with `USE_EXISTING`). Each pass writes one row per (collection, dataset, stage)
-into the global `processing_eta_samples` table (migration `00016`); the website only ever
+into the global `processing_eta_samples` table (migration `00013`); the website only ever
 *reads* that table — the expensive `uniqExact` scans never run in a request path.
 
-- One rate per stage — P1 plan, P2/P3 execute, P4 NLP, P5 index — measured over the
+- One rate per stage — P1 plan, P2/P3 execute, P4 NLP, P6 index — measured over the
   trailing **100 watermark events** (plans created, plans finished, segments
   NLP-processed, documents indexed), not over a wall-clock window.
 - Each stage's rate is measured in every unit the schema offers: items/s (blobs, plans,
   segments, documents) and bytes/s (`blobs.blob_size_bytes`,
-  `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`). P5 has no byte
+  `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`). P6 has no byte
   watermark, so documents/s is its only measure; P0 is not sampled at all (no timestamps,
   no knowable denominator — the live count stays on the stage bar).
 - The remaining-time projections from the two units are combined by taking the **more

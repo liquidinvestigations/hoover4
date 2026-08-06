@@ -7,6 +7,7 @@ import requests
 import time
 import pytest
 from test_utils import (
+    DEFAULT_BASE_URL,
     validate_server_connection, print_test_header, print_test_subheader, check_server_health
 )
 
@@ -43,7 +44,7 @@ def test_basic_reranking():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": query,
                 "documents": documents
@@ -119,7 +120,7 @@ def test_top_k_filtering():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": query,
                 "documents": documents,
@@ -173,7 +174,7 @@ def test_return_documents_false():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": query,
                 "documents": documents,
@@ -219,7 +220,7 @@ def test_reranking_error_handling():
     print("Testing empty query...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": "",
                 "documents": documents
@@ -236,7 +237,7 @@ def test_reranking_error_handling():
     print("Testing empty documents list...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": "valid query",
                 "documents": []
@@ -253,7 +254,7 @@ def test_reranking_error_handling():
     print("Testing missing query field...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "documents": documents
             }
@@ -301,7 +302,7 @@ def test_reranking_performance():
     try:
         start_time = time.time()
         response = requests.post(
-            "http://localhost:8000/v1/rerank",
+            DEFAULT_BASE_URL + "/v1/rerank",
             json={
                 "query": query,
                 "documents": large_docs,

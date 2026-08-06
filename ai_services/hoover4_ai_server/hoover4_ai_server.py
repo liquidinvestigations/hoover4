@@ -579,6 +579,10 @@ async def health_check():
     
     return {
         "status": "healthy" if core_models_loaded else "unhealthy",
+        # Config-drift guard: deploy.py passes the sha256 of the normalised
+        # [ai_services] ini section; verify-stack.sh compares it against what the
+        # main host rendered from its own copy of hoover4.ini.
+        "config_fingerprint": os.environ.get("HOOVER4_CONFIG_FINGERPRINT", ""),
         "embedding_model_loaded": model is not None,
         "reranker_model_loaded": reranker is not None,
         "ner_model_loaded": ner_model is not None,

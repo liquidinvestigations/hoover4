@@ -12,7 +12,7 @@ The website then only reads that table — a cheap, indexed query.
 
 The estimate, in words:
 
-* one rate per stage (P1 plan, P2/P3 execute, P4 NLP, P5 index), measured over
+* one rate per stage (P1 plan, P2/P3 execute, P4 NLP, P6 index), measured over
   the trailing 100 watermark *events* (plans created, plans finished, segments
   NLP-processed, documents indexed), not over a wall-clock window;
 * each stage's rate is measured in every unit the raw data offers — items/s
@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 STAGE_PLAN = "P1_plan"
 STAGE_EXECUTE = "P2_execute"
 STAGE_NLP = "P4_nlp"
-STAGE_INDEX = "P5_index"
+STAGE_INDEX = "P6_index"
 
 #: Events per rate sample. A wall-clock window with three completions in it is a
 #: rate with no information; 100 events is a sample.
@@ -254,7 +254,7 @@ def _sample_nlp(client, ds: str) -> StageSample:
 
 
 def _sample_index(client, ds: str) -> StageSample:
-    """P5 — indexing. Unit: documents. No byte watermark exists at this stage
+    """P6 — indexing. Unit: documents. No byte watermark exists at this stage
     (``index_state`` carries no size), so the items projection is the only one."""
     done = _query(client, "SELECT uniqExact(file_hash) FROM index_state WHERE collection_dataset = {ds:String}", ds)[0][0]
     total = _query(client, "SELECT uniqExact(file_hash) FROM text_content WHERE collection_dataset = {ds:String}", ds)[0][0]

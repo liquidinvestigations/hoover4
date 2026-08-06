@@ -9,6 +9,7 @@ import os
 import math
 
 import logging
+from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ParseImageParams:
 
 
 @activity.defn
+@with_heartbeat
 def parse_image_metadata_and_store(params: ParseImageParams) -> str:
     from database.clickhouse import get_collection_client
     import pyarrow as pa

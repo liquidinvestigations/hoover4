@@ -6,6 +6,7 @@ Named Entity Recognition (NER) tests for the embedding server
 import requests
 import pytest
 from test_utils import (
+    DEFAULT_BASE_URL,
     validate_server_connection, print_test_header, check_server_health
 )
 
@@ -35,7 +36,7 @@ def test_basic_entity_extraction():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": test_text
             }
@@ -116,7 +117,7 @@ def test_entity_type_filtering():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": test_text,
                 "entity_types": ["PER", "ORG"]
@@ -170,7 +171,7 @@ def test_entity_extraction_multiple_texts():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": test_texts
             }
@@ -214,7 +215,7 @@ def test_ner_error_handling():
     print("Testing empty text...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": ""
             }
@@ -230,7 +231,7 @@ def test_ner_error_handling():
     print("Testing missing input field...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={}
         )
 
@@ -244,7 +245,7 @@ def test_ner_error_handling():
     print("Testing invalid entity types...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": "Test text with some content.",
                 "entity_types": ["INVALID_TYPE"]
@@ -301,7 +302,7 @@ def test_ner_performance():
         start_time = time.time()
 
         response = requests.post(
-            "http://localhost:8000/v1/extract-entities",
+            DEFAULT_BASE_URL + "/v1/extract-entities",
             json={
                 "input": long_text
             }

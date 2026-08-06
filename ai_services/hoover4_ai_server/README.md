@@ -7,7 +7,7 @@ A high-performance FastAPI-based server that provides OpenAI-compatible APIs for
 
  **Performance Optimized**: Batch processing, GPU acceleration, and hardware-adaptive configurations for maximum throughput.
 
-> ** Project Overview**: This is part of the [Alex RAG Demo](../README.md) project - a comprehensive RAG system with document ingestion, vector search, and interactive chat interface. This server provides the AI services (embeddings, NER, reranking) used by the RAG system.
+> ** Project Overview**: Part of the Hoover4 [ai_services tier](../README.md) — the optional GPU stack. This server provides the embeddings, NER and reranking used by the processing pipeline and the agents.
 
 ## Quick Start
 
@@ -221,6 +221,8 @@ poetry run python tests/test_batch_optimization.py  # Batch size optimization
 
 ##  Related Components
 
-- **[Main Project](../README.md)**: Complete RAG system setup and usage
-- **[Hoover4 AI Clients](../hoover4_ai_clients/README.md)**: Client libraries for connecting to this server
-- **[Hoover4 RAG](../hoover4_rag/README.md)**: Main RAG chain implementation that uses this server's services
+- **[ai_services tier](../README.md)**: the optional GPU tier this server belongs to —
+  deployment, overlays, security posture
+- **[main_services/agents](../../main_services/agents/README.md)**: the MCP servers and
+  research agents (moved to the main stack in plan 1 part 1)
+- **Processing pipeline**: the P4 NER stage calls this server via `NER_URL`

@@ -22,8 +22,8 @@ from database.manticore import get_manticore_client, list_shard_tables
 from tasks.P0_scan_disk.submit_job import add_disk_dataset
 from tasks.P1_compute_plans.submit_job import submit_compute_plans
 from tasks.P2_execute_plan.submit_job import submit_execute_plans
-from tasks.P5_index_data import shard_planner
-from tasks.P5_index_data.params import PlanShardsParams
+from tasks.P6_index_data import shard_planner
+from tasks.P6_index_data.params import PlanShardsParams
 
 from .helpers import wait_for_plans_finished
 

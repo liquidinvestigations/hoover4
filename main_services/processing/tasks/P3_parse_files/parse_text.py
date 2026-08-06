@@ -4,6 +4,7 @@ from temporalio import activity
 from typing import Dict, Any
 from dataclasses import dataclass
 import logging
+from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class ExtractPlaintextParams:
 
 
 @activity.defn
+@with_heartbeat
 def extract_plaintext_chunks(params: ExtractPlaintextParams) -> int:
     """Activity that reads text files and inserts into text_content in 3MB chunks."""
     from tasks.P3_parse_files.parse_common import insert_text_chunks

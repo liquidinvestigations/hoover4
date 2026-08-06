@@ -23,7 +23,7 @@ def compose_collection_dataset(collectionname: str, dataset_name: str) -> str:
     return f"{collectionname}_{dataset_name}"
 
 
-def add_disk_dataset(collectionname: str, dataset_name: str, path: str):
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool = True):
     from database.clickhouse import (
         get_global_client,
         migrate_collection,
@@ -101,21 +101,41 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str):
     async def _start_workflow():
         log.info("Starting temporal workflow...")
         client = await TemporalClient.connect("temporal:7233")
+        # Do not assume the worker registered this first. On a fresh
+        # --reset the CLI regularly wins that race, and an unregistered
+        # search attribute makes the start below fail outright.
+        from tasks.visibility import ensure_search_attributes_ready, start_with_attribute_retry
+        await ensure_search_attributes_ready(client)
         from tasks.P0_scan_disk.workflows import IngestDiskDataset
 
-        await client.execute_workflow(
+        args = (
             IngestDiskDataset.run,
             {
                 "collectionname": collectionname,
                 "collection_dataset": collection_dataset,
                 "dataset_path": path,
             },
+        )
+        kwargs = dict(
             id=f"ingest-disk-{collection_dataset}",
             task_queue="processing-common-queue",
             id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
             search_attributes=dataset_search_attributes(collection_dataset),
         )
-        log.info("Temporal workflow finished.")
+        if wait:
+            await start_with_attribute_retry(
+                lambda: client.execute_workflow(*args, **kwargs)
+            )
+            log.info("Temporal workflow finished.")
+        else:
+            # start_workflow returns as soon as the server has the workflow
+            # durably recorded. The caller is then free to die -- which is the
+            # point: execute_workflow ties the ingest's fate to a CLI process
+            # that a redeploy will SIGKILL.
+            handle = await start_with_attribute_retry(
+                lambda: client.start_workflow(*args, **kwargs)
+            )
+            log.info("Temporal workflow started: %s (not waiting)", handle.id)
 
     asyncio.run(_start_workflow())

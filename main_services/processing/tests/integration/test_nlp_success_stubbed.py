@@ -18,9 +18,9 @@ from database.clickhouse import get_collection_client
 from database.manticore import get_manticore_client, list_shard_tables
 from tasks.P4_extract_entities import activities as p4_activities
 from tasks.P4_extract_entities.params import ExtractEntitiesParams
-from tasks.P5_index_data import shard_planner
-from tasks.P5_index_data.activities import index_text_pages
-from tasks.P5_index_data.params import IndexShardParams, PlanShardsParams
+from tasks.P6_index_data import shard_planner
+from tasks.P6_index_data.activities import index_text_pages
+from tasks.P6_index_data.params import IndexShardParams, PlanShardsParams
 
 from .helpers import ingest_dataset, wait_for_plans_finished
 
@@ -31,10 +31,11 @@ STUB_MODEL = "ner-stub-test"
 
 
 def _stub_ner(texts):
+    # Same shape as the real client: (entities_per_text, serving nlp_model).
     return [
         {"PER": ["Alice"], "ORG": ["Acme"], "LOC": [], "MISC": []}
         for _ in texts
-    ]
+    ], STUB_MODEL
 
 
 def _mva_str(value) -> str:
@@ -66,8 +67,10 @@ def test_nlp_success_path_with_stubbed_ner(temp_collection, tiny_dataset, monkey
     assert segment_count > 0 and hashes
 
     # A dedicated model id makes the left-anti join reprocess every segment,
-    # whether or not the real NER service succeeded during ingest.
-    monkeypatch.setattr(p4_activities, "NLP_MODEL", STUB_MODEL)
+    # whether or not the real NER service succeeded during ingest. The stub
+    # returns it as the *serving* model too, so the watermark is written under
+    # STUB_MODEL exactly as a real provider would write its own id.
+    monkeypatch.setattr(p4_activities, "configured_nlp_model", lambda: STUB_MODEL)
     monkeypatch.setattr(p4_activities, "extract_ner_from_texts", _stub_ner)
 
     result = p4_activities.extract_entities_for_hashes(

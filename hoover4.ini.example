@@ -1,0 +1,173 @@
+# =============================================================================
+# hoover4.ini — the single source of truth for BOTH stacks.
+#
+# Copy this file to `hoover4.ini` (gitignored) and edit. The SAME file is copied by
+# hand to both hosts (the GPU host and the main host); deploy.py renders it into the
+# generated .env files next to each compose file and shells out to `docker compose`.
+#
+#   ./deploy                    main_services only
+#   ./deploy --ai-services      ai_services only
+#   ./deploy --print-env        render and show the .env file, start nothing
+#   ./deploy --print-command    show the docker compose invocation, run nothing
+#   ./deploy --build            build images first
+#   ./deploy --down             compose down for the selected side
+#   ./deploy --reset            down + remove data volumes (model caches preserved)
+#   ./deploy --reset --reset-caches
+#                               also remove the model caches (tens of GB re-download)
+#
+# SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
+# NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
+# protection. An exposed hoover4-vllm is a free GPU for the internet; an exposed
+# EasyOCR endpoint is a free DoS surface. bind_ip below exists so you can bind to the
+# private interface only — use it.
+#
+# SECRETS: *_file keys hold host PATHS to key files, never values. deploy.py turns
+# each into a read-only bind mount (/run/secrets/<name>); a container learns the path,
+# never the value. The files must exist, must be chmod 600, and must live OUTSIDE the
+# repository checkout — deploy.py refuses otherwise (keys inside the checkout leak
+# into build contexts and commits).
+# =============================================================================
+
+[ai_services]
+# The whole GPU tier is optional. DEFAULT OFF: with enabled = false, ./deploy
+# --ai-services refuses with a clear message, and main_services runs alone.
+enabled            = false
+
+# How main_services reaches this box (ignored on the GPU host itself). Must be an
+# address the worker/website CONTAINERS can route to: on a two-host setup the GPU
+# box's private-network IP; on a single-box dev setup the machine's LAN IP — NOT
+# 127.0.0.1, which inside a container is the container itself.
+host               = 127.0.0.1
+
+# Interface the GPU services bind to. MUST be a private-network address in any real
+# two-host deployment (see SECURITY above). 0.0.0.0 is only tolerable on a single-box
+# trusted setup.
+bind_ip            = 0.0.0.0
+
+# ---- local LLM: SUPPORTED BUT PARKED -------------------------------------------
+# The overlay, the image pin and the docs stay, but nothing in Part 1 or Part 2
+# starts vLLM — the NVIDIA NIM cloud provider carries the live tests instead.
+llm_selfhosted     = false
+vllm_port          = 21960
+vllm_image         = vllm/vllm-openai:v0.17.1
+vllm_model         = Qwen/Qwen3.5-2B
+vllm_served_name   = qwen3.5-2b
+vllm_gpu_fraction  = 0.50
+vllm_max_model_len = 262144
+vllm_tool_parser   = qwen3_xml
+; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
+vllm_api_key_file  =
+
+# ---- GPU NER + embeddings -------------------------------------------------------
+ai_server_enabled  = true
+ai_server_port     = 21961
+ner_enabled        = true
+embeddings_enabled = true
+embeddings_model   = intfloat/multilingual-e5-small
+embeddings_dim     = 384
+reranker_enabled   = false
+half_precision     = true
+; torch.compile costs minutes of startup for a modest gain and has been the most
+; common cause of "the AI server never becomes healthy" — keep false.
+torch_compile      = false
+; host path to a HuggingFace token file, only for gated models (usually empty)
+hf_token_file      =
+
+# ---- GPU OCR --------------------------------------------------------------------
+easyocr_enabled    = true
+easyocr_port       = 21962
+easyocr_languages  = en
+
+[main_services]
+# ---- which side of each capability the pipeline prefers (Part 2 consumers) ------
+ner_provider          = gpu        ; gpu | spacy | both
+embeddings_provider   = gpu        ; gpu | cpu | none
+pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
+tesseract_cpu_enabled = true
+tesseract_languages   = eng
+ocr_pdf_enabled       = true
+
+# ---- runtime behaviour when the GPU host is unreachable -------------------------
+gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
+gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline
+gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
+
+# ---- dev tooling ----------------------------------------------------------------
+; Serena MCP server for the host-side coding agent (Phase A). Dev tool only, never
+; part of the deployed stack; published on 127.0.0.1 only. Resets never touch it.
+serena_enabled     = true
+serena_port        = 21940
+
+# ---- demo / data ----------------------------------------------------------------
+; demo mode treats anonymous guest-* sessions as admins. true only for public demos.
+demo_mode          = false
+; host dir mounted at /testdata in the worker (must exist). Empty = in-repo testdata.
+testdata_dir       =
+; shared bearer token between the research agents and the MCP servers (host path to
+; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
+mcp_shared_secret_file =
+
+# ---- ports ----------------------------------------------------------------------
+; Every service port is an ini key. The one exception is the website, which stays
+; hardcoded on 12345 in the compose file — it is the one URL humans type.
+clickhouse_http_port      = 21900
+clickhouse_native_port    = 21901
+manticore_sql_port        = 21902
+manticore_http_port       = 21903
+minio_api_port            = 21904
+minio_console_port        = 21905
+redis_port                = 21906
+temporal_grpc_port        = 21907
+temporal_http_port        = 21908
+temporal_ui_port          = 21909
+clickhouse_monitoring_port = 21910
+ch_ui_port                = 21911
+cassandra_port            = 21912
+elasticsearch_port        = 21913
+
+pdf_to_html_port          = 21920
+tesseract_cpu_port        = 21921   ; Part 2
+ocr_pdf_port              = 21922   ; Part 2
+ner_spacy_port            = 21923   ; Part 2
+embeddings_cpu_port       = 21924   ; Part 2
+
+mcp_collections_port      = 21930
+mcp_metasearch_port       = 21931
+mcp_browser_port          = 21932
+mcp_ddg_port              = 21933
+mcp_whois_port            = 21934
+mcp_wikipedia_port        = 21935
+internal_search_agent_port = 21936
+full_research_agent_port  = 21937
+
+# ---- image pins -----------------------------------------------------------------
+cassandra_version      = 3.11.9
+elasticsearch_version  = 7.17.27
+temporal_version       = 1.23.1
+temporal_ui_version    = 2.26.2
+minio_version          = RELEASE.2025-07-23T15-54-02Z
+
+# ---- LLM providers --------------------------------------------------------------
+# Repeatable by name, several active at once. main_services talks to the selfhosted
+# one when llm_selfhosted = true, otherwise the first enabled cloud provider.
+# api_key_file: host path to a file containing ONLY the key (chmod 600, outside the
+# repo). model: empty keeps the provider's default (Part 2's registry discovers it).
+
+[llm_provider.selfhosted]
+enabled      = false
+base_url     =           ; empty = http://<ai_services.host>:<vllm_port>/v1
+model        =           ; empty = vllm_served_name
+api_key_file =
+
+[llm_provider.nvidia]
+; The only LLM provider in Part 2's live tests — vLLM is parked.
+enabled      = true
+base_url     = https://integrate.api.nvidia.com/v1
+model        = nvidia/nemotron-3-super-120b-a12b
+api_key_file =           ; e.g. /root/secrets/nvidia-nim.txt
+
+[llm_provider.moonshot]
+enabled      = false
+base_url     = https://api.moonshot.ai/v1
+model        =
+api_key_file =

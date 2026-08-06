@@ -102,11 +102,18 @@ pub async fn search_document_text_for_hits(
     Ok(result)
 }
 
-pub async fn search_document_text_for_hit_count(
+/// Every matching `(extracted_by, page_id)` of one document, in one query.
+///
+/// The per-page variant above exists for the viewer, which asks about the one page it is
+/// showing. Anything that wants the whole document must come through here: since
+/// `page_id` became a real page number (Part 2 Phase 0), a document has hundreds of pages
+/// where it used to have one 32 MB segment, and looping the per-page query over
+/// `min_page..=max_page` turns one round trip into one per page.
+pub async fn search_document_text_all_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     find_query: String,
-) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
+) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
@@ -147,6 +154,16 @@ pub async fn search_document_text_for_hit_count(
             highlight_text_spans: decompose_text_into_spans(hit._source.text),
         })
         .collect::<Vec<_>>();
+
+    Ok(result)
+}
+
+pub async fn search_document_text_for_hit_count(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    find_query: String,
+) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
+    let result = search_document_text_all_hits(user, document_identifier, find_query).await?;
 
     let result = result
         .into_iter()

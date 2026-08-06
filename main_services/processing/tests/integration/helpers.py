@@ -40,7 +40,7 @@ def ner_service_reachable() -> bool:
 
 
 def wait_for_plans_finished(collectionname: str, timeout_s: int = 1800) -> None:
-    """Poll until every plan of the collection is finished (P0..P5 chain done).
+    """Poll until every plan of the collection is finished (P0..P6 chain done).
 
     ``processing_plan_finished`` is written at the very end of the per-plan
     workflow chain (parse -> NLP -> index), so equality means ingestion,

@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 
 with workflow.unsafe.imports_passed_through():
+    from tasks.heartbeat import HEARTBEAT_TIMEOUT
     from tasks.P3_parse_files.parse_pdf import PdfProcessingWorkflowParams
     from tasks.P3_parse_files.parse_email import EmailExtractionWorkflowParams
     from tasks.P3_parse_files.parse_common import record_errors_from_results
@@ -29,7 +30,8 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_image import parse_image_metadata_and_store, ParseImageParams
     from tasks.P3_parse_files.parse_audio import parse_audio_metadata_and_store, ParseAudioParams
     from tasks.P3_parse_files.parse_video import VideoProcessingAndScan
-    from tasks.P3_parse_files.parse_ocr import run_easyocr_and_store, RunEasyOCRParams
+    from tasks.P3_parse_files.parse_ocr import run_ocr_and_store, RunOcrParams
+    from tasks.text_sources import OCR_ENGINES
     from tasks.P2_execute_plan.activities import record_processing_errors
     from tasks.visibility import dataset_search_attributes
 
@@ -68,6 +70,7 @@ class ParseSingleFile:
                 timeout_seconds=proc_secs,
             ),
             start_to_close_timeout=timedelta(seconds=proc_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -82,6 +85,7 @@ class ParseSingleFile:
                 timeout_seconds=1000+proc_secs,
             ),
             start_to_close_timeout=timedelta(seconds=1000+proc_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
             task_queue="processing-tika-queue",
         )
@@ -96,6 +100,7 @@ class ParseSingleFile:
                 timeout_seconds=proc_secs,
             ),
             start_to_close_timeout=timedelta(seconds=proc_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -126,6 +131,7 @@ class ParseSingleFile:
                                 "errors": [str(res)],
                             },
                             start_to_close_timeout=timedelta(minutes=15),
+                            heartbeat_timeout=HEARTBEAT_TIMEOUT,
                             retry_policy=RetryPolicy(maximum_attempts=1),
                         )
                     except Exception:
@@ -206,6 +212,7 @@ class ParseSingleFile:
                         timeout_seconds=proc_secs,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
             )
@@ -244,30 +251,41 @@ class ParseSingleFile:
                         timeout_seconds=proc_secs,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
             )
             task_ids.append("parse_image_metadata_and_store")
             starts.append(workflow.now())
 
-            # Also run EasyOCR for text extraction from the image (routed to easyocr queue)
-            futs.append(
-                workflow.execute_activity(
-                    run_easyocr_and_store,
-                    RunEasyOCRParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        file_hash=params.item_hash,
-                        file_path=params.file_path,
-                        timeout_seconds=proc_secs,
-                    ),
-                    start_to_close_timeout=timedelta(seconds=proc_secs),
-                    retry_policy=RetryPolicy(maximum_attempts=3),
-                    task_queue="processing-easyocr-queue",
+            # One OCR activity per engine, on the engine-neutral OCR queue. Which
+            # languages each engine runs -- and whether it runs at all -- is decided
+            # inside the activity from `dataset_settings`, not here: a workflow argument
+            # would freeze the value at schedule time, and the whole point of the apply
+            # job is to reach activities that are already in flight.
+            #
+            # An engine with no endpoint configured records a skip and succeeds, so this
+            # fan-out costs nothing on a box with no GPU tier.
+            for engine in OCR_ENGINES:
+                futs.append(
+                    workflow.execute_activity(
+                        run_ocr_and_store,
+                        RunOcrParams(
+                            collectionname=params.collectionname,
+                            collection_dataset=params.collection_dataset,
+                            file_hash=params.item_hash,
+                            file_path=params.file_path,
+                            engine=engine,
+                            timeout_seconds=proc_secs,
+                        ),
+                        start_to_close_timeout=timedelta(seconds=proc_secs),
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=3),
+                        task_queue="processing-ocr-queue",
+                    )
                 )
-            )
-            task_ids.append("run_easyocr_and_store")
-            starts.append(workflow.now())
+                task_ids.append(f"run_ocr_and_store[{engine}]")
+                starts.append(workflow.now())
 
         if "audio" in coarse_types:
             futs.append(
@@ -281,6 +299,7 @@ class ParseSingleFile:
                         timeout_seconds=proc_secs,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
             )

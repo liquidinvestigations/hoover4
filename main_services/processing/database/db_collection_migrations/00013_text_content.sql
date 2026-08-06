@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS text_content
     collection_dataset LowCardinality(String) COMMENT 'Dataset, joins to files via file_hash',
     file_hash String COMMENT 'Hash of the source file that yielded this text',
     extracted_by String COMMENT 'Extractor that produced this text (e.g., pdfminer, tika)',
-    page_id UInt32 COMMENT 'Page/segment id when applicable',
+    page_id UInt32 COMMENT '1-based page number for paged formats (PDF, TIFF). For non-paged text, a 1-based ~256KB segment ordinal. Never 0.',
     text String COMMENT 'Text content for a page/part (<1M suggested)'
 )
 ENGINE = ReplacingMergeTree

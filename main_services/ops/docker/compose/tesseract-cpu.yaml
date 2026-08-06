@@ -1,0 +1,44 @@
+# Overlay: Tesseract OCR over HTTP, CPU only (enabled via
+# [main_services] tesseract_cpu_enabled).
+#
+# This lives on the MAIN side, not with the GPU tier, and that placement is the whole
+# point: it is the half that has to keep working when the GPU host is unreachable. A CPU
+# twin that shares a host with the thing it is a twin of is not a twin.
+services:
+  hoover4-tesseract-cpu:
+    build:
+      # Narrow context on purpose — never widen to main_services/ or the repo root
+      # (testdata/ and plans/tmp/ would silently bloat every build).
+      context: ${HOOVER4_REPO_ROOT}/main_services/ocr_tesseract
+      dockerfile: Dockerfile
+    image: hoover4-tesseract-cpu:local
+    container_name: hoover4-tesseract-cpu
+    ports:
+      - "127.0.0.1:${TESSERACT_CPU_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Tesseract is CPU-bound and already multithreaded per page. Concurrency above
+      # this trades throughput for latency across every in-flight request at once.
+      - OCR_CONCURRENCY=${OCR_CONCURRENCY:-2}
+      - OCR_QUEUE_DEPTH=${OCR_QUEUE_DEPTH:-8}
+      # A wedged child is the one failure an HTTP boundary does not fix by itself.
+      - OCR_SUBPROCESS_TIMEOUT_S=${OCR_SUBPROCESS_TIMEOUT_S:-300}
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # No model download and no GPU: up in seconds, unlike its EasyOCR twin, whose
+      # start_period has to allow for a first-run weight download.
+      start_period: 20s
+    networks:
+      - hoover4
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true

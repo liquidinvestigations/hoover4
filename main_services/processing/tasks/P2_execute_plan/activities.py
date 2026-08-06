@@ -8,6 +8,7 @@ import os
 import shutil
 import logging
 import pyarrow as pa
+from tasks.heartbeat import with_heartbeat
 
 import pyarrow.compute as pc
 
@@ -26,6 +27,7 @@ class ListPendingPlansParams:
 
 
 @activity.defn
+@with_heartbeat
 def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
     """Activity that lists up to 1001 pending plan hashes to execute."""
     from database.clickhouse import get_collection_client
@@ -65,6 +67,7 @@ class GetPlanItemsMetadataParams:
 
 
 @activity.defn
+@with_heartbeat
 def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str, Any]]:
     """Activity that joins plan hits with file types and blob metadata."""
     from database.clickhouse import get_collection_client
@@ -130,6 +133,7 @@ class DownloadPlanFilesParams:
 
 
 @activity.defn
+@with_heartbeat
 def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     """Activity that downloads plan files locally from S3 or ClickHouse."""
     from database.minio import get_minio_client, ensure_bucket
@@ -242,6 +246,7 @@ class CleanupPlanDirParams:
 
 
 @activity.defn
+@with_heartbeat
 def cleanup_plan_dir(params: CleanupPlanDirParams) -> str:
     """Activity that deletes a plan's temp directory after processing."""
     collection_dataset: str = params.collection_dataset
@@ -261,6 +266,7 @@ class EnsureTempDirExistsParams:
 
 
 @activity.defn
+@with_heartbeat
 def ensure_temp_dir_exists(params: EnsureTempDirExistsParams) -> str:
     """Activity that ensures the base temp directory exists on disk."""
     base_temp_dir: str = params.base_temp_dir
@@ -276,6 +282,7 @@ class MarkPlanFinishedParams:
 
 
 @activity.defn
+@with_heartbeat
 def mark_plan_finished(params: MarkPlanFinishedParams) -> str:
     """Activity that records the completion of a processing plan."""
     from database.clickhouse import get_collection_client
@@ -299,6 +306,7 @@ class RecordProcessingErrorsParams:
 
 
 @activity.defn
+@with_heartbeat
 def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     """Activity that records multiple processing error rows into ClickHouse in one insert.
 

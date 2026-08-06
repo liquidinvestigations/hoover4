@@ -13,7 +13,8 @@ pub struct CollectionRow {
     pub updated_at: time::OffsetDateTime,
     pub is_deleted: u8,
     /// 0 = restricted (readable only through a group grant), 1 = public (readable by
-    /// every authenticated user). See `00011_collections_access_mode.sql`.
+    /// every authenticated user). Declared in `00005_collections.sql` — it was its own
+    /// `ALTER` migration until the Part 2 Phase 0 re-collapse folded it in.
     pub is_public: u8,
 }
 

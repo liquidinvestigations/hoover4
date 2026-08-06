@@ -3,6 +3,8 @@
 Shared utility functions for embedding server tests
 """
 
+import os
+
 import requests
 import math
 import statistics
@@ -40,7 +42,12 @@ def euclidean_distance(vec1: List[float], vec2: List[float]) -> float:
     return math.sqrt(squared_diff_sum)
 
 
-def check_server_health(base_url: str = "http://localhost:8000") -> Dict:
+# The server under test. The published port is [ai_services] ai_server_port from
+# hoover4.ini (rendered by deploy.py); override for a remote GPU host.
+DEFAULT_BASE_URL = os.environ.get("AI_SERVER_TEST_URL", "http://localhost:21961")
+
+
+def check_server_health(base_url: str = DEFAULT_BASE_URL) -> Dict:
     """Check if the embedding server is healthy"""
     try:
         health_response = requests.get(f"{base_url}/health")
@@ -83,7 +90,7 @@ def print_server_status(health_data: Dict):
         print("CUDA available: No (using CPU)")
 
 
-def validate_server_connection(base_url: str = "http://localhost:8000") -> bool:
+def validate_server_connection(base_url: str = DEFAULT_BASE_URL) -> bool:
     """Validate server connection and return True if healthy"""
     health_data = check_server_health(base_url)
     if health_data.get("status") == "unreachable":

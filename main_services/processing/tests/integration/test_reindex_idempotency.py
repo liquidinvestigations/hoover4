@@ -14,9 +14,9 @@ import pytest
 
 from database.clickhouse import get_collection_client
 from database.manticore import get_manticore_client, list_shard_tables
-from tasks.P5_index_data import shard_planner
-from tasks.P5_index_data.activities import index_metadata, index_text_pages
-from tasks.P5_index_data.params import (
+from tasks.P6_index_data import shard_planner
+from tasks.P6_index_data.activities import index_metadata, index_text_pages
+from tasks.P6_index_data.params import (
     FinalizeIndexBatchParams,
     IndexShardParams,
     PlanShardsParams,

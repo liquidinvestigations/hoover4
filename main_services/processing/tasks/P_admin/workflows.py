@@ -7,6 +7,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
+    from tasks.heartbeat import HEARTBEAT_TIMEOUT
     from tasks.P_admin.activities import (
         CollectionDatabaseParams,
         PurgeDatasetParams,
@@ -37,6 +38,7 @@ class EnsureCollectionDatabase:
             ensure_collection_database,
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -51,6 +53,7 @@ class DropCollectionDatabase:
             drop_collection_database,
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -73,18 +76,21 @@ class PurgeDataset:
             purge_dataset_from_manticore,
             PurgeDatasetParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         await workflow.execute_activity(
             purge_dataset_from_clickhouse,
             PurgeDatasetParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         return await workflow.execute_activity(
             recompute_shard_ledger_activity,
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -117,6 +123,7 @@ class CollectEtaSamples:
                 collect_eta_samples,
                 CollectEtaSamplesParams(skip_collections=skip),
                 start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=2),
             )
 

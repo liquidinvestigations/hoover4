@@ -15,11 +15,22 @@ log = logging.getLogger(__name__)
 
 from tasks.P0_scan_disk.workflows import HandleFoldersParams
 from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
+from tasks.heartbeat import HEARTBEAT_TIMEOUT, HeartbeatClock, heartbeat_pump, with_heartbeat
+
+
+#: Wall-clock ceiling for one qpdf/pdftotext invocation. These had NO timeout,
+#: which the heartbeat pump does not fix: the pump proves the pump thread is
+#: alive, so a wedged qpdf would heartbeat happily until start_to_close. A
+#: subprocess timeout is the only thing that catches a wedged child
+#: (plans/1-part-3.md 2.5). Generous, because a 500-page split is legitimately
+#: slow -- the point is that it is finite.
+_PDF_SUBPROCESS_TIMEOUT_S = 900
 
 
 def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
     cmd = ["qpdf"] + args
-    return subprocess.run(cmd, capture_output=True)
+    return subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+                          timeout=_PDF_SUBPROCESS_TIMEOUT_S)
 
 
 def _qpdf_show_npages(path: str) -> int:
@@ -48,19 +59,62 @@ def _qpdf_json(path: str) -> Dict[str, Any]:
 
 def _maybe_pdftotext(path: str) -> Optional[str]:
     try:
-        res = subprocess.run(["pdftotext", "-enc", "UTF-8", "-layout", path, "-"], capture_output=True)
+        res = subprocess.run(["pdftotext", "-enc", "UTF-8", "-layout", path, "-"],
+                             capture_output=True, stdin=subprocess.DEVNULL,
+                             timeout=_PDF_SUBPROCESS_TIMEOUT_S)
         if res.returncode == 0:
             return (res.stdout or b"").decode("utf-8", errors="ignore")
     except FileNotFoundError:
         pass
+    except subprocess.TimeoutExpired:
+        # Text extraction is best-effort here (the caller falls back to other
+        # sources); a wedged pdftotext must not take the whole activity with it.
+        log.warning("[P3] pdftotext timed out for %s", path)
     return None
 
 
-def _insert_text_via_helper(collectionname: str, collection_dataset: str, pdf_hash: str, text_content: Optional[str]) -> int:
-    if not text_content:
+#: pdftotext writes a form feed after every page, including the last one. That single
+#: byte is the whole per-page split: one subprocess call still does the work, and the
+#: alternative -- `pdftotext -f N -l N` once per page -- would be one process spawn per
+#: page of every PDF in the corpus.
+_PAGE_BREAK = "\x0c"
+
+
+def _pdftotext_pages(path: str) -> List[str]:
+    """Return the PDF's text as one string per page, index 0 == page 1.
+
+    An empty list means pdftotext produced nothing usable; an empty *string* at index
+    i means page i+1 has no extractable text, which is the normal signal for a scanned
+    page and is exactly what makes it an OCR candidate. The two are not the same and
+    callers must not collapse them.
+    """
+    raw = _maybe_pdftotext(path)
+    if raw is None:
+        return []
+    pages = raw.split(_PAGE_BREAK)
+    # The trailing form feed produces one empty element past the last real page.
+    if pages and not pages[-1].strip():
+        pages.pop()
+    return pages
+
+
+def _insert_pdf_text_pages(collectionname: str, collection_dataset: str, pdf_hash: str,
+                           pages: List[str]) -> int:
+    """Store extracted PDF text one row per real page.
+
+    `page_id` is the 1-based PDF page number here, not a segment ordinal, which is what
+    makes the document viewer's page jump and `search_document_pdf.rs`'s
+    `min_page..=max_page` iteration correct rather than coincidental. It is also the
+    unit OCR works in, so an OCR variant of the same PDF lines up page for page with
+    this one.
+    """
+    if not pages:
         return 0
-    from tasks.P3_parse_files.parse_common import insert_text_chunks
-    return insert_text_chunks(collectionname, collection_dataset, pdf_hash, "qpdf", text_content)
+    from tasks.P3_parse_files.parse_common import insert_text_pages
+    return insert_text_pages(
+        collectionname, collection_dataset, pdf_hash, "pdftotext",
+        [(i, text) for i, text in enumerate(pages, start=1)],
+    )
 
 
 def _extract_images_with_qpdf(input_pdf: str, out_dir: str) -> List[str]:
@@ -99,6 +153,7 @@ class PdfMetaParams:
 
 
 @activity.defn
+@with_heartbeat
 def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
     from database.clickhouse import get_collection_client
     import pyarrow as pa
@@ -115,12 +170,14 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
     except Exception:
         size_bytes = 0
 
-    page_count = _qpdf_show_npages(file_path)
-    meta = {}
-    try:
-        meta = _qpdf_json(file_path)
-    except Exception:
+    # Two blocking qpdf calls with no loop of their own -> pump.
+    with heartbeat_pump(f"qpdf meta {pdf_hash[:8]}"):
+        page_count = _qpdf_show_npages(file_path)
         meta = {}
+        try:
+            meta = _qpdf_json(file_path)
+        except Exception:
+            meta = {}
 
     # Attempt to derive author and creation date from common keys
     author_fields: List[str] = []
@@ -191,6 +248,7 @@ class PdfSmallParams:
 
 
 @activity.defn
+@with_heartbeat
 def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     """For small PDFs, attempt text extraction and extract images to temp dir."""
     from database.clickhouse import get_collection_client
@@ -207,13 +265,14 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
     out_dir = make_temp_dir(collection_dataset, "pdf", pdf_hash)
 
-    # Try to extract text (fallback to pdftotext if present)
-    text_content = (_maybe_pdftotext(file_path) or "").strip()
-    if text_content and len(text_content) > 1:
-        _insert_text_via_helper(params.collectionname, collection_dataset, pdf_hash, text_content)
+    # Both extractions block in a child process with no loop to beat from.
+    with heartbeat_pump(f"pdf small {pdf_hash[:8]}"):
+        # Text, one row per real PDF page.
+        text_pages = _pdftotext_pages(file_path)
+        _insert_pdf_text_pages(params.collectionname, collection_dataset, pdf_hash, text_pages)
 
-    # Extract images via qpdf (best-effort)
-    image_paths = _extract_images_with_qpdf(file_path, out_dir)
+        # Extract images via qpdf (best-effort)
+        image_paths = _extract_images_with_qpdf(file_path, out_dir)
     if image_paths:
         # Insert image rows and pdfs_image relationships
         from hashlib import sha3_256
@@ -243,8 +302,11 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
 
             rows_link_cd.append(collection_dataset)
             rows_link_pdf.append(pdf_hash)
-            # Best-effort page number: try to infer from filename like img-<obj>-<gen>-p<page>.*; else sequential
-            on_page = idx if page_count == 0 else min(idx, max(0, page_count - 1))
+            # Best-effort page number. qpdf --extract-images names files by object id,
+            # not by page, so this is a sequential approximation and not the real page.
+            # It is 1-based like every other page number in the schema: a 0 in a page
+            # column reads as "page zero exists" to the viewer.
+            on_page = idx + 1 if page_count == 0 else min(idx + 1, max(1, page_count))
             rows_link_page.append(on_page)
             rows_link_img.append(ih)
 
@@ -281,6 +343,7 @@ class PdfLargeParams:
 
 
 @activity.defn
+@with_heartbeat
 def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
     collection_dataset: str = params.collection_dataset
     pdf_hash: str = params.pdf_hash
@@ -307,18 +370,29 @@ def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
         ranges.append((a, b))
         a = b + 1
 
-    # Generate chunk files
+    # Generate chunk files. Class B: this loop is real work per iteration, so an
+    # in-loop heartbeat is strictly better than a pump -- it is evidence of
+    # forward progress rather than evidence of a live thread, and the details
+    # show up in `temporal workflow describe` as an advancing chunk count.
+    heartbeat = HeartbeatClock()
     chunk_files: List[str] = []
-    for i, (a, b) in enumerate(ranges):
-        dest = os.path.join(out_dir, f"chunk_{i+1}_{a}-{b}.pdf")
-        res = _run_qpdf([
-            "--empty", "--no-warn", "--warning-exit-0", "--deterministic-id",
-            "--object-streams=generate", "--remove-unreferenced-resources=yes", "--no-original-object-ids",
-            "--pages", file_path, f"{a}-{b}", "--", dest,
-        ])
-        if res.returncode != 0:
-            raise RuntimeError(f"qpdf split failed for pages {a}-{b}: {res.stderr[:200]} {res.stdout[:200]}")
-        chunk_files.append(dest)
+    try:
+        for i, (a, b) in enumerate(ranges):
+            heartbeat.beat(f"qpdf split {i}/{len(ranges)} chunks")
+            dest = os.path.join(out_dir, f"chunk_{i+1}_{a}-{b}.pdf")
+            res = _run_qpdf([
+                "--empty", "--no-warn", "--warning-exit-0", "--deterministic-id",
+                "--object-streams=generate", "--remove-unreferenced-resources=yes", "--no-original-object-ids",
+                "--pages", file_path, f"{a}-{b}", "--", dest,
+            ])
+            if res.returncode != 0:
+                raise RuntimeError(f"qpdf split failed for pages {a}-{b}: {res.stderr[:200]} {res.stdout[:200]}")
+            chunk_files.append(dest)
+    except BaseException:
+        # A retry must not find half a chunk set from the cancelled attempt.
+        import shutil
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
 
     return {"out_dir": out_dir, "chunks": chunk_files}
 
@@ -348,6 +422,7 @@ class PdfProcessingAndScan:
                 file_path=params.file_path,
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         page_count = int(meta.get("page_count") or 0)
@@ -370,6 +445,7 @@ class PdfProcessingAndScan:
                     page_count=page_count,
                 ),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             out_dir = res.get("out_dir")
@@ -385,6 +461,7 @@ class PdfProcessingAndScan:
                     size_bytes=size_bytes,
                 ),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             out_dir = res.get("out_dir")
@@ -415,6 +492,7 @@ class PdfProcessingAndScan:
                     archive_types=["pdf"],
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
 
@@ -430,6 +508,7 @@ class PdfProcessingAndScan:
                 cleanup_temp_dir,
                 CleanupTempDirParams(out_dir=out_dir),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
 

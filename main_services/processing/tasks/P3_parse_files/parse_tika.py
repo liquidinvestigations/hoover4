@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import json
 import logging
 
+from tasks.heartbeat import heartbeat_pump, with_heartbeat
+
 log = logging.getLogger(__name__)
 
 @dataclass
@@ -51,13 +53,17 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
         "text, meta = ex.extract_file_to_string(sys.argv[1]);"
         "sys.stdout.write(json.dumps({'text': text or '', 'metadata': meta or {}}, default=str))"
     )
+    # Pump, not an in-loop beat: this blocks in a subprocess and has no loop of
+    # its own. KEEP the subprocess timeout below -- the pump proves the pump
+    # thread is alive, not that Extractous is progressing.
     try:
-        res = subprocess.run(
-            [sys.executable, "-c", helper, file_path],
-            capture_output=True,
-            stdin=subprocess.DEVNULL,
-            timeout=_EXTRACTOUS_SUBPROCESS_TIMEOUT_S,
-        )
+        with heartbeat_pump("extractous"):
+            res = subprocess.run(
+                [sys.executable, "-c", helper, file_path],
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                timeout=_EXTRACTOUS_SUBPROCESS_TIMEOUT_S,
+            )
     except subprocess.TimeoutExpired:
         raise ApplicationError(
             f"extractous timed out after {_EXTRACTOUS_SUBPROCESS_TIMEOUT_S}s for {file_path}",
@@ -70,6 +76,7 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
 
 
 @activity.defn
+@with_heartbeat
 def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
     """Activity that uses Extractous to extract text and metadata and stores results.
 

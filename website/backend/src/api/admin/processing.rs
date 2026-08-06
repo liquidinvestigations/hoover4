@@ -29,11 +29,11 @@ use crate::db_utils::clickhouse_utils::{get_collection_client, get_global_client
 /// on a different port and, unlike the API, is reached from the admin's browser rather
 /// than from this container, so it must be a host-reachable address.
 fn temporal_ui_base() -> String {
-    std::env::var("TEMPORAL_UI_URL").unwrap_or_else(|_| "http://localhost:8081".to_string())
+    std::env::var("TEMPORAL_UI_URL").unwrap_or_else(|_| "http://localhost:21909".to_string())
 }
 
 fn temporal_api_base() -> String {
-    std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:7243".to_string())
+    std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +180,17 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P4 — NLP/NER. Denominator is the text segments extracted by P3.
+    // P4 — NLP/NER. Denominator is the text pages extracted by P3.
+    //
+    // These count `(file_hash, extracted_by, page_id)` triples, which used to be
+    // 32 MB segments and are pages now (Part 2 Phase 0): the same corpus reports a unit
+    // count orders of magnitude larger than it did before. The label below says "pages"
+    // for that reason, and `processing_eta_samples` history from before the change is
+    // not comparable — it is reset with the rest of the data.
+    //
+    // `nlp_processed` now carries `nlp_model` too, so a segment has one row per NER
+    // provider. Counting the triple rather than the quad deliberately reads as "at
+    // least one provider has finished this page", which is what the progress bar means.
     let segments_total = grouped_counts(
         &client,
         "SELECT collection_dataset, uniqExact((file_hash, extracted_by, page_id)) AS value \
@@ -203,12 +213,22 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P5 — indexing. Denominator is documents with text, not segments: indexing writes
-    // one Manticore document per file.
+    // P6 — indexing. Denominator is every document that reaches indexing, which is every
+    // blob in the dataset — NOT the documents that have text.
+    //
+    // It used to count `uniqExact(file_hash) FROM text_content`, and that population is
+    // strictly smaller: indexing writes a Manticore document for every file, including
+    // the ones with no extractable text (an image with no OCR hit, a binary, a
+    // zero-byte file), because a document with only metadata is still findable by
+    // filename and type. The bar therefore read `266 / 94 documents` — 283% — on the
+    // first dataset that had many text-free files.
+    //
+    // `blobs` is the same population P0 and P1 report against, so the four stage bars
+    // now share a denominator and can be read down the page as one pipeline.
     let docs_total = grouped_counts(
         &client,
-        "SELECT collection_dataset, uniqExact(file_hash) AS value \
-         FROM text_content GROUP BY collection_dataset",
+        "SELECT collection_dataset, uniqExact(blob_hash) AS value \
+         FROM blobs GROUP BY collection_dataset",
     )
     .await?;
     let docs_indexed = grouped_counts(
@@ -270,7 +290,7 @@ pub async fn admin_collection_processing(
             stage_progress(
                 STAGE_NLP,
                 "P4 · Extract entities (NLP)",
-                "text segments",
+                "text pages",
                 &StageCounts {
                     done: pick(&segments_nlp, &ds),
                     total: Some(pick(&segments_total, &ds)),
@@ -279,7 +299,7 @@ pub async fn admin_collection_processing(
             ),
             stage_progress(
                 STAGE_INDEX,
-                "P5 · Index for search",
+                "P6 · Index for search",
                 "documents",
                 &StageCounts {
                     done: pick(&docs_indexed, &ds),
@@ -929,7 +949,7 @@ mod tests {
             "startTime": "2026-01-01T00:00:00Z",
             "parentExecution": { "workflowId": "parent-1" }
         });
-        let wf = parse_workflow(&raw, "http://localhost:8081").unwrap();
+        let wf = parse_workflow(&raw, "http://localhost:21909").unwrap();
         assert_eq!(wf.status, "FAILED");
         assert!(wf.is_failed());
         assert!(!wf.is_running());
@@ -937,7 +957,7 @@ mod tests {
         assert_eq!(wf.parent_workflow_id.as_deref(), Some("parent-1"));
         assert_eq!(
             wf.temporal_url,
-            "http://localhost:8081/namespaces/default/workflows/execute-plans-c_ds/abc/history"
+            "http://localhost:21909/namespaces/default/workflows/execute-plans-c_ds/abc/history"
         );
     }
 

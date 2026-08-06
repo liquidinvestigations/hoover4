@@ -1,7 +1,7 @@
 //! Usage and API telemetry for the admin metrics page.
 //!
 //! Two ClickHouse tables, both in the global database, both self-deleting after
-//! 24 h (migrations `00017` / `00018`):
+//! 24 h (migrations `00014` / `00015`):
 //!
 //! * `usage_events` — who did roughly what, when. **PRIVACY RULE, do not
 //!   "improve" away:** record only the username, the broad route *class*

@@ -1,7 +1,7 @@
 //! DTOs for the admin metrics pages, shared between frontend and backend.
 //!
 //! Data source: the rolling 24h `usage_events` / `api_events` tables (global
-//! database, migrations `00017`/`00018`). Both are privacy-bounded by design:
+//! database, migrations `00014`/`00015`). Both are privacy-bounded by design:
 //! who, which route class or function name, when — and for the API table how
 //! long and how big. Never a URL, never a query string.
 

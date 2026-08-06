@@ -71,7 +71,7 @@ Data ingestion pipelines orchestrated by [Temporal](https://temporal.io/), backe
 
 ### [AI Services](ai_services/README.md)
 
-GPU-accelerated FastAPI services providing multilingual embeddings, cross-encoder reranking, named entity recognition, a RAG pipeline with hybrid search and chat history, and a research agent with MCP tool integration.
+The optional GPU tier: a FastAPI server providing multilingual embeddings, cross-encoder reranking and named entity recognition, GPU EasyOCR, and a parked local vLLM. Standalone — no dependency on the main stack; the MCP servers and research agents live in [`main_services/agents/`](main_services/agents/README.md).
 
 ### [Website](website/Readme.md)
 
@@ -117,26 +117,39 @@ For development:
 
 ### Deployment
 
-1. **Start AI Services.** From `ai_services/`:
+Both stacks deploy from one `hoover4.ini` at the repository root, copied by hand to
+both hosts (see `hoover4.ini.example` for the fully commented template):
 
 ```bash
-cp env.example .env
-vim .env  # customize the IP addresses and options
-docker compose up -d
+cp hoover4.ini.example hoover4.ini
+$EDITOR hoover4.ini      # ports, providers, secret file paths — never key values
+
+./deploy                 # main_services: databases, worker, website, agents
+./deploy --ai-services   # ai_services: the optional GPU tier (needs [ai_services] enabled = true)
+./deploy --build         # rebuild images (force-recreates)
+./deploy --reset         # wipe data volumes (model caches preserved unless --reset-caches)
+./deploy --print-env     # show the generated .env, start nothing
 ```
 
-The main server starts on port `8080` and provides embeddings, reranking, and NER endpoints.
+`deploy.py` renders the ini into generated `.env` files next to each compose file
+(never edit those by hand), preflights the machine (GPU/CDI, secret files, free
+ports), and shells out to `docker compose`. The main stack brings up Temporal (with
+Cassandra and Elasticsearch), ClickHouse, Manticore, MinIO, Redis, the processing
+worker, the research agents and MCP servers, monitoring UIs, and the website on port
+`12345`. The GPU tier is standalone: no shared network, no dependency on the main
+host — the pipeline reaches it over the published ports in the ini.
 
+Secrets never enter a compose file, a generated `.env` or a command line. The ini
+holds *host paths* to key files (`chmod 600`, outside the checkout — `deploy.py`
+refuses paths inside the repo, since those leak into build contexts); the deploy turns
+each into a read-only bind mount, so a container learns the path and never the value.
 
-2. **Start Main Services.** From `main_services/ops/docker/`:
-
-```bash
-cp env.example .env
-vim .env  # customize the IP addresses and options
-docker compose up -d
-```
-
-This brings up Temporal (with Cassandra and Elasticsearch), ClickHouse, Manticore, MinIO, Redis, Apache Tika, and monitoring UIs, as well as the main website on port `8080`.
+`[main_services] serena_enabled` additionally starts a [Serena](https://github.com/oraios/serena)
+MCP server on `127.0.0.1:21940` for the coding agents (`.mcp.json` points at it). It
+is development tooling, not part of the stack: it runs as its own compose project
+(`hoover4-devtools`) on its own network, so `./deploy --down` and `./deploy --reset`
+cannot take it down mid-session, and its index volume survives a reset. It can read
+and write the whole repository — never publish it off `127.0.0.1`.
 
 ---
 

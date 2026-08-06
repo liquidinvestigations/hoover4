@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
 from database.minio import BUCKET_NAME, get_minio_client, ensure_bucket
+from tasks.heartbeat import with_heartbeat
 
 
 SMALL_BLOB_THRESHOLD_BYTES = 600 * 1024
@@ -93,6 +94,7 @@ class ListDiskFolderParams:
 
 
 @activity.defn
+@with_heartbeat
 def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, List[Dict[str, Any]]]:
     """Activity that lists a folder and returns dir and file metadata."""
     abs_dir = _rel_to_abs(params.dataset_path, params.folder_path)
@@ -141,6 +143,7 @@ class InsertVfsDirectoriesParams:
 
 
 @activity.defn
+@with_heartbeat
 def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
     """Activity that inserts new VFS directories, skipping existing paths."""
     collection_dataset: str = params.collection_dataset
@@ -195,6 +198,7 @@ class IngestFilesBatchParams:
 
 
 @activity.defn
+@with_heartbeat
 def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     """Activity that ingests a batch of files into blobs, types, and VFS."""
     collection_dataset: str = params.collection_dataset

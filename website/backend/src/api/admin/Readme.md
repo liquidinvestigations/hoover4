@@ -19,7 +19,7 @@ the actual gate.
 
 ## Telemetry (usage_events / api_events)
 
-Two rolling 24h tables in the global database (migrations `00017`/`00018`), written by
+Two rolling 24h tables in the global database (migrations `00014`/`00015`), written by
 `api/telemetry.rs` through a buffered, batch-inserted, fire-and-forget path — telemetry
 must never be able to fail a request, so writes drop on overflow and log at debug.
 

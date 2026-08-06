@@ -48,6 +48,41 @@ def ensure_collection(collectionname: str):
 
 
 @cli.command()
+@click.option("--no-defaults", is_flag=True,
+              help="Refresh the model list without touching the chat/summarisation choices.")
+def refresh_llm_catalog(no_defaults: bool = False):
+    """Discover models from the configured LLM provider into `llm_models`.
+
+    Model ids are matched by PATTERN against what the account actually returns, never
+    hardcoded: NIM retires ids, and a hardcoded one becomes a 404 months later in a path
+    nobody exercises until a user opens the chat.
+    """
+    from tasks.llm_catalog import (
+        SETTING_CHAT_MODEL, SETTING_SUMMARIZATION_MODEL, refresh_catalog,
+    )
+
+    results = refresh_catalog(choose_defaults=not no_defaults)
+    if not results:
+        print("no provider configured (LLM_BASE_URL is empty), or a refresh is in flight")
+        return
+    for result in results:
+        if result.ok:
+            print(f"{result.provider}: {result.model_count} models")
+        else:
+            print(f"{result.provider}: FAILED {result.error}")
+    if not no_defaults:
+        from database.clickhouse import get_global_client
+        with get_global_client() as client:
+            rows = client.query(
+                "SELECT key, argMax(value, updated_at) FROM server_settings "
+                "WHERE key IN ({a:String}, {b:String}) GROUP BY key",
+                parameters={"a": SETTING_CHAT_MODEL, "b": SETTING_SUMMARIZATION_MODEL},
+            ).result_rows
+        for key, value in rows:
+            print(f"{key} = {value}")
+
+
+@cli.command()
 def test_extract_ner_from_text():
     from tasks.P4_extract_entities.extract_ner_from_text import extract_ner_from_texts
     with open('/etc/dictionaries-common/words') as f:
@@ -63,10 +98,32 @@ def test_extract_ner_from_text():
 @click.argument("collectionname", type=str)
 @click.argument("dataset_name", type=str)
 @click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=str))
-def add_disk_dataset(collectionname: str, dataset_name: str, path: str):
-    """Create a dataset inside an existing collection and start disk ingestion."""
+@click.option("--wait/--no-wait", default=True, show_default=True,
+              help="Block until ingestion finishes. --no-wait submits the workflow "
+                   "and returns, leaving it to run server-side.")
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool):
+    """Create a dataset inside an existing collection and start disk ingestion.
+
+    By default this BLOCKS through all three stages in order -- scan, compute
+    plans, execute plans -- because each one needs the previous to have
+    finished. Killing the CLI (a redeploy, a lost ssh session) does not stop
+    the workflows: they keep running server-side while the caller sees only a
+    dead command.
+
+    --no-wait submits ONLY the disk scan and returns. It deliberately does not
+    submit the plan stages: computing plans over a half-scanned dataset would
+    silently plan a subset of the files. Use it when something else drives the
+    later stages, and poll processing_plan_finished to know when it is done.
+    """
     from tasks.P0_scan_disk.submit_job import add_disk_dataset, compose_collection_dataset
-    add_disk_dataset(collectionname, dataset_name, path)
+    add_disk_dataset(collectionname, dataset_name, path, wait=wait)
+    if not wait:
+        click.echo(
+            "Submitted the disk scan only. Plan computation and execution were "
+            "NOT started: they must not run until the scan has finished. Run "
+            "`main.py compute-plans` / `execute-plans` once the scan completes."
+        )
+        return
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
 
     from tasks.P1_compute_plans.submit_job import submit_compute_plans
@@ -119,8 +176,8 @@ def reindex_collection(collectionname: str):
     async def _start_workflows():
         from temporalio.client import Client as TemporalClient
         import temporalio.common
-        from tasks.P5_index_data.workflows import IndexDatasetPlan
-        from tasks.P5_index_data.params import IndexDatasetPlanParams
+        from tasks.P6_index_data.workflows import IndexDatasetPlan
+        from tasks.P6_index_data.params import IndexDatasetPlanParams
         from tasks.visibility import dataset_search_attributes
 
         client = await TemporalClient.connect("temporal:7233")
@@ -162,7 +219,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "easyocr", "nlp", "indexing", "index-planner"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "indexing", "index-planner"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all."""
     import sys
@@ -177,9 +234,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "tika":
             from tasks.run_worker import run_tika_worker
             asyncio.run(run_tika_worker())
-        elif worker_type == "easyocr":
-            from tasks.run_worker import run_easyocr_worker
-            asyncio.run(run_easyocr_worker())
+        elif worker_type == "ocr":
+            from tasks.run_worker import run_ocr_worker
+            asyncio.run(run_ocr_worker())
         elif worker_type == "nlp":
             from tasks.run_worker import run_nlp_worker
             asyncio.run(run_nlp_worker())
@@ -201,7 +258,7 @@ def worker(worker_type: str | None = None):
 
     # Initial spawn set. "index-planner" MUST stay at exactly one process:
     # a second planner worker would corrupt the Manticore shard ledger.
-    for wt in ["tika", "easyocr", "nlp", "indexing", "index-planner"] + ["common"] * 2:
+    for wt in ["tika", "ocr", "nlp", "indexing", "index-planner"] + ["common"] * 2:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

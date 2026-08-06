@@ -7,14 +7,14 @@ against Manticore, so the exact strings are pinned.
 
 import pytest
 
-from tasks.P5_index_data.activities import (
+from tasks.P6_index_data.activities import (
     metadata_row_id,
     meta_replace_sql,
     pages_replace_sql,
     pages_row_id,
     repr_manticore_tuple,
 )
-from tasks.P5_index_data.string_term_encodings import hash_string_to_uint63
+from tasks.P6_index_data.string_term_encodings import hash_string_to_uint63
 
 
 def _normalize(sql: str) -> str:

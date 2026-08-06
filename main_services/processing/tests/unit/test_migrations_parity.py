@@ -26,17 +26,22 @@ ALTER_TABLE_RE = re.compile(r"ALTER\s+TABLE", re.IGNORECASE)
 #: change from here on is a NEW numbered file — which, for adding a column to a table
 #: that already exists, has to be an ALTER. See `test_alter_table_only_in_new_files`.
 COLLAPSED_BASELINE = {
-    "db_global_migrations": 10,
-    "db_collection_migrations": 30,
+    "db_global_migrations": 20,
+    "db_collection_migrations": 31,
 }
 
 EXPECTED_GLOBAL_TABLES = {
     "api_events",
+    "chat_message_stream",
     "chat_messages",
     "chat_sessions",
     "collection_group_permissions",
     "collections",
     "dataset",
+    "dataset_jobs",
+    "dataset_settings",
+    "llm_call_events",
+    "llm_models",
     "processing_eta_samples",
     "search_manticore_cache",
     "server_settings",
@@ -56,8 +61,6 @@ EXPECTED_COLLECTION_TABLES = {
     "email_headers",
     "emails",
     "entity_hit",
-    "entity_hits_milvus",
-    "entity_hits_milvus_unique",
     "file_types",
     "image",
     "index_state",
@@ -65,6 +68,7 @@ EXPECTED_COLLECTION_TABLES = {
     "manticore_shards",
     "nlp_processed",
     "pdf_metadata",
+    "pdf_ocr_results",
     "pdf_to_html_cache",
     "pdfs",
     "pdfs_image",
@@ -75,7 +79,8 @@ EXPECTED_COLLECTION_TABLES = {
     "raw_ocr_results",
     "string_term_id_to_text",
     "string_term_text_to_id",
-    "text_chunks_milvus",
+    "text_chunk_vectors",
+    "text_chunks",
     "text_content",
     "tika_metadata",
     "vfs_directories",
@@ -179,6 +184,36 @@ def test_no_semicolon_inside_line_comments(path):
                 )
 
 
+@pytest.mark.parametrize(
+    "path", [GLOBAL_MIGRATIONS_PATH, COLLECTION_MIGRATIONS_PATH]
+)
+def test_no_comment_only_statement_fragment(path):
+    """A trailing comment after the last `;` is its own fragment, and it is empty SQL.
+
+    Third variant of the same splitter hazard, and the one the other two do not catch:
+    the file contains no stray semicolon at all, it just has prose *after* the final
+    statement terminator. ClickHouse answers `Code: 62, Empty query`, naming neither the
+    file nor the comment, and the failure surfaces only when a collection database is
+    created — long after the unit tests were green.
+
+    Caught for real when the re-collapse removed 00031's backfill INSERT and left the
+    paragraph explaining the removal below the CREATE. Put explanatory comments ABOVE
+    the statement they describe.
+    """
+    for f in _sql_files(path):
+        for index, fragment in enumerate(f.read_text().split(";")):
+            if not fragment.strip():
+                continue
+            executable = "\n".join(
+                line for line in fragment.splitlines()
+                if not line.strip().startswith("--")
+            ).strip()
+            assert executable, (
+                f"{f.name}: statement fragment {index} is comments only, which reaches "
+                f"ClickHouse as an empty query. Move it above the preceding statement."
+            )
+
+
 def test_global_tables_match_expected():
     assert set(_table_names(GLOBAL_MIGRATIONS_PATH)) == EXPECTED_GLOBAL_TABLES
 
@@ -187,28 +222,50 @@ def test_collection_tables_match_expected():
     assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) == EXPECTED_COLLECTION_TABLES
 
 
-#: Tables a collapsed migration creates and a later migration drops again. They stay in
-#: EXPECTED_COLLECTION_TABLES above — the CREATEs are history and cannot be edited out —
-#: so this is the set that says "expected to be absent from a migrated database".
-DROPPED_COLLECTION_TABLES = {
+#: Tables that must not reappear. The Milvus alignment trio was created by
+#: 00023/00024 and dropped again by 00031 until the re-collapse removed all three files:
+#: nothing ever wrote them, and the Milvus tier that would have read them is gone. The
+#: vector store that replaced them is `text_chunk_vectors` in ClickHouse plus a
+#: disposable Manticore HNSW copy.
+FORBIDDEN_TABLES = {
     "text_chunks_milvus",
     "entity_hits_milvus",
     "entity_hits_milvus_unique",
+    "collection_datasets",
 }
 
 
-def test_milvus_tables_are_dropped_by_a_later_migration():
-    """The Milvus alignment tables must not survive a fresh migration run.
+def test_no_migration_recreates_a_removed_table():
+    """Guards the re-collapse against a revert that reintroduces dead schema.
 
-    00023/00024 still CREATE them and always will: editing an applied migration changes
-    its md5 and breaks every existing deployment. The removal is therefore a DROP in a
-    later file, and this test is what ties the two halves together — without it, deleting
-    the DROP migration would leave `test_collection_tables_match_expected` perfectly
-    happy and the dead tables silently back.
+    Without this, restoring one of the deleted Milvus migrations would only fail
+    `test_collection_tables_match_expected` with a diff that reads like a missing entry
+    in the expected set — an inviting thing to "fix" by adding it back.
     """
-    dropped = _dropped_table_names(COLLECTION_MIGRATIONS_PATH)
-    missing = DROPPED_COLLECTION_TABLES - dropped
-    assert not missing, f"created but never dropped: {sorted(missing)}"
+    all_tables = set(_table_names(GLOBAL_MIGRATIONS_PATH)) | set(
+        _table_names(COLLECTION_MIGRATIONS_PATH)
+    )
+    back = FORBIDDEN_TABLES & all_tables
+    assert not back, f"deliberately removed table is back: {sorted(back)}"
+
+
+def test_no_migration_drops_a_table():
+    """After the re-collapse there is no create-then-drop pair left in either directory.
+
+    A DROP in a collapsed tree means someone edited history halfway: the CREATE it undoes
+    should have been deleted instead. A genuinely new migration above the baseline may
+    still drop a table — hence the baseline check rather than a flat ban.
+    """
+    for path in (GLOBAL_MIGRATIONS_PATH, COLLECTION_MIGRATIONS_PATH):
+        baseline = COLLAPSED_BASELINE[Path(path).name]
+        for f in _sql_files(path):
+            if not DROP_TABLE_RE.search(f.read_text()):
+                continue
+            number = int(f.name.split("_", 1)[0])
+            assert number > baseline, (
+                f"{f.name} drops a table but is part of the collapsed baseline "
+                f"(<= {baseline:05d}); a collapsed tree never creates what it drops"
+            )
 
 
 def test_the_two_sets_are_disjoint():
@@ -224,12 +281,12 @@ def test_readiness_sentinel_matches_last_collection_migration():
     migration without updating that sentinel would make the admin UI report ready too
     early.
 
-    "Last table-creating file" rather than plain "last file": a DROP-only migration
-    (00031 removes the Milvus tables) is a legitimate way to end the sequence and creates
-    nothing. Anchoring on the literal last file would fail on it, and the obvious "fix" —
-    making the sentinel point at something 00031 touches — would be wrong, because
-    readiness means "the schema is fully built", which is still decided by the last
-    CREATE. A migration that only drops tables must not make every collection report
+    "Last table-creating file" rather than plain "last file": a migration that only drops
+    or backfills is a legitimate way to end the sequence and creates nothing, and
+    anchoring on the literal last file would fail on it. Readiness means "the schema is
+    fully built", which is decided by the last CREATE. The collapsed tree has no such
+    trailing file today — `index_state` is both the last CREATE and the last file — but
+    the distinction is what keeps the next one from making every collection report
     un-ready.
 
     The sentinel name is checked in next to the migrations (READINESS_SENTINEL) so this
@@ -253,9 +310,22 @@ def test_readiness_sentinel_matches_last_collection_migration():
     )
 
 
-def test_collection_datasets_table_is_gone():
-    """Deleted by the split: the mapping is a column on `dataset` now (D1)."""
-    all_tables = set(_table_names(GLOBAL_MIGRATIONS_PATH)) | set(
-        _table_names(COLLECTION_MIGRATIONS_PATH)
-    )
-    assert "collection_datasets" not in all_tables
+def test_new_part2_tables_are_in_the_right_directory():
+    """The Part 2 tables split across both directories, which is the exact mistake this
+    module exists to catch.
+
+    Per-dataset settings and job status are global — the admin UI edits them before the
+    collection database is necessarily built, and workers read them across collections.
+    Chunks, vectors and derived-PDF records are per collection because they are corpus
+    data. Getting either backwards produces a migration that applies cleanly and a table
+    the reading code never finds.
+    """
+    global_tables = set(_table_names(GLOBAL_MIGRATIONS_PATH))
+    collection_tables = set(_table_names(COLLECTION_MIGRATIONS_PATH))
+
+    for name in ("dataset_settings", "dataset_jobs", "chat_message_stream",
+                 "llm_models", "llm_call_events"):
+        assert name in global_tables, f"{name} must be a global table"
+
+    for name in ("text_chunks", "text_chunk_vectors", "pdf_ocr_results"):
+        assert name in collection_tables, f"{name} must be a collection table"

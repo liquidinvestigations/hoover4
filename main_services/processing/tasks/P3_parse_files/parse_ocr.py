@@ -1,123 +1,188 @@
-"""EasyOCR activity for extracting text from images."""
+"""OCR activity: one engine, every language pass that engine needs for this dataset.
+
+Replaces the in-process EasyOCR activity. That version was GPU-or-nothing and, on a box
+without CUDA, recorded a skip for every image — which is why a full ingest of `testdata`
+produced 65 `ocr_skipped_no_gpu` rows and not one character of OCR text.
+
+Shape of the work
+-----------------
+One activity per *engine*, not per pass, because the two engines are asymmetric:
+
+* **Tesseract** takes `eng+ron` in a single invocation and picks per region. One pass,
+  one variant, `extracted_by = 'ocr_tesseract_eng+ron'`.
+* **EasyOCR** builds one model per Reader and cannot mix scripts, so a dataset asking
+  for several scripts runs several passes, each its own variant with its own confidence.
+
+Reading the language settings inside the activity rather than passing them down from the
+workflow is deliberate: an apply job that changes them must reach activities that are
+already running (`tasks/dataset_config.py`), and a workflow argument would freeze the
+value at schedule time.
+
+Retries are cheap by construction: every pass checks the `raw_ocr_results` watermark for
+its own `(image, engine, languages)` before spending anything.
+"""
+
+import logging
+import time
+from dataclasses import dataclass
+from typing import List
 
 from temporalio import activity
-from typing import Dict, Any, List
-from dataclasses import dataclass
-import json
-import time
-import logging
+
+from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT, ocr_extracted_by
+
 log = logging.getLogger(__name__)
 
 
-def _to_json_compatible(obj: Any) -> Any:
-    try:
-        # Fast-path primitives
-        if obj is None or isinstance(obj, (bool, int, float, str)):
-            return obj
-        # Numpy scalar
-        if hasattr(obj, "item") and hasattr(getattr(obj, "dtype", None), "name"):
-            try:
-                return obj.item()
-            except Exception:
-                pass
-        # Sequence
-        if isinstance(obj, (list, tuple)):
-            return [_to_json_compatible(x) for x in obj]
-        # Mapping
-        if isinstance(obj, dict):
-            return {str(k): _to_json_compatible(v) for k, v in obj.items()}
-    except Exception:
-        pass
-    # Fallback
-    try:
-        return str(obj)
-    except Exception:
-        return None
-
 @dataclass
-class RunEasyOCRParams:
+class RunOcrParams:
     collectionname: str
     collection_dataset: str
     file_hash: str
     file_path: str
+    engine: str
     timeout_seconds: int
 
 
-def _record_undecodable_skip(params: RunEasyOCRParams, run_time_ms: int) -> None:
-	"""Record an undecodable-image skip in processing_errors (same path as
-	record_errors_from_results uses), without failing the activity."""
-	from tasks.P2_execute_plan.activities import (
-		record_processing_errors,
-		RecordProcessingErrorsParams,
-	)
+def _record_skip(params: RunOcrParams, run_time_ms: int, reason: str) -> None:
+    """Record a skip in `processing_errors` without failing the activity.
 
-	record_processing_errors(RecordProcessingErrorsParams(collectionname=params.collectionname, errors=[{
-		"collection_dataset": params.collection_dataset,
-		"hash": params.file_hash,
-		"task_name": "run_easyocr_and_store",
-		"run_time_ms": run_time_ms,
-		"error_logs": (
-			"ocr_skipped_undecodable: image could not be decoded by OpenCV or "
-			f"Pillow: {params.file_path}"
-		),
-	}]))
+    A skip is a *data* fact — an undecodable image, a disabled engine — and must not
+    consume retries or hold up the plan. An unreachable but configured service is not a
+    skip: that raises, so Temporal retries it.
+    """
+    from tasks.P2_execute_plan.activities import (
+        RecordProcessingErrorsParams,
+        record_processing_errors,
+    )
+
+    record_processing_errors(RecordProcessingErrorsParams(
+        collectionname=params.collectionname,
+        errors=[{
+            "collection_dataset": params.collection_dataset,
+            "hash": params.file_hash,
+            "task_name": "run_ocr_and_store",
+            "run_time_ms": run_time_ms,
+            "error_logs": f"{reason}: {params.file_path}",
+        }],
+    ))
+
+
+def _already_done(client, params: RunOcrParams, languages: str) -> bool:
+    """Whether this exact `(image, engine, languages)` pass already has a payload.
+
+    The watermark is checked before the image is even read: OCR is the most expensive
+    thing in the pipeline per byte, and a retry that re-OCRs what it already produced is
+    the difference between a cheap retry and a doubled bill.
+    """
+    try:
+        rows = client.query(
+            "SELECT count() FROM raw_ocr_results "
+            "WHERE collection_dataset = {cd:String} AND image_hash = {ih:String} "
+            "AND engine = {en:String} AND languages = {la:String}",
+            parameters={"cd": params.collection_dataset, "ih": params.file_hash,
+                        "en": params.engine, "la": languages},
+        ).result_rows
+        return bool(rows and rows[0] and int(rows[0][0]) > 0)
+    except Exception:
+        # Never let a watermark read fail the work it is supposed to save.
+        log.warning("[P3] OCR watermark read failed for %s/%s", params.file_hash, languages,
+                    exc_info=True)
+        return False
+
+
+def _passes_for(engine: str, collection_dataset: str) -> List[str]:
+    from tasks.dataset_config import easyocr_passes, tesseract_languages
+
+    if engine == ENGINE_TESSERACT:
+        languages = tesseract_languages(collection_dataset)
+        return [languages] if languages else []
+    if engine == ENGINE_EASYOCR:
+        return easyocr_passes(collection_dataset)
+    raise ValueError(f"unknown OCR engine {engine!r}")
 
 
 @activity.defn
-def run_easyocr_and_store(params: RunEasyOCRParams) -> str:
-	from database.clickhouse import get_collection_client
-	import pyarrow as pa
-	from tasks.P3_parse_files.parse_ocr_models import OCR_MODEL_EN
-	from tasks.P3_parse_files.image_loader import load_image_rgb
+@with_heartbeat
+def run_ocr_and_store(params: RunOcrParams) -> str:
+    import pyarrow as pa
 
-	# Run OCR
-	log.info("[P3] Running EasyOCR for %s", params.file_path)
-	started = time.time()
-	model = OCR_MODEL_EN
+    from database.clickhouse import get_collection_client
+    from tasks.ocr_client import engine_configured, run_ocr
+    from tasks.P3_parse_files.parse_common import insert_text_chunks
 
-	# Preflight decode: OpenCV first, Pillow fallback. An image OCR cannot read
-	# is a data fact, not a pipeline failure: record it and succeed so it does
-	# not consume retries or halt the plan.
-	image_array = load_image_rgb(params.file_path)
-	if image_array is None:
-		run_time_ms = max(int((time.time() - started) * 1000), 0)
-		log.warning("[P3] OCR skipped, image undecodable: %s", params.file_path)
-		_record_undecodable_skip(params, run_time_ms)
-		return "ocr_skipped_undecodable"
+    started_all = time.time()
 
-	results: List = model.readtext(image_array)
-	run_time_ms = int((time.time() - started) * 1000)
-	if run_time_ms < 0:
-		run_time_ms = 0
+    if not engine_configured(params.engine):
+        # Not an error: a box with no GPU tier simply produces no EasyOCR variants.
+        log.info("[P3] OCR engine %s not configured, no variant for %s",
+                 params.engine, params.file_path)
+        _record_skip(params, 0,
+                     f"ocr_engine_not_configured: {params.engine} has no endpoint")
+        return f"ocr_skipped_{params.engine}_not_configured"
 
-	# Concatenate recognized text
-	texts: List[str] = []
-	for item in results:
-		try:
-			text_val = item[1]
-			if isinstance(text_val, str) and text_val:
-				texts.append(text_val)
-		except Exception:
-			continue
-	joined_text = "\n".join(texts)
+    passes = _passes_for(params.engine, params.collection_dataset)
+    if not passes:
+        _record_skip(params, 0,
+                     f"ocr_no_languages: {params.engine} has no languages for this dataset")
+        return "ocr_skipped_no_languages"
 
-	# Serialize raw results (convert numpy types to JSON-serializable)
-	sanitized = _to_json_compatible(results)
-	raw_json = json.dumps(sanitized, ensure_ascii=False, separators=(",", ":"))
-	with get_collection_client(params.collectionname) as client:
-		tbl_ocr = pa.table({
-			"collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-			"image_hash": pa.array([params.file_hash], type=pa.string()),
-			"run_time_ms": pa.array([run_time_ms], type=pa.uint32()),
-			"raw_json": pa.array([raw_json], type=pa.string()),
-		})
-		client.insert_arrow("raw_ocr_results", tbl_ocr)
+    heartbeat = HeartbeatClock()
+    image_bytes = None
+    done = 0
 
-	# Insert extracted text into text_content
-	from tasks.P3_parse_files.parse_common import insert_text_chunks
-	if joined_text:
-		insert_text_chunks(params.collectionname, params.collection_dataset, params.file_hash, "easyocr", joined_text)
+    with get_collection_client(params.collectionname) as client:
+        for index, languages in enumerate(passes):
+            heartbeat.beat(f"ocr {params.engine} {index + 1}/{len(passes)} ({languages})")
 
-	return "ocr_ok"
+            if _already_done(client, params, languages):
+                log.info("[P3] OCR already done for %s %s/%s",
+                         params.file_hash, params.engine, languages)
+                done += 1
+                continue
 
+            if image_bytes is None:
+                # Read once, reuse across passes. Deferred until a pass actually needs
+                # it so a fully watermarked file costs no disk read at all.
+                try:
+                    with open(params.file_path, "rb") as handle:
+                        image_bytes = handle.read()
+                except OSError as exc:
+                    _record_skip(params, 0, f"ocr_skipped_unreadable: {exc}")
+                    return "ocr_skipped_unreadable"
+                if not image_bytes:
+                    _record_skip(params, 0, "ocr_skipped_empty: file is zero bytes")
+                    return "ocr_skipped_empty"
 
+            started = time.time()
+            outcome = run_ocr(params.engine, languages, image_bytes)
+            run_time_ms = max(int((time.time() - started) * 1000), 0)
+
+            extracted_by = ocr_extracted_by(outcome.engine, outcome.languages)
+
+            client.insert_arrow("raw_ocr_results", pa.table({
+                "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
+                "image_hash": pa.array([params.file_hash], type=pa.string()),
+                "engine": pa.array([outcome.engine], type=pa.string()),
+                "languages": pa.array([outcome.languages], type=pa.string()),
+                "confidence": pa.array([outcome.confidence], type=pa.float32()),
+                "run_time_ms": pa.array([outcome.run_time_ms or run_time_ms], type=pa.uint32()),
+                "result_hash": pa.array([""], type=pa.string()),
+                "raw_json": pa.array([outcome.raw_json], type=pa.string()),
+            }))
+
+            if outcome.text.strip():
+                # An image is one page. insert_text_chunks numbers from 1 and segments
+                # only if the text is enormous, which OCR output never is.
+                insert_text_chunks(params.collectionname, params.collection_dataset,
+                                   params.file_hash, extracted_by, outcome.text)
+            done += 1
+            log.info("[P3] OCR %s in %d ms, %d chars, confidence %.1f (%s)",
+                     extracted_by, run_time_ms, len(outcome.text), outcome.confidence,
+                     outcome.provider)
+
+    total_ms = max(int((time.time() - started_all) * 1000), 0)
+    log.info("[P3] OCR %s complete for %s: %d/%d passes in %d ms",
+             params.engine, params.file_hash, done, len(passes), total_ms)
+    return f"ocr_ok_{done}_passes"

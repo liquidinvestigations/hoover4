@@ -7,6 +7,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
+    from tasks.heartbeat import HEARTBEAT_TIMEOUT
     from tasks.P_agent.activities import (
         ResearchTaskParams,
         WriteResultParams,
@@ -52,6 +53,7 @@ class ResearchTask:
                     content=f"The research task failed: {e}",
                 ),
                 start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             raise
@@ -76,6 +78,7 @@ class ResearchTask:
                     doc_refs=call.doc_refs,
                 ),
                 start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             seq += 1
@@ -89,8 +92,14 @@ class ResearchTask:
                 seq=seq,
                 role="assistant",
                 content=answer,
+                # The agent separates its narration from its answer; carrying the
+                # narration through as `reasoning` is what keeps a research transcript
+                # rendering identically to a synchronous chat one, disclosure included.
+                reasoning=payload.get("reasoning") or "",
+                model=payload.get("model") or "",
             ),
             start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         return answer

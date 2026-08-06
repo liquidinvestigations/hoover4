@@ -6,7 +6,7 @@ cases below are the ones called out in plan part 6 §7.
 
 import pytest
 
-from tasks.P5_index_data.shard_planner import (
+from tasks.P6_index_data.shard_planner import (
     MAX_SHARD_TEXT_BYTES,
     ShardAssignment,
     ShardState,
@@ -245,7 +245,7 @@ def test_malformed_shard_name_in_existing_assignments_raises_with_context():
 
 
 def test_merge_ledger_stats_fills_and_preserves_open_flags():
-    from tasks.P5_index_data.shard_planner import merge_ledger_stats
+    from tasks.P6_index_data.shard_planner import merge_ledger_stats
 
     ledger_rows = [("testdata_1", 1, 0), ("testdata_2", 2, 1)]
     stats_rows = [("testdata_2", 700, 4)]
@@ -257,7 +257,7 @@ def test_merge_ledger_stats_fills_and_preserves_open_flags():
 
 
 def test_merge_ledger_stats_empty_stats_zeroes_everything():
-    from tasks.P5_index_data.shard_planner import merge_ledger_stats
+    from tasks.P6_index_data.shard_planner import merge_ledger_stats
 
     merged = merge_ledger_stats([("testdata_1", 1, 1)], [])
     assert merged[0].text_bytes == 0

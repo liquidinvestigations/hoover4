@@ -87,10 +87,12 @@ Routes (see `frontend/src/routes.rs`):
 - `/ai_chat/history` — full conversation list
 - `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state` — transcript + document preview (60/40)
 
-Storage lives in the global ClickHouse database (`chat_sessions`, `chat_messages`).
-Migration `00014` adds `tool_input` / `tool_output` / `doc_refs` / `created_ms` /
-`agent_duration_ms`; `00015` adds `chat_sessions.summary`; `00019` adds the frozen
-option flags; `00020` adds `chat_messages.retry_errors`.
+Storage lives in the global ClickHouse database: `chat_sessions` (migration `00011`) and
+`chat_messages` (`00012`), plus `chat_message_stream` (`00018`) for in-flight output. The
+tool payload columns (`tool_input` / `tool_output` / `doc_refs` / `created_ms` /
+`agent_duration_ms`), `retry_errors`, the per-message `model`, the session `summary` and
+the frozen option flags were separate `ALTER` migrations until Part 2 Phase 0 folded them
+back into the two `CREATE TABLE`s — do not look for them in their own files.
 
 ### The two switches are frozen at the first turn
 
@@ -116,10 +118,10 @@ Two services, and **both URLs must be set explicitly in compose**:
 | `HOOVER4_AGENT_URL` | `hoover4-internal-search-agent` | Internet tools **off** |
 | `HOOVER4_FULL_AGENT_URL` | `hoover4-full-research-agent` | Internet tools **on** |
 
-The code defaults (`localhost:9099` / `localhost:9090`) are the loopback ports published
+The code defaults (`localhost:21936` / `localhost:21937`) are the loopback ports published
 on the *host*, for running the website outside Docker. Inside the container `localhost` is
 the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
-internet-tools turn fail with `AI agent unreachable at http://localhost:9090` while the
+internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
 agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
 
 ### Retries

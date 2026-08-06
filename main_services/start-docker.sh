@@ -1,9 +1,5 @@
 #!/bin/bash
-set -ex
-
+# Thin alias for muscle memory — the real thing is deploy.py at the repo root.
+set -e
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
-cd "$SCRIPT_DIR"
-
-
-cd ops/docker
-time docker compose up -d --remove-orphans "$@"
+exec "$SCRIPT_DIR/../deploy" "$@"

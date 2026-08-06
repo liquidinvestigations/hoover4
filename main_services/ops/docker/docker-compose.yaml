@@ -14,8 +14,8 @@ services:
     image: manticoresearch/manticore:14.1.0
     container_name: manticore
     ports:
-      - '9306:9306'
-      - '9308:9308'
+      - '0.0.0.0:${MANTICORE_SQL_PORT}:9306'
+      - '0.0.0.0:${MANTICORE_HTTP_PORT}:9308'
     volumes:
       - manticore_data_v14:/var/lib/manticore
     memswap_limit: 19000M
@@ -52,8 +52,8 @@ services:
       - CLICKHOUSE_USER=hoover4
       - CLICKHOUSE_PASSWORD=hoover4
     ports:
-      - '8123:8123'
-      - '9000:9000'
+      - '0.0.0.0:${CLICKHOUSE_HTTP_PORT}:8123'
+      - '0.0.0.0:${CLICKHOUSE_NATIVE_PORT}:9000'
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       # - ./data:/var/lib/clickhouse/user_files
@@ -81,7 +81,7 @@ services:
       clickhouse:
         condition: service_healthy
     ports:
-      - 3000:3000
+      - '0.0.0.0:${CLICKHOUSE_MONITORING_PORT}:3000'
     volumes:
       - clickhouse_monitoring:/var/lib/clickhouse-monitoring
     memswap_limit: 6000M
@@ -93,7 +93,7 @@ services:
   ch-ui:
     image: ghcr.io/caioricciuti/ch-ui:sha-6227281d8c096e4259a1b96c92aa3f8d784a3c2b
     ports:
-      - '5521:5521'
+      - '0.0.0.0:${CH_UI_PORT}:5521'
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -118,7 +118,7 @@ services:
     networks:
       - hoover4
     ports:
-      - 127.0.0.1:9042:9042
+      - 127.0.0.1:${CASSANDRA_PORT}:9042
     environment:
       - MAX_HEAP_SIZE=4G
       - HEAP_NEWSIZE=512M
@@ -155,7 +155,7 @@ services:
     networks:
       - hoover4
     ports:
-      - 127.0.0.1:9200:9200
+      - 127.0.0.1:${ELASTICSEARCH_PORT}:9200
     volumes:
       - temporal_elasticsearch:/var/lib/elasticsearch/data
     healthcheck:
@@ -190,8 +190,8 @@ services:
     networks:
       - hoover4
     ports:
-      - 127.0.0.1:7233:7233
-      - 127.0.0.1:7243:7243
+      - 127.0.0.1:${TEMPORAL_GRPC_PORT}:7233
+      - 127.0.0.1:${TEMPORAL_HTTP_PORT}:7243
     labels:
       kompose.volume.type: configMap
     healthcheck:
@@ -222,7 +222,7 @@ services:
     networks:
       - hoover4
     ports:
-      - 127.0.0.1:8081:8080
+      - 127.0.0.1:${TEMPORAL_UI_PORT}:8080
     healthcheck:
       test: ['CMD-SHELL', 'curl --silent --fail http://temporal-ui:8080/api/v1/settings? || exit 1']
       interval: 15s
@@ -252,13 +252,12 @@ services:
     networks:
       - hoover4
     ports:
-      - "8084:8084"
-      - "9004:9000"
-      - "9123:8123"
+      - "0.0.0.0:${MINIO_CONSOLE_PORT}:8084"
+      - "0.0.0.0:${MINIO_API_PORT}:9000"
     environment:
       MINIO_ACCESS_KEY: hoover4
       MINIO_SECRET_KEY: hoover4-secret
-      MINIO_BROWSER_REDIRECT_URL: "http://localhost:8084"
+      MINIO_BROWSER_REDIRECT_URL: "http://localhost:${MINIO_CONSOLE_PORT}"
       MINIO_UPDATE: "off"
       MINIO_API_REQUESTS_MAX: "600"
       MINIO_API_REQUESTS_DEADLINE: "2m"
@@ -288,7 +287,7 @@ services:
     container_name: redis
     command: ["redis-server", "--appendonly", "no", "--maxmemory", "3000mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - '127.0.0.1:6379:6379'
+      - '127.0.0.1:${REDIS_PORT}:6379'
     networks:
       - hoover4
     deploy:
@@ -305,153 +304,6 @@ services:
       start_period: 4s
     restart: unless-stopped
 
-
-  # docker run -it --rm --gpus all -e CUDA_DEVICE_ORDER=PCI_BUS_ID -v "D:\huggingface_cache":/root/.cache/huggingface -p 8001:8001 --ipc=host --entrypoint bash vllm/vllm-openai:latest -c "pip install bitblas>=0.1.0 && vllm serve oodapow/phi-4-gptq-4k-en-hb --tensor-parallel-size 2 --gpu-memory-utilization 0.98 --enforce-eager --max-model-len 4096 --max-num-seqs 15"
-  # vllm:
-  #   container_name: vllm
-  #   image: vllm/vllm-openai:latest
-  #   entrypoint: ["/bin/bash"]
-  #   command: /vllm_command.sh
-  #   ports:
-  #     - "8011:8000"
-  #   memswap_limit: 29000M
-  #   mem_limit: 29000M
-  #   ipc: host
-  #   networks:
-  #     - hoover4
-  #   volumes:
-  #     - vllm_huggingface_cache:/root/.cache/huggingface
-  #     - ./vllm_command.sh:/vllm_command.sh
-  #   restart: unless-stopped
-  #   # runtime: nvidia
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             capabilities: ["gpu"]
-  #             device_ids: ["0"]
-  #   environment:
-  #     - VLLM_API_HOST=0.0.0.0
-  #     # - VLLM_API_HOST=0.0.0.0
-  #     # - VLLM_API_PORT=8011
-  #     - VLLM_API_KEY=sk-1234
-  #     - VLLM_NO_USAGE_STATS=1
-  #     - DO_NOT_TRACK=1
-
-  #     # - CUDA_DEVICE_ORDER=PCI_BUS_ID
-
-
-  # ollama_phi4:
-  #   container_name: ollama_phi4
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   memswap_limit: 48000M
-  #   mem_limit: 48000M
-  #   ipc: host
-  #   networks:
-  #     - hoover4
-  #   volumes:
-  #     - ollama:/root/.ollama
-  #   restart: unless-stopped
-  #   # runtime: nvidia
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             capabilities: ["gpu"]
-  #             device_ids: ["0"]
-  #   environment:
-  #     - DO_NOT_TRACK=1
-
-      # - CUDA_DEVICE_ORDER=PCI_BUS_ID
-
-  # open-webui:
-  #   image: ghcr.io/open-webui/open-webui:main
-  #   container_name: open-webui
-  #   volumes:
-  #     - open-webui2:/app/backend/data
-  #   depends_on:
-  #     - vllm
-  #   ports:
-  #     - 8275:8080
-  #   environment:
-  #     - 'OPENAI_API_BASE_URL=http://vllm:8000/v1'
-  #     - 'OPENAI_API_KEY=sk-1234'
-  #     - 'WEBUI_SECRET_KEY='
-  #     - 'ENABLE_FOLLOW_UP_GENERATION=False'
-  #     - 'ENABLE_REVISION_GENERATION=False'
-  #     - 'ENABLE_TAGS_GENERATION=False'
-  #     - 'WEBUI_AUTH=False'
-  #     - ENABLE_VERSION_UPDATE_CHECK=False
-  #     - ENABLE_FOLLOW_UP_GENERATION=False
-  #     - ENABLE_AUTOCOMPLETE_GENERATION=False
-  #     - ENABLE_EVALUATION_ARENA_MODELS=False
-  #     - ENABLE_MESSAGE_RATING=False
-  #     - OFFLINE_MODE=True
-  #     - 'ENABLE_TRACING=False'
-  #     - 'ENABLE_LOGGING=False'
-  #     - 'ENABLE_METRICS=False'
-  #     - 'ENABLE_PROFILING=False'
-  #     - 'ENABLE_DEBUG=False'
-  #     - 'ENABLE_SANITIZATION=False'
-  #   restart: unless-stopped
-  #   networks:
-  #     - hoover4
-
-  # litellm:
-  #   image: ghcr.io/berriai/litellm:main-stable
-  #   #########################################
-  #   ## Uncomment these lines to start proxy with a config.yaml file ##
-  #   # volumes:
-  #   #  - ./config.yaml:/app/config.yaml <<- this is missing in the docker-compose file currently
-  #   # command:
-  #   #  - "--config=/app/config.yaml"
-  #   ##############################################
-  #   ports:
-  #     - "4000:4000" # Map the container port to the host, change the host port if necessary
-  #   environment:
-  #     DATABASE_URL: "postgresql://llmproxy:dbpassword9090@litellm_db:5432/litellm"
-  #     STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
-  #     LITELLM_MASTER_KEY: "sk-12349876243249846213498432198491556"
-  #     LITELLM_SALT_KEY: "sk-1234"
-  #   depends_on:
-  #     - litellm_db  # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
-  #   healthcheck:  # Defines the health check configuration for the container
-  #     test: [ "CMD-SHELL", "wget --no-verbose --tries=1 http://localhost:4000/health/liveliness || exit 1" ]  # Command to execute for health check
-  #     interval: 30s  # Perform health check every 30 seconds
-  #     timeout: 10s   # Health check command times out after 10 seconds
-  #     retries: 3     # Retry up to 3 times if health check fails
-  #     start_period: 40s  # Wait 40 seconds after container start before beginning health checks
-  #   restart: unless-stopped
-  #   networks:
-  #     - hoover4
-  #   memswap_limit: 9000M
-  #   mem_limit: 9000M
-
-  # litellm_db:
-  #   image: postgres:16
-  #   container_name: litellm_db
-  #   environment:
-  #     POSTGRES_DB: litellm
-  #     POSTGRES_USER: llmproxy
-  #     POSTGRES_PASSWORD: dbpassword9090
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - litellm_postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
-  #     interval: 1s
-  #     timeout: 5s
-  #     retries: 10
-  #   restart: unless-stopped
-  #   networks:
-  #     - hoover4
-  #   memswap_limit: 9000M
-  #   mem_limit: 9000M
 
   hoover4-worker:
     # image: hoover4-worker
@@ -472,6 +324,15 @@ services:
       # must EXIST — podman refuses to auto-create a missing bind-mount source.
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata
       - ../../processing:/app
+      # EasyOCR's model cache (~100 MB, downloaded from the internet on first
+      # use). Persisted so a container recreate does not re-download it in N
+      # concurrent worker processes at once; named *_cache so --reset keeps it
+      # (deploy.py CACHE_VOLUME_SUFFIXES).
+      - easyocr_models_cache:/root/.EasyOCR
+      # Secrets rule: the ini stores the host PATH, deploy.py renders it as a mount
+      # source, and the container reads the file. No key value ever enters a .env, a
+      # compose file, a log line or a command line. /dev/null when no provider is set.
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     depends_on:
       temporal:
         condition: service_healthy
@@ -479,8 +340,41 @@ services:
         condition: service_healthy
     environment:
       - "NER_URL=${NER_URL}"
+      # The CPU twin remote.py falls back to on a CONNECT failure. deploy.py renders
+      # this only when hoover4-ner-spacy is actually in the base compose file --
+      # announcing a fallback url for a container that does not exist would cost a
+      # connect timeout per batch before failing anyway.
+      - "NER_URL_FALLBACK=${NER_URL_FALLBACK:-}"
       # The full research agent, for the P_agent ResearchTask workflow. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
+      # Provider switches and GPU-failure behaviour, rendered from hoover4.ini by
+      # deploy.py. Consumed by the pipeline starting in Part 2.
+      - "NER_PROVIDER=${NER_PROVIDER:-gpu}"
+      - "EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-gpu}"
+      - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
+      # Stack-wide language DEFAULTS. A dataset inherits these until the admin page
+      # writes a dataset_settings row for it, after which that row wins (D6).
+      - "TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}"
+      - "EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}"
+      # The OCR tier, one endpoint per engine. Empty means "this engine produces no
+      # variants", which is the normal state for EasyOCR on a box with no GPU tier —
+      # `tasks/ocr_client.py` records a skip and succeeds rather than consuming retries.
+      # There is deliberately no fallback BETWEEN engines: the engine is part of the
+      # storage key (`ocr_easyocr_en` vs `ocr_tesseract_eng`), so serving one from the
+      # other would file the text under a name that did not produce it.
+      - "OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}"
+      - "OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}"
+      - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
+      - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
+      - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
+      # The LLM provider, for `main.py refresh-llm-catalog`. The worker discovers the
+      # model list into `llm_models` and writes the chat/summarisation choices into
+      # `server_settings`; ids are matched by PATTERN against what the account actually
+      # returns, because NIM retires them and a hardcoded id becomes a 404 months later.
+      # The key is a bind-mounted file, never an env value.
+      - "LLM_BASE_URL=${LLM_BASE_URL:-}"
+      - "LLM_MODEL=${LLM_MODEL:-}"
+      - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
 
   hoover4-website:
     # image: hoover4-website
@@ -499,6 +393,7 @@ services:
       - ../../../website/Cargo.toml:/app/Cargo.toml
       - ../../../website/Cargo.lock:/app/Cargo.lock
       - hoover4-website-target:/app/frontend/target
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     ports:
       - "0.0.0.0:12345:8080"
     environment:
@@ -513,14 +408,14 @@ services:
       # Temporal's *UI*, used only to build deep links rendered in the admin pages.
       # Unlike the API above this is followed by the admin's browser, so it has to be
       # an address reachable from the host, not from inside the container network.
-      - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:8081}
+      - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:21909}
       # Demo switch: when true, anonymous guest-* sessions are treated as admins.
       - HOOVER4_DEMO_MODE=${HOOVER4_DEMO_MODE:-false}
       # Max concurrent Manticore queries during search fan-out (default 8).
       # - HOOVER4_SEARCH_MAX_PARALLELISM=8
-      # AI Chat: the research agent from ai_services/docker-compose.yaml, reached over
-      # the shared `hoover4` network. Chat returns an error message in the transcript
-      # when this is unreachable, so the site works fine without the AI tier running.
+      # AI Chat: the research agent from compose/agents.yaml (same stack, same
+      # `hoover4` network). Chat returns an error message in the transcript
+      # when this is unreachable, so the site works fine without the agents running.
       - HOOVER4_AGENT_URL=${HOOVER4_AGENT_URL:-http://hoover4-internal-search-agent:8000}
       # The internet-tools agent, selected by the chat composer's "Internet tools" box.
       # Must be set explicitly for the same reason as TEMPORAL_HTTP_URL above: the code
@@ -532,15 +427,19 @@ services:
       # Retries for one chat turn: 4 attempts, backing off 2/4/8 s.
       - HOOVER4_AGENT_ATTEMPTS=${HOOVER4_AGENT_ATTEMPTS:-4}
       - HOOVER4_AGENT_RETRY_BASE_MS=${HOOVER4_AGENT_RETRY_BASE_MS:-2000}
-      # The chat title/summary generator (api/chat/summarize.rs) calls vLLM directly,
-      # not through the agent — summarising must not drag MCP tools into the call.
-      # `LLM_MODEL` has no default in the code on purpose (the served name changes with
-      # the model), so **unset means the summariser silently does nothing**: every
-      # conversation keeps its truncated first message as a title and never gets a
-      # summary. Keep this in step with ai_services/docker-compose.yaml.
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://hoover4-vllm:8000/v1}
-      - LLM_MODEL=${LLM_MODEL:-qwen3.5-2b}
-      - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
+      # The chat title/summary generator (api/chat/summarize.rs) calls the LLM
+      # directly, not through the agent — summarising must not drag MCP tools into
+      # the call. `LLM_MODEL` has no default in the code on purpose (the served name
+      # changes with the model), so **unset means the summariser silently does
+      # nothing**: every conversation keeps its truncated first message as a title
+      # and never gets a summary. Both are rendered from hoover4.ini by deploy.py.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      # The API key is a bind-mounted file, never an env value: hoover4.ini stores
+      # the host path, deploy.py mounts it here, and summarize.rs reads it. With no
+      # provider key configured the mount source is /dev/null and the code falls
+      # back to its local default.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
     networks:
       - hoover4
     depends_on:
@@ -555,7 +454,7 @@ services:
       context: ./pdf-to-html
       dockerfile: Dockerfile
     ports:
-      - "19027:19027"
+      - "0.0.0.0:${PDF_TO_HTML_PORT}:19027"
     networks:
       - hoover4
     restart: unless-stopped
@@ -565,6 +464,44 @@ services:
       - ./pdf-to-html:/app
     entrypoint: ["/usr/bin/python", "/app/pdf2html_server.py"]
     working_dir: /app
+
+  # ------------------------------------------------------------------ NER: CPU twin
+  # In the BASE file, not an overlay, and never optional. deploy.py's
+  # `_ner_spacy_twin_enabled` tests for this service's presence *here* before it will
+  # announce NER_URL_FALLBACK, because announcing a fallback url for a container that
+  # does not exist is worse than having none: tasks/remote.py would spend a connect
+  # timeout on it before failing, on every batch.
+  hoover4-ner-spacy:
+    container_name: hoover4-ner-spacy
+    build:
+      context: ../../ner_spacy
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:${NER_SPACY_PORT}:8000"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    memswap_limit: 4000M
+    mem_limit: 4000M
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Must differ from the GPU tier's model id. entity_hit carries nlp_model in its
+      # ORDER BY, so the two providers' rows coexist; sharing an id would make the
+      # twin overwrite the GPU's rows and its watermark, and the files it handled
+      # during an outage would then never be reprocessed when the GPU came back.
+      - NLP_MODEL_ID=${NLP_MODEL_ID_SPACY:-ner-spacy-xx}
+      - NER_CONCURRENCY=${NER_SPACY_CONCURRENCY:-2}
+      - NER_QUEUE_DEPTH=${NER_SPACY_QUEUE_DEPTH:-16}
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # The model is baked into the image, so there is no download to wait for.
+      start_period: 30s
 
 volumes:
   clickhouse_data:
@@ -582,6 +519,8 @@ volumes:
   clickhouse_monitoring:
     driver: local
   hoover4-website-target:
+    driver: local
+  easyocr_models_cache:
     driver: local
   # vllm_huggingface_cache:
   #   driver: local

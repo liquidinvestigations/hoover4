@@ -8,6 +8,7 @@ import json
 import os
 import logging
 from datetime import timedelta
+from tasks.heartbeat import HEARTBEAT_TIMEOUT, with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class ParseEmailHeadersParams:
 
 
 @activity.defn
+@with_heartbeat
 def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     """Activity that parses .eml, stores headers, and extracts text parts."""
     from email import policy
@@ -90,12 +92,18 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
                 pass
 
     if texts:
-        from tasks.P3_parse_files.parse_common import insert_text_chunks
-        page_id = 0
-        total = 0
+        from tasks.P3_parse_files.parse_common import insert_text_pages, split_text_segments
+        # One continuous 1-based page sequence over every text/plain part, inserted in a
+        # single call. The previous version called the inserter once per part and used a
+        # running total as the next start page, which reused a page number whenever a
+        # part produced no segments -- and would now also make each call trim the pages
+        # written by the one before it.
+        pages: list[tuple[int, str]] = []
         for t in texts:
-            total += insert_text_chunks(params.collectionname, params.collection_dataset, params.email_hash, "email_parser", t or "", start_page_id=page_id)
-            page_id = total
+            for seg in split_text_segments(t or ""):
+                pages.append((len(pages) + 1, seg))
+        insert_text_pages(params.collectionname, params.collection_dataset,
+                          params.email_hash, "email_parser", pages)
 
     return f"email {params.email_hash}"
 
@@ -111,6 +119,7 @@ class ExtractEmailAttachmentsParams:
 
 
 @activity.defn
+@with_heartbeat
 def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> Dict[str, Any]:
     """Extract all attachments from an .eml to a temp directory.
 
@@ -187,6 +196,7 @@ class EmailExtractionAndScan:
             parse_email_extract_text_headers,
             ParseEmailHeadersParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -195,6 +205,7 @@ class EmailExtractionAndScan:
             extract_email_attachments_to_temp,
             ExtractEmailAttachmentsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path, timeout_seconds=params.timeout_seconds),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         out_dir = res.get("out_dir")
@@ -225,6 +236,7 @@ class EmailExtractionAndScan:
             cleanup_temp_dir,
             CleanupTempDirParams(out_dir=out_dir),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 

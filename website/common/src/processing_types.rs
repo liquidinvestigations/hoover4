@@ -10,7 +10,7 @@ pub const STAGE_SCAN: &str = "P0_scan";
 pub const STAGE_PLAN: &str = "P1_plan";
 pub const STAGE_EXECUTE: &str = "P2_execute";
 pub const STAGE_NLP: &str = "P4_nlp";
-pub const STAGE_INDEX: &str = "P5_index";
+pub const STAGE_INDEX: &str = "P6_index";
 
 /// Progress of one pipeline stage for one dataset.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

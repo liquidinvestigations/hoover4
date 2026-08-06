@@ -5,7 +5,7 @@ runtime Manticore syntax error; these pin the exact strings.
 """
 
 from database.manticore import meta_table_ddl, pages_table_ddl
-from tasks.P5_index_data.activities import (
+from tasks.P6_index_data.activities import (
     metadata_row_id,
     pages_row_id,
     repr_manticore_tuple,
@@ -28,7 +28,7 @@ def test_pages_table_ddl_golden():
             ner_org multi64,
             ner_loc multi64,
             ner_misc multi64
-        ) engine='columnar'
+        ) engine='columnar' min_infix_len='3'
     """)
 
 
@@ -43,7 +43,7 @@ def test_meta_table_ddl_golden():
             file_paths multi64,
             filenames text,
             metadata_values text
-        ) engine='columnar'
+        ) engine='columnar' min_infix_len='3'
     """)
 
 

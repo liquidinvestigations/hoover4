@@ -27,7 +27,17 @@ Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-
 
 Runs named-entity recognition over parsed text content via the remote NER service, before indexing. Writes `entity_hit` rows and `nlp_processed` watermarks (including `text_bytes`). Texts are sent to the NER service in batches of `NLP_BATCH_TEXTS = 64`. NER failures are retried and then recorded in `processing_errors` — never silently swallowed.
 
-### P5 - Index Data
+### P5 - Chunk and Embed
+
+Reserved. Splits `text_content` pages into `text_chunks` and embeds them into
+`text_chunk_vectors`, on `processing-embed-queue`. The tables exist from Part 2 Phase 0;
+the stage itself lands in Part 2 Phase 3.
+
+The number was freed by renaming indexing to P6 — indexing genuinely runs last, and
+inserting a stage before it would otherwise have meant either an out-of-order number or
+a second rename later.
+
+### P6 - Index Data
 
 Aggregates metadata and text content into search indexes, reading the entity rows and watermarks written by P4. Pure I/O — no remote model calls.
 
@@ -78,7 +88,33 @@ Every workflow the pipeline starts — top-level submissions and child workflows
 carries the `CollectionDataset` keyword search attribute (`visibility.py`), registered
 idempotently at every worker startup. The admin workflow browser filters on it, so
 child workflows (`HandleFolders-<hash>`, per-plan runs) show up in a collection-scoped
-query; the attribute is also what makes a bare `reset-docker.sh` need no manual step.
+query.
+
+Registration alone is **not** sufficient: the Temporal frontend caches the attribute
+list, so after a fresh `./deploy --reset` there is a window where the attribute is
+provably registered yet workflow starts using it are still rejected with
+`search attribute CollectionDataset is not defined`. Submitting processes
+(`main.py add-disk-dataset`, the P0/P1/P2 `submit_job.py` paths) therefore call
+`ensure_search_attributes_ready` and wrap the start in `start_with_attribute_retry`
+— polling cannot close the frontend-cache window, only retrying the start can.
+
+## Activity liveness and outbound HTTP
+
+Every activity declares `heartbeat_timeout = HEARTBEAT_TIMEOUT` (30 s) at all 55 call
+sites, and every activity body is wrapped in `@with_heartbeat` (`heartbeat.py`), which
+beats every 15 s from a pump thread. The blanket wrap is deliberate: at a 30 s deadline,
+any activity whose real work legitimately exceeds it (ffprobe on a large video, a
+Manticore batch write) would otherwise be killed and retried forever. Activities with a
+real loop additionally beat a `HeartbeatClock` inside it — evidence of forward progress,
+not just a live thread. `threading`/`contextvars`/`time` are imported lazily inside the
+helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from
+here and the workflow sandbox restricts those modules.
+
+Outbound HTTP from activities (NER today, OCR/embeddings in Part 2) goes through
+`remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
+2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,
+time-boxed circuit breaker (`GPU_CIRCUIT_BREAK_SECONDS`). A connect failure falls back;
+a read timeout does not. `RemoteResult.provider` records which endpoint actually served.
 
 ## The AI tier is optional (Q11)
 
@@ -93,11 +129,11 @@ Workers are split into dedicated queues to control throughput and resource usage
 
 - `processing-common-queue` — all workflows plus the common activities.
 - `processing-tika-queue` — Tika parsing.
-- `processing-easyocr-queue` — OCR.
+- `processing-ocr-queue` — OCR.
 - `processing-nlp-queue` — P4 entity extraction against the remote NER service
   (`main.py worker nlp`, concurrency 2 — concurrency here pipelines HTTP, not local CPU).
-- `processing-indexing-queue` — P5 Manticore writes.
-- `processing-index-planner-queue` — P5 shard planning (`plan_shards`). MUST run at
+- `processing-indexing-queue` — P6 Manticore writes.
+- `processing-index-planner-queue` — P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger
   and assignments, which is only race-free when serialized.
 

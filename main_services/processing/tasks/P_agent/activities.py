@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 import requests
 from temporalio import activity
+from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class ResearchTaskParams:
 
 
 @activity.defn
+@with_heartbeat
 def run_research_agent(params: ResearchTaskParams) -> str:
     """Call the full research agent and return its answer.
 
@@ -104,9 +106,18 @@ class WriteResultParams:
     doc_refs: str = ""
     #: Wall time the agent took to produce this row, 0 for anything else.
     agent_duration_ms: int = 0
+    #: Model that produced the row, empty for user and tool rows. Recorded per message
+    #: because model selection is per message -- a transcript that mixes two models is
+    #: only readable if each row says which one wrote it.
+    model: str = ""
+    #: Reasoning kept out of the answer body and rendered behind the disclosure. A
+    #: reasoning model narrates its plan on the same channel as its answer, and this is
+    #: the column that stops the scratchpad reaching the transcript.
+    reasoning: str = ""
 
 
 @activity.defn
+@with_heartbeat
 def write_chat_message(params: WriteResultParams) -> int:
     """Append one row to the global `chat_messages` table.
 
@@ -131,6 +142,8 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.tool_output,
                 params.doc_refs,
                 params.agent_duration_ms,
+                params.model,
+                params.reasoning,
             ]],
             column_names=[
                 "session_id",
@@ -143,6 +156,8 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "tool_output",
                 "doc_refs",
                 "agent_duration_ms",
+                "model",
+                "reasoning",
             ],
         )
     log.info(

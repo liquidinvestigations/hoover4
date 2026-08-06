@@ -4,7 +4,7 @@ Health check tests for the embedding server
 """
 
 import pytest
-from test_utils import check_server_health, print_test_header, print_server_status
+from test_utils import check_server_health, print_test_header, print_server_status, DEFAULT_BASE_URL
 
 
 def test_server_health():
@@ -15,7 +15,7 @@ def test_server_health():
     print_server_status(health_data)
 
     if health_data.get("status") == "unreachable":
-        print("\nError: Cannot connect to embedding server at http://localhost:8000")
+        print(f"\nError: Cannot connect to embedding server at {DEFAULT_BASE_URL}")
         print("Make sure the server is running with: python hoover4_ai_server.py")
         print("Or with Docker: docker-compose up")
         assert False, "Server is unreachable"

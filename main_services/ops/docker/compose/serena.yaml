@@ -1,0 +1,58 @@
+# Optional overlay: Serena MCP server (dev tooling, Phase A of plan 1 part 1).
+#
+# NOT part of the deployed stack. It can read and write the whole repository, so it
+# is published on 127.0.0.1 only — never reachable off the box. Enabled via
+# [main_services] serena_enabled = true in hoover4.ini.
+services:
+  serena:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/ops/docker/serena
+      dockerfile: Dockerfile
+    image: hoover4-serena:local
+    container_name: hoover4-serena
+    ports:
+      - "127.0.0.1:${SERENA_PORT:-21940}:21940"
+    environment:
+      # The repo is mounted at the IDENTICAL absolute path as on the host; Serena
+      # returns absolute paths and the agent edits on the host. See entrypoint.sh.
+      - HOOVER4_REPO_ROOT=${HOOVER4_REPO_ROOT}
+      # Isolated language-server state [user requirement]: the venvs, caches and
+      # target directories the language servers create must never touch the
+      # checkout's own. Everything lives in the serena_state volume, so a rebuild
+      # does not re-index the Rust workspace from cold.
+      - UV_PROJECT_ENVIRONMENT=/opt/serena/venvs/processing
+      - VIRTUAL_ENV=/opt/serena/venvs/serena
+      - UV_CACHE_DIR=/opt/serena/uv-cache
+      - CARGO_TARGET_DIR=/opt/serena/cargo-target
+      - CARGO_HOME=/opt/serena/cargo-home
+      - RUSTUP_HOME=/opt/rust/rustup
+      - SERENA_HOME=/opt/serena/state
+      - HOME=/opt/serena/home
+    volumes:
+      - ${HOOVER4_REPO_ROOT}:${HOOVER4_REPO_ROOT}:rw
+      - serena_state:/opt/serena
+    working_dir: ${HOOVER4_REPO_ROOT}
+    restart: unless-stopped
+    healthcheck:
+      # rust-analyzer's first cargo check of the website workspace is minutes long
+      # and memory-hungry; the generous start_period means "late, not wrong".
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',21940),timeout=5); s.close()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 900s
+    # Deliberately NOT on the hoover4 network. Serena talks to exactly two things: the
+    # repo on disk, and the agent on 127.0.0.1:21940. Attaching it to the main stack's
+    # network bought nothing and cost a real coupling — the shared network could not be
+    # torn down while Serena held it, so every `--reset` ended on 'network "hoover4" has
+    # associated containers with it', and a cold start could not bring Serena up before
+    # the main stack had created the network. It gets the project's own default network.
+
+volumes:
+  serena_state:
+    # Explicit name, so moving this overlay into its own compose project does not
+    # orphan the existing volume behind a new hoover4-devtools_ prefix and re-index
+    # the Rust workspace from cold. deploy.py's PROTECTED_VOLUME_SUFFIXES matches on
+    # the "serena_state" suffix, so --reset still skips it despite the hoover4_ prefix.
+    name: hoover4_serena_state
+    driver: local

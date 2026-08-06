@@ -1,0 +1,56 @@
+# Optional overlay: GPU NER + embeddings server (enabled via
+# [ai_services] ai_server_enabled = true in hoover4.ini).
+services:
+  # ---------------------------------------------------------------- GPU: embeddings
+  # Embeddings, reranking and NER. The processing pipeline's P4 stage calls this too
+  # (NER_URL in main_services), so when the GPU tier is enabled it is not optional
+  # infrastructure. After the host split it is reached cross-host on AI_SERVER_PORT;
+  # before the split it shared the `hoover4` network — see compose/agents.yaml on the
+  # main side for the services that used to live next to it.
+  hoover4-ai-server:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/ai_services/hoover4_ai_server
+      dockerfile: Dockerfile
+    image: hoover4-ai-server:local
+    container_name: hoover4-ai-server
+    ports:
+      - "${AI_BIND_IP:-0.0.0.0}:${AI_SERVER_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - OPTIMAL_BATCH_SIZE=${AI_SERVER_OPTIMAL_BATCH_SIZE:-32}
+      - MAX_SEQUENCE_LENGTH=${AI_SERVER_MAX_SEQUENCE_LENGTH:-512}
+      - ENABLE_HALF_PRECISION=${AI_SERVER_ENABLE_HALF_PRECISION:-true}
+      # torch.compile costs several minutes of startup for a modest throughput gain and
+      # has been the most common cause of "the AI server never becomes healthy".
+      - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE:-false}
+      # Config-drift guard (hoover4.ini is copied by hand to two hosts): the sha256 of
+      # the normalised [ai_services] section, returned from /health so verify-stack.sh
+      # can compare what host B was told against what host A runs.
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ai_models_cache:/root/.cache/huggingface
+    devices:
+      - nvidia.com/gpu=all
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      # Cold start downloads ~2 GB of model weights on first run.
+      start_period: 600s
+    networks:
+      - ai_services
+
+volumes:
+  ai_models_cache:
+    driver: local
+
+networks:
+  # Private to the ai_services tier (declared in the base docker-compose.yaml).
+  ai_services:
+    name: ai_services

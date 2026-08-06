@@ -276,6 +276,11 @@ pub async fn send_message(
                         doc_refs,
                         agent_duration_ms: 0,
                         retry_errors: String::new(),
+                        // A tool row is the tool's output, not the model's: leaving
+                        // these empty is what makes "which model wrote this" a question
+                        // only the assistant rows answer.
+                        model: String::new(),
+                        reasoning: String::new(),
                     },
                 )
                 .await?;
@@ -283,6 +288,7 @@ pub async fn send_message(
                 seq += 1;
             }
 
+            let result_reasoning = result.reasoning.clone();
             let answer = if result.answer.trim().is_empty() {
                 "(the assistant returned an empty answer)".to_string()
             } else {
@@ -301,6 +307,12 @@ pub async fn send_message(
                     // third try is worth surfacing, and it is the only trace that the
                     // agent tier was flapping.
                     retry_errors: encode_errors(&attempt_errors),
+                    // The model narrates its plan on the same channel as its answer.
+                    // The agent separates the two; storing the narration here is what
+                    // keeps it out of the answer body while still making it readable
+                    // behind the disclosure.
+                    reasoning: result_reasoning,
+                    model: std::env::var("LLM_MODEL").unwrap_or_default(),
                     ..Default::default()
                 },
             )
@@ -480,7 +492,7 @@ async fn start_research_workflow(
     start_seq: u32,
 ) -> anyhow::Result<String> {
     let base_url = std::env::var("TEMPORAL_HTTP_URL")
-        .unwrap_or_else(|_| "http://localhost:7243".to_string());
+        .unwrap_or_else(|_| "http://localhost:21908".to_string());
     let workflow_id = format!("research-{session_id}-{start_seq}");
     let url = format!("{base_url}/api/v1/namespaces/default/workflows/{workflow_id}");
 

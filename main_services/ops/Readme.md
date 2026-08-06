@@ -2,31 +2,54 @@
 
 This directory provides the runtime environment for Hoover4 main services. The `docker/` folder contains Docker Compose definitions and configuration overrides used to run processing dependencies.
 
+## Serena (dev tooling, optional)
+
+`docker/serena/` builds the Serena MCP server image and `docker/compose/serena.yaml` is
+its optional overlay. Serena gives the host-side coding agent symbolic code navigation
+(python + rust) over this repository. It can read and write the whole checkout, so it is
+published on `127.0.0.1:21940` only. The repo is mounted at the identical absolute path
+as on the host (`HOOVER4_REPO_ROOT`, set by `deploy.py`), and all language-server state
+(venvs, cargo target/registry, Serena home) lives in the `serena_state` volume, never in
+the checkout. Resets never remove that volume or the container. The MCP endpoint is
+`http://127.0.0.1:21940/sse` (see `.mcp.json` at the repo root).
+
 ## Docker Compose Services
 
 The stack includes:
 
 - Workflow orchestration: Temporal with Cassandra and Elasticsearch backends, plus the Temporal UI.
 - Primary data stores: ClickHouse for structured processing tables, Manticore for text search, MinIO for object storage, and Redis for auxiliary caching.
-- Parsing and enrichment: Apache Tika and OCR-related workers that connect to the processing pipeline.
+- Application services: the processing worker, the website, and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
 ## Common Endpoints (Local)
 
-- Temporal UI: `http://localhost:8081`
-- ClickHouse HTTP: `http://localhost:8123`
-- ClickHouse Native: `http://localhost:9000`
-- Manticore SQL: `http://localhost:9306`
-- Manticore HTTP: `http://localhost:9308`
-- Apache Tika: `http://localhost:9998`
-- MinIO Console: `http://localhost:8084` (default credentials are documented in Docker Compose)
-- Redis: `tcp://localhost:6379`
+Ports are ini keys in `hoover4.ini` (rendered by `deploy.py`); the values below are the
+defaults. The website stays on `12345`.
+
+- Website: `http://localhost:12345`
+- Temporal UI: `http://localhost:21909`
+- Temporal gRPC / HTTP: `localhost:21907` / `http://localhost:21908`
+- ClickHouse HTTP: `http://localhost:21900`
+- ClickHouse Native: `localhost:21901`
+- ClickHouse Monitoring: `http://localhost:21910`
+- CH-UI: `http://localhost:21911`
+- Manticore SQL: `localhost:21902`
+- Manticore HTTP: `http://localhost:21903`
+- MinIO Console: `http://localhost:21905` (`hoover4` / `hoover4-secret`)
+- MinIO API: `http://localhost:21904`
+- Redis: `tcp://localhost:21906`
+- PDF-to-HTML renderer: `http://localhost:21920`
 
 ## Technical Details
 
 This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, MinIO, Redis, and supporting UIs.
 
-Configuration is organized under `docker/`, which includes compose files, `.env` values, service overrides, and helper scripts. Use `docker compose up -d` from `docker/` after setting environment variables in the local `.env` file.
+Configuration lives in `hoover4.ini` at the repository root (see `hoover4.ini.example`);
+`deploy.py` renders it into a generated `.env` in this directory — never edit that file
+by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); the base
+`docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
+selected by ini flags.
 
 ## Navigation
 
@@ -39,29 +62,26 @@ The docker containers start up the following services:
 
 ### Web Interfaces
 
-- **Temporal UI**: [http://localhost:8081](http://localhost:8081) - Temporal UI Dashboard
-- **ClickHouse Monitoring 3000**: [http://localhost:3000](http://localhost:3000) - ClickHouse monitoring dashboard
-- **CH-UI (ClickHouse UI) 5521**: [http://localhost:5521](http://localhost:5521) - ClickHouse web interface
-- **Apache Tika**: [http://localhost:9998](http://localhost:9998) - Document parsing service
-- **Minio**: [http://localhost:8084](http://localhost:8084) - Minio S3 Dashboard
+- **Website**: [http://localhost:12345](http://localhost:12345) - the Hoover4 web UI
+- **Temporal UI**: [http://localhost:21909](http://localhost:21909) - Temporal UI Dashboard
+- **ClickHouse Monitoring**: [http://localhost:21910](http://localhost:21910) - ClickHouse monitoring dashboard
+- **CH-UI (ClickHouse UI)**: [http://localhost:21911](http://localhost:21911) - ClickHouse web interface
+- **Minio**: [http://localhost:21905](http://localhost:21905) - Minio S3 Dashboard
   - `hoover4` / `hoover4-secret`
 
 ### Search Engines
 
-- **Manticore Search**: [http://localhost:9306](http://localhost:9306) - Primary Manticore instance (SQL port)
-- **Manticore Search HTTP**: [http://localhost:9308](http://localhost:9308) - Primary Manticore HTTP API
-- **Manticore Search 2**: [http://localhost:19306](http://localhost:19306) - Secondary Manticore instance (SQL port)
-- **Manticore Search 2 HTTP**: [http://localhost:19308](http://localhost:19308) - Secondary Manticore HTTP API
-- **DejaVu (Elasticsearch UI)**: [http://localhost:1358](http://localhost:1358) - Elasticsearch data browser
+- **Manticore Search**: `localhost:21902` - Primary Manticore instance (SQL port)
+- **Manticore Search HTTP**: [http://localhost:21903](http://localhost:21903) - Primary Manticore HTTP API
 
 ### Database Connections
 
-- **Redis**: [http://localhost:6379](http://localhost:6379) - Redis database (TCP, not HTTP)
-- **ClickHouse Native**: [http://localhost:9000](http://localhost:9000) - ClickHouse native protocol
-- **ClickHouse HTTP Interface**: [http://localhost:8123](http://localhost:8123) - ClickHouse database HTTP API
-- **Temporal**: [http://localhost:7233](http://localhost:7233) - Temporal workflow engine
-- **Temporal Cassandra**: [http://localhost:9042](http://localhost:9042) - Temporal's Cassandra database
-- **Temporal Elasticsearch**: [http://localhost:9200](http://localhost:9200) - Elasticsearch REST API
+- **Redis**: `localhost:21906` - Redis database (TCP, not HTTP)
+- **ClickHouse Native**: `localhost:21901` - ClickHouse native protocol
+- **ClickHouse HTTP Interface**: [http://localhost:21900](http://localhost:21900) - ClickHouse database HTTP API
+- **Temporal**: `localhost:21907` - Temporal workflow engine
+- **Temporal Cassandra**: `localhost:21912` - Temporal's Cassandra database
+- **Temporal Elasticsearch**: [http://localhost:21913](http://localhost:21913) - Elasticsearch REST API
 
 ## Rate-limit environment (paste into the `hoover4-website` service)
 

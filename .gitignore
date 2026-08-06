@@ -8,3 +8,11 @@ CLAUDE.md
 AGENTS.md
 gain.ndjson
 plans/
+hoover4.ini
+.serena/*
+!.serena/project.yml
+
+**/*.pyc
+**/__pycache__
+__pycache__
+*.pyc

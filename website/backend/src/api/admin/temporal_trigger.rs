@@ -50,7 +50,7 @@ fn collection_dataset_search_attribute(collection_dataset: &str) -> serde_json::
 pub async fn trigger_workflow(target: &str, kind: &str) -> anyhow::Result<String> {
     let collection_dataset = target;
     let base_url = std::env::var("TEMPORAL_HTTP_URL")
-        .unwrap_or_else(|_| "http://localhost:7243".to_string());
+        .unwrap_or_else(|_| "http://localhost:21908".to_string());
 
     let (workflow_type, workflow_id, task_queue, input) = match kind {
         "rescan" => {

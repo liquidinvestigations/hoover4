@@ -220,9 +220,14 @@ fn SourceItemRow(
     let item_hit_counts = std::collections::BTreeMap::from_iter(item_hit_counts.0);
     let count = item_hit_counts.get(&source).unwrap_or(&0);
     let (icon, label) = match source {
-        DocumentSourceItem::Text(source) => {
-            (_item_icon_rsx(MdTextSnippet), source.extracted_by.clone())
-        }
+        // Rendered through the shared formatter, never as the raw `extracted_by` key.
+        // With OCR fanning out over engines and languages a document has 6-10 text
+        // sources instead of 3-4, and `ocr_tesseract_eng+ron` is a storage key, not a
+        // label a reader should have to decode.
+        DocumentSourceItem::Text(source) => (
+            _item_icon_rsx(MdTextSnippet),
+            common::document_sources::text_source_label(&source.extracted_by),
+        ),
         DocumentSourceItem::Pdf(_source) => (_item_icon_rsx(MdPictureAsPdf), "PDF".to_string()),
         DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),
         DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),

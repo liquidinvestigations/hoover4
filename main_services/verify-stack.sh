@@ -21,6 +21,7 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && 
 cd "$SCRIPT_DIR"
 
 WEBSITE_URL="${WEBSITE_URL:-http://localhost:12345}"
+WORKER="${WORKER:-hoover4-worker}"
 SEARCH_WORD="${SEARCH_WORD:-easychair}"
 POLL_TIMEOUT="${POLL_TIMEOUT:-3600}"
 MAX_SHARD_TEXT_BYTES=1000000000
@@ -48,6 +49,60 @@ wait_for_manticore() {
     echo "Manticore did not become healthy in time" >&2; exit 1
 }
 
+wait_for_worker() {
+    # Every step below runs through `docker exec hoover4-worker`, and the worker starts
+    # late: it waits on Temporal, which waits on Cassandra. Straight after a
+    # `./deploy --reset && ./deploy` the databases answer while the worker container
+    # does not exist yet, so migrate/ensure-collection/add-disk-dataset all fail
+    # instantly and the run looks like a stack failure rather than a race.
+    for _ in $(seq 1 60); do
+        if docker exec "$WORKER" uv run main.py version >/dev/null 2>&1; then return 0; fi
+        sleep 5
+    done
+    echo "$WORKER did not become usable in time" >&2; exit 1
+}
+
+wait_for_temporal() {
+    # The gap that defeated three earlier runs. wait_for_worker only proves the
+    # worker container answers `main.py version`, which touches neither Temporal
+    # nor the queues -- so the worker looks ready while Temporal is still doing
+    # its schema setup behind Cassandra. add-disk-dataset then fails on
+    # TemporalClient.connect within a second, and because its output used to go
+    # to /dev/null the whole run looked like an instant unexplained exit 1.
+    #
+    # Connecting is not enough either: starting a workflow needs the
+    # CollectionDataset search attribute to be registered AND pushed to
+    # Elasticsearch, or the start is rejected with "search attribute
+    # CollectionDataset is not defined". Wait for the thing we actually need.
+    for _ in $(seq 1 60); do
+        if docker exec "$WORKER" uv run python -c "
+import asyncio, sys
+from temporalio.client import Client
+from tasks.visibility import ensure_search_attributes_ready
+async def main():
+    client = await Client.connect('temporal:7233')
+    sys.exit(0 if await ensure_search_attributes_ready(client, 10) else 1)
+asyncio.run(main())
+" >/dev/null 2>&1; then return 0; fi
+        sleep 5
+    done
+    echo "Temporal did not become usable (search attribute never registered)" >&2; exit 1
+}
+
+# Run a ./run.sh subcommand, showing its output only if it FAILS. The previous
+# `>/dev/null` hid the failure reason on the one path where it mattered.
+run_step() {
+    local log
+    log=$(mktemp)
+    if ! ./run.sh "$@" >"$log" 2>&1; then
+        echo "FAILED: ./run.sh $*" >&2
+        cat "$log" >&2
+        rm -f "$log"
+        return 1
+    fi
+    rm -f "$log"
+}
+
 ensure_collection_row() {
     # The admin UI is the normal way to create a collection row; for a scripted
     # reset the row is inserted directly (same columns the UI writes).
@@ -62,27 +117,35 @@ if [ "${1:-}" = "--reset" ]; then
     ./reset-docker.sh
 fi
 
-echo "== waiting for ClickHouse and Manticore =="
+echo "== waiting for ClickHouse, Manticore, the worker and Temporal =="
 wait_for_clickhouse
 wait_for_manticore
+wait_for_worker
+wait_for_temporal
 
 echo "== migrate =="
-./run.sh migrate >/dev/null
+run_step migrate
 
 echo "== ensure collections =="
 ensure_collection_row testdata "Test Data"
 ensure_collection_row other "Other Collection"
-./run.sh ensure-collection testdata >/dev/null
-./run.sh ensure-collection other >/dev/null
+run_step ensure-collection testdata
+run_step ensure-collection other
 
+# These block until each dataset is fully ingested, which is correct: the three
+# stages (scan, compute plans, execute plans) must run in order, and only the
+# CLI sequences them today. It does mean the ingest is tied to this script --
+# the 47-minute run that died at EXIT=137 was a redeploy SIGKILLing exactly this
+# docker exec while the workflows carried on server-side. DO NOT redeploy while
+# this is running; the poll loop below is the safety net if you do.
 echo "== ingest canonical datasets =="
 if [ -z "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL WHERE collection_dataset = 'testdata_testfiles' AND is_deleted = 0")" ]; then
-    ./run.sh add-disk-dataset testdata testfiles /testdata/hoover-testdata/data/disk-files >/dev/null
+    run_step add-disk-dataset testdata testfiles /testdata/hoover-testdata/data/disk-files
 else
     echo "testdata_testfiles already registered, skipping ingest"
 fi
 if [ -z "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL WHERE collection_dataset = 'other_emails' AND is_deleted = 0")" ]; then
-    ./run.sh add-disk-dataset other emails /testdata/hoover-testdata/data/eml-2-attachment >/dev/null
+    run_step add-disk-dataset other emails /testdata/hoover-testdata/data/eml-2-attachment
 else
     echo "other_emails already registered, skipping ingest"
 fi
@@ -108,8 +171,19 @@ done
 echo "== invariants =="
 
 # 1. The global database holds only global tables (no per-collection tables).
+#    The expected set is parsed from the migration files (CREATEs minus DROPs,
+#    plus schema_versions) so the check does not drift from the schema.
+tables_expected() {
+    local dir="$1"
+    comm -23 \
+        <(grep -hoiE 'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+`?[a-z_]+`?' "$dir"/*.sql \
+            | awk '{print $NF}' | tr -d '`' | { cat -; echo schema_versions; } | sort -u) \
+        <(grep -hoiE 'DROP\s+TABLE\s+(IF\s+EXISTS\s+)?`?[a-z_]+`?' "$dir"/*.sql \
+            | awk '{print $NF}' | tr -d '`' | sort -u) \
+        | tr '\n' ' '
+}
+expected_global=$(tables_expected processing/database/db_global_migrations)
 global_tables=$(CH "SHOW TABLES FROM Hoover4_Processing" | sort | tr '\n' ' ')
-expected_global="collection_group_permissions collections dataset schema_versions search_manticore_cache server_settings temp_chat_json_objects user_group_membership user_groups users web_sessions "
 if [ "$global_tables" = "$expected_global" ]; then
     ok "global DB has exactly the global table set"
 else
@@ -117,10 +191,8 @@ else
 fi
 
 # 2. Every collection DB has the full collection table set (parsed from the
-#    migration files, plus schema_versions).
-expected_collection=$(grep -hoiE 'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+`?[a-z_]+`?' \
-    processing/database/db_collection_migrations/*.sql \
-    | awk '{print $NF}' | tr -d '`' | { cat -; echo schema_versions; } | sort | tr '\n' ' ')
+#    migration files, plus schema_versions, minus tables later migrations drop).
+expected_collection=$(tables_expected processing/database/db_collection_migrations)
 for coll_db in Hoover4_Collection_testdata Hoover4_Collection_other; do
     actual=$(CH "SHOW TABLES FROM $coll_db" | sort | tr '\n' ' ')
     if [ "$actual" = "$expected_collection" ]; then
@@ -201,6 +273,51 @@ done
 # 7. The website serves.
 code=$(curl -s -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")
 [ "$code" = "200" ] && ok "website / returns 200" || fail "website / returned $code"
+
+# 7b. Config-drift guard between the two hosts (hoover4.ini is copied by hand, so it
+#     WILL drift). Compare the fingerprint deploy.py rendered on this host against
+#     what the ai-services host reports from /health. A mismatch PRINTS both — it
+#     does not fail the stack, because a deliberate difference is legal.
+main_env="ops/docker/.env"
+expected_fp=$(grep -E '^HOOVER4_CONFIG_FINGERPRINT=' "$main_env" 2>/dev/null | cut -d= -f2 || true)
+ner_url=$(grep -E '^NER_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if [ -n "$expected_fp" ] && [ -n "$ner_url" ]; then
+    # Probe from INSIDE the worker, not from the host. NER_URL is written in container
+    # terms -- on a single-box setup deploy.py rewrites it to
+    # `host.containers.internal`, which does not resolve on the host at all. Curling it
+    # from here reported "unreachable" against a service that was healthy the whole
+    # time, which is a worse answer than no answer.
+    health=$(docker exec hoover4-worker curl -s --max-time 5 "${ner_url%/v1}/health" 2>/dev/null || true)
+    reported_fp=$(printf '%s' "$health" | { grep -oE '"config_fingerprint":\s*"[a-f0-9]*"' || true; } | grep -oE '[a-f0-9]{8,}' | head -1 || true)
+    if [ -z "$health" ]; then
+        echo "NOTE - ai-services /health unreachable from the worker ($ner_url); skipping drift check"
+    elif [ -z "$reported_fp" ]; then
+        echo "NOTE - ai-services /health answers but reports no config_fingerprint; skipping drift check"
+    elif [ "$reported_fp" = "$expected_fp" ]; then
+        ok "config fingerprint matches on both hosts ($expected_fp)"
+    else
+        echo "NOTE - hoover4.ini drift: this host rendered $expected_fp, ai-services reports $reported_fp"
+    fi
+fi
+
+# 7c. The OCR tier answers, and reports the languages it can actually serve.
+#     `languages_available` comes from `tesseract --list-langs`, not from config: a
+#     dataset configured for a language whose traineddata is not in the image fails per
+#     file, and this is the only place that mismatch is visible before it does.
+ocr_url=$(grep -E '^OCR_TESSERACT_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if [ -n "$ocr_url" ]; then
+    ocr_health=$(docker exec hoover4-worker curl -s --max-time 5 "${ocr_url%/ocr}/health" 2>/dev/null || true)
+    case "$ocr_health" in
+        *'"status":"healthy"'*)
+            langs=$(printf '%s' "$ocr_health" | grep -oE '"languages_available":\[[^]]*\]' || true)
+            ok "tesseract-cpu /health is healthy (${langs:-no languages reported})"
+            ;;
+        "")  fail "tesseract-cpu /health unreachable from the worker ($ocr_url)" ;;
+        *)   fail "tesseract-cpu /health is not healthy: $(printf '%s' "$ocr_health" | head -c 200)" ;;
+    esac
+else
+    echo "NOTE - no OCR_TESSERACT_URL rendered (tesseract_cpu_enabled = false); skipping OCR check"
+fi
 
 # 8. A search through the site's HTTP API returns >0 hits for a word known to
 #    be in the fixture data. The server-function URL contains a build hash, so

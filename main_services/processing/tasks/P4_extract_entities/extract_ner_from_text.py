@@ -1,31 +1,58 @@
-"""NER client helper for extracting entities from text via HTTP."""
+"""NER client: extract entities from text over HTTP, with a CPU fallback.
 
-import os
+The endpoint list is ordered -- GPU first, CPU twin second -- and
+``tasks.remote`` decides which one actually serves the request. The caller gets
+the model identifier of whichever one did, because that is what has to be
+written to ``nlp_processed.nlp_model``: under fallback the configured provider
+and the serving provider differ, and that difference is the only evidence an
+outage happened at all.
+"""
+
 import logging
+import os
+
+from tasks.remote import post_json
+
 logger = logging.getLogger(__name__)
 
-SERVERS = [
-    os.getenv('NER_URL')
-]
+# Model identifier per provider. This is written to nlp_processed.nlp_model and
+# read back by the left-anti join that makes the stage re-runnable, so changing
+# a value here reprocesses every segment under the new name.
+NLP_MODEL_BY_PROVIDER = {
+    "gpu": "ner-gpu-xlmr",
+    "spacy": "ner-spacy-xx",
+}
 
-def extract_ner_from_texts(texts: list[str]) -> list[dict[str, list[str]]]:
-    import random
-    server_url = random.choice(SERVERS) + '/extract-entities'
-    import requests
-    response = requests.post(server_url, json={
-            "input": texts,
-            "include_confidence": False,
-            "entity_types": None,
-        },
-        headers={"Content-Type": "application/json"},
-        timeout=3000,
-    )
 
-    response.raise_for_status()
-    data = response.json()
-    entities_by_text = _group_entities_by_text(data["data"], len(texts))
-    logger.debug(f"Successfully extracted entities from {len(texts)} texts")
-    return entities_by_text
+def _endpoints() -> list[tuple[str, str]]:
+    """Ordered ``(provider, url)`` candidates, primary first.
+
+    ``NER_URL_FALLBACK`` is empty until Part 2 builds the spacy twin. That is
+    deliberate: with no twin, ``post_json`` raises RemoteUnavailable naming the
+    unreachable GPU url within the connect timeout instead of stalling.
+    """
+    primary = (os.getenv("NER_URL") or "").strip().rstrip("/")
+    fallback = (os.getenv("NER_URL_FALLBACK") or "").strip().rstrip("/")
+    primary_provider = (os.getenv("NER_PROVIDER") or "gpu").strip() or "gpu"
+    if primary_provider == "both":
+        primary_provider = "gpu"
+    candidates = [(primary_provider, f"{primary}/extract-entities" if primary else "")]
+    if fallback:
+        candidates.append(("spacy", f"{fallback}/extract-entities"))
+    return candidates
+
+
+def extract_ner_from_texts(texts: list[str]) -> tuple[list[dict[str, list[str]]], str]:
+    """Return per-text entities and the ``nlp_model`` of the provider that served."""
+    result = post_json(_endpoints(), {
+        "input": texts,
+        "include_confidence": False,
+        "entity_types": None,
+    })
+    entities_by_text = _group_entities_by_text(result.data["data"], len(texts))
+    nlp_model = NLP_MODEL_BY_PROVIDER.get(result.provider, f"ner-{result.provider}")
+    logger.debug("extracted entities from %d texts via %s", len(texts), nlp_model)
+    return entities_by_text, nlp_model
 
 
 def _group_entities_by_text(entities: list[dict], num_texts: int) -> list[dict[str, list[str]]]:

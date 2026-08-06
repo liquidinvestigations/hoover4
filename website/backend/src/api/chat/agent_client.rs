@@ -1,4 +1,4 @@
-//! HTTP client for the research-agent service in `ai_services`.
+//! HTTP client for the research-agent services in `main_services/agents`.
 //!
 //! The website resolves permissions and hands the agent the resulting collection list;
 //! the agent forwards it to the MCP servers, which enforce it. **This module is the
@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 /// Internal search agent (no internet tools). Defaults to the port
 /// `ai_services/docker-compose.yaml` publishes on loopback.
 pub fn agent_url() -> String {
-    std::env::var("HOOVER4_AGENT_URL").unwrap_or_else(|_| "http://localhost:9099".to_string())
+    std::env::var("HOOVER4_AGENT_URL").unwrap_or_else(|_| "http://localhost:21936".to_string())
 }
 
 /// Full research agent (internet tools). Defaults to the port
 /// `ai_services/docker-compose.yaml` publishes on loopback.
 pub fn full_agent_url() -> String {
-    std::env::var("HOOVER4_FULL_AGENT_URL").unwrap_or_else(|_| "http://localhost:9090".to_string())
+    std::env::var("HOOVER4_FULL_AGENT_URL").unwrap_or_else(|_| "http://localhost:21937".to_string())
 }
 
 fn agent_base_url(use_internet_tools: bool) -> String {

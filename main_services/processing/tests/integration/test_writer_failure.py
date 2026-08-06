@@ -20,9 +20,9 @@ from tasks.P2_execute_plan.activities import (
     RecordProcessingErrorsParams,
     record_processing_errors,
 )
-from tasks.P5_index_data import activities as p5_activities
-from tasks.P5_index_data import shard_planner
-from tasks.P5_index_data.params import (
+from tasks.P6_index_data import activities as p5_activities
+from tasks.P6_index_data import shard_planner
+from tasks.P6_index_data.params import (
     FinalizeIndexBatchParams,
     PlanShardsParams,
     RecordIndexedParams,
@@ -93,7 +93,7 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
         }
         for assignment in assignments
         for item_hash in assignment.hashes
-        for task_name in ("P5_IndexTextPages", "P5_IndexMetadata")
+        for task_name in ("P6_IndexTextPages", "P6_IndexMetadata")
     ]
     recorded = record_processing_errors(
         RecordProcessingErrorsParams(collectionname=collectionname, errors=errors)

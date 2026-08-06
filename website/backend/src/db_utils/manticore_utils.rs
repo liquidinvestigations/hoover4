@@ -61,7 +61,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     println!("SEARCH CACHE MISS: {}", query_hash);
     let t0 = std::time::Instant::now();
     let database_url =
-        std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:9308".to_string());
+        std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
     let database_url = format!("{}/sql", database_url);
     let client = reqwest::Client::new();
 

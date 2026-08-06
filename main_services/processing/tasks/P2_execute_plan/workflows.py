@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
+    from tasks.heartbeat import HEARTBEAT_TIMEOUT
     from tasks.P2_execute_plan.activities import (
         list_pending_plans,
         get_plan_items_metadata,
@@ -36,7 +37,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.workflows import ParseSingleFile
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
-    from tasks.P5_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
+    from tasks.P6_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -67,6 +68,7 @@ class ExecutePlans:
             ensure_temp_dir_exists,
             EnsureTempDirExistsParams(base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(minutes=12),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -75,6 +77,7 @@ class ExecutePlans:
             list_pending_plans,
             ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or "")),
             start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -84,6 +87,7 @@ class ExecutePlans:
                 count_new_blobs,
                 CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
                 start_to_close_timeout=timedelta(minutes=15),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
             if count:
@@ -157,6 +161,7 @@ class ExecutePlans:
             count_new_blobs,
             CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         if count:
@@ -208,6 +213,7 @@ class ExecuteSinglePlan:
             get_plan_items_metadata,
             GetPlanItemsMetadataParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=20),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -231,6 +237,7 @@ class ExecuteSinglePlan:
             download_plan_files,
             DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=items, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=dl_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -257,6 +264,7 @@ class ExecuteSinglePlan:
             cleanup_plan_dir,
             CleanupPlanDirParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=del_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -285,6 +293,7 @@ class ExecuteSinglePlan:
             mark_plan_finished,
             MarkPlanFinishedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=25),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 

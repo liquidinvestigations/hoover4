@@ -4,7 +4,7 @@ Search data is sharded per collection: logical shard ``<collectionname>_<n>`` (n
 1-based) consists of two physical tables, ``<collectionname>_<n>_pages`` and
 ``<collectionname>_<n>_meta``, with schemas identical to the retired global
 ``doc_text_pages`` / ``doc_metadata`` tables. Shard tables are created on demand by the
-indexing planner (``tasks/P5_index_data/shard_planner.py``); this module only owns the
+indexing planner (``tasks/P6_index_data/shard_planner.py``); this module only owns the
 DDL and the lifecycle helpers.
 
 There are deliberately **no distributed tables**. Manticore 14.1.0 (and 17.5.1 / 28.4.4)
@@ -116,7 +116,7 @@ def shard_tables_from_name(shard_name: str) -> tuple[str, str]:
 #: config measured 16.6 MB, 33.6 MB and 65.4 MB at different points. Under identical
 #: treatment (pipeline reindex, then FLUSH + OPTIMIZE) the infix build measured
 #: *smaller* - 26.0 MB against 33.6 MB - so whatever the true cost is, it is not one
-#: worth trading the wrong answers for. See ai_services/README.md.
+#: worth trading the wrong answers for. See main_services/agents/README.md.
 #:
 #: The value is 3 as a statement of intent only. This Manticore version treats
 #: min_infix_len as an on/off switch rather than a threshold - 2, 3 and 4 are

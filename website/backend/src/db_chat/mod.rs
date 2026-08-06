@@ -71,6 +71,16 @@ pub struct ChatMessageRow {
     pub agent_duration_ms: u32,
     #[serde(default)]
     pub retry_errors: String,
+    /// The model that produced this row, empty for user and tool rows. Recorded per
+    /// message rather than per session: model selection is a per-message choice, and a
+    /// transcript that mixes two models is only readable if each row says which.
+    #[serde(default)]
+    pub model: String,
+    /// Reasoning content stripped out of the answer body, rendered behind a disclosure.
+    /// A reasoning model narrates its plan on the same channel as its answer; keeping
+    /// the two apart here is what stops the scratchpad reaching the transcript.
+    #[serde(default)]
+    pub reasoning: String,
 }
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
@@ -79,7 +89,7 @@ const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, colle
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
-     retry_errors FROM chat_messages FINAL";
+     retry_errors, model, reasoning FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -240,6 +250,10 @@ pub struct AppendMessageExtras {
     pub agent_duration_ms: u32,
     /// JSON array of errors from earlier attempts, for an `error` row.
     pub retry_errors: String,
+    /// Model that produced the row, empty for user and tool rows.
+    pub model: String,
+    /// Reasoning kept out of the answer body.
+    pub reasoning: String,
 }
 
 pub async fn append_message(
@@ -266,6 +280,8 @@ pub async fn append_message(
         created_ms: ts.unix_timestamp_nanos() as i64 / 1_000_000,
         agent_duration_ms: extras.agent_duration_ms,
         retry_errors: extras.retry_errors,
+        model: extras.model,
+        reasoning: extras.reasoning,
     };
     insert_row("chat_messages", &row).await
 }

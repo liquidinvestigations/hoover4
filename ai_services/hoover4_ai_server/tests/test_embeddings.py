@@ -6,6 +6,7 @@ Basic embedding API tests for the embedding server
 import requests
 import pytest
 from test_utils import (
+    DEFAULT_BASE_URL,
     cosine_similarity, euclidean_distance, check_server_health,
     print_test_header, validate_server_connection,
     SIMILARITY_TEST_TEXTS, DEFAULT_MODEL, DEFAULT_TASK_DESCRIPTION
@@ -28,7 +29,7 @@ def test_basic_embedding_generation():
     print("\nGetting embeddings using direct API...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "input": SIMILARITY_TEST_TEXTS,
                 "model": DEFAULT_MODEL,
@@ -66,7 +67,7 @@ def test_similarity_computation():
     # Get embeddings first
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "input": SIMILARITY_TEST_TEXTS,
                 "model": DEFAULT_MODEL
@@ -159,7 +160,7 @@ def test_custom_task_description():
     print("Testing with different task description...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "input": SIMILARITY_TEST_TEXTS,
                 "model": DEFAULT_MODEL,
@@ -194,7 +195,7 @@ def test_single_text_embedding():
 
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "input": single_text,
                 "model": DEFAULT_MODEL,
@@ -229,7 +230,7 @@ def test_error_handling():
     print("Testing empty input...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "input": [],
                 "model": DEFAULT_MODEL
@@ -246,7 +247,7 @@ def test_error_handling():
     print("Testing missing input field...")
     try:
         response = requests.post(
-            "http://localhost:8000/v1/embeddings",
+            DEFAULT_BASE_URL + "/v1/embeddings",
             json={
                 "model": DEFAULT_MODEL
             }

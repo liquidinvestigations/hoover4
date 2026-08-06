@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
 from tasks.P0_scan_disk.workflows import HandleFoldersParams
+from tasks.heartbeat import HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
 
 
 def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
@@ -77,6 +78,7 @@ class VideoMetaParams:
 
 
 @activity.defn
+@with_heartbeat
 def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
     from database.clickhouse import get_collection_client
     import pyarrow as pa
@@ -123,6 +125,7 @@ class VideoExtractParams:
 
 
 @activity.defn
+@with_heartbeat
 def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, Any]:
     """Extract one frame every 4 seconds and any subtitle streams into a temp directory."""
     collection_dataset: str = params.collection_dataset
@@ -143,41 +146,53 @@ def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, 
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
     out_dir = make_temp_dir(collection_dataset, "video", video_hash)
 
-    # 1) Extract frames: one per 4 seconds using fps=1/4
-    frames_dir = os.path.join(out_dir, "frames")
-    os.makedirs(frames_dir, exist_ok=True)
-    frame_pattern = os.path.join(frames_dir, "frame_%06d.jpg")
-    cmd_frames = [
-        "ffmpeg", "-y",
-        "-i", file_path,
-        "-vf", "fps=1/4",
-        "-qscale:v", "2",
-        frame_pattern,
-    ]
-    subprocess.run(cmd_frames, capture_output=True, timeout=timeout_seconds)
+    # ffmpeg over a large video is the longest legitimately-blocking call in the
+    # tree, which is exactly why it needs a pump: without one, its liveness was
+    # only checked against a timeout scaled to the file size. Every
+    # subprocess timeout below stays -- the pump does not detect a wedged child.
+    try:
+        with heartbeat_pump(f"ffmpeg {video_hash[:8]}"):
+            # 1) Extract frames: one per 4 seconds using fps=1/4
+            frames_dir = os.path.join(out_dir, "frames")
+            os.makedirs(frames_dir, exist_ok=True)
+            frame_pattern = os.path.join(frames_dir, "frame_%06d.jpg")
+            cmd_frames = [
+                "ffmpeg", "-y",
+                "-i", file_path,
+                "-vf", "fps=1/4",
+                "-qscale:v", "2",
+                frame_pattern,
+            ]
+            subprocess.run(cmd_frames, capture_output=True, timeout=timeout_seconds)
 
-    # 2) Extract subtitles (if present) to .srt files
-    # We first probe for subtitle streams and then extract each one.
-    probe = _run_ffprobe_json(file_path, timeout_seconds)
-    subtitle_indices: List[int] = []
-    for s in (probe.get("streams") or []):
-        if s.get("codec_type") == "subtitle":
-            idx = s.get("index")
-            if isinstance(idx, int):
-                subtitle_indices.append(idx)
-    subs_dir = os.path.join(out_dir, "subtitles")
-    if subtitle_indices:
-        os.makedirs(subs_dir, exist_ok=True)
-    for i, idx in enumerate(subtitle_indices):
-        # Map stream index to a single output .srt
-        out_srt = os.path.join(subs_dir, f"subtitle_{i+1}.srt")
-        cmd_sub = [
-            "ffmpeg", "-y",
-            "-i", file_path,
-            "-map", f"0:{idx}",
-            out_srt,
-        ]
-        subprocess.run(cmd_sub, capture_output=True, timeout=timeout_seconds)
+            # 2) Extract subtitles (if present) to .srt files
+            # We first probe for subtitle streams and then extract each one.
+            probe = _run_ffprobe_json(file_path, timeout_seconds)
+            subtitle_indices: List[int] = []
+            for s in (probe.get("streams") or []):
+                if s.get("codec_type") == "subtitle":
+                    idx = s.get("index")
+                    if isinstance(idx, int):
+                        subtitle_indices.append(idx)
+            subs_dir = os.path.join(out_dir, "subtitles")
+            if subtitle_indices:
+                os.makedirs(subs_dir, exist_ok=True)
+            for i, idx in enumerate(subtitle_indices):
+                # Map stream index to a single output .srt
+                out_srt = os.path.join(subs_dir, f"subtitle_{i+1}.srt")
+                cmd_sub = [
+                    "ffmpeg", "-y",
+                    "-i", file_path,
+                    "-map", f"0:{idx}",
+                    out_srt,
+                ]
+                subprocess.run(cmd_sub, capture_output=True, timeout=timeout_seconds)
+    except BaseException:
+        # Cancellation is now deliverable here, and a half-written frames
+        # directory would otherwise survive the retry.
+        import shutil
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
 
     return {"out_dir": out_dir}
 
@@ -212,6 +227,7 @@ class VideoProcessingAndScan:
                 file_path=file_path,
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
@@ -225,6 +241,7 @@ class VideoProcessingAndScan:
                 file_path=file_path,
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         out_dir = res.get("out_dir")
@@ -254,6 +271,7 @@ class VideoProcessingAndScan:
                     archive_types=["video"],
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
 
@@ -269,6 +287,7 @@ class VideoProcessingAndScan:
                 cleanup_temp_dir,
                 CleanupTempDirParams(out_dir=out_dir),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )
 

@@ -1,0 +1,305 @@
+# Always-on overlay: the six MCP servers and the two research agents.
+#
+# These moved out of ai_services in plan 1 part 1 (Phase E): they read ClickHouse and
+# Manticore directly and serve the website's chat, so they belong to the MAIN stack.
+# ai_services never calls into main_services — that one-way dependency is what makes
+# the GPU tier optional.
+services:
+  # ------------------------------------------------------- MCP: Hoover4 collections
+  # The RAG path. Searches the Manticore shards and ClickHouse text of exactly the
+  # collections the calling user may read (see main_services/agents/collection_search_server).
+  hoover4-mcp-collections:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/collection_search_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-collections:local
+    container_name: hoover4-mcp-collections
+    ports:
+      - "127.0.0.1:${MCP_COLLECTIONS_PORT}:8085"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8085
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - MANTICORE_URL=${MANTICORE_URL:-http://manticore:9308}
+      # Shared bearer token as a bind-mounted file (deploy.py); acl.py falls back to
+      # it when MCP_SHARED_SECRET is unset.
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-8}
+      - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - hoover4
+
+  # --------------------------------------------------------------- MCP: open web
+  hoover4-mcp-ddg:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/ddg_search_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-ddg:local
+    container_name: hoover4-mcp-ddg
+    ports:
+      - "127.0.0.1:${MCP_DDG_PORT}:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - SERVER_NAME=${DDG_SERVER_NAME:-ddgs}
+      - SERVER_INSTRUCTIONS=${DDG_SERVER_INSTRUCTIONS:-Web and news search using DuckDuckGo.}
+      - DDG_DEFAULT_REGION=${DDG_DEFAULT_REGION:-wt-wt}
+      - DDG_DEFAULT_MAX_RESULTS=${DDG_DEFAULT_MAX_RESULTS:-3}
+      - DDG_DEFAULT_SAFESEARCH=${DDG_DEFAULT_SAFESEARCH:-off}
+      - DDG_DEFAULT_TIMELIMIT=${DDG_DEFAULT_TIMELIMIT:-}
+      - DDG_PROXY_URL=${DDG_PROXY_URL:-}
+      - DDG_TIMEOUT=${DDG_TIMEOUT:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+  hoover4-mcp-wikipedia:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/wikipedia_search_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-wikipedia:local
+    container_name: hoover4-mcp-wikipedia
+    ports:
+      - "127.0.0.1:${MCP_WIKIPEDIA_PORT}:8083"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8083
+      - SERVER_NAME=${WIKIPEDIA_SERVER_NAME:-hoover4_wikipedia_search}
+      - SERVER_INSTRUCTIONS=${WIKIPEDIA_SERVER_INSTRUCTIONS:-Wikipedia article and summary search.}
+      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
+      - WIKIPEDIA_MAX_RESULTS=${WIKIPEDIA_MAX_RESULTS:-3}
+      - WIKIPEDIA_MAX_ALLOWED_RESULTS=${WIKIPEDIA_MAX_ALLOWED_RESULTS:-50}
+      - WIKIPEDIA_SUMMARY_SENTENCES=${WIKIPEDIA_SUMMARY_SENTENCES:-5}
+      - WIKIPEDIA_MAX_SUMMARY_SENTENCES=${WIKIPEDIA_MAX_SUMMARY_SENTENCES:-10}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+  hoover4-mcp-whois:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/whois_search_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-whois:local
+    container_name: hoover4-mcp-whois
+    ports:
+      - "127.0.0.1:${MCP_WHOIS_PORT}:8082"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8082
+      - SERVER_NAME=${WHOIS_SERVER_NAME:-whois_lookup}
+      - SERVER_INSTRUCTIONS=${WHOIS_SERVER_INSTRUCTIONS:-Domain registration lookup.}
+      - WHOIS_RATE_LIMITING=${WHOIS_RATE_LIMITING:-true}
+      - WHOIS_RATE_LIMIT_MS=${WHOIS_RATE_LIMIT_MS:-100}
+      - WHOIS_TIMEOUT=${WHOIS_TIMEOUT:-30.0}
+      - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+  # Metasearch: the same query put to several engines and merged with reciprocal rank
+  # fusion, so the model can see which results more than one engine agreed on. Supersedes
+  # hoover4-mcp-ddg in the full research agent's tool list; both are cheap, so the DDG
+  # one stays running. All engines are HTML scrapers with no API keys, so expect one to
+  # rot — METASEARCH_ENGINES turns a broken one off without a rebuild, and the response's
+  # `degraded` list is how you notice.
+  hoover4-mcp-metasearch:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/metasearch_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-metasearch:local
+    container_name: hoover4-mcp-metasearch
+    ports:
+      - "127.0.0.1:${MCP_METASEARCH_PORT}:8086"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8086
+      - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
+      - METASEARCH_ENGINES=${METASEARCH_ENGINES:-ddg,brave,startpage,yahoo}
+      - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
+      - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
+      - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-8}
+      - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8086/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - hoover4
+
+  # Browser: a real headless Chromium for pages the scrapers cannot read. The image is
+  # ~1 GB (Chromium plus fonts) and that is expected.
+  #
+  # SECURITY: this server is driven by an LLM and sits on the same network as
+  # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL is checked
+  # against browser_use_server/urlcheck.py first — public http/https only, and the host
+  # must resolve exclusively to public addresses. Do not weaken that.
+  hoover4-mcp-browser:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/browser_use_server
+      dockerfile: Dockerfile
+    image: hoover4-mcp-browser:local
+    container_name: hoover4-mcp-browser
+    ports:
+      - "127.0.0.1:${MCP_BROWSER_PORT}:8087"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8087
+      - SERVER_NAME=${BROWSER_SERVER_NAME:-hoover4_browser}
+      - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
+      - BROWSER_SETTLE_SECONDS=${BROWSER_SETTLE_SECONDS:-1.5}
+      - BROWSER_MAX_LINKS=${BROWSER_MAX_LINKS:-50}
+      - MAX_DOCUMENT_CHARS=${BROWSER_MAX_DOCUMENT_CHARS:-20000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
+    shm_size: 1gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - hoover4
+
+  # ------------------------------------------------------------------- Agents
+  # Internal search agent: collection RAG only. This is what the website's AI Chat page
+  # talks to, and the reason its tool set is narrow — a chat about the user's documents
+  # should not quietly turn into a web search.
+  hoover4-internal-search-agent:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
+      dockerfile: Dockerfile
+    image: hoover4-research-agent:local
+    container_name: hoover4-internal-search-agent
+    ports:
+      - "127.0.0.1:${INTERNAL_SEARCH_AGENT_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # The LLM API key and the MCP shared secret are bind-mounted files, never env
+      # values (deploy.py; hoover4.ini stores host paths). agent.py falls back to the
+      # _FILE vars when the plain ones are unset.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
+      # arrived without `arguments` and never accumulated, so the agent silently
+      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
+      # survive streaming, so it is back on. Flip to false if that ever regresses —
+      # the symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
+      - AGENT_PROFILE=internal_search
+      # Left EMPTY on purpose. The canonical prompt — including the Manticore MATCH
+      # syntax the model needs to search well — lives in
+      # main_services/agents/collection_search_server/collection_search_server/prompts.py, and
+      # reaches the model twice: as the MCP server's `instructions` at tool-discovery
+      # time, and as the agent's default system prompt. A multi-paragraph prompt inlined
+      # as a YAML default was unreadable and drifted from the tool descriptions.
+      # Set this only to override for an experiment.
+      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    volumes:
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+    depends_on:
+      - hoover4-mcp-collections
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hoover4
+
+  # Full research agent: collections plus the open-web tools. Two callers: the chat
+  # page when "Internet tools" is ticked (HOOVER4_FULL_AGENT_URL on the website
+  # service), and the Temporal long-running research task (RESEARCH_AGENT_URL on the
+  # worker). Both address it by container name over the shared `hoover4` network — the
+  # published loopback port below is for host-side debugging only.
+  hoover4-full-research-agent:
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
+      dockerfile: Dockerfile
+    image: hoover4-research-agent:local
+    container_name: hoover4-full-research-agent
+    ports:
+      - "127.0.0.1:${FULL_RESEARCH_AGENT_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # See the internal search agent: keys are bind-mounted files, never env values.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
+      # arrived without `arguments` and never accumulated, so the agent silently
+      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
+      # survive streaming, so it is back on. Flip to false if that ever regresses —
+      # the symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
+      - AGENT_PROFILE=full_research
+      # As above: empty means "use the canonical prompt from the agent package". The
+      # collection MCP server contributes the MATCH syntax through its own instructions,
+      # so it does not need repeating here.
+      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    volumes:
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+    depends_on:
+      - hoover4-mcp-collections
+      - hoover4-mcp-metasearch
+      - hoover4-mcp-browser
+      - hoover4-mcp-ddg
+      - hoover4-mcp-whois
+      - hoover4-mcp-wikipedia
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hoover4
+

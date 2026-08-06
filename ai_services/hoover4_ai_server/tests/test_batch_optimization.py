@@ -9,12 +9,13 @@ import statistics
 import pytest
 from typing import List
 from test_utils import (
+    DEFAULT_BASE_URL,
     validate_server_connection, print_test_header, print_test_subheader, check_server_health,
     DIVERSE_TEST_TEXTS, DEFAULT_MODEL, DEFAULT_TASK_DESCRIPTION
 )
 
 
-def test_batch_size_optimization(base_url: str = "http://localhost:8000",
+def test_batch_size_optimization(base_url: str = DEFAULT_BASE_URL,
                                 batch_sizes: List[int] = None,
                                 test_batches_per_size: int = 5,
                                 warmup_batches: int = 2):

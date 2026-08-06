@@ -1,0 +1,13 @@
+# Keep the build context to what the Dockerfile actually copies.
+.git
+.github
+.context
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+AGENTS.md
+CLAUDE.md
+# README.md is NOT ignored here: pyproject.toml declares it as the package readme, so
+# the Dockerfile copies it in both stages and poetry fails the install without it.
+.env

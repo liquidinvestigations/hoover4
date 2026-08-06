@@ -1,130 +1,66 @@
-# Hoover4 AI services
+# Hoover4 ai_services — the optional GPU tier
 
-GPU-backed embeddings / NER / reranking, a local LLM, a set of MCP tool servers, and
-the LangGraph research agents that use them.
+GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
+(`hoover4-vllm`, **supported but parked**), and GPU EasyOCR (`hoover4-easyocr-gpu`,
+the server image lands in plan 1 part 2).
 
-> **Deployment note (plan 3).** These services used to run across several hosts behind a
-> VPN and addressed each other by `10.69.x.x`. That network is gone. Everything now runs
-> on **one machine with one GPU**, joining the `hoover4` podman network created by
-> `main_services/ops/docker/docker-compose.yaml`. Bring the main stack up first, then
-> this one.
+> **Standalone (plan 1 part 1).** This tier is fully optional and has **no
+> dependencies on anything else**: no external network, nothing here calls into
+> `main_services`. The MCP servers and research agents that used to live here moved to
+> [`main_services/agents/`](../main_services/agents/README.md) — they read ClickHouse
+> and Manticore directly, so they belong to the always-on stack. `main_services`
+> reaches this tier over the published ports only, using the `[ai_services] host` and
+> `*_port` values from an **identical copy** of `hoover4.ini` (copied by hand to both
+> hosts).
+
+> **SECURITY (hard requirement).** The two hosts must share a **private network or
+> VPN**. NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its
+> only protection. An exposed `hoover4-vllm` is a free GPU for the internet; an
+> exposed EasyOCR endpoint is a free DoS surface. Set `[ai_services] bind_ip` in
+> `hoover4.ini` to the private interface.
 
 ## What runs here
 
-| Service | Port (loopback) | Purpose |
-|---|---|---|
-| `hoover4-ai-server` | 8821 | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `hoover4-vllm` | 8011 | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. Replaces the old LiteLLM proxy. |
-| `hoover4-mcp-collections` | 8085 | **The RAG path.** ACL-bounded search over the user's collections. |
-| `hoover4-mcp-metasearch` | 8086 | Web search over four engines, merged with reciprocal rank fusion. |
-| `hoover4-mcp-browser` | 8087 | Reads a page with a real headless Chromium, for JS-rendered sites. |
-| `hoover4-mcp-ddg` / `-wikipedia` / `-whois` | 8889 / 8093 / 8092 | Older single-purpose open-web tools. |
-| `hoover4-internal-search-agent` | 9099 | Collection-only agent. AI Chat with **Internet tools off**. |
-| `hoover4-full-research-agent` | 9090 | Collections + open web. AI Chat with **Internet tools on**, and the target of the Temporal `ResearchTask`. |
+Every service is an optional overlay under `compose/`, selected by `hoover4.ini` flags:
 
-> The loopback ports above are for host-side debugging. Anything running *inside* the
-> `hoover4` network must address these by container name — `http://hoover4-full-research-agent:8000`,
-> not `http://localhost:9090`. The website needs **both** `HOOVER4_AGENT_URL` and
-> `HOOVER4_FULL_AGENT_URL` set; leaving the second unset is what made every
-> internet-tools chat turn fail with "AI agent unreachable at http://localhost:9090"
-> while the agent was healthy the whole time.
+| Overlay | Service | Port (ini key) | Enabled by | Purpose |
+|---|---|---|---|---|
+| `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
+| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. **Parked**: nothing in plan 1 starts it; the NVIDIA NIM cloud provider carries the live tests. |
+| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP. The server (`easyocr_server/`) is built in plan 1 part 2 — enabling the overlay before then fails at build time, deliberately. |
 
-Per-server detail is in [`hoover4_mcp/README.md`](hoover4_mcp/README.md), which links to a
-README per server.
+## Deploy
 
-## How access control works
-
-An agent answering for a user must only reach collections that user could read in the
-search UI. The chain is:
-
-1. The **website backend** resolves the user's permitted collections (group grants union
-   public collections). It is the only component that can — it owns the auth tables.
-2. It passes that list to the agent as `allowed_collections`.
-3. The agent opens its MCP connections with `X-Hoover4-Collections: <list>` and
-   `Authorization: Bearer $MCP_SHARED_SECRET`, and caches one graph **per ACL** so a
-   connection is never reused across users.
-4. `hoover4-mcp-collections` enforces the header on every tool call. A request for a
-   collection outside it is an error, not a silently-narrowed filter.
-
-The model never sees or supplies its own permissions. Set `MCP_SHARED_SECRET` in `.env`;
-without it the MCP servers accept any caller and log a warning (the ports are bound to
-127.0.0.1, which is the only reason that is survivable locally).
-
-## Why search goes through Manticore, and where Milvus went
-
-The ingestion pipeline writes extracted text to ClickHouse and search documents to
-Manticore shards. It **never wrote vectors**, so the whole Milvus tier — three containers
-(`milvus-standalone`, `milvus-etcd`, `milvus-minio`) holding ~39 GB of memory limit, an
-MCP server that would have searched an empty index, a `pymilvus` dependency in three
-packages, and the legacy `hoover4_rag` ingestion CLI — has been removed (Q1/Q3).
-
-The `text_chunks_milvus`, `entity_hits_milvus` and `entity_hits_milvus_unique` ClickHouse
-tables are dropped by collection migration `00031`. Migrations `00023`/`00024` still
-create them and always will: the runner stores an md5 per applied file, so editing history
-breaks every existing deployment. The DROP is what undoes them.
-
-**If vector search is ever wanted again**, this is what would have to be built first — the
-missing piece was never the search side:
-
-1. A **chunk-and-embed stage in P5**: split `text_content` into overlapping chunks, embed
-   each through `hoover4-ai-server` (`intfloat/multilingual-e5-large-instruct`, 1024-dim),
-   and write chunk ↔ vector-id alignment rows. That stage has never existed.
-2. A vector store to write them to, and a migration recreating the alignment tables.
-3. Hybrid retrieval in the collection MCP server: BM25 from Manticore and vectors from the
-   store, merged with RRF — the same merge the metasearch server already implements.
-
-Until step 1 exists, a vector database is three containers searching nothing.
-
-**The stopped Milvus containers and their podman volumes are deliberately left on this
-host.** Reclaiming the disk is your call:
+From the repo root, with `hoover4.ini` in place (`[ai_services] enabled = true`):
 
 ```bash
-podman rm milvus-standalone milvus-etcd milvus-minio
-podman volume rm milvus_etcd milvus_minio milvus_standalone
+./deploy --ai-services                 # start the enabled overlays
+./deploy --ai-services --build         # rebuild images (force-recreates)
+./deploy --ai-services --down
+./deploy --ai-services --reset         # data volumes; model caches preserved
+./deploy --ai-services --print-command # show what would run
 ```
 
-## Quick start
+`deploy.py` preflights the GPU before anything starts: `nvidia-smi` must work, and on
+podman a CDI spec must exist (`sudo nvidia-ctk cdi generate
+--output=/etc/cdi/nvidia.yaml` if not). It also prunes stale CDI mounts — a partial
+driver upgrade leaves `/etc/cdi/nvidia.yaml` entries pointing at files that were never
+installed, and crun refuses to start the GPU containers over the missing bind source,
+which looks like a GPU problem and is not. **The durable fix is to bring every
+`nvidia-*` package to the same version**; until then `nvidia-ctk cdi generate` will
+reintroduce the bad entries.
 
-```bash
-# 1. the main stack must be up first — it creates the `hoover4` network
-../main_services/start-docker.sh
+The private `ai_services` network is created by `deploy.py` with explicit DNS
+settings — fresh podman networks have no DNS until resolvers are attached.
 
-# 2. configure once
-cp env.example .env
-$EDITOR .env          # at minimum, set MCP_SHARED_SECRET
+### Model caches
 
-# 3. start
-./start-docker.sh                       # add --build to rebuild images
-```
-
-The first start downloads model weights (~2 GB for the embedding model, ~8 GB for the
-LLM), so `hoover4-ai-server` and `hoover4-vllm` take several minutes to report healthy.
-`start-docker.sh` waits for health and prints what is still coming up.
-
-### Use `start-docker.sh`, not bare `docker compose up`
-
-A plain `docker compose up -d` in this directory fails in two ways that are easy to
-misread, and the script checks both before starting anything:
-
-1. **`network hoover4 not found`** — the network is declared `external` here and is
-   created by the main stack. That has to be up first.
-2. **`crun: cannot stat /usr/lib/libnvidia-*.so.<driver>: OCI runtime attempted to
-   invoke a command that was not found`** — `/etc/cdi/nvidia.yaml` lists library mounts
-   derived from the running driver version, and a partial driver upgrade (on this host:
-   `nvidia-utils` at `610.57.04` while `nvidia-settings` is still at `610.43.03`) leaves
-   entries pointing at files that were never installed. A CDI mount is a bind, so `crun`
-   refuses to start the container at all. Only the two **GPU** services fail while the
-   six others come up, which looks like a GPU problem and is not.
-
-   The script prunes mounts whose host path does not exist, keeping a timestamped backup
-   of the spec. The entries this hits in practice (`libnvidia-gtk3`,
-   `libnvidia-wayland-client`) belong to `nvidia-settings` and are irrelevant to CUDA.
-   **The durable fix is to bring every `nvidia-*` package to the same version**; until
-   then `nvidia-ctk cdi generate` will reintroduce the bad entries.
-
-The compose project name is pinned to `ai_services` so the model caches
-(`ai_services_ai_models_cache` ~6 GB, `ai_services_vllm_huggingface_cache` ~16 GB) stay
-attached. Changing it orphans them and re-downloads every weight.
+The named volumes `ai_services_ai_models_cache` (~6 GB) and
+`ai_services_vllm_huggingface_cache` (~16 GB) are preserved across
+`./deploy --ai-services --reset`; pass `--reset-caches` to delete them too. The compose
+project name is pinned to `ai_services` (`COMPOSE_PROJECT_NAME` in the generated
+`.env`) so the caches stay attached. Changing it orphans them and re-downloads every
+weight.
 
 ### Podman specifics
 
@@ -132,8 +68,8 @@ attached. Changing it orphans them and re-downloads every weight.
   `deploy.resources.reservations.devices` block docker-compose uses is **silently
   ignored** by podman-compose — services appeared to start and then ran on CPU.
 * `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
-  in the compose file.
-* Both GPU services share one 24 GB card. `VLLM_GPU_FRACTION` (default `0.45`) is the
+  in the compose overlays.
+* The GPU services share one 24 GB card. `vllm_gpu_fraction` (default `0.50`) is the
   knob to turn down first if either OOMs.
 
 ### Testing
@@ -141,18 +77,11 @@ attached. Changing it orphans them and re-downloads every weight.
 Python here runs **in containers only** — the host has almost no tooling.
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 52 tests
-docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 20 tests
-docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 40 tests
+docker exec hoover4-ai-server python -m pytest tests/ -q
 ```
 
-A `--build` alone can leave the old container running against the new image. Follow it
-with an explicit recreate:
-
-```bash
-./start-docker.sh --build hoover4-mcp-collections
-docker compose up -d --force-recreate hoover4-mcp-collections
-```
+The ai-server tests target `http://localhost:21961` by default; set
+`AI_SERVER_TEST_URL` to point them at a remote GPU host.
 
 ## The local LLM: Qwen3.5-2B at its full 262 K context
 
@@ -238,8 +167,8 @@ default the model never emits a reasoning block and there is nothing to parse.
 If you set `AGENT_THINKING=on` or `budgeted`, add `--reasoning-parser qwen3` at the same
 time. Without it vLLM leaves the `<think>…</think>` block inside `content`, and the whole
 chain of thought is shown to the user as part of the answer. See
-[`hoover4_research_agent/README.md`](hoover4_research_agent/README.md) for the measured
-cost of turning it on (~4x completion tokens).
+[`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
+for the measured cost of turning it on (~4x completion tokens).
 
 Two consequences of the XML format are handled in code, because both presented as
 infinite loops rather than as errors:
@@ -252,7 +181,8 @@ infinite loops rather than as errors:
   search it has already run. The agent now detects a repeated call, and enforces a
   12-turn tool budget, and in either case forces a final answer instead of letting
   langgraph raise `GraphRecursionError` — which surfaced as an HTTP 500 with no answer at
-  all. See [`hoover4_research_agent/README.md`](hoover4_research_agent/README.md).
+  all. See
+  [`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md).
 
 ### Token streaming is back on
 
@@ -262,119 +192,3 @@ agent silently made zero tool calls. Re-tested on 0.17.1 with a real agent run: 
 calls and a correctly cited answer with streaming on.** The `disable_streaming` workaround
 and its comment are left in `research_agent/agent.py` — set `LLM_STREAMING=false` if it
 ever regresses. The symptom to watch for is an agent that answers with no tool calls.
-
-## Manticore `MATCH()` syntax
-
-Verified against the live `testdata_1_pages` shard, not taken from documentation —
-several documented spellings are a hard 500 on this deployment.
-
-| Syntax | Result | Notes |
-|---|---|---|
-| `test document` | works | implicit AND |
-| `test \| zzz` | works | OR |
-| `test -zzz` | works | NOT, **only with a positive term** |
-| `-zzz` alone | 500 | `query is non-computable (single NOT operator)` |
-| `"test document"` | works | exact phrase |
-| `"test document"~5` | works | proximity |
-| `"one two three"/2` | works | quorum |
-| `test NEAR/3 document` | works | |
-| `test SENTENCE document`, `… PARAGRAPH …` | works | |
-| `test MAYBE document` | works | |
-| `@page_text test` | works | the only valid field |
-| `@title test` | 500 | `no field 'title' found in schema` |
-| `who paid @acme` | 500 | a bare `@word` in prose reads as a field operator |
-| `test^3` | works | boost |
-| `(test \| document) the` | works | grouping |
-| `@page_text ^test` | works | field-start |
-| `=test` | works | exact form |
-| `"test` / `(test` | 500 | `syntax error, unexpected $end` |
-| `""` (empty) | works, **matches every row** | dangerous default |
-| `docum*`, `*ocument*` | **works now** | see below — was silently wrong |
-
-Two facts worth keeping:
-
-* **`page_text` is the only full-text field.** Everything else in the shard schema
-  (`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
-  and belongs in `WHERE`, not `MATCH()`.
-* **Wildcards used to fail silently.** Without infix indexing the star was dropped during
-  tokenisation and the query became an exact search for a truncated word — `doc*` returned
-  **7** where `document` returned 16. Not zero. Wrong.
-
-`sanitize_match_query` no longer strips operators. It passes them through and repairs only
-the shapes that 500 (unbalanced quote or paren, NOT-only, bare `@word`, empty), reporting
-what it repaired in the response's `note` and returning Manticore's own error text in
-`error` so the model can correct itself. The escaping of `\` and `'` is unchanged and is
-the injection barrier.
-
-### Infix indexing: what it cost
-
-`min_infix_len='3'` was added to both `pages_table_ddl` and `meta_table_ddl` in
-`main_services/processing/database/manticore.py`, and both collections reindexed.
-Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
-
-| query | before | after |
-|---|---|---|
-| `document` | 16 | 16 |
-| `docum*` | 0 | 19 |
-| `*ocument*` | 0 | 42 |
-| `doc*` | **7 (wrong)** | 34 |
-| `te*t` | **3 (wrong)** | 28 |
-| `wat*` | 0 | 14 |
-
-**The storage cost could not be measured reliably**, and that is worth stating plainly
-rather than quoting a number that does not reproduce. `SHOW TABLE ... STATUS` `disk_bytes`
-on an RT table depends on chunk-merge state: the same no-infix configuration measured
-16.6 MB, 33.6 MB and 65.4 MB at different points in the same session. Under *identical*
-treatment — pipeline reindex, then `FLUSH` + `OPTIMIZE` — the numbers were:
-
-| configuration | disk_bytes | ram_bytes |
-|---|---|---|
-| no infix | 33,588,034 | 35,407,056 |
-| `min_infix_len='3'` | 26,013,634 | 17,537,550 |
-
-i.e. the infix build measured **smaller**, which is not a credible causal effect and is
-better read as "the metric is noisy at this corpus size". A controlled probe (two tables,
-same 156 pages inserted row by row, same flush/optimise) put the difference at **+0.8%**
-on disk. Whatever the true figure, it is not a cost worth trading the wrong answers for.
-`min_infix_len` 2, 3 and 4 are identical in size and behaviour in this Manticore version —
-it is an on/off switch, not a threshold, so do not spend time tuning the number.
-
-**`ALTER TABLE` does not reindex.** It updates metadata only: `SHOW TABLE ... SETTINGS`
-will report the new value while queries keep returning the old, wrong answers. Changing
-the setting means `main.py reindex-collection <name>`. And the worker is long-running, so
-it must be **restarted** after a DDL change or it will keep creating tables from the
-module it imported at startup.
-
-## Where the system prompts live
-
-Not in compose. A multi-paragraph prompt inlined as a YAML default was unreadable and
-drifted from the tool descriptions it was supposed to agree with. There are two files:
-
-* [`hoover4_mcp/collection_search_server/collection_search_server/prompts.py`](hoover4_mcp/collection_search_server/collection_search_server/prompts.py)
-  — the MATCH syntax reference and search strategy. Reaches the model as the MCP server's
-  FastMCP `instructions`, i.e. at tool-discovery time, for **whichever** agent connects,
-  and is appended to the error text when a query is rejected.
-* [`hoover4_research_agent/research_agent/prompts.py`](hoover4_research_agent/research_agent/prompts.py)
-  — one system prompt per agent profile, selected by `AGENT_PROFILE`.
-
-`SYSTEM_PROMPT` / `SERVER_INSTRUCTIONS` remain as thin env overrides for experiments;
-empty means "use the canonical text".
-
-**Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
-of it forever — an earlier five-step draft made it search, search again, then re-run a
-query it had already run until the request died. Detail belongs in tool descriptions,
-which the model reads in context at the moment it picks a tool. Re-measure before
-lengthening.
-
-## Q9 — the shared `hoover4` network
-
-The network is shared between two compose files: `main_services` creates it, `ai_services`
-declares it `external: true` and joins it. Its DNS resolvers were added **by hand** on this
-host (containers otherwise have no DNS on a podman network, which bites again after
-`reset-docker.sh`).
-
-That is fine for one machine. **Revisit before any multi-host deployment**: it needs real
-network configuration — a named overlay or explicit service discovery — rather than one
-hand-patched bridge, and the MCP servers' "bind to 127.0.0.1 and trust the caller's ACL
-header" model assumes the loopback boundary that a multi-host setup removes.
-

@@ -25,7 +25,7 @@ pub const GLOBAL_DB: &str = "Hoover4_Processing";
 
 /// Configured ClickHouse URL (from `CLICKHOUSE_URL`, with a localhost default).
 pub fn clickhouse_url() -> String {
-    std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".to_string())
+    std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:21900".to_string())
 }
 
 fn client_with_database(database: &str) -> clickhouse::Client {

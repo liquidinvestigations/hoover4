@@ -4,9 +4,7 @@ use common::{current_user::CurrentUser, pdf_search_results::PdfSearchResults, se
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::api::documents::{
-    get_document_sources::get_text_sources, search_document_text::search_document_text_for_hits,
-};
+use crate::api::documents::search_document_text::search_document_text_all_hits;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchPdfResultsSet {
@@ -23,22 +21,15 @@ pub async fn search_document_pdf(
 ) -> anyhow::Result<PdfSearchResults> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let text_sources = get_text_sources(user, document_identifier.clone()).await?;
-    tracing::info!("TEXT SOURCES COUNT: {:?}", text_sources.len());
-    let mut text_results = vec![];
-    for source in text_sources {
-        for page_id in source.min_page..=source.max_page {
-            let results = search_document_text_for_hits(
-                user,
-                document_identifier.clone(),
-                query.clone(),
-                source.extracted_by.clone(),
-                page_id,
-            )
-            .await?;
-            text_results.extend(results);
-        }
-    }
+    // One query for every source and every page of this document.
+    //
+    // This used to be a nested loop over `source.min_page..=source.max_page` per text
+    // source. That was survivable only because `page_id` was a 32 MB segment ordinal, so
+    // the range was almost always `0..=0`. Since Phase 0 made `page_id` a real PDF page
+    // number the same loop would issue one Manticore round trip per page of the document
+    // — the intended semantics turning a one-shot lookup into a thousand-shot one.
+    let text_results =
+        search_document_text_all_hits(user, document_identifier.clone(), query.clone()).await?;
 
     let mut keywords = HashSet::new();
 

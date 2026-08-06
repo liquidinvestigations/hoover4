@@ -1,0 +1,163 @@
+"""Activity liveness: the two heartbeat constants and the helpers that use them.
+
+Why this module exists
+----------------------
+``start_to_close_timeout`` answers "how long may this activity legitimately
+run?" -- for ``ffmpeg`` over a 2 GB video, honestly hours. ``heartbeat_timeout``
+answers a different question: "how long may this activity go without proving it
+is alive?" That one has the same answer, ~2 minutes, for every activity in the
+tree regardless of how long its real work takes.
+
+The distinction is not academic. On 2026-08-06 an ``extract_plaintext_chunks``
+activity task was lost between the Temporal matching service and the worker: the
+server showed ``State: Started`` while a py-spy dump proved every executor thread
+was idle and the body had never run. The only timeout configured was
+``start_to_close_timeout=timedelta(seconds=proc_secs)`` -- the whole-file budget,
+1583 s -- so the stall lasted 26 minutes. The heartbeat clock starts at
+``ActivityTaskStarted``, which is exactly the state that task was stuck in, so a
+``heartbeat_timeout`` alone would have turned it into a ~2 minute stall.
+
+See plans/1-part-3.md for the full write-up.
+"""
+
+from contextlib import contextmanager
+from datetime import timedelta
+
+from temporalio import activity
+
+# NOTE: threading, contextvars and time are imported lazily inside the helpers
+# below, never at module scope. Every workflow module imports HEARTBEAT_TIMEOUT
+# from here, and the Temporal workflow sandbox restricts exactly those modules --
+# a top-level import would make this module unimportable from the one place that
+# needs its constant most.
+
+# How often an activity proves it is alive.
+HEARTBEAT_INTERVAL = timedelta(seconds=15)
+
+# What the *caller* declares [user requirement: 30 s deadline, 15 s beat, so
+# dropped or dead work is caught in useful time]. That is a 2x margin, which is
+# tight: these workers run 8 activities per process across 7 processes on one
+# box, with ffmpeg and OCR competing for CPU, so a stalled process can miss a
+# beat under load and get its activity retried. That trade is deliberate --
+# every activity here is written to be idempotent on retry (watermark tables
+# and ReplacingMergeTree dedup), so a spurious retry costs time, while a missed
+# stall costs tens of minutes. If spurious timeouts do show up under load, raise
+# HEARTBEAT_TIMEOUT here and nowhere else.
+HEARTBEAT_TIMEOUT = timedelta(seconds=30)
+
+HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
+
+
+class HeartbeatClock:
+    """Rate-limiter for in-loop heartbeats.
+
+    Class B activities (those with a real loop) heartbeat inside the loop, which
+    is strictly better than the pump below: it is evidence of *forward progress*
+    rather than evidence of a live thread. But a tight loop over 50k rows must
+    not call ``activity.heartbeat()`` 50k times, so gate it on this clock.
+
+        hb = HeartbeatClock()
+        for i, row in enumerate(rows):
+            hb.beat(f"{i}/{len(rows)}")
+            ...
+    """
+
+    def __init__(self, interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS):
+        self.interval_seconds = interval_seconds
+        # Beat once at the start of the loop: an activity that dies on its first
+        # iteration should still have proven it got as far as starting.
+        self._last = 0.0
+
+    def beat(self, *details) -> bool:
+        """Heartbeat if the interval has elapsed. Returns whether it did."""
+        import time
+        now = time.monotonic()
+        if now - self._last < self.interval_seconds:
+            return False
+        self._last = now
+        if activity.in_activity():
+            activity.heartbeat(*details)
+        return True
+
+
+def with_heartbeat(fn):
+    """Decorate a sync activity so its body always heartbeats while it runs.
+
+    Apply directly under ``@activity.defn``::
+
+        @activity.defn
+        @with_heartbeat
+        def parse_something(params): ...
+
+    **Why this is a blanket default rather than a per-activity choice.**
+    ``HEARTBEAT_TIMEOUT`` is 30 s, and every one of the 55 call sites now
+    declares it. That deadline applies to *every* activity, including the ones
+    whose real work legitimately takes minutes -- ffprobe on a large video, a
+    Manticore batch write, a dataset purge. An activity that runs longer than
+    30 s without beating is killed and retried, and since the retry is just as
+    slow, it is killed again: a permanent retry loop that looks exactly like a
+    broken pipeline.
+
+    Auditing 44 bodies for "can this exceed 30 s?" gets that answer wrong
+    eventually, and gets it wrong again the next time someone adds an activity.
+    Wrapping every body removes the question. The lost-task detection that
+    motivated this whole change is untouched: a body that never runs never
+    starts a pump, so the server still times it out on the heartbeat clock.
+
+    This does NOT replace in-loop heartbeats. Where a loop exists, a
+    ``HeartbeatClock`` inside it reports genuine progress (and shows an
+    advancing count in ``temporal workflow describe``), while this only proves
+    the worker thread is alive. Both are wanted; see plans/1-part-3.md 2.5.
+    """
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with heartbeat_pump(fn.__name__):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@contextmanager
+def heartbeat_pump(*details, interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS):
+    """Heartbeat every ``interval_seconds`` while the body runs.
+
+    For activities that block in a subprocess (7z, ffmpeg, qpdf, Extractous) and
+    cannot heartbeat themselves. Prefer an in-loop ``HeartbeatClock`` when the
+    body already has a loop -- see plans/1-part-3.md 2.5 for why this is the
+    weaker option: the pump keeps beating even if the *child* process wedges, so
+    it detects a lost task, a dead worker or a wedged worker process, but not a
+    wedged child. That case stays covered by the existing
+    ``subprocess.run(..., timeout=...)`` guards, which must never be removed on
+    the grounds that "we heartbeat now".
+    """
+    import contextvars
+    import threading
+
+    if not activity.in_activity():   # keeps the helper unit-testable
+        yield
+        return
+
+    # THE GOTCHA: activity.heartbeat() resolves a contextvars.ContextVar
+    # (temporalio/activity.py, _Context.current().heartbeat). A plain
+    # threading.Thread starts with an EMPTY context, so calling it from the pump
+    # raises "not in activity context". Copy the context here, in the activity's
+    # own thread, and run the call through it.
+    ctx = contextvars.copy_context()
+    done = threading.Event()
+
+    def pump():
+        while not done.wait(interval_seconds):
+            try:
+                ctx.run(activity.heartbeat, *details)
+            except Exception:
+                return          # activity finished or was cancelled; stop quietly
+
+    t = threading.Thread(target=pump, name="hb-pump", daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        done.set()
+        t.join(timeout=5)

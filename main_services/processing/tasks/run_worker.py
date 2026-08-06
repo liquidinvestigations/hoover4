@@ -40,7 +40,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_video import VideoProcessingAndScan, video_ffprobe_and_store, video_extract_frames_and_subtitles
     from .plan_utils import fetch_plan_hashes
     from .P4_extract_entities.workflows import ExtractEntitiesForPlan
-    from .P5_index_data.workflows import IndexDatasetPlan
+    from .P6_index_data.workflows import IndexDatasetPlan
     from .P_admin.activities import (
         collect_eta_samples,
         drop_collection_database,
@@ -178,21 +178,24 @@ async def run_tika_worker():
         await worker.run()
 
 
-async def run_easyocr_worker():
-    # Localized import for EasyOCR-only worker
-    from .P3_parse_files.parse_ocr import run_easyocr_and_store
+async def run_ocr_worker():
+    # Localized import for the OCR worker. The queue is engine-neutral
+    # (`processing-ocr-queue`, not `processing-easyocr-queue`) because OCR is becoming
+    # several engines behind one HTTP contract, and a queue named after one of them
+    # would have to be renamed again -- which costs a full reset every time.
+    from .P3_parse_files.parse_ocr import run_ocr_and_store
     from .visibility import ensure_search_attributes
 
-    log.info("Starting EasyOCR worker...")
+    log.info("Starting OCR worker...")
     client = await Client.connect("temporal:7233")
     await ensure_search_attributes(client)
     CONCURRENCY = 4
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
-          task_queue="processing-easyocr-queue",
+          task_queue="processing-ocr-queue",
           workflows=[],
-          activities=[run_easyocr_and_store],
+          activities=[run_ocr_and_store],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,
@@ -226,7 +229,7 @@ async def run_nlp_worker():
 
 
 async def run_indexing_worker():
-  from .P5_index_data.activities import index_metadata, index_text_pages
+  from .P6_index_data.activities import index_metadata, index_text_pages
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
@@ -249,7 +252,7 @@ async def run_index_planner_worker():
   # rewrites the per-collection shard ledger (manticore_shards); two concurrent
   # planner activities for the same collection would corrupt it. The dedicated
   # queue plus max_concurrent_activities=1 is the whole concurrency story.
-  from .P5_index_data.shard_planner import finalize_index_batch, plan_shards, record_indexed
+  from .P6_index_data.shard_planner import finalize_index_batch, plan_shards, record_indexed
   from .visibility import ensure_search_attributes
   log.info("Starting Index planner worker...")
   client = await Client.connect("temporal:7233")

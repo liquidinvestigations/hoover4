@@ -220,7 +220,7 @@ const ETA_STAGE_STYLES: &[(&str, &str, &str)] = &[
     (STAGE_PLAN, "P1 plan", "#79aec8"),
     (STAGE_EXECUTE, "P2/P3 execute", "#417690"),
     (STAGE_NLP, "P4 nlp", "#c1883c"),
-    (STAGE_INDEX, "P5 index", "#5fa25f"),
+    (STAGE_INDEX, "P6 index", "#5fa25f"),
 ];
 
 /// Per-dataset ETA: the current best-effort deadline and a chart of the last

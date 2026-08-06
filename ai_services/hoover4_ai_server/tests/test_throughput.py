@@ -8,12 +8,13 @@ import time
 import statistics
 import pytest
 from test_utils import (
+    DEFAULT_BASE_URL,
     validate_server_connection, print_test_header, check_server_health,
     DIVERSE_TEST_TEXTS, DEFAULT_MODEL, DEFAULT_TASK_DESCRIPTION
 )
 
 
-def test_batch_throughput(base_url: str = "http://localhost:8000",
+def test_batch_throughput(base_url: str = DEFAULT_BASE_URL,
                          num_batches: int = 10,
                          batch_size: int = 20,
                          warmup_batches: int = 3):

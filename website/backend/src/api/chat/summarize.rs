@@ -11,7 +11,20 @@ fn llm_base_url() -> String {
 }
 
 fn llm_api_key() -> String {
-    std::env::var("LLM_API_KEY").unwrap_or_else(|_| "hoover4-local-key".into())
+    if let Ok(key) = std::env::var("LLM_API_KEY") {
+        return key;
+    }
+    // deploy.py bind-mounts the active provider's key file (hoover4.ini stores host
+    // paths, never values); the env var names the in-container path.
+    if let Ok(path) = std::env::var("LLM_API_KEY_FILE") {
+        if let Ok(key) = std::fs::read_to_string(&path) {
+            let key = key.trim();
+            if !key.is_empty() {
+                return key.to_string();
+            }
+        }
+    }
+    "hoover4-local-key".into()
 }
 
 fn llm_model() -> Option<String> {

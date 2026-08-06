@@ -9,6 +9,7 @@ import json
 import pyarrow as pa
 
 from database.clickhouse import get_collection_client
+from tasks.heartbeat import with_heartbeat
 
 
 @dataclass
@@ -18,6 +19,7 @@ class CountNewBlobsParams:
 
 
 @activity.defn
+@with_heartbeat
 def count_new_blobs(params: CountNewBlobsParams) -> int:
     """Activity that counts blobs not yet included in any processing plan."""
     collection_dataset: str = params.collection_dataset
@@ -46,6 +48,7 @@ class ComputePlansParams:
 
 
 @activity.defn
+@with_heartbeat
 def compute_plans(params: ComputePlansParams) -> int:
     """Activity that computes processing plans and inserts rows for new blobs.
 
