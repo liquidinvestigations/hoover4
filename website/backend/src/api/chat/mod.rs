@@ -18,9 +18,10 @@ use common::chat_types::{
 };
 use common::current_user::CurrentUser;
 
+use crate::api::rate_limit::{check_and_record, RateLimitKind};
+use crate::api::telemetry::{self, EVENT_LLM_CHAT_MESSAGE, EVENT_LLM_MCP_TOOL_CALL};
 use crate::db_chat::{self, AppendMessageExtras};
 use crate::db_utils::clickhouse_utils::list_permitted_collections;
-use crate::rate_limit::{check_and_record, RateLimitKind};
 
 /// Cap on sessions returned to the history sidebar / homepage.
 const SESSION_LIST_LIMIT: u32 = 100;
@@ -249,6 +250,7 @@ pub async fn send_message(
                     },
                 )
                 .await?;
+                telemetry::record_event(username, EVENT_LLM_MCP_TOOL_CALL, &call.tool_name);
                 seq += 1;
             }
 
@@ -270,6 +272,7 @@ pub async fn send_message(
                 },
             )
             .await?;
+            telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat");
         }
         Err(e) => {
             // A failed agent call belongs in the transcript: the user asked something

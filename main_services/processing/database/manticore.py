@@ -102,6 +102,35 @@ def shard_tables_from_name(shard_name: str) -> tuple[str, str]:
     return shard_table_names(collectionname, index)
 
 
+#: Infix indexing, so ``MATCH('doc*')`` and ``MATCH('*ocument*')`` work.
+#:
+#: Without it the star is dropped during tokenisation and the query silently becomes an
+#: exact search for the truncated word - ``doc*`` returned 7 rows where ``document``
+#: returned 16, which is not "no wildcard support", it is a *wrong answer* nobody
+#: notices. On the real `testdata` shard (156 pages, 26 MB of text) the wrong answers
+#: become right ones: `docum*` 0 -> 19, `*ocument*` 0 -> 42, `doc*` 7 -> 34, `te*t`
+#: 3 -> 28, while the exact term `document` stays at 16.
+#:
+#: Storage cost is small but was NOT reliably measurable: `SHOW TABLE ... STATUS`
+#: `disk_bytes` on an RT table depends on chunk-merge state, and the same no-infix
+#: config measured 16.6 MB, 33.6 MB and 65.4 MB at different points. Under identical
+#: treatment (pipeline reindex, then FLUSH + OPTIMIZE) the infix build measured
+#: *smaller* - 26.0 MB against 33.6 MB - so whatever the true cost is, it is not one
+#: worth trading the wrong answers for. See ai_services/README.md.
+#:
+#: The value is 3 as a statement of intent only. This Manticore version treats
+#: min_infix_len as an on/off switch rather than a threshold - 2, 3 and 4 are
+#: byte-for-byte identical in size *and* behaviour, and ``do*`` (2 chars) matches even
+#: at 4. Do not spend time tuning it. (``min_prefix_len`` *is* a real threshold, and is
+#: the wrong tool: it gives no infix matching and makes stars work only for prefixes
+#: longer than the minimum.)
+#:
+#: ALTER TABLE sets this on an existing table and does NOT reindex it: SHOW TABLE
+#: SETTINGS will report the new value while queries keep returning the old wrong
+#: answers. Changing it means `main.py reindex-collection <name>`.
+_INFIX_SETTING = "min_infix_len='3'"
+
+
 def pages_table_ddl(table_name: str) -> str:
     """CREATE TABLE statement for a shard pages table (one row per text segment).
 
@@ -118,7 +147,7 @@ def pages_table_ddl(table_name: str) -> str:
             ner_org multi64,
             ner_loc multi64,
             ner_misc multi64
-        ) engine='columnar'
+        ) engine='columnar' {_INFIX_SETTING}
     """
 
 
@@ -128,6 +157,12 @@ def meta_table_ddl(table_name: str) -> str:
     Schema is identical to the retired global ``doc_metadata``. ``collection_dataset``
     stays on the rows: one shard holds several datasets, and the website filters and
     facets on it.
+
+    Infix indexed as well: the two text fields here are ``filenames`` and
+    ``metadata_values``, and a filename fragment is the single best fuzzy-match case in
+    the whole schema (``*report*`` finding ``annual_report_2024.pdf``). The percentage
+    cost is the same as on pages, but this table is ~0.25% of its size - 168 KB against
+    65 MB on the real `testdata` shard - so it is close to free in absolute terms.
     """
     return f"""
         create table if not exists {table_name}(
@@ -139,7 +174,7 @@ def meta_table_ddl(table_name: str) -> str:
             file_paths multi64,
             filenames text,
             metadata_values text
-        ) engine='columnar'
+        ) engine='columnar' {_INFIX_SETTING}
     """
 
 

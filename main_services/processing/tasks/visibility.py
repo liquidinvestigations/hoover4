@@ -28,7 +28,7 @@ COLLECTION_DATASET_KEY = SearchAttributeKey.for_keyword(COLLECTION_DATASET_ATTRI
 def dataset_search_attributes(collection_dataset: str) -> TypedSearchAttributes:
     """Search attributes tagging a workflow start with its dataset."""
     return TypedSearchAttributes(
-        [SearchAttributePair(COLLECTION_DATASET_KEY, [collection_dataset])]
+        [SearchAttributePair(COLLECTION_DATASET_KEY, collection_dataset)]
     )
 
 

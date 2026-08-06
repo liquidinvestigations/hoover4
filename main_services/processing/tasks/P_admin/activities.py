@@ -10,6 +10,8 @@ import logging
 
 from temporalio import activity
 
+from tasks.P_admin.eta_collector import CollectEtaSamplesParams, CollectEtaSamplesResult
+
 log = logging.getLogger(__name__)
 
 
@@ -116,3 +118,11 @@ def recompute_shard_ledger_activity(params: CollectionDatabaseParams) -> str:
 
     recompute_shard_ledger(params.collectionname)
     return "ok"
+
+
+@activity.defn
+def collect_eta_samples(params: "CollectEtaSamplesParams") -> "CollectEtaSamplesResult":
+    """One ETA sampling pass over all collections (see ``eta_collector``)."""
+    from tasks.P_admin.eta_collector import run_collection_pass
+
+    return run_collection_pass(params)

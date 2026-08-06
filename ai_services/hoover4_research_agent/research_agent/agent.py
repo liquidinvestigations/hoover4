@@ -1,6 +1,7 @@
+import logging
 import os
 from typing import List, Any, AsyncIterable, Sequence, TypedDict, Annotated, Dict, Optional
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk, RemoveMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
@@ -25,6 +26,15 @@ def recurse_json_decode(d):
             return d
     except (JSONDecodeError, TypeError):
         return d
+
+log = logging.getLogger(__name__)
+
+#: How many tool-calling turns the agent may take before it is made to answer. Generous
+#: enough for a genuinely multi-step research question, low enough that a stuck model
+#: costs seconds rather than the whole recursion budget. `AGENT_RECURSION_LIMIT` is the
+#: hard backstop behind this.
+MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
+
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -188,22 +198,85 @@ class MCPGatewayAgent:
             ]
         )
 
-        agent_runnable = prompt | { "messages": llm } 
-        
+        agent_runnable = prompt | { "messages": llm }
+
+        # The same model with no tools bound. Used by the `finalize` node below: a model
+        # that cannot call a tool has to answer.
+        plain_llm = ThinkingChatOpenAI(**llm_kwargs)
+        finalize_runnable = prompt | { "messages": plain_llm }
+
         builder = StateGraph(AgentState)
         builder.add_node("agent", agent_runnable)
         tool_node = ToolNode(tools)
         builder.add_node("tools", tool_node)
 
+        def _tool_turns(state: AgentState) -> int:
+            return sum(1 for m in state["messages"] if getattr(m, "tool_calls", None))
+
+        def _repeated_call(state: AgentState) -> bool:
+            """Whether the model just re-issued a call it has already made.
+
+            At temperature 0 a repeat is not exploration, it is a stuck loop: the same
+            call returns the same result and the next turn is identical again.
+            """
+            calls = [
+                (c.get("name"), json.dumps(c.get("args"), sort_keys=True, default=str))
+                for m in state["messages"]
+                for c in (getattr(m, "tool_calls", None) or [])
+            ]
+            return len(calls) > 1 and calls[-1] in calls[:-1]
+
         def should_continue(state: AgentState):
             last_message = state["messages"][-1]
-            if getattr(last_message, "tool_calls", None):
-                return "tools"
-            return END
+            if not getattr(last_message, "tool_calls", None):
+                return END
+            # Two guards, both ending at `finalize` so the caller always gets prose.
+            #
+            # Without them a model that will not stop calling tools produces a langgraph
+            # GraphRecursionError, which surfaces as an HTTP 500 with no answer at all —
+            # the least useful possible outcome, and one Qwen3.5-2B hits regularly: it
+            # finds the right document, then re-issues the identical search until the
+            # budget runs out. Small models are bad at deciding they are finished, so
+            # that decision is made here rather than left to the prompt.
+            if _repeated_call(state):
+                log.warning("agent repeated a tool call; forcing a final answer")
+                return "finalize_entry"
+            if _tool_turns(state) >= MAX_TOOL_TURNS:
+                log.warning("agent hit the %d-turn tool budget; forcing a final answer", MAX_TOOL_TURNS)
+                return "finalize_entry"
+            return "tools"
+
+        def finalize_entry(state: AgentState):
+            """Drop the unanswered tool call and tell the model to answer now.
+
+            The trailing AIMessage holds tool_calls that will never be satisfied, and an
+            OpenAI-shaped request carrying tool_calls with no matching tool results is
+            rejected — so it is removed rather than left in place. `add_messages` merges
+            by id and cannot delete, hence `RemoveMessage`.
+            """
+            last = state["messages"][-1]
+            return {
+                "messages": [
+                    RemoveMessage(id=last.id),
+                    HumanMessage(
+                        content=(
+                            "Stop searching now and write the final answer using only "
+                            "what the tool results above already contain. Cite the file "
+                            "path of every document you rely on. If they contain nothing "
+                            "relevant, say so plainly."
+                        )
+                    ),
+                ]
+            }
+
+        builder.add_node("finalize_entry", finalize_entry)
+        builder.add_node("finalize", finalize_runnable)
 
         builder.set_entry_point("agent")
         builder.add_conditional_edges("agent", should_continue)
         builder.add_edge("tools", "agent")
+        builder.add_edge("finalize_entry", "finalize")
+        builder.add_edge("finalize", END)
 
         return builder.compile()
 
@@ -234,7 +307,12 @@ class MCPGatewayAgent:
         inputs = {"messages": messages}
 
         # Prepare config with Langfuse callback if available
-        config = {}
+        # langgraph counts every node visit, so one search costs two steps (agent +
+        # tools) and the default 25 is only ~12 tool calls. A thorough research run
+        # legitimately needs more than that, and hitting the limit is a hard 500 with no
+        # partial answer — the least useful possible failure. The prompt is what stops
+        # the model looping (see research_agent/prompts.py); this is only the backstop.
+        config = {"recursion_limit": int(os.getenv("AGENT_RECURSION_LIMIT", "40"))}
         if self.langfuse_handler and user_id and session_id:
             config["callbacks"] = [self.langfuse_handler]
             config["metadata"] = {
@@ -253,7 +331,11 @@ class MCPGatewayAgent:
             kind = event["event"]
             node = event["metadata"].get("langgraph_node")
 
-            if node == "agent":
+            # `finalize` is an answer-producing node exactly like `agent` — it is the
+            # same model with no tools bound (see `_create_graph`). Leaving it out here
+            # is why the forced final answer first came back as an empty string with a
+            # cheerful HTTP 200.
+            if node in ("agent", "finalize"):
                 if kind == "on_chain_start" and not llm_started:
                     yield {
                         "is_task_complete": False,

@@ -104,6 +104,7 @@ pub async fn search_for_results(
     query: SearchQuery,
     current_search_result_page: u64,
 ) -> anyhow::Result<SearchResultDocuments> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
         return Ok(SearchResultDocuments {

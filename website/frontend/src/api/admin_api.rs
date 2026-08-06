@@ -1,6 +1,7 @@
 //! Admin API server function wrappers.
 
 use common::admin_types::*;
+use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics};
 use common::processing_types::*;
 use dioxus::prelude::*;
 
@@ -62,6 +63,10 @@ admin_server_fn!(admin_list_task_failures, backend::api::admin::processing::admi
 admin_server_fn!(admin_list_document_failures, backend::api::admin::processing::admin_list_document_failures, (collectionname: String, collection_dataset: String, limit: u32) -> Vec<DocumentFailure>);
 admin_server_fn!(admin_retry_failed_task, backend::api::admin::processing::admin_retry_failed_task, (collectionname: String, collection_dataset: String, task_name: String) -> String);
 admin_server_fn!(admin_retry_document, backend::api::admin::processing::admin_retry_document, (collectionname: String, collection_dataset: String, hash: String) -> String);
+admin_server_fn!(admin_list_eta_samples, backend::api::admin::processing::admin_list_eta_samples, (collectionname: String) -> Vec<EtaSamplePoint>);
+
+admin_server_fn!(admin_get_metrics, backend::api::admin::metrics::admin_get_metrics, () -> AdminMetrics);
+admin_server_fn!(admin_get_user_llm, backend::api::admin::metrics::admin_get_user_llm, (username: String) -> AdminUserLlmMetrics);
 
 admin_server_fn!(admin_list_settings, backend::api::admin::settings::admin_list_settings, () -> Vec<ServerSettingItem>);
 admin_server_fn!(admin_set_setting, backend::api::admin::settings::admin_set_setting, (key: String, value: String));

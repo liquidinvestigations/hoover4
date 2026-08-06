@@ -10,13 +10,15 @@ Every tool resolves the caller's ACL from request headers (see :mod:`.acl`) befo
 touches a database, and every collection name reaching SQL has been validated against
 the shared collectionname rule.
 
-Search goes through **Manticore**, not Milvus: the ingestion pipeline writes its text to
-Manticore shards and its extracted text to ClickHouse, and never populates Milvus (see
-`plans/3-auth-and-ai/open-questions.md` Q1/Q3).
+Search goes through **Manticore**: the ingestion pipeline writes its search documents to
+Manticore shards and its extracted text to ClickHouse, which is where the data actually
+is. The Milvus tier that once sat alongside this has been removed — it never had vectors
+written to it (Q1/Q3). See `ai_services/README.md` for what a vector stage would need.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -32,8 +34,9 @@ from collection_search_server.backends import (
     clickhouse_query,
     collection_db,
     manticore_query,
-    sanitize_match_query,
+    prepare_match_query,
 )
+from collection_search_server.prompts import MATCH_SYNTAX, SERVER_INSTRUCTIONS
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -55,14 +58,11 @@ MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "40000"))
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_collection_search"),
-    instructions=os.getenv(
-        "SERVER_INSTRUCTIONS",
-        "Search the user's document collections in Hoover4. Call list_collections "
-        "first to see what is available. Queries should be well-phrased search "
-        "phrases: several words describing the content you need works far better "
-        "than a single keyword. Use get_document_text to read a promising hit in "
-        "full before answering.",
-    ),
+    # The canonical text lives in `prompts.py`; the env var is a thin override for
+    # experiments. This string is what the model reads at tool-discovery time, so the
+    # MATCH syntax has to be in here and not only in the agent's system prompt — the
+    # full-research agent has its own prompt and would otherwise never see it.
+    instructions=os.getenv("SERVER_INSTRUCTIONS", SERVER_INSTRUCTIONS),
 )
 
 
@@ -124,6 +124,37 @@ def _is_hash(value: str) -> bool:
 def _caller() -> CallerAcl:
     """The ACL of the in-flight request."""
     return parse_acl(dict(get_http_headers()))
+
+
+def _as_collection_list(value: Any) -> list[str] | None:
+    """Coerce whatever the model sent for `collections` into a list of names.
+
+    XML-style tool-call parsers — `qwen3_xml`, which Qwen3.5 requires — hand every
+    parameter across as a **string**, so a `list[str]` argument arrives as the literal
+    `'["testdata"]'` rather than a list. Pydantic then rejects it, the tool returns a
+    validation error, and the model retries the identical call forever: the agent burned
+    its entire 25-step recursion budget without ever running a search. A one-line
+    coercion here is much cheaper than that failure, and it costs nothing when the
+    argument already arrives well-formed.
+
+    Accepts a real list, a JSON-encoded list, or a bare/comma-separated name.
+    """
+    if value is None or isinstance(value, list):
+        return value
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(v).strip() for v in parsed if str(v).strip()]
+    return [part.strip() for part in text.split(",") if part.strip()]
 
 
 def _shard_tables(collectionname: str) -> list[str]:
@@ -194,13 +225,18 @@ def list_collections() -> list[CollectionInfo]:
 )
 def search_collections(
     query: str,
-    collections: list[str] | None = None,
+    collections: list[str] | str | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
 ) -> SearchResponse:
-    """Search, fanning out over every live shard of every permitted collection."""
+    """Search, fanning out over every live shard of every permitted collection.
+
+    `collections` is typed to accept a string as well as a list because XML-style
+    tool-call parsers send it as one — see :func:`_as_collection_list`. Declaring the
+    union keeps the coercion out of pydantic's way rather than fighting it.
+    """
     try:
         acl = _caller()
-        targets = acl.check(collections)
+        targets = acl.check(_as_collection_list(collections))
     except AccessDenied as exc:
         return SearchResponse(
             success=False, query=query, collections_searched=[], results=[], error=str(exc)
@@ -216,18 +252,25 @@ def search_collections(
         )
 
     limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS))
-    match_expr = sanitize_match_query(query)
-    if not match_expr:
+    prepared = prepare_match_query(query)
+    if not prepared.expr:
+        # Hand back the syntax reference along with the complaint: the model gets one
+        # shot at understanding what went wrong, and "unbalanced quote" is only
+        # actionable next to the rules it broke.
         return SearchResponse(
             success=False,
             query=query,
             collections_searched=targets,
             results=[],
-            error="query contained no searchable terms",
+            error=f"{prepared.error or 'query contained no searchable terms'}\n\n{MATCH_SYNTAX}",
         )
+    match_expr = prepared.expr
 
     hits: list[SearchHit] = []
     failed_targets: list[str] = []
+    #: Manticore's own words about a bad query. Kept so they can be returned rather than
+    #: only logged — a syntax error the model never sees is one it cannot correct.
+    shard_errors: list[str] = []
 
     for collectionname in targets:
         try:
@@ -250,6 +293,7 @@ def search_collections(
             except Exception as exc:  # noqa: BLE001 - one bad shard must not blank the page
                 log.warning("shard %s failed: %s", table, exc)
                 failed_targets.append(table)
+                shard_errors.append(str(exc))
                 continue
 
             for row in rows:
@@ -271,16 +315,26 @@ def search_collections(
     hits = hits[:limit]
     _attach_paths(hits)
 
-    note = None
+    notes = list(prepared.repairs)
     if failed_targets:
-        note = f"{len(failed_targets)} shard(s) could not be queried; results are partial"
+        notes.append(
+            f"{len(failed_targets)} shard(s) could not be queried; results are partial"
+        )
+
+    # Every shard failing on the same query is a query problem, not an infrastructure
+    # problem, and the model is the only one who can fix it. Surface Manticore's text
+    # verbatim — `no field 'title' found in schema` tells it exactly what to change.
+    error = None
+    if shard_errors and not hits:
+        error = f"{sorted(set(shard_errors))[0]}\n\n{MATCH_SYNTAX}"
 
     return SearchResponse(
-        success=True,
+        success=not error,
         query=query,
         collections_searched=targets,
         results=hits,
-        note=note,
+        error=error,
+        note="; ".join(notes) or None,
     )
 
 

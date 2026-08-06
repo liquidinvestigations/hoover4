@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from enum import Enum
 from research_agent.agent import build_agent
+from research_agent.prompts import system_prompt
 
 
 class MessageType(str, Enum):
@@ -106,7 +107,9 @@ async def lifespan(app: FastAPI):
     app.state.config = {
         "mcp_servers": os.getenv("MCP_SERVERS", "").split(",") if os.getenv("MCP_SERVERS") else [],
         "agent_name": os.getenv("AGENT_NAME", "Research Agent"),
-        "system_prompt": os.getenv("SYSTEM_PROMPT", "You are a helpful research assistant."),
+        # SYSTEM_PROMPT overrides; otherwise the canonical prompt for this container's
+        # AGENT_PROFILE. See research_agent/prompts.py for why the text is not in compose.
+        "system_prompt": system_prompt(),
         "llm_model": os.getenv("LLM_MODEL")
     }
     app.state.agent = None

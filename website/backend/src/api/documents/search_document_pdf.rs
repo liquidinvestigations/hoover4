@@ -21,6 +21,7 @@ pub async fn search_document_pdf(
     document_identifier: DocumentIdentifier,
     query: String,
 ) -> anyhow::Result<PdfSearchResults> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let text_sources = get_text_sources(user, document_identifier.clone()).await?;
     tracing::info!("TEXT SOURCES COUNT: {:?}", text_sources.len());

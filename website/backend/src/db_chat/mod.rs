@@ -44,8 +44,8 @@ pub struct ChatMessageRow {
     pub created_at: time::OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime")]
     pub updated_at: time::OffsetDateTime,
-    #[serde(with = "clickhouse::serde::time::datetime64::millis")]
-    pub created_ms: time::OffsetDateTime,
+    /// Milliseconds since Unix epoch — matches `DateTime64(3)` on the wire.
+    pub created_ms: i64,
     #[serde(default)]
     pub agent_duration_ms: u32,
 }
@@ -59,6 +59,13 @@ const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, t
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
+}
+
+fn fmt_ms(ms: i64) -> String {
+    match time::OffsetDateTime::from_unix_timestamp_nanos((ms as i128) * 1_000_000) {
+        Ok(dt) => fmt(dt),
+        Err(_) => ms.to_string(),
+    }
 }
 
 /// Random id for a new chat. Reuses the web-session generator rather than adding a uuid
@@ -167,7 +174,7 @@ pub async fn list_messages(
             tool_output: r.tool_output,
             doc_refs: r.doc_refs,
             created_at: fmt(r.created_at),
-            created_ms: fmt(r.created_ms),
+            created_ms: fmt_ms(r.created_ms),
             agent_duration_ms: r.agent_duration_ms,
         })
         .collect())
@@ -181,9 +188,10 @@ pub async fn list_messages(
 /// open questions rather than papered over with a lock this database cannot provide.
 pub async fn next_seq(username: &str, session_id: &str) -> anyhow::Result<u32> {
     let client = get_global_client();
+    // ClickHouse types `max(seq) + 1` as UInt64; cast so the client can decode it.
     let max: u32 = client
         .query(
-            "SELECT ifNull(max(seq) + 1, 0) FROM chat_messages FINAL \
+            "SELECT toUInt32(ifNull(max(seq) + 1, 0)) FROM chat_messages FINAL \
              WHERE username = ? AND session_id = ?",
         )
         .bind(username)
@@ -224,10 +232,40 @@ pub async fn append_message(
         doc_refs: extras.doc_refs,
         created_at: ts,
         updated_at: ts,
-        created_ms: ts,
+        created_ms: ts.unix_timestamp_nanos() as i64 / 1_000_000,
         agent_duration_ms: extras.agent_duration_ms,
     };
     insert_row("chat_messages", &row).await
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+    use common::chat_types::ChatRole;
+
+    /// Run with: cargo test -p backend --lib db_chat::live_tests -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "needs live clickhouse"]
+    async fn can_append_and_list_a_tool_payload_row() {
+        let username = "live-test-chat";
+        let session_id = create_session(username, "live", &[])
+            .await
+            .expect("create_session");
+        let seq = next_seq(username, &session_id).await.expect("next_seq");
+        append_message(
+            username,
+            &session_id,
+            seq,
+            ChatRole::User,
+            "hello from live test",
+            AppendMessageExtras::default(),
+        )
+        .await
+        .expect("append_message");
+        let msgs = list_messages(username, &session_id).await.expect("list");
+        assert!(msgs.iter().any(|m| m.content.contains("hello from live test")));
+        assert!(msgs.iter().any(|m| !m.created_ms.is_empty()));
+    }
 }
 
 /// Update a session's title and/or collection selection, and bump `updated_at` so it

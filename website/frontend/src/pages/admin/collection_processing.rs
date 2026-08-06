@@ -1,14 +1,14 @@
 //! Admin page: processing status, workflows and failures for one collection.
 
 use common::processing_types::{
-    CollectionProcessingStatus, DocumentFailure, StageProgress, TaskFailureGroup, WorkflowFilter,
-    WorkflowSummary,
+    CollectionProcessingStatus, DocumentFailure, EtaSamplePoint, StageProgress, TaskFailureGroup,
+    WorkflowFilter, WorkflowSummary, STAGE_EXECUTE, STAGE_INDEX, STAGE_NLP, STAGE_PLAN,
 };
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{
-    admin_collection_processing, admin_list_document_failures, admin_list_task_failures,
-    admin_list_workflows, admin_retry_document, admin_retry_failed_task,
+    admin_collection_processing, admin_list_document_failures, admin_list_eta_samples,
+    admin_list_task_failures, admin_list_workflows, admin_retry_document, admin_retry_failed_task,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK, MODULE, MODULE_BODY,
@@ -52,6 +52,9 @@ fn ProcessingContent(collection_id: String) -> Element {
     let status_id = collection_id.clone();
     let status_res = use_resource(move || admin_collection_processing(status_id.clone()));
 
+    let eta_id = collection_id.clone();
+    let eta_res = use_resource(move || admin_list_eta_samples(eta_id.clone()));
+
     let filter = use_signal(|| WorkflowFilter::All);
     let wf_id = collection_id.clone();
     let workflows_res =
@@ -72,12 +75,13 @@ fn ProcessingContent(collection_id: String) -> Element {
     // `Resource` is `Copy`, so each call re-copies the handles; that keeps the closure
     // `Fn` and lets it be handed to more than one `EventHandler`.
     let refresh_all = move || {
-        let (mut s, mut w, mut t, mut d) =
-            (status_res, workflows_res, task_failures_res, doc_failures_res);
+        let (mut s, mut w, mut t, mut d, mut e) =
+            (status_res, workflows_res, task_failures_res, doc_failures_res, eta_res);
         s.restart();
         w.restart();
         t.restart();
         d.restart();
+        e.restart();
     };
 
     rsx! {
@@ -95,7 +99,10 @@ fn ProcessingContent(collection_id: String) -> Element {
             }
         }
 
-        StagesPanel { status: status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned() }
+        StagesPanel {
+            status: status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+            eta_samples: eta_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+        }
 
         WorkflowsPanel {
             workflows: workflows_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
@@ -121,7 +128,7 @@ fn ProcessingContent(collection_id: String) -> Element {
 }
 
 #[component]
-fn StagesPanel(status: Option<CollectionProcessingStatus>) -> Element {
+fn StagesPanel(status: Option<CollectionProcessingStatus>, eta_samples: Option<Vec<EtaSamplePoint>>) -> Element {
     rsx! {
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Processing stages" }
@@ -146,6 +153,17 @@ fn StagesPanel(status: Option<CollectionProcessingStatus>) -> Element {
                                 }
                                 for stage in ds.stages {
                                     StageBar { key: "{stage.stage}", stage: stage }
+                                }
+                                EtaSection {
+                                    samples: eta_samples
+                                        .as_ref()
+                                        .map(|all| {
+                                            all.iter()
+                                                .filter(|p| p.collection_dataset == ds.collection_dataset)
+                                                .cloned()
+                                                .collect::<Vec<_>>()
+                                        })
+                                        .unwrap_or_default(),
                                 }
                             }
                         }
@@ -193,6 +211,156 @@ fn StageBar(stage: StageProgress) -> Element {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ETA estimates
+// ---------------------------------------------------------------------------
+
+/// Stage colors for the estimate chart, keyed by the `STAGE_*` constants.
+const ETA_STAGE_STYLES: &[(&str, &str, &str)] = &[
+    (STAGE_PLAN, "P1 plan", "#79aec8"),
+    (STAGE_EXECUTE, "P2/P3 execute", "#417690"),
+    (STAGE_NLP, "P4 nlp", "#c1883c"),
+    (STAGE_INDEX, "P5 index", "#5fa25f"),
+];
+
+/// Per-dataset ETA: the current best-effort deadline and a chart of the last
+/// 100 stored estimates per stage.
+///
+/// The chart plots the *estimated deadline* (absolute time) against sample
+/// time: a converging estimate reads as a flattening line, a sawtooth means
+/// the estimate is wandering and should not be trusted.
+#[component]
+fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
+    if samples.is_empty() {
+        return rsx! {
+            p { style: "{HELP_TEXT} margin: 4px 0 0;",
+                "No ETA samples yet — they are collected in the background while the dataset is being processed, and never for a finished one."
+            }
+        };
+    }
+
+    // Samples arrive newest-first per stage (LIMIT 100 BY dataset, stage).
+    // The current estimate is the newest sample of each stage; the dataset
+    // deadline is the latest deadline among stages that still have one.
+    let mut newest_per_stage: std::collections::BTreeMap<&str, &EtaSamplePoint> =
+        std::collections::BTreeMap::new();
+    for s in &samples {
+        newest_per_stage.entry(s.stage.as_str()).or_insert(s);
+    }
+    let current = newest_per_stage
+        .values()
+        .filter(|s| s.eta_seconds > 0)
+        .max_by_key(|s| s.deadline_unix);
+
+    rsx! {
+        div { style: "margin: 8px 0 4px; padding: 10px; background: #f8f8f8; border: 1px solid #eee; border-radius: 4px;",
+            div { style: "font-size: 13px; color: #333; margin-bottom: 6px;",
+                match current {
+                    Some(c) => rsx! {
+                        "Estimated completion: "
+                        b { "{c.deadline}" }
+                        span { style: HELP_TEXT, " (in {humanize_seconds(c.eta_seconds)} — best-effort estimate, not a scheduling promise)" }
+                    },
+                    None => rsx! {
+                        span { style: HELP_TEXT, "No current estimate — the pipeline is finished or not making measurable progress." }
+                    },
+                }
+            }
+            EtaChart { samples: samples.clone() }
+            div { style: "display: flex; gap: 14px; margin-top: 4px;",
+                for (stage, label, color) in ETA_STAGE_STYLES {
+                    span { key: "{stage}", style: "font-size: 11px; color: #666;",
+                        span { style: "display: inline-block; width: 10px; height: 10px; background: {color}; margin-right: 4px; border-radius: 2px;" }
+                        "{label}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
+    const W: f64 = 700.0;
+    const H: f64 = 160.0;
+    const PAD: f64 = 8.0;
+
+    let (min_x, max_x) = samples
+        .iter()
+        .fold((i64::MAX, i64::MIN), |(lo, hi), s| {
+            (lo.min(s.sampled_at_unix), hi.max(s.sampled_at_unix))
+        });
+    let (min_y, max_y) = samples
+        .iter()
+        .fold((i64::MAX, i64::MIN), |(lo, hi), s| {
+            (lo.min(s.deadline_unix), hi.max(s.deadline_unix))
+        });
+    // Degenerate ranges (one sample, or a perfectly stable estimate) still
+    // need a span to scale against.
+    let span_x = (max_x - min_x).max(1) as f64;
+    let span_y = (max_y - min_y).max(1) as f64;
+
+    let px = move |t: i64| PAD + (t - min_x) as f64 / span_x * (W - 2.0 * PAD);
+    let py = move |d: i64| H - PAD - (d - min_y) as f64 / span_y * (H - 2.0 * PAD);
+
+    let first = samples.iter().min_by_key(|s| s.sampled_at_unix);
+    let last = samples.iter().max_by_key(|s| s.sampled_at_unix);
+
+    rsx! {
+        svg {
+            width: "{W}",
+            height: "{H}",
+            style: "background: white; border: 1px solid #eee; max-width: 100%;",
+            // Y bounds: the lowest and highest deadline any sample predicted.
+            text {
+                x: "2", y: "12",
+                style: "font-size: 9px; fill: #999;",
+                "{samples.iter().max_by_key(|s| s.deadline_unix).map(|s| s.deadline.clone()).unwrap_or_default()}"
+            }
+            text {
+                x: "2", y: "{H - 2.0}",
+                style: "font-size: 9px; fill: #999;",
+                "{samples.iter().min_by_key(|s| s.deadline_unix).map(|s| s.deadline.clone()).unwrap_or_default()}"
+            }
+            for (stage, _label, color) in ETA_STAGE_STYLES {
+                {
+                    let mut pts: Vec<&EtaSamplePoint> =
+                        samples.iter().filter(|s| s.stage == *stage).collect();
+                    // Query order is newest-first; plot oldest to newest.
+                    pts.reverse();
+                    let points = pts
+                        .iter()
+                        .map(|s| format!("{:.1},{:.1}", px(s.sampled_at_unix), py(s.deadline_unix)))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    rsx! {
+                        polyline {
+                            key: "{stage}",
+                            points: "{points}",
+                            fill: "none",
+                            "stroke": "{color}",
+                            "stroke-width": "1.5",
+                        }
+                    }
+                }
+            }
+            // X bounds: the sample window.
+            if let (Some(f), Some(l)) = (first, last) {
+                text {
+                    x: "2", y: "{H - 12.0}",
+                    style: "font-size: 9px; fill: #bbb;",
+                    "{f.sampled_at}"
+                }
+                text {
+                    x: "{W - 150.0}", y: "{H - 12.0}",
+                    style: "font-size: 9px; fill: #bbb;",
+                    "{l.sampled_at}"
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn WorkflowsPanel(workflows: Option<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
     rsx! {
@@ -214,7 +382,7 @@ fn WorkflowsPanel(workflows: Option<Vec<WorkflowSummary>>, filter: Signal<Workfl
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "Only the top-level pipeline workflows of this collection are listed. Child workflows are reachable from a run's Temporal page."
+                    "Workflows started for this collection's datasets, child workflows included (matched on the CollectionDataset search attribute; runs from before it existed are matched on their workflow id)."
                 }
                 match workflows {
                     None => rsx! { "Loading\u{2026}" },

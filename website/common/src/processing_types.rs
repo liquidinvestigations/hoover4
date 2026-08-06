@@ -51,6 +51,30 @@ impl StageProgress {
     }
 }
 
+/// One stored ETA sample (`processing_eta_samples`, global database), written by
+/// the `CollectEtaSamples` workflow and only read here — the website never
+/// computes these in the request path.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EtaSamplePoint {
+    pub collection_dataset: String,
+    /// One of the `STAGE_*` constants above.
+    pub stage: String,
+    /// RFC 3339 sample time.
+    pub sampled_at: String,
+    pub sampled_at_unix: i64,
+    pub done: u64,
+    pub total: u64,
+    pub rate_items_per_sec: f64,
+    pub rate_bytes_per_sec: f64,
+    /// 0 when no estimate could be made.
+    pub eta_seconds: u64,
+    /// RFC 3339 estimated completion time — `sampled_at + eta_seconds`. This is
+    /// what the chart plots: a converging estimate reads as a flattening line.
+    /// Best-effort, not a scheduling promise.
+    pub deadline: String,
+    pub deadline_unix: i64,
+}
+
 /// Trailing window, in minutes, over which completion rate (and therefore ETA) is
 /// measured. Long enough to smooth out per-plan bursts, short enough that an ETA
 /// reacts within a coffee break.

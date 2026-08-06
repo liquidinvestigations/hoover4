@@ -14,12 +14,16 @@ the LangGraph research agents that use them.
 | Service | Port (loopback) | Purpose |
 |---|---|---|
 | `hoover4-ai-server` | 8821 | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `hoover4-vllm` | 8011 | Local LLM (Qwen3-4B-Instruct), OpenAI-compatible. Replaces the old LiteLLM proxy. |
+| `hoover4-vllm` | 8011 | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. Replaces the old LiteLLM proxy. |
 | `hoover4-mcp-collections` | 8085 | **The RAG path.** ACL-bounded search over the user's collections. |
-| `hoover4-mcp-ddg` / `-wikipedia` / `-whois` | 8889 / 8093 / 8092 | Open-web tools. |
-| `hoover4-mcp-milvus` | 18081 | Vector search. **Behind the `milvus` profile — nothing populates Milvus yet.** |
+| `hoover4-mcp-metasearch` | 8086 | Web search over four engines, merged with reciprocal rank fusion. |
+| `hoover4-mcp-browser` | 8087 | Reads a page with a real headless Chromium, for JS-rendered sites. |
+| `hoover4-mcp-ddg` / `-wikipedia` / `-whois` | 8889 / 8093 / 8092 | Older single-purpose open-web tools. |
 | `hoover4-internal-search-agent` | 9099 | Collection-only agent. What the website's AI Chat page calls. |
 | `hoover4-full-research-agent` | 9090 | Collections + open web. Target of the Temporal `ResearchTask`. |
+
+Per-server detail is in [`hoover4_mcp/README.md`](hoover4_mcp/README.md), which links to a
+README per server.
 
 ## How access control works
 
@@ -39,14 +43,38 @@ The model never sees or supplies its own permissions. Set `MCP_SHARED_SECRET` in
 without it the MCP servers accept any caller and log a warning (the ports are bound to
 127.0.0.1, which is the only reason that is survivable locally).
 
-## Why search goes through Manticore, not Milvus
+## Why search goes through Manticore, and where Milvus went
 
 The ingestion pipeline writes extracted text to ClickHouse and search documents to
-Manticore shards. It **never writes vectors to Milvus** — `text_chunks_milvus` and
-`entity_hits_milvus` exist but are unused. So `hoover4-mcp-collections` searches
-Manticore and reads text from ClickHouse, which is where the data actually is. The
-Milvus MCP server is kept and still builds, behind the `milvus` compose profile, for
-whenever a chunk-and-embed stage is added to the pipeline.
+Manticore shards. It **never wrote vectors**, so the whole Milvus tier — three containers
+(`milvus-standalone`, `milvus-etcd`, `milvus-minio`) holding ~39 GB of memory limit, an
+MCP server that would have searched an empty index, a `pymilvus` dependency in three
+packages, and the legacy `hoover4_rag` ingestion CLI — has been removed (Q1/Q3).
+
+The `text_chunks_milvus`, `entity_hits_milvus` and `entity_hits_milvus_unique` ClickHouse
+tables are dropped by collection migration `00031`. Migrations `00023`/`00024` still
+create them and always will: the runner stores an md5 per applied file, so editing history
+breaks every existing deployment. The DROP is what undoes them.
+
+**If vector search is ever wanted again**, this is what would have to be built first — the
+missing piece was never the search side:
+
+1. A **chunk-and-embed stage in P5**: split `text_content` into overlapping chunks, embed
+   each through `hoover4-ai-server` (`intfloat/multilingual-e5-large-instruct`, 1024-dim),
+   and write chunk ↔ vector-id alignment rows. That stage has never existed.
+2. A vector store to write them to, and a migration recreating the alignment tables.
+3. Hybrid retrieval in the collection MCP server: BM25 from Manticore and vectors from the
+   store, merged with RRF — the same merge the metasearch server already implements.
+
+Until step 1 exists, a vector database is three containers searching nothing.
+
+**The stopped Milvus containers and their podman volumes are deliberately left on this
+host.** Reclaiming the disk is your call:
+
+```bash
+podman rm milvus-standalone milvus-etcd milvus-minio
+podman volume rm milvus_etcd milvus_minio milvus_standalone
+```
 
 ## Quick start
 
@@ -103,261 +131,235 @@ attached. Changing it orphans them and re-downloads every weight.
 
 ### Testing
 
-Python here runs **in containers only**. To run the collection-search server's tests:
+Python here runs **in containers only** — the host has almost no tooling.
 
 ```bash
-podman run --rm hoover4-mcp-collections:local python -m pytest tests/ -q
+docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 52 tests
+docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 20 tests
+docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 40 tests
 ```
 
----
+A `--build` alone can leave the old container running against the new image. Follow it
+with an explicit recreate:
 
-# Legacy notes
-
-The sections below describe the original multi-host RAG design. Kept for reference;
-the Milvus-based ingestion path they describe is not wired up.
-
-## Features
-
-- **Advanced Retrieval**: Retrieves 120 documents before reranking, then uses reranker to get top 10 most relevant documents
-- **Hybrid Search**: Supports both semantic and hybrid search modes with entity-aware retrieval
-- **Chat History**: Maintains conversation context with LLM-based question extraction
-- **Streaming Responses**: Real-time streaming of LLM responses for better user experience
-- **Metadata Extraction**: Extracts and displays document metadata for better context
-- **Multi-LLM Support**: Uses LiteLLM for OpenAI, Anthropic, Ollama, and other providers
-- **CLI Interface**: Full command-line interface with interactive chat mode
-- **Health Monitoring**: Comprehensive health checks for all system components
-
-## Architecture
-
-The system consists of three main components:
-
-### 1. Hoover4 AI Server (`hoover4_ai_server/`)
-- FastAPI-based server providing embeddings, NER, and reranking services
-- Uses `intfloat/multilingual-e5-large-instruct` for embeddings
-- Runs on `http://localhost:8000`
-
-### 2. Hoover4 AI Clients (`hoover4_ai_clients/`)
-- Client libraries for connecting to Hoover4 AI server services
-- Includes Milvus vector store integration
-- LangChain-compatible components
-
-### 3. Hoover4 RAG (`hoover4_rag/`)
-- Main RAG chain implementation with chat history support
-- Document ingestion from ClickHouse
-- CLI interface for querying and interaction
-
-## Quick Start
-
-### 1. Install Dependencies
 ```bash
-poetry install
+./start-docker.sh --build hoover4-mcp-collections
+docker compose up -d --force-recreate hoover4-mcp-collections
 ```
 
-### 2. Set Up Environment
-```bash
-cp env.example .env
-# Edit .env with your configuration (see Configuration section below)
-```
+## The local LLM: Qwen3.5-2B at its full 262 K context
 
-### 3. Start the AI Server
-```bash
-cd hoover4_ai_server
-poetry install
-poetry run python hoover4_ai_server.py
-```
-The server will start on `http://localhost:8000` and provide embeddings, reranking, and NER services.
+`vllm/vllm-openai:v0.17.1` serving `Qwen/Qwen3.5-2B` at bf16, `--max-model-len 262144`,
+`--gpu-memory-utilization 0.50`. vLLM 0.17 is the first release with native `qwen3_5`
+support.
 
-### 4. Run Document Ingestion
-```bash
-python hoover4_rag/scripts/ingest.py
-```
-This processes documents from ClickHouse, generates embeddings, and stores them in Milvus for retrieval.
+### Why the whole native context fits on a 24 GB card
 
-### 5. Start Chat with the Bot
-```bash
-python hoover4_rag/scripts/rag_cli.py query --stream
-```
-This starts an interactive chat interface where you can ask questions and get answers based on your ingested documents.
+The card also holds `hoover4-ai-server` (~2.9 GB of embedding/reranker/NER weights) and a
+desktop session (~1.7 GB), so the LLM has roughly 10 GB to work with. The number that
+decides everything is **KV cache bytes per token**, and Qwen3.5's hybrid architecture
+changes it by an order of magnitude.
 
-## Usage Examples
-
-### Single Query
-```bash
-python hoover4_rag/scripts/rag_cli.py query "What is machine learning?"
-```
-
-### Interactive Chat (Terminal-based)
-```bash
-python hoover4_rag/scripts/rag_cli.py query
-```
-
-### Streaming Query
-```bash
-python hoover4_rag/scripts/rag_cli.py query "Tell me about AI" --stream
-```
-
-### Interactive Chat with Streaming
-```bash
-python hoover4_rag/scripts/rag_cli.py query --stream
-```
-
-### Verbose Query with Documents
-```bash
-python hoover4_rag/scripts/rag_cli.py query "Explain transformers" --verbose --show-documents
-```
-
-### Health Check
-```bash
-python hoover4_rag/scripts/rag_cli.py health
-```
-
-### Show Configuration
-```bash
-python hoover4_rag/scripts/rag_cli.py config
-```
-
-### Question Extractor Configuration
-```bash
-# Use aggressive question extraction with more history context
-python hoover4_rag/scripts/rag_cli.py query --question-extractor-type aggressive --question-extractor-history 10
-
-# Use conservative extraction with custom temperature
-python hoover4_rag/scripts/rag_cli.py query --question-extractor-type conservative --question-extractor-temp 0.5
-
-# Disable question extraction entirely
-python hoover4_rag/scripts/rag_cli.py query --disable-question-extraction
-```
-
-## Configuration
-
-Edit `.env` to configure the system. Here are the main configuration options:
-
-### Milvus Vector Database
-```bash
-MILVUS_HOST=localhost
-MILVUS_PORT=19530
-MILVUS_COLLECTION_NAME=rag_chunks
-```
-
-### AI Service URLs
-```bash
-EMBEDDING_SERVER_URL=http://localhost:8000/v1
-NER_SERVER_URL=http://localhost:8000/v1
-RERANKER_SERVER_URL=http://localhost:8000/v1
-```
-
-### ClickHouse Database (for document ingestion)
-```bash
-CLICKHOUSE_HOST=localhost
-CLICKHOUSE_PORT=8123
-CLICKHOUSE_USERNAME=default
-CLICKHOUSE_PASSWORD=
-CLICKHOUSE_DATABASE=default
-```
-
-### LLM Configuration (LiteLLM)
-```bash
-# For OpenAI
-LLM_API_KEY=your_openai_api_key
-LLM_MODEL=gpt-3.5-turbo
-LLM_TEMPERATURE=0.7
-
-# For Ollama (local setup)
-LLM_API_KEY=ollama
-LLM_MODEL=ollama/phi4:latest
-LLM_BASE_URL=http://localhost:11434
-
-# For Anthropic
-LLM_API_KEY=your_anthropic_api_key
-LLM_MODEL=claude-3-sonnet
-```
-
-### RAG Configuration
-```bash
-RAG_INITIAL_K=120          # Documents retrieved before reranking
-RAG_FINAL_K=10            # Documents after reranking
-RAG_SEARCH_MODE=hybrid    # "semantic" or "hybrid"
-RAG_MAX_HISTORY=10        # Maximum chat history length
-```
-
-### Question Extractor Configuration
-```bash
-RAG_QUESTION_EXTRACTOR_TYPE=default      # "default", "aggressive", "conservative"
-RAG_QUESTION_EXTRACTOR_TEMP=0.3         # Temperature for question extraction
-RAG_QUESTION_EXTRACTOR_HISTORY=5        # Max history messages for extraction
-```
-
-## CLI Options
-
-The RAG CLI supports various options:
-
-### Query Command Options
-- `--stream, -s`: Stream the response in real-time
-- `--verbose, -v`: Show detailed information
-- `--show-documents, -d`: Show retrieved documents (requires --verbose)
-- `--no-history`: Don't use chat history
-- `--question-extractor-type`: Choose extractor type (default/aggressive/conservative)
-- `--question-extractor-temp`: Set extraction temperature
-- `--question-extractor-history`: Set max history for extraction
-- `--disable-question-extraction`: Disable LLM-based question extraction
-
-### Available Commands
-- `query`: Query the RAG system (single query or interactive chat)
-- `health`: Check system health
-- `config`: Show current configuration
-
-## System Requirements
-
-- Python 3.9+
-- Poetry for dependency management
-- Milvus vector database
-- ClickHouse database (for document ingestion)
-- GPU recommended for AI server (for embeddings/reranking)
-
-## Project Structure
+From `Qwen/Qwen3.5-2B/config.json`: 24 layers with `full_attention_interval: 4`, so
+`layer_types` is three Gated-DeltaNet layers then one Gated Attention layer, six times
+over. **Only 6 of the 24 layers keep a growing KV cache.** Those 6 have
+`num_key_value_heads: 2` and `head_dim: 256`:
 
 ```
-alex-rag-demo/
-├── hoover4_ai_server/          # AI services server
-├── hoover4_ai_clients/         # Client libraries
-├── hoover4_rag/               # Main RAG implementation
-│   ├── chains/                # RAG and question extractor chains
-│   └── scripts/               # CLI and ingestion scripts
-├── tests/                     # Test suite
-├── env.example               # Environment configuration template
-└── pyproject.toml           # Project dependencies
+KV/token = 2 (K,V) x 6 full-attn layers x 2 kv-heads x 256 head_dim x 2 bytes = 12 KiB
 ```
 
-## Development
+The other 18 layers hold a *constant* recurrent state per sequence, not one that grows
+with context. That is the whole point of the architecture. So:
 
-### Running Tests
-```bash
-poetry run pytest
+```
+weights (2.27 B params bf16, incl. vision tower)   4.55 GiB   (measured from the safetensors)
+KV cache at 262,144 tokens                         3.0  GiB
+activations + cudagraph capture                    ~1.3 GiB   (capture measured at 0.46 GiB)
+                                                  ----------
+                                                   ~9.9 GiB   =>  gpu_memory_utilization ~0.50
 ```
 
-### Code Formatting
-```bash
-poetry run black .
-poetry run ruff check .
+For comparison, the Qwen3-4B this replaces has 36 layers x 8 KV heads x head_dim 128 =
+144 KiB/token — 12x more. Its 16,384-token limit was not a conservative choice; 262 K
+would have cost ~36 GiB.
+
+Note the model is **multimodal** (`Qwen3_5ForConditionalGeneration`, with a 24-layer
+vision tower). The 4.55 GiB of weights already includes it.
+
+### Read `Maximum concurrency`, not `GPU KV cache size`
+
+```
+$ docker logs hoover4-vllm 2>&1 | grep -E "Available KV cache|GPU KV cache size|Maximum concurrency"
+Available KV cache memory: 5.95 GiB
+GPU KV cache size: 129,472 tokens
+Maximum concurrency for 262,144 tokens per request: 1.97x
 ```
 
-## Troubleshooting
+`GPU KV cache size` looks like a failure — half of `max_model_len`, which on a normal
+model would mean vLLM cannot hold even one full sequence. **It is not.** That figure is
+normalised across all 24 layers, but only 6 keep a cache, so real capacity is 4x it:
+517,888 tokens, i.e. the 1.97 full-length sequences vLLM itself reports. And
+`5.95 GiB / 517,888 = 12.05 KiB/token`, exactly the arithmetic above.
 
-### Health Check
-Use the health command to diagnose issues:
-```bash
-python hoover4_rag/scripts/rag_cli.py health
+Verified end to end rather than argued: a **200,021-token prompt** is accepted and
+answered correctly. No step of the quantisation ladder (shorter context, FP8 KV cache,
+AWQ INT4, the 0.8B model) was needed.
+
+### Tool calling: `hermes` is wrong for this model
+
+`--tool-call-parser hermes` was correct for Qwen3-4B and **silently breaks Qwen3.5**.
+Qwen3.5 emits XML-style blocks:
+
+```
+<tool_call>
+<function=list_collections>
+</function>
+</tool_call>
 ```
 
-This will check:
-- Embeddings service connectivity
-- Vector store (Milvus) status
-- NER service availability
-- Reranker service status
-- LLM connectivity
+`hermes` does not match that, so every tool call arrives as ordinary assistant text, the
+agent makes **zero** tool calls, and answers from nothing — the same symptom as Q12,
+from a different cause. The right parser is **`qwen3_xml`** (note the underscore: the
+registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
+spelling is a startup crash-loop rather than a clear error).
 
-### Common Issues
-1. **AI Server not running**: Ensure `hoover4_ai_server` is started on port 8000
-2. **Milvus connection issues**: Check Milvus is running and accessible
-3. **LLM API errors**: Verify API keys and model availability
-4. **No documents found**: Run ingestion script to populate the vector store
+No `--reasoning-parser` is set: Qwen3.5-2B is non-thinking by default.
+
+Two consequences of the XML format are handled in code, because both presented as
+infinite loops rather than as errors:
+
+* **Array arguments arrive as strings.** `collections` comes across as the literal
+  `'["testdata"]'`, pydantic rejects it, and the model retries the identical call until
+  the recursion budget is gone — without ever running a search. The collection server
+  coerces it (`_as_collection_list`).
+* **The model does not reliably stop.** Given good results it will still re-issue a
+  search it has already run. The agent now detects a repeated call, and enforces a
+  12-turn tool budget, and in either case forces a final answer instead of letting
+  langgraph raise `GraphRecursionError` — which surfaced as an HTTP 500 with no answer at
+  all. See [`hoover4_research_agent/README.md`](hoover4_research_agent/README.md).
+
+### Token streaming is back on
+
+`LLM_STREAMING=true` is now the default. Q12 was a vLLM-0.11/langchain interop bug where
+streamed tool-call deltas arrived with `arguments` absent and never accumulated, so the
+agent silently made zero tool calls. Re-tested on 0.17.1 with a real agent run: **4 tool
+calls and a correctly cited answer with streaming on.** The `disable_streaming` workaround
+and its comment are left in `research_agent/agent.py` — set `LLM_STREAMING=false` if it
+ever regresses. The symptom to watch for is an agent that answers with no tool calls.
+
+## Manticore `MATCH()` syntax
+
+Verified against the live `testdata_1_pages` shard, not taken from documentation —
+several documented spellings are a hard 500 on this deployment.
+
+| Syntax | Result | Notes |
+|---|---|---|
+| `test document` | works | implicit AND |
+| `test \| zzz` | works | OR |
+| `test -zzz` | works | NOT, **only with a positive term** |
+| `-zzz` alone | 500 | `query is non-computable (single NOT operator)` |
+| `"test document"` | works | exact phrase |
+| `"test document"~5` | works | proximity |
+| `"one two three"/2` | works | quorum |
+| `test NEAR/3 document` | works | |
+| `test SENTENCE document`, `… PARAGRAPH …` | works | |
+| `test MAYBE document` | works | |
+| `@page_text test` | works | the only valid field |
+| `@title test` | 500 | `no field 'title' found in schema` |
+| `who paid @acme` | 500 | a bare `@word` in prose reads as a field operator |
+| `test^3` | works | boost |
+| `(test \| document) the` | works | grouping |
+| `@page_text ^test` | works | field-start |
+| `=test` | works | exact form |
+| `"test` / `(test` | 500 | `syntax error, unexpected $end` |
+| `""` (empty) | works, **matches every row** | dangerous default |
+| `docum*`, `*ocument*` | **works now** | see below — was silently wrong |
+
+Two facts worth keeping:
+
+* **`page_text` is the only full-text field.** Everything else in the shard schema
+  (`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
+  and belongs in `WHERE`, not `MATCH()`.
+* **Wildcards used to fail silently.** Without infix indexing the star was dropped during
+  tokenisation and the query became an exact search for a truncated word — `doc*` returned
+  **7** where `document` returned 16. Not zero. Wrong.
+
+`sanitize_match_query` no longer strips operators. It passes them through and repairs only
+the shapes that 500 (unbalanced quote or paren, NOT-only, bare `@word`, empty), reporting
+what it repaired in the response's `note` and returning Manticore's own error text in
+`error` so the model can correct itself. The escaping of `\` and `'` is unchanged and is
+the injection barrier.
+
+### Infix indexing: what it cost
+
+`min_infix_len='3'` was added to both `pages_table_ddl` and `meta_table_ddl` in
+`main_services/processing/database/manticore.py`, and both collections reindexed.
+Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
+
+| query | before | after |
+|---|---|---|
+| `document` | 16 | 16 |
+| `docum*` | 0 | 19 |
+| `*ocument*` | 0 | 42 |
+| `doc*` | **7 (wrong)** | 34 |
+| `te*t` | **3 (wrong)** | 28 |
+| `wat*` | 0 | 14 |
+
+**The storage cost could not be measured reliably**, and that is worth stating plainly
+rather than quoting a number that does not reproduce. `SHOW TABLE ... STATUS` `disk_bytes`
+on an RT table depends on chunk-merge state: the same no-infix configuration measured
+16.6 MB, 33.6 MB and 65.4 MB at different points in the same session. Under *identical*
+treatment — pipeline reindex, then `FLUSH` + `OPTIMIZE` — the numbers were:
+
+| configuration | disk_bytes | ram_bytes |
+|---|---|---|
+| no infix | 33,588,034 | 35,407,056 |
+| `min_infix_len='3'` | 26,013,634 | 17,537,550 |
+
+i.e. the infix build measured **smaller**, which is not a credible causal effect and is
+better read as "the metric is noisy at this corpus size". A controlled probe (two tables,
+same 156 pages inserted row by row, same flush/optimise) put the difference at **+0.8%**
+on disk. Whatever the true figure, it is not a cost worth trading the wrong answers for.
+`min_infix_len` 2, 3 and 4 are identical in size and behaviour in this Manticore version —
+it is an on/off switch, not a threshold, so do not spend time tuning the number.
+
+**`ALTER TABLE` does not reindex.** It updates metadata only: `SHOW TABLE ... SETTINGS`
+will report the new value while queries keep returning the old, wrong answers. Changing
+the setting means `main.py reindex-collection <name>`. And the worker is long-running, so
+it must be **restarted** after a DDL change or it will keep creating tables from the
+module it imported at startup.
+
+## Where the system prompts live
+
+Not in compose. A multi-paragraph prompt inlined as a YAML default was unreadable and
+drifted from the tool descriptions it was supposed to agree with. There are two files:
+
+* [`hoover4_mcp/collection_search_server/collection_search_server/prompts.py`](hoover4_mcp/collection_search_server/collection_search_server/prompts.py)
+  — the MATCH syntax reference and search strategy. Reaches the model as the MCP server's
+  FastMCP `instructions`, i.e. at tool-discovery time, for **whichever** agent connects,
+  and is appended to the error text when a query is rejected.
+* [`hoover4_research_agent/research_agent/prompts.py`](hoover4_research_agent/research_agent/prompts.py)
+  — one system prompt per agent profile, selected by `AGENT_PROFILE`.
+
+`SYSTEM_PROMPT` / `SERVER_INSTRUCTIONS` remain as thin env overrides for experiments;
+empty means "use the canonical text".
+
+**Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
+of it forever — an earlier five-step draft made it search, search again, then re-run a
+query it had already run until the request died. Detail belongs in tool descriptions,
+which the model reads in context at the moment it picks a tool. Re-measure before
+lengthening.
+
+## Q9 — the shared `hoover4` network
+
+The network is shared between two compose files: `main_services` creates it, `ai_services`
+declares it `external: true` and joins it. Its DNS resolvers were added **by hand** on this
+host (containers otherwise have no DNS on a podman network, which bites again after
+`reset-docker.sh`).
+
+That is fine for one machine. **Revisit before any multi-host deployment**: it needs real
+network configuration — a named overlay or explicit service discovery — rather than one
+hand-patched bridge, and the MCP servers' "bind to 127.0.0.1 and trust the caller's ACL
+header" model assumes the loopback boundary that a multi-host setup removes.
+

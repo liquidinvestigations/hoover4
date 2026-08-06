@@ -58,23 +58,33 @@ services:
       - hoover4
 
   # ---------------------------------------------------------------- GPU: local LLM
-  # Replaces the LiteLLM proxy at 10.69.70.5 that no longer exists. Qwen3-4B-Instruct
-  # fits comfortably next to the embedding model on one 24 GB card as long as vLLM is
-  # told not to claim the whole device — hence the explicit memory fraction, which is
-  # the setting to lower first if either service OOMs.
+  # Replaces the LiteLLM proxy at 10.69.70.5 that no longer exists. Shares one 24 GB
+  # card with hoover4-ai-server (~2.9 GB of embedding/reranker/NER weights) and the
+  # desktop session (~1.7 GB), so vLLM must be told not to claim the whole device —
+  # the memory fraction is the setting to lower first if either service OOMs.
+  #
+  # Qwen3.5-2B runs at its **full 262,144-token native context** on this card, which is
+  # only possible because of the hybrid architecture: of its 24 layers only 6 are Gated
+  # Attention with a growing KV cache (the other 18 are Gated-DeltaNet and hold a
+  # constant recurrent state). At 2 kv-heads x 256 head_dim x 2 bytes x 2 (K,V) x 6
+  # layers that is 12 KiB/token, so a full 262 K sequence costs 3 GiB of KV cache
+  # instead of the ~36 GiB the same context would cost on the Qwen3-4B this replaces.
+  # See ai_services/README.md for the arithmetic and the measured numbers.
+  #
+  # vLLM 0.17 is the first release with native Qwen3.5 (qwen3_5) support.
   hoover4-vllm:
-    image: vllm/vllm-openai:v0.11.0
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.17.1}
     container_name: hoover4-vllm
     ports:
       - "127.0.0.1:${VLLM_PORT:-8011}:8000"
     ipc: host
     command: >
-      --model ${LLM_MODEL_NAME:-Qwen/Qwen3-4B-Instruct-2507}
-      --served-model-name ${LLM_SERVED_NAME:-qwen3-4b}
-      --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.45}
-      --max-model-len ${VLLM_MAX_MODEL_LEN:-16384}
+      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-2B}
+      --served-model-name ${LLM_SERVED_NAME:-qwen3.5-2b}
+      --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.50}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-262144}
       --enable-auto-tool-choice
-      --tool-call-parser hermes
+      --tool-call-parser ${VLLM_TOOL_PARSER:-qwen3_xml}
     environment:
       - VLLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
@@ -198,6 +208,78 @@ services:
     networks:
       - hoover4
 
+  # Metasearch: the same query put to several engines and merged with reciprocal rank
+  # fusion, so the model can see which results more than one engine agreed on. Supersedes
+  # hoover4-mcp-ddg in the full research agent's tool list; both are cheap, so the DDG
+  # one stays running. All engines are HTML scrapers with no API keys, so expect one to
+  # rot — METASEARCH_ENGINES turns a broken one off without a rebuild, and the response's
+  # `degraded` list is how you notice.
+  hoover4-mcp-metasearch:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/metasearch_server/Dockerfile
+    image: hoover4-mcp-metasearch:local
+    container_name: hoover4-mcp-metasearch
+    ports:
+      - "127.0.0.1:${METASEARCH_SERVER_PORT:-8086}:8086"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8086
+      - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
+      - METASEARCH_ENGINES=${METASEARCH_ENGINES:-ddg,brave,startpage,yahoo}
+      - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
+      - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
+      - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-8}
+      - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8086/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - hoover4
+
+  # Browser: a real headless Chromium for pages the scrapers cannot read. The image is
+  # ~1 GB (Chromium plus fonts) and that is expected.
+  #
+  # SECURITY: this server is driven by an LLM and sits on the same network as
+  # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL is checked
+  # against browser_use_server/urlcheck.py first — public http/https only, and the host
+  # must resolve exclusively to public addresses. Do not weaken that.
+  hoover4-mcp-browser:
+    build:
+      context: .
+      dockerfile: ./hoover4_mcp/browser_use_server/Dockerfile
+    image: hoover4-mcp-browser:local
+    container_name: hoover4-mcp-browser
+    ports:
+      - "127.0.0.1:${BROWSER_SERVER_PORT:-8087}:8087"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8087
+      - SERVER_NAME=${BROWSER_SERVER_NAME:-hoover4_browser}
+      - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
+      - BROWSER_SETTLE_SECONDS=${BROWSER_SETTLE_SECONDS:-1.5}
+      - BROWSER_MAX_LINKS=${BROWSER_MAX_LINKS:-50}
+      - MAX_DOCUMENT_CHARS=${BROWSER_MAX_DOCUMENT_CHARS:-20000}
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
+    shm_size: 1gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - hoover4
+
   # ------------------------------------------------------------------- Agents
   # Internal search agent: collection RAG only. This is what the website's AI Chat page
   # talks to, and the reason its tool set is narrow — a chat about the user's documents
@@ -216,9 +298,23 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
       - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
+      # arrived without `arguments` and never accumulated, so the agent silently
+      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
+      # survive streaming, so it is back on. Flip to false if that ever regresses —
+      # the symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
       - LLM_BASE_URL=${LLM_BASE_URL:-http://hoover4-vllm:8000/v1}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
-      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-You are Hoover4's document research assistant. Answer only from the user's document collections. Call list_collections first, then search_collections with well-phrased search sentences, searching several times from different angles. Read promising hits with get_document_text before citing them. Always cite the file path or file_hash of every document you rely on. If the collections contain no answer, say so plainly instead of guessing.}
+      - AGENT_PROFILE=internal_search
+      # Left EMPTY on purpose. The canonical prompt — including the Manticore MATCH
+      # syntax the model needs to search well — lives in
+      # hoover4_mcp/collection_search_server/collection_search_server/prompts.py, and
+      # reaches the model twice: as the MCP server's `instructions` at tool-discovery
+      # time, and as the agent's default system prompt. A multi-paragraph prompt inlined
+      # as a YAML default was unreadable and drifted from the tool descriptions.
+      # Set this only to override for an experiment.
+      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp
       - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
       - RELOAD=false
@@ -254,10 +350,20 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
       - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
+      # arrived without `arguments` and never accumulated, so the agent silently
+      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
+      # survive streaming, so it is back on. Flip to false if that ever regresses —
+      # the symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
       - LLM_BASE_URL=${LLM_BASE_URL:-http://hoover4-vllm:8000/v1}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
-      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-You are a comprehensive research assistant with access to the user's document collections and to public web sources. Search as many times as needed, in parallel where possible, and go deeper on every lead. Produce an exhaustive, well-cited report. Always distinguish what came from the user's own documents from what came from the open web.}
-      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
+      - AGENT_PROFILE=full_research
+      # As above: empty means "use the canonical prompt from the agent package". The
+      # collection MCP server contributes the MATCH syntax through its own instructions,
+      # so it does not need repeating here.
+      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
       - MCP_SHARED_SECRET=${MCP_SHARED_SECRET:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -266,6 +372,8 @@ services:
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
     depends_on:
       - hoover4-mcp-collections
+      - hoover4-mcp-metasearch
+      - hoover4-mcp-browser
       - hoover4-mcp-ddg
       - hoover4-mcp-whois
       - hoover4-mcp-wikipedia

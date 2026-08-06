@@ -22,6 +22,7 @@ pub struct SearchForResultsHitCountResponse {
 /// response) the failed shards' counts are missing and the total is a *lower*
 /// bound instead.
 pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
         return Ok(SearchResultHitCount { total: 0, partial: false });

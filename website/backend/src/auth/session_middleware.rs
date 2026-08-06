@@ -11,6 +11,7 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use common::current_user::CurrentUser;
 use time::OffsetDateTime;
 
+use crate::api::{rate_limit, telemetry};
 use crate::db_auth::{
     groups::{self, GroupRow},
     sessions::{self, SessionRow},
@@ -268,6 +269,7 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
             let expires_at =
                 OffsetDateTime::now_utc() + time::Duration::seconds(session_expiration as i64);
             if let Ok(session) = sessions::create_session(&identity.username, expires_at).await {
+                telemetry::record_event(&identity.username, telemetry::EVENT_USER_LOGIN, "");
                 new_cookie = Some(NewCookie {
                     session_id: session.session_id.clone(),
                     max_age: session_expiration,
@@ -333,6 +335,12 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
             .map(|s| s.username.clone())
             .unwrap_or_else(|| guest_username_for_session(&session_id));
 
+        // A guest with no valid stored session is a first visit (or a
+        // re-anchor of an expired one): that is their "login".
+        if existing_session.is_none() {
+            telemetry::record_event(&username, telemetry::EVENT_USER_LOGIN, "");
+        }
+
         let user = if let Some(cached) = get_cached_user(&session_id) {
             cached
         } else {
@@ -397,8 +405,71 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
         current_user.is_admin = true;
     }
 
-    request.extensions_mut().insert(current_user);
+    // Telemetry + rate limiting for API calls (server functions and the
+    // download route). Static assets are neither limited nor recorded.
+    let path = request.uri().path().to_string();
+    let (route_class, function_name) = telemetry::classify_path(&path);
+    let bytes_in = request
+        .headers()
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    if let Some(_fn_name) = function_name {
+        if let Err(limit) = rate_limit::check_and_record(
+            &current_user.username,
+            rate_limit::RateLimitKind::ApiCall,
+        ) {
+            tracing::debug!(
+                "rate limit refusal for {} ({} window)",
+                current_user.username,
+                limit.window
+            );
+            return axum::response::Response::builder()
+                .status(axum::http::StatusCode::TOO_MANY_REQUESTS)
+                .header(axum::http::header::RETRY_AFTER, limit.retry_after_seconds)
+                .body(axum::body::Body::from(limit.to_string()))
+                .unwrap_or_else(|_| axum::response::Response::default());
+        }
+    }
+
+    let started = Instant::now();
+    request.extensions_mut().insert(current_user.clone());
     let mut response = next.run(request).await;
+
+    if let Some(fn_name) = function_name {
+        let status = response.status();
+        let bytes_out = response
+            .headers()
+            .get(axum::http::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0);
+        let event_type = match route_class {
+            telemetry::RouteClass::Search => telemetry::EVENT_USER_SEARCH,
+            telemetry::RouteClass::Document => telemetry::EVENT_USER_GET_DOCUMENT,
+            _ => telemetry::EVENT_USER_OTHER_REQUEST,
+        };
+        telemetry::record_api_event(
+            &current_user.username,
+            event_type,
+            fn_name,
+            status.is_server_error() || status.is_client_error(),
+            started.elapsed().as_millis().min(u32::MAX as u128) as u32,
+            bytes_in,
+            bytes_out,
+        );
+        // The search and document usage events are recorded by the backend
+        // handlers themselves; everything else is the catch-all.
+        if route_class == telemetry::RouteClass::Other {
+            telemetry::record_event(
+                &current_user.username,
+                telemetry::EVENT_USER_OTHER_REQUEST,
+                "{\"class\":\"api\"}",
+            );
+        }
+    }
 
     if let Some(cookie) = new_cookie {
         let cookie = Cookie::build((SESSION_COOKIE, cookie.session_id))

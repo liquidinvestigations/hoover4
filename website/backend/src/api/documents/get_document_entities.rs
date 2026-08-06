@@ -36,6 +36,7 @@ pub async fn get_document_entities(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<DocumentEntitiesResponse> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
 
     let _ents = _get_document_entities(document_identifier.clone()).await?;

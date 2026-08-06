@@ -42,11 +42,29 @@ moves between shards and never appears in two shards.
 
 ## Administrative Workflows
 
-### P_admin - Collection database lifecycle
+### P_admin - Collection database lifecycle, purges, ETA sampling
 
 Not a pipeline stage. Creates and drops the per-collection ClickHouse databases
-(`Hoover4_Collection_<collectionname>`) on demand, from the admin UI or `main.py ensure-collection`.
+(`Hoover4_Collection_<collectionname>`) on demand, purges soft-deleted datasets, and
+runs `CollectEtaSamples` — the self-scheduling singleton that writes
+`processing_eta_samples` for the admin processing page (100-event rates, items/s and
+bytes/s combined pessimistically, 20x-cost throttle, finished collections skipped).
 Runs on `processing-common-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
+
+## Temporal visibility
+
+Every workflow the pipeline starts — top-level submissions and child workflows alike —
+carries the `CollectionDataset` keyword search attribute (`visibility.py`), registered
+idempotently at every worker startup. The admin workflow browser filters on it, so
+child workflows (`HandleFolders-<hash>`, per-plan runs) show up in a collection-scoped
+query; the attribute is also what makes a bare `reset-docker.sh` need no manual step.
+
+## The AI tier is optional (Q11)
+
+The website and pipeline degrade rather than hard-fail when the AI services are down:
+P4 records `processing_errors` and continues with empty entities, and chat writes the
+failure into the transcript. This is confirmed as wanted behaviour — do not add a
+startup-time hard dependency on the AI tier.
 
 ## Worker Queues
 

@@ -1,0 +1,28 @@
+[project]
+name = "hoover4-mcp-browser-use-server"
+version = "0.1.0"
+description = "MCP server that reads web pages with a real headless Chromium, driven over CDP"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "fastmcp>=2.12,<3",
+    "pydantic>=2.0",
+    # nodriver is the successor to undetected-chromedriver: talks CDP directly, needs no
+    # chromedriver binary to keep in step with the browser version, and is async.
+    "nodriver>=0.38",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+hoover4-browser-server = "browser_use_server.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["browser_use_server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

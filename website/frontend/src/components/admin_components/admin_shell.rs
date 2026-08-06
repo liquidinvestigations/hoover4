@@ -7,7 +7,7 @@ use crate::components::admin_components::{C_ACCENT, C_HEADER, C_LINK, C_YELLOW, 
 use crate::routes::Route;
 
 /// `active` selects the highlighted sidebar row: one of
-/// "dashboard", "collections", "users", "groups", "settings".
+/// "dashboard", "collections", "users", "groups", "settings", "metrics".
 #[component]
 pub fn AdminShell(
     title: String,
@@ -77,6 +77,7 @@ pub fn AdminShell(
                     SidebarLink { to: Route::AdminUsersPage {}, label: "Users", selected: active == "users" }
                     SidebarLink { to: Route::AdminGroupsPage {}, label: "Groups", selected: active == "groups" }
                     SidebarLink { to: Route::AdminSettingsPage {}, label: "Settings", selected: active == "settings" }
+                    SidebarLink { to: Route::AdminMetricsPage {}, label: "Metrics", selected: active == "metrics" }
                 }
                 main {
                     style: "flex: 1; padding: 24px 40px; min-width: 0;",

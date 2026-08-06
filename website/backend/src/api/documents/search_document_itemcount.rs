@@ -16,6 +16,7 @@ pub async fn search_document_item_count(
     find_query: String,
     sources: Vec<DocumentSourceItem>,
 ) -> anyhow::Result<ItemHitCounts> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     if find_query.is_empty() {
         return Ok(ItemHitCounts(Vec::new()));

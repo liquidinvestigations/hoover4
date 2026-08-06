@@ -33,6 +33,7 @@ pub async fn search_string_facet(
     map_string_terms: Option<String>,
 ) -> anyhow::Result<SearchResultFacets> {
 
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
     let x = _search_string_facet(user, query, column.clone(), map_string_terms).await?;
     if column == "collection_dataset" {
         return _search_enrich_collection_list(user, x).await;

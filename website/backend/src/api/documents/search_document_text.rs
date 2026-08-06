@@ -56,6 +56,7 @@ pub async fn search_document_text_for_hits(
     extracted_by: String,
     page_id: u32,
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
         return Ok(vec![]);
@@ -106,6 +107,7 @@ pub async fn search_document_text_for_hit_count(
     document_identifier: DocumentIdentifier,
     find_query: String,
 ) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
         return Ok(vec![]);
@@ -181,6 +183,7 @@ pub async fn get_document_text_by_id_and_source(
     extracted_by: String,
     page_id: u32,
 ) -> anyhow::Result<String> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 

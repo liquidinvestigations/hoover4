@@ -9,7 +9,6 @@ This directory centralizes database utilities and schema definitions used by the
 - `clickhouse.py` - ClickHouse client configuration and migration runner.
 - `manticore.py` - Manticore index maintenance and search configuration utilities.
 - `minio.py` - MinIO client helpers and bucket initialization.
-- `milvus_example.py` - Example integration pattern for Milvus vector storage.
 
 ## The two databases
 
@@ -68,6 +67,95 @@ Both sets were collapsed and renumbered from `00001` when storage was split, so 
 `ALTER` was folded into the `CREATE TABLE` it modified and neither directory contains an
 `ALTER TABLE`. `tests/test_migrations_parity.py` asserts that, plus that no table is
 declared in both directories.
+
+## Manticore infix indexing (`min_infix_len='3'`)
+
+Both shard table DDLs in `manticore.py` — `pages_table_ddl` and `meta_table_ddl` — set
+`min_infix_len='3'`, so `MATCH('doc*')` and `MATCH('*ocument*')` work.
+
+### Why, and what "before" actually looked like
+
+Without it the star is dropped during tokenisation and the query silently becomes an exact
+search for a truncated word. That is not "wildcards are unsupported"; it is a **wrong
+answer that nobody notices**. Measured on the real `testdata` shard (156 pages, 26 MB):
+
+| query | before | after |
+|---|---|---|
+| `document` | 16 | 16 |
+| `docum*` | 0 | 19 |
+| `*ocument*` | 0 | 42 |
+| `doc*` | **7 — wrong, not zero** | 34 |
+| `te*t` | **3 — wrong, not zero** | 28 |
+
+`meta_table_ddl` gets it too. Its text fields are `filenames` and `metadata_values`, and a
+filename fragment (`*report*` finding `annual_report_2024.pdf`) is the best fuzzy-match
+case in the schema. That table is ~0.25% the size of the pages table — 168 KB against
+65 MB on `testdata` — so the same percentage cost is close to free in absolute terms.
+
+### The value is a statement of intent, not a tuning knob
+
+In this Manticore version `min_infix_len` is an **on/off switch, not a threshold**: 2, 3
+and 4 are byte-for-byte identical in size *and* behaviour, and `do*` (2 characters) matches
+even at 4. Pick 3 and move on.
+
+`min_prefix_len` *is* a real threshold and is the wrong tool — it gives no infix matching
+at all, and makes stars work only for prefixes longer than the minimum, which is worse than
+either alternative.
+
+### Storage cost: honestly, unmeasurable at this size
+
+`SHOW TABLE ... STATUS` `disk_bytes` on an RT table depends on chunk-merge state. The same
+no-infix configuration measured 16.6 MB, 33.6 MB and 65.4 MB at different points in one
+session. Under identical treatment (pipeline reindex, then `FLUSH` + `OPTIMIZE`):
+
+| configuration | disk_bytes | ram_bytes |
+|---|---|---|
+| no infix | 33,588,034 | 35,407,056 |
+| `min_infix_len='3'` | 26,013,634 | 17,537,550 |
+
+The infix build measured *smaller*, which is not a credible causal effect — read it as the
+metric being noisy at this corpus size. A controlled probe (two tables, the same 156 pages,
+same flush/optimise) put the difference at **+0.8%**. Re-measure on a real-sized collection
+before treating infix indexing as a storage problem.
+
+### Two traps
+
+**`ALTER TABLE` does not reindex.** It changes metadata only:
+
+```
+ALTER TABLE testdata_1_pages min_infix_len='3'   -- succeeds
+SHOW TABLE testdata_1_pages SETTINGS             -- reports min_infix_len = 3
+SELECT COUNT(*) FROM testdata_1_pages WHERE MATCH('doc*')   -- still the old wrong 7
+```
+
+Existing data is not re-indexed. Everything looks configured and nothing has changed. A
+settings change means a reindex, which drops and recreates the physical tables:
+
+```bash
+main_services/run.sh reindex-collection testdata
+main_services/run.sh reindex-collection other
+```
+
+Stop indexing workers first, or make sure no `IndexDatasetPlan` is running for that
+collection.
+
+**The worker must be restarted after editing this file.** `hoover4-worker` is a
+long-running process that imported `database.manticore` at startup; a reindex triggered
+without restarting it recreates the tables from the *old* DDL, and `SHOW TABLE ... SETTINGS`
+will show the setting missing with no other sign anything went wrong.
+
+Always verify the **behaviour**, not just the settings:
+
+```bash
+docker exec hoover4-mcp-collections python -c "
+from collection_search_server.backends import manticore_query as q
+print(q('SHOW TABLE testdata_1_pages SETTINGS'))
+for w in ['document','docum*','*ocument*','doc*','wat*']:
+    print(w, q(\"SELECT COUNT(*) c FROM testdata_1_pages WHERE MATCH('\"+w+\"')\")[0]['c'])"
+```
+
+`docum*` and `*ocument*` must be non-zero, and `doc*` must be **larger** than the 7 it
+returns without infix indexing, not equal to it.
 
 ## Navigation
 

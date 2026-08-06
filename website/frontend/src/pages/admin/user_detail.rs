@@ -8,7 +8,7 @@ use crate::api::admin_api::{
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_DANGER, BTN_SMALL_DANGER, HELP_TEXT,
-    INPUT, LABEL, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
+    INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -94,6 +94,13 @@ fn UserDetailContent(username: String) -> Element {
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
                     "For header-authenticated users, full name, email and superuser status are overwritten at next login."
+                }
+                p { style: "margin: 0 0 12px;",
+                    Link {
+                        to: Route::AdminUserLlmPage { username: uname.clone() },
+                        style: LINK,
+                        "LLM usage \u{2192}"
+                    }
                 }
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                     label { style: LABEL,

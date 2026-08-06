@@ -1,0 +1,31 @@
+[project]
+name = "hoover4-mcp-metasearch-server"
+version = "0.1.0"
+description = "MCP server searching several web engines at once, merged with reciprocal rank fusion"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    # fastmcp v2, matching the collection search server.
+    "fastmcp>=2.12,<3",
+    "pydantic>=2.0",
+    # httpx for parallel async fetches, selectolax for parsing: selectolax is a Lexbor
+    # binding and is an order of magnitude faster than BeautifulSoup, which matters when
+    # four result pages are parsed per query.
+    "httpx>=0.27",
+    "selectolax>=0.3.21",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+hoover4-metasearch-server = "metasearch_server.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["metasearch_server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

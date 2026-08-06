@@ -50,6 +50,7 @@ pub async fn get_document_content_stream(
     usize,
     Pin<Box<dyn futures::Stream<Item = anyhow::Result<bytes::Bytes>> + Send + 'static>>,
 )> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let path = format!(
         "http://127.0.0.1:8080{}",

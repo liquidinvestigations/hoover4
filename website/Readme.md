@@ -96,7 +96,7 @@ Migration `00014` adds `tool_input` / `tool_output` / `doc_refs` / `created_ms` 
 Guests may chat when `HOOVER4_DEMO_MODE=true`, keyed by their `guest-*` username, with
 the same persistence as any other user. A demo visitor driving a local GPU is a
 **resource** question, not a permission question — the chat rate limiter
-(`backend::rate_limit::check_and_record`, implemented by Plan 2) is the mitigation for
+(`backend::api::rate_limit::check_and_record`, Plan 2) is the mitigation for
 now. **Revisit whether guests should have LLM access at all.**
 
 ### Q6 — `chat_messages.seq` race

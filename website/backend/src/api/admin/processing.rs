@@ -322,9 +322,65 @@ async fn dataset_display_names(
 }
 
 // ---------------------------------------------------------------------------
-// Temporal workflow browser
+// Stored ETA samples
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct EtaSampleRow {
+    collection_dataset: String,
+    stage: String,
+    sampled_at: i64,
+    done: u64,
+    total: u64,
+    rate_items_per_sec: f64,
+    rate_bytes_per_sec: f64,
+    eta_seconds: u64,
+    deadline: i64,
+}
+
+/// The stored ETA sample history for one collection: newest 100 samples per
+/// (dataset, stage), newest first. Written by the `CollectEtaSamples` workflow;
+/// this endpoint is a cheap indexed read, never a recompute.
+pub async fn admin_list_eta_samples(
+    user: &CurrentUser,
+    collectionname: String,
+) -> anyhow::Result<Vec<EtaSamplePoint>> {
+    guard::require_admin(user)?;
+    let client = get_global_client();
+    let rows = client
+        .query(
+            "SELECT collection_dataset, stage, toInt64(toUnixTimestamp(sampled_at)) AS sampled_at, \
+                    done, total, rate_items_per_sec, rate_bytes_per_sec, eta_seconds, \
+                    toInt64(toUnixTimestamp(deadline)) AS deadline \
+             FROM processing_eta_samples \
+             WHERE collectionname = ? \
+             ORDER BY sampled_at DESC LIMIT 100 BY collection_dataset, stage",
+        )
+        .bind(&collectionname)
+        .fetch_all::<EtaSampleRow>()
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| EtaSamplePoint {
+            collection_dataset: r.collection_dataset,
+            stage: r.stage,
+            sampled_at: format_ts(r.sampled_at),
+            sampled_at_unix: r.sampled_at,
+            done: r.done,
+            total: r.total,
+            rate_items_per_sec: r.rate_items_per_sec,
+            rate_bytes_per_sec: r.rate_bytes_per_sec,
+            eta_seconds: r.eta_seconds,
+            deadline: format_ts(r.deadline),
+            deadline_unix: r.deadline,
+        })
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Temporal workflow browser
+// ---------------------------------------------------------------------------
 /// Strip Temporal's `WORKFLOW_EXECUTION_STATUS_` prefix, e.g.
 /// `WORKFLOW_EXECUTION_STATUS_RUNNING` -> `RUNNING`.
 fn short_status(raw: &str) -> String {
