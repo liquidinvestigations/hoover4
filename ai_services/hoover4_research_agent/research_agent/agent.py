@@ -1,5 +1,6 @@
 import logging
 import os
+from collections import OrderedDict
 from typing import List, Any, AsyncIterable, Sequence, TypedDict, Annotated, Dict, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk, RemoveMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -8,6 +9,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from research_agent.chat_model import ThinkingChatOpenAI
+from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
 from pydantic import TypeAdapter
 import json
 from json import JSONDecodeError
@@ -35,6 +37,13 @@ log = logging.getLogger(__name__)
 #: hard backstop behind this.
 MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
 
+#: How many compiled graphs to keep. Each holds one MCP client with a live connection
+#: per configured server (six, for the full research agent), so this cache is not free
+#: and cannot be unbounded — it is keyed partly by chat session id, which an agent
+#: serving many conversations would otherwise grow without limit. Evicts
+#: least-recently-used.
+MAX_CACHED_GRAPHS = int(os.getenv("AGENT_MAX_CACHED_GRAPHS", "24"))
+
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -46,6 +55,11 @@ class AgentState(TypedDict):
 ACL_COLLECTIONS_HEADER = "X-Hoover4-Collections"
 ACL_USER_HEADER = "X-Hoover4-User"
 
+#: Chat session id, forwarded so the browser MCP server can give each conversation its
+#: own cookie jar (see hoover4_mcp/browser_use_server/sessions.py). Unlike the two
+#: headers above this carries no authority — it is an isolation key, not an ACL.
+CHAT_SESSION_HEADER = "X-Hoover4-Chat-Session"
+
 
 def llm_streaming_enabled() -> bool:
     """Whether the LLM is configured to stream tokens. See `_create_graph` for why the
@@ -53,7 +67,11 @@ def llm_streaming_enabled() -> bool:
     return os.getenv("LLM_STREAMING", "false").lower() in ("1", "true", "yes")
 
 
-def acl_headers(username: Optional[str], allowed_collections: Optional[List[str]]) -> Dict[str, str]:
+def acl_headers(
+    username: Optional[str],
+    allowed_collections: Optional[List[str]],
+    session_id: Optional[str] = None,
+) -> Dict[str, str]:
     """Build the per-request MCP headers carrying the caller's identity and ACL.
 
     An empty collection list is sent as an empty header rather than omitted: "this user
@@ -63,6 +81,8 @@ def acl_headers(username: Optional[str], allowed_collections: Optional[List[str]
     headers = {ACL_COLLECTIONS_HEADER: ",".join(allowed_collections or [])}
     if username:
         headers[ACL_USER_HEADER] = username
+    if session_id:
+        headers[CHAT_SESSION_HEADER] = session_id
     secret = os.getenv("MCP_SHARED_SECRET", "").strip()
     if secret:
         headers["Authorization"] = f"Bearer {secret}"
@@ -80,11 +100,13 @@ class MCPGatewayAgent:
         self.llm_model = llm_model
         self.tools_type_adapter = TypeAdapter(Dict[str, Any])
         self.graph = None
-        # Graphs are cached per ACL, not shared: the MCP connection carries the caller's
-        # permissions in its headers, so one graph per distinct ACL is the unit that can
-        # safely be reused. Reusing a single graph across users would let one user's
-        # tool connection serve another user's question.
-        self._graphs: Dict[str, Any] = {}
+        # Graphs are cached per ACL *and chat session*, not shared: the MCP connection
+        # carries the caller's permissions in its headers, so one graph per distinct ACL
+        # is the unit that can safely be reused. Reusing a single graph across users
+        # would let one user's tool connection serve another user's question.
+        #
+        # An OrderedDict, used as an LRU bounded by MAX_CACHED_GRAPHS — see there.
+        self._graphs: "OrderedDict[str, Any]" = OrderedDict()
         self.langfuse_handler = self._create_langfuse_handler()
 
     def _create_langfuse_handler(self) -> Optional[CallbackHandler]:
@@ -117,26 +139,48 @@ class MCPGatewayAgent:
         return self.graph
 
     @staticmethod
-    def _acl_key(username: Optional[str], allowed_collections: Optional[List[str]]) -> str:
+    def _acl_key(
+        username: Optional[str],
+        allowed_collections: Optional[List[str]],
+        session_id: Optional[str] = None,
+    ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached graph.
-        return f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
+        #
+        # `session_id` is part of the key because the MCP connection headers carry it,
+        # and those headers are baked into the graph at construction time. Two chats by
+        # the same user with the same ACL therefore get two graphs — which is the point:
+        # it is what gives each conversation its own browser cookie jar.
+        acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
+        return f"{acl}|{session_id or ''}"
 
-    async def _graph_for(self, username: Optional[str], allowed_collections: Optional[List[str]]):
-        key = self._acl_key(username, allowed_collections)
-        if key not in self._graphs:
-            self._graphs[key] = await self._create_graph(username, allowed_collections)
+    async def _graph_for(
+        self,
+        username: Optional[str],
+        allowed_collections: Optional[List[str]],
+        session_id: Optional[str] = None,
+    ):
+        key = self._acl_key(username, allowed_collections, session_id)
+        if key in self._graphs:
+            self._graphs.move_to_end(key)
+            return self._graphs[key]
+
+        self._graphs[key] = await self._create_graph(username, allowed_collections, session_id)
+        while len(self._graphs) > MAX_CACHED_GRAPHS:
+            evicted, _ = self._graphs.popitem(last=False)
+            log.info("evicting cached graph %s (cap %d)", evicted, MAX_CACHED_GRAPHS)
         return self._graphs[key]
 
     async def _create_graph(
         self,
         username: Optional[str] = None,
         allowed_collections: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
     ):
         """Create the agent graph with MCP tools, scoped to one caller's ACL."""
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
         # enforces it on every tool call — the model cannot widen its own permissions,
         # because it never sees or supplies them.
-        headers = acl_headers(username, allowed_collections)
+        headers = acl_headers(username, allowed_collections, session_id)
         servers = {
             f"mcp_server_{i}": {
                 "url": url,
@@ -190,7 +234,18 @@ class MCPGatewayAgent:
         if llm_base_url:
             llm_kwargs["base_url"] = llm_base_url
             
-        llm = ThinkingChatOpenAI(**llm_kwargs).bind_tools(tools)
+        # Thinking is configured per node, not globally, because the two nodes want
+        # opposite things. See research_agent/thinking.py for the measurements.
+        #
+        #  * `agent` may call a tool. Choosing a tool is routing, not reasoning, and
+        #    Qwen3.5-2B reasons its way into repeated identical calls when allowed to,
+        #    so thinking is always off here.
+        #  * `finalize` writes prose and cannot call a tool. This is where thinking
+        #    buys anything, so it gets AGENT_THINKING.
+        log.info("LLM thinking configuration: %s", describe_thinking())
+        llm = ThinkingChatOpenAI(
+            **llm_kwargs, extra_body=tool_turn_kwargs()
+        ).bind_tools(tools)
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", self.system_prompt),
@@ -202,7 +257,7 @@ class MCPGatewayAgent:
 
         # The same model with no tools bound. Used by the `finalize` node below: a model
         # that cannot call a tool has to answer.
-        plain_llm = ThinkingChatOpenAI(**llm_kwargs)
+        plain_llm = ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs())
         finalize_runnable = prompt | { "messages": plain_llm }
 
         builder = StateGraph(AgentState)
@@ -289,8 +344,9 @@ class MCPGatewayAgent:
         username: str = None,
         allowed_collections: List[str] = None,
     ) -> AsyncIterable[dict[str, Any]]:
-        # Build (or reuse) the graph whose MCP connections carry this caller's ACL.
-        graph = await self._graph_for(username or user_id, allowed_collections)
+        # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
+        # chat session.
+        graph = await self._graph_for(username or user_id, allowed_collections, session_id)
 
         # Build messages from chat history and current query
         messages = []

@@ -26,8 +26,12 @@ search UI:
 2. It passes that list to the agent as `allowed_collections` on the `/chat` request.
 3. `acl_headers()` turns it into `X-Hoover4-Collections: <list>` plus
    `Authorization: Bearer $MCP_SHARED_SECRET`, set as **MCP connection headers**.
-4. The agent caches **one graph per ACL** (`_acl_key`), so a connection opened for one
-   user is never reused for another.
+4. The agent caches **one graph per ACL and chat session** (`_acl_key`), so a connection
+   opened for one user is never reused for another. The chat session is part of the key
+   because `X-Hoover4-Chat-Session` travels in the same connection headers — see the
+   browser sessions note below. The cache is LRU-bounded by `AGENT_MAX_CACHED_GRAPHS`
+   (default 24); each entry holds one live MCP connection per configured server, so it
+   cannot be allowed to grow per conversation without limit.
 5. `hoover4-mcp-collections` enforces the header on every tool call.
 
 The model never sees or supplies its own permissions — they are not tool arguments, so it
@@ -45,6 +49,75 @@ a query it had already run until the request died with no answer. Detail belongs
 descriptions, which the model reads in context at the moment it picks a tool. The Manticore
 MATCH syntax deliberately lives in the collection MCP server's `instructions` instead, where
 every agent reads it at tool-discovery time and there is only one copy to maintain.
+
+## Per-chat browser sessions
+
+`X-Hoover4-Chat-Session` carries the chat session id alongside the ACL headers. It grants
+no authority — it is an **isolation key**. `hoover4-mcp-browser` uses it to give each
+conversation its own Chromium browser context, so cookies and storage from one chat do not
+follow the next one. Sessions are dropped when the chat ends, or after
+`BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
+`hoover4_mcp/browser_use_server/README.md`.
+
+## Thinking budget — `AGENT_THINKING`
+
+Qwen3.5's chat template decides thinking in the **prompt**, not the sampler. With
+`enable_thinking` unset or false it emits `<think>\n\n</think>` *before* generation, so
+the default is not a small thinking budget — it is **no thinking at all**.
+
+Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, think it through"):
+
+| setting | completion tokens | notes |
+|---|---|---|
+| thinking off (**default**) | 441 | `<think></think>` prefilled by the template |
+| thinking on | 1,735 | closes `</think>` after ~1,300 tokens, then answers |
+
+Roughly **4x** on an easy question. On a *hard* one (a two-trains-and-a-bird puzzle) the
+picture is much worse — unbounded thinking does not converge at all:
+
+| mode | wall time | completion tokens | finish reason |
+|---|---|---|---|
+| off (**default**) | 19.0 s | 594 | `stop` |
+| on (unbounded) | **563.5 s** | 16,000 | `length` — never terminated |
+| budgeted 750 (half) | 56.9 s | 1,774 | `length` |
+| budgeted 375 (quarter) | 49.8 s | 1,399 | `length` |
+
+**Unbounded thinking is not a safe setting on this model.** It ran to a 16 K-token cap
+and nine and a half minutes without closing `</think>`. Use `budgeted` if you want
+thinking at all — the budget is what turns a non-terminating run into a ~1-minute one.
+
+There is no half-way setting inside the model, and vLLM 0.17.1 has no thinking-budget
+flag: `max_thinking_tokens`, `thinking_budget` and `reasoning_max_tokens` are all
+accepted and silently ignored in the request body (verified against the running server).
+That is why the budget here is enforced as a `max_tokens` ceiling on the whole
+completion.
+
+`research_agent/thinking.py` adds the control:
+
+| `AGENT_THINKING` | behaviour |
+|---|---|
+| `off` (default) | template prefills `<think></think>`. Fastest. |
+| `on` | unbounded reasoning. Slowest, best on multi-step questions. |
+| `budgeted` | reasoning on, completion capped at `AGENT_THINKING_BUDGET_TOKENS` + answer allowance |
+
+`AGENT_THINKING_BUDGET_TOKENS` defaults to **750** — half a measured unbudgeted thought,
+which is the "half the thinking" setting.
+
+**Tool-calling turns never think, whatever the mode.** Choosing a tool is routing, not
+reasoning, and letting this model reason about it is what produces the repeated-call loop
+the `agent` node has a guard for. The budget applies to the `finalize` node, which writes
+prose and cannot call a tool — the turn where thinking changes the answer.
+
+**Two things to fix before shipping `on` or `budgeted` to real users:**
+
+1. vLLM is not started with `--reasoning-parser qwen3`, so `reasoning_content` is never
+   separated out and the `<think>` block lands in the answer the user reads. In the runs
+   above the budgeted modes returned *only* reasoning — the budget was spent before the
+   model closed the block — so without the parser the chat would show a chain of thought
+   and no answer.
+2. A budget that truncates mid-thought yields no answer at all. If thinking is wanted,
+   pair it with a larger `ANSWER_TOKEN_ALLOWANCE`, or accept `off` for the chat path and
+   reserve thinking for the Temporal research task where minutes are affordable.
 
 ## Stopping the model looping
 

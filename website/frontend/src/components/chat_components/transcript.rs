@@ -74,12 +74,28 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                 "{message.content}"
             }
         },
-        ChatRole::Assistant => rsx! {
-            div {
-                style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
-                MarkdownishText { text: message.content.clone() }
+        ChatRole::Assistant => {
+            let retries = message.parsed_retry_errors();
+            rsx! {
+                div {
+                    style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
+                    MarkdownishText { text: message.content.clone() }
+                    // A turn that only succeeded on retry is a healthy answer over an
+                    // unhealthy agent tier. Worth saying, quietly, rather than hiding.
+                    if !retries.is_empty() {
+                        AttemptDisclosure {
+                            summary: format!(
+                                "Answered after {} failed attempt{}",
+                                retries.len(),
+                                if retries.len() == 1 { "" } else { "s" },
+                            ),
+                            errors: retries,
+                            tone_color: "#B45309",
+                        }
+                    }
+                }
             }
-        },
+        }
         ChatRole::Tool => {
             let refs = message.parsed_doc_refs();
             rsx! {
@@ -96,12 +112,61 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                 }
             }
         }
-        ChatRole::Error => rsx! {
-            div {
-                style: "align-self: flex-start; background: #FEF2F2; color: #991B1B; max-width: 88%; \
-                        border: 1px solid #FECACA; padding: 10px 14px; border-radius: 12px; {ring}",
-                "{message.content}"
+        ChatRole::Error => {
+            let retries = message.parsed_retry_errors();
+            rsx! {
+                div {
+                    style: "align-self: flex-start; background: #FEF2F2; color: #991B1B; \
+                            max-width: 88%; border: 1px solid #FECACA; padding: 10px 14px; \
+                            border-radius: 12px; {ring}",
+                    div { "{message.content}" }
+                    // The final error is often the least informative of the set — a
+                    // timeout that followed a real 500 says much less than the 500 did.
+                    if !retries.is_empty() {
+                        AttemptDisclosure {
+                            summary: format!(
+                                "{} earlier attempt{} also failed",
+                                retries.len(),
+                                if retries.len() == 1 { "" } else { "s" },
+                            ),
+                            errors: retries,
+                            tone_color: "#991B1B",
+                        }
+                    }
+                }
             }
-        },
+        }
+    }
+}
+
+/// Collapsed list of the errors from attempts that preceded this row.
+#[component]
+fn AttemptDisclosure(
+    summary: String,
+    errors: Vec<String>,
+    tone_color: &'static str,
+) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        div { style: "margin-top: 6px;",
+            button {
+                style: "background: none; border: none; padding: 0; cursor: pointer; \
+                        font-size: 12px; text-decoration: underline; color: {tone_color};",
+                onclick: move |_| {
+                    let next = !*open.peek();
+                    open.set(next);
+                },
+                if *open.read() { "{summary} \u{2014} hide" } else { "{summary} \u{2014} show" }
+            }
+            if *open.read() {
+                ul {
+                    style: "margin: 6px 0 0 0; padding-left: 18px; font-size: 12px; \
+                            line-height: 1.5; opacity: 0.9;",
+                    for (i, e) in errors.into_iter().enumerate() {
+                        li { key: "{i}", style: "word-break: break-word;", "{e}" }
+                    }
+                }
+            }
+        }
     }
 }

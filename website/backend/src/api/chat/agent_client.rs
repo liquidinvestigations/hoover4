@@ -41,6 +41,48 @@ fn agent_timeout() -> Duration {
     Duration::from_secs(secs.clamp(10, 3600))
 }
 
+/// Total attempts per turn, including the first. Retries cover the whole class of
+/// failure — unreachable, 5xx, timeout, malformed body — rather than a curated list,
+/// because from the user's seat they are one thing ("it did not answer") and the local
+/// GPU stack fails transiently in all four ways: vLLM still loading, an MCP server
+/// restarting, a browser session that died.
+fn agent_attempts() -> u32 {
+    std::env::var("HOOVER4_AGENT_ATTEMPTS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(4)
+        .clamp(1, 8)
+}
+
+/// Delay before the first retry. Doubles each time: 2s, 4s, 8s by default.
+fn agent_retry_base() -> Duration {
+    let ms = std::env::var("HOOVER4_AGENT_RETRY_BASE_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(2_000);
+    Duration::from_millis(ms.clamp(100, 60_000))
+}
+
+/// Backoff before attempt `attempt` (1-based; attempt 1 never waits).
+pub fn backoff_for_attempt(attempt: u32, base: Duration) -> Duration {
+    if attempt <= 1 {
+        return Duration::ZERO;
+    }
+    // Saturating shift: an operator setting attempts to 8 with a 60 s base must not
+    // overflow into a nonsense delay.
+    let factor = 1u64 << (attempt - 2).min(20);
+    base.saturating_mul(factor.min(u32::MAX as u64) as u32)
+}
+
+/// Outcome of a retried agent call: the result, plus what the failed attempts said.
+///
+/// The errors are kept even on success — a turn that needed three tries is healthy
+/// output but unhealthy infrastructure, and the transcript is where that shows up.
+pub struct RetriedAgentCall {
+    pub result: anyhow::Result<AgentChatResult>,
+    pub attempt_errors: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentChatMessage {
     /// `human` or `ai` — the agent service's vocabulary, not ours.
@@ -104,9 +146,19 @@ impl AgentToolCall {
         raw.to_string()
     }
 
-    /// Full end-event payload as JSON (for storage / disclosure).
+    /// The tool's actual result, for storage / disclosure.
+    ///
+    /// An end event is `{"output": {"content": <result>, "name": …, "tool_call_id": …},
+    /// "input": {…}}`. Storing that whole envelope would put the arguments in the
+    /// output pane twice over and bury the result under LangChain bookkeeping, so the
+    /// result is unwrapped when it is where it is expected to be, and the envelope is
+    /// kept only when it is not (an unfamiliar shape is better shown than dropped).
     pub fn output_json(&self) -> String {
-        self.content.to_string()
+        self.content
+            .get("output")
+            .and_then(|o| o.get("content"))
+            .unwrap_or(&self.content)
+            .to_string()
     }
 
     /// One-line summary for the transcript. The full payload can be a whole search
@@ -246,6 +298,80 @@ pub async fn ask_agent(
     Ok(response.json::<AgentChatResult>().await?)
 }
 
+/// [`ask_agent`] with exponential backoff.
+///
+/// `should_stop` is polled between attempts so an admin killing the run from the live
+/// chats panel does not have to wait out the remaining backoff. It cannot interrupt an
+/// attempt already in flight — see `live_runs`.
+#[allow(clippy::too_many_arguments)]
+pub async fn ask_agent_with_retries(
+    username: &str,
+    session_id: &str,
+    message_id: &str,
+    query: &str,
+    history: &[AgentChatMessage],
+    allowed_collections: &[String],
+    use_internet_tools: bool,
+    mut on_attempt: impl FnMut(u32),
+    should_stop: impl Fn() -> bool,
+) -> RetriedAgentCall {
+    let attempts = agent_attempts();
+    let base = agent_retry_base();
+    let mut attempt_errors: Vec<String> = Vec::new();
+
+    for attempt in 1..=attempts {
+        if attempt > 1 {
+            if should_stop() {
+                break;
+            }
+            tokio::time::sleep(backoff_for_attempt(attempt, base)).await;
+            if should_stop() {
+                break;
+            }
+        }
+        on_attempt(attempt);
+
+        match ask_agent(
+            username,
+            session_id,
+            message_id,
+            query,
+            history,
+            allowed_collections,
+            use_internet_tools,
+        )
+        .await
+        {
+            Ok(result) => {
+                return RetriedAgentCall {
+                    result: Ok(result),
+                    attempt_errors,
+                }
+            }
+            Err(e) => {
+                attempt_errors.push(format!("attempt {attempt}/{attempts}: {e}"));
+            }
+        }
+    }
+
+    // Every attempt failed (or a cancel cut the sequence short). The last message is
+    // the most recent failure; the earlier ones travel separately so the UI can show
+    // the sequence rather than only its least informative member.
+    let last = attempt_errors
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "the agent call was cancelled before it ran".to_string());
+    let earlier = attempt_errors
+        .len()
+        .checked_sub(1)
+        .map(|n| attempt_errors[..n].to_vec())
+        .unwrap_or_default();
+    RetriedAgentCall {
+        result: Err(anyhow::anyhow!("{last}")),
+        attempt_errors: earlier,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,6 +427,46 @@ mod tests {
         assert_eq!(paired.len(), 1);
         assert_eq!(paired[0].tool_name, "search_collections");
         assert!(paired[0].tool_input.contains("water"));
+    }
+
+    #[test]
+    fn output_json_unwraps_the_tool_result_from_the_langchain_envelope() {
+        let end = call(
+            "end",
+            serde_json::json!({
+                "output": {"content": {"results": [1]}, "name": "search_collections"},
+                "input": {"query": "water"}
+            }),
+        );
+        assert_eq!(end.output_json(), r#"{"results":[1]}"#);
+    }
+
+    #[test]
+    fn output_json_keeps_an_unrecognised_payload_rather_than_dropping_it() {
+        let odd = call("end", serde_json::json!({"something": "else"}));
+        assert_eq!(odd.output_json(), r#"{"something":"else"}"#);
+    }
+
+    #[test]
+    fn backoff_doubles_and_the_first_attempt_never_waits() {
+        let base = Duration::from_secs(2);
+        assert_eq!(backoff_for_attempt(1, base), Duration::ZERO);
+        assert_eq!(backoff_for_attempt(2, base), Duration::from_secs(2));
+        assert_eq!(backoff_for_attempt(3, base), Duration::from_secs(4));
+        assert_eq!(backoff_for_attempt(4, base), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn backoff_does_not_overflow_at_the_configured_maximum() {
+        // 8 attempts x a 60 s base is the widest the clamps allow; it must stay finite.
+        let d = backoff_for_attempt(8, Duration::from_secs(60));
+        assert_eq!(d, Duration::from_secs(60 * 64));
+    }
+
+    #[test]
+    fn attempt_count_is_clamped_so_a_typo_cannot_hammer_the_gpu() {
+        let n = agent_attempts();
+        assert!((1..=8).contains(&n), "attempts out of range: {n}");
     }
 
     #[test]

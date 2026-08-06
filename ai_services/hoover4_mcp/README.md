@@ -8,7 +8,7 @@ podman network. The agents discover tools over HTTP at `/mcp`.
 |---|---|---|---|---|
 | Collection search | [`collection_search_server/`](collection_search_server/README.md) | 8085 | both agents | ACL-bounded full-text search of the user's own documents (Manticore + ClickHouse) |
 | Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 8086 | full research | Web search over four engines, merged with reciprocal rank fusion |
-| Browser | [`browser_use_server/`](browser_use_server/README.md) | 8087 | full research | Reads a page with a real headless Chromium |
+| Browser | [`browser_use_server/`](browser_use_server/README.md) | 8087 | full research | Reads a page with a real headless Chromium, one isolated browser context per chat |
 | DuckDuckGo | [`ddg_search_server/`](ddg_search_server/) | 8889 | full research | Single-engine web/news search. Superseded by metasearch but cheap to keep |
 | Wikipedia | [`wikipedia_search_server/`](wikipedia_search_server/) | 8093 | full research | Article and summary lookup |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 8092 | full research | Domain registration lookup |
@@ -64,3 +64,8 @@ The collection server additionally enforces a per-request ACL supplied by its ca
 `X-Hoover4-Collections`. It never derives permissions itself; see
 [`collection_search_server/collection_search_server/acl.py`](collection_search_server/collection_search_server/acl.py)
 for why that split matters.
+
+A third header, `X-Hoover4-Chat-Session`, travels alongside those two but grants no
+authority — it is an **isolation key**, used only by the browser server to give each
+conversation its own Chromium context. Do not make anything an access decision on it: it
+is a conversation id, and unlike the ACL headers nothing verifies who it belongs to.

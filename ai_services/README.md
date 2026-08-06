@@ -19,8 +19,15 @@ the LangGraph research agents that use them.
 | `hoover4-mcp-metasearch` | 8086 | Web search over four engines, merged with reciprocal rank fusion. |
 | `hoover4-mcp-browser` | 8087 | Reads a page with a real headless Chromium, for JS-rendered sites. |
 | `hoover4-mcp-ddg` / `-wikipedia` / `-whois` | 8889 / 8093 / 8092 | Older single-purpose open-web tools. |
-| `hoover4-internal-search-agent` | 9099 | Collection-only agent. What the website's AI Chat page calls. |
-| `hoover4-full-research-agent` | 9090 | Collections + open web. Target of the Temporal `ResearchTask`. |
+| `hoover4-internal-search-agent` | 9099 | Collection-only agent. AI Chat with **Internet tools off**. |
+| `hoover4-full-research-agent` | 9090 | Collections + open web. AI Chat with **Internet tools on**, and the target of the Temporal `ResearchTask`. |
+
+> The loopback ports above are for host-side debugging. Anything running *inside* the
+> `hoover4` network must address these by container name — `http://hoover4-full-research-agent:8000`,
+> not `http://localhost:9090`. The website needs **both** `HOOVER4_AGENT_URL` and
+> `HOOVER4_FULL_AGENT_URL` set; leaving the second unset is what made every
+> internet-tools chat turn fail with "AI agent unreachable at http://localhost:9090"
+> while the agent was healthy the whole time.
 
 Per-server detail is in [`hoover4_mcp/README.md`](hoover4_mcp/README.md), which links to a
 README per server.
@@ -224,7 +231,15 @@ from a different cause. The right parser is **`qwen3_xml`** (note the underscore
 registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
 spelling is a startup crash-loop rather than a clear error).
 
-No `--reasoning-parser` is set: Qwen3.5-2B is non-thinking by default.
+No `--reasoning-parser` is set, and that is correct **only while thinking stays off**.
+Qwen3.5's template prefills `<think>\n\n</think>` unless `enable_thinking` is true, so by
+default the model never emits a reasoning block and there is nothing to parse.
+
+If you set `AGENT_THINKING=on` or `budgeted`, add `--reasoning-parser qwen3` at the same
+time. Without it vLLM leaves the `<think>…</think>` block inside `content`, and the whole
+chain of thought is shown to the user as part of the answer. See
+[`hoover4_research_agent/README.md`](hoover4_research_agent/README.md) for the measured
+cost of turning it on (~4x completion tokens).
 
 Two consequences of the XML format are handled in code, because both presented as
 infinite loops rather than as errors:

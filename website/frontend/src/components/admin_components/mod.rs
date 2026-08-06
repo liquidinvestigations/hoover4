@@ -2,9 +2,11 @@
 
 mod admin_guard;
 mod admin_shell;
+mod live_chats_panel;
 
 pub use admin_guard::AdminGuard;
 pub use admin_shell::AdminShell;
+pub use live_chats_panel::LiveChatsPanel;
 
 use dioxus::prelude::*;
 

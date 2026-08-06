@@ -13,10 +13,7 @@ with workflow.unsafe.imports_passed_through():
         run_research_agent,
         write_chat_message,
     )
-
-#: How much of a tool-call payload is kept in the transcript. Matches the website's
-#: TOOL_SUMMARY_CHARS so a research transcript and a chat transcript look the same.
-TOOL_SUMMARY_CHARS = 400
+    from tasks.P_agent.trajectory import pair_tool_calls
 
 
 @workflow.defn
@@ -61,10 +58,10 @@ class ResearchTask:
 
         payload = json.loads(raw)
 
-        for call in payload.get("tool_calls", []):
-            if call.get("phase") != "end":
-                continue
-            content = json.dumps(call.get("content", ""))[:TOOL_SUMMARY_CHARS]
+        # Pair start/end events into one row each, with the arguments, the result and
+        # any documents surfaced -- the same columns the synchronous chat path writes,
+        # so a research transcript renders identically to a chat one.
+        for call in pair_tool_calls(payload.get("tool_calls", [])):
             await workflow.execute_activity(
                 write_chat_message,
                 WriteResultParams(
@@ -72,10 +69,11 @@ class ResearchTask:
                     session_id=params.session_id,
                     seq=seq,
                     role="tool",
-                    content=content,
-                    tool_name=str(call.get("content", {}).get("name", "tool"))
-                    if isinstance(call.get("content"), dict)
-                    else "tool",
+                    content=call.summary,
+                    tool_name=call.tool_name,
+                    tool_input=call.tool_input,
+                    tool_output=call.tool_output,
+                    doc_refs=call.doc_refs,
                 ),
                 start_to_close_timeout=timedelta(minutes=2),
                 retry_policy=RetryPolicy(maximum_attempts=3),

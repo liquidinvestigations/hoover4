@@ -1,0 +1,11 @@
+-- AI Chat: keep the failed attempts, not only the error that ended the turn.
+--
+-- The agent call is retried with exponential backoff. When every attempt fails the
+-- transcript gets one error row, and the final error is often the least informative of
+-- the set -- a timeout that followed a real 500 says much less than the 500 did. The
+-- earlier attempts are recorded here so the UI can show the whole sequence behind a
+-- disclosure instead of discarding the diagnosis.
+--
+-- NOTE: keep semicolons out of comment strings. The migration runner splits on
+-- that character without parsing quotes or comments.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS retry_errors String DEFAULT '' COMMENT 'JSON array of the errors from earlier attempts, oldest first. Empty when the turn succeeded first try';

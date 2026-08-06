@@ -1,13 +1,12 @@
 //! `/ai_chat` — "What are you researching?" homepage.
 
+use common::chat_types::ChatOptions;
 use dioxus::prelude::*;
 
 use crate::api::chat_api::{
     chat_create_session, chat_list_sessions, chat_send_message, chat_start_research,
 };
-use crate::components::chat_components::{
-    ChatComposer, ChatSessionCard, ComposerOptions,
-};
+use crate::components::chat_components::{ChatComposer, ChatSessionCard};
 use crate::routes::Route;
 
 const HOMEPAGE_CARD_LIMIT: usize = 6;
@@ -16,7 +15,7 @@ const HOMEPAGE_CARD_LIMIT: usize = 6;
 pub fn AiChatPage() -> Element {
     let sessions_res = use_resource(chat_list_sessions);
     let mut draft = use_signal(String::new);
-    let mut options = use_signal(ComposerOptions::default);
+    let mut options = use_signal(ChatOptions::default);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
@@ -36,7 +35,7 @@ pub fn AiChatPage() -> Element {
             match chat_create_session(Vec::new()).await {
                 Ok(id) => {
                     if opts.deep_research {
-                        match chat_start_research(id.clone(), text).await {
+                        match chat_start_research(id.clone(), text, opts).await {
                             Ok(_) => {
                                 nav.push(Route::ai_chat_session(id, None, None));
                             }
@@ -49,7 +48,7 @@ pub fn AiChatPage() -> Element {
                             }
                         }
                     } else {
-                        match chat_send_message(id.clone(), text, opts.internet_tools).await {
+                        match chat_send_message(id.clone(), text, opts).await {
                             Ok(result) => {
                                 if let Some(secs) = result.retry_after_seconds {
                                     retry_after.set(Some(secs));

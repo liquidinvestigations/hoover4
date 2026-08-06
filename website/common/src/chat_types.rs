@@ -17,6 +17,38 @@ pub struct ChatSessionItem {
     pub created_at: String,
     pub updated_at: String,
     pub message_count: u32,
+    /// The two agent switches, frozen at the first turn. See [`ChatOptions`].
+    #[serde(default)]
+    pub options: ChatOptions,
+}
+
+/// The Deep Research / Internet tools switches for one conversation.
+///
+/// They are a property of the *conversation*, not of the composer: they decide which
+/// agent answers and therefore which tools exist. Letting them change mid-thread would
+/// produce a transcript where some answers had web access and some did not, with
+/// nothing on screen saying which was which. So the first message freezes them
+/// (`locked`), and from then on the UI shows them read-only above the transcript.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChatOptions {
+    pub deep_research: bool,
+    pub internet_tools: bool,
+    /// Set when the first message is sent. `false` means the composer may still change
+    /// them and the values above are only defaults.
+    pub locked: bool,
+}
+
+impl Default for ChatOptions {
+    /// Internet tools **on**: the chat is more useful with them than without, and a
+    /// user who wants a documents-only answer can untick before the first message.
+    /// Deep research off: it costs a Temporal workflow and minutes of GPU time.
+    fn default() -> Self {
+        Self {
+            deep_research: false,
+            internet_tools: true,
+            locked: false,
+        }
+    }
 }
 
 /// Who produced one entry in the trajectory.
@@ -127,6 +159,9 @@ pub struct ChatMessageItem {
     /// Wall time the agent took to produce this row. 0 for user turns.
     #[serde(default)]
     pub agent_duration_ms: u32,
+    /// JSON array of the errors from earlier attempts (role = error).
+    #[serde(default)]
+    pub retry_errors: String,
 }
 
 impl ChatMessageItem {
@@ -137,6 +172,39 @@ impl ChatMessageItem {
         }
         serde_json::from_str(&self.doc_refs).unwrap_or_default()
     }
+
+    /// Errors from the attempts that preceded this one, oldest first.
+    pub fn parsed_retry_errors(&self) -> Vec<String> {
+        if self.retry_errors.is_empty() {
+            return Vec::new();
+        }
+        serde_json::from_str(&self.retry_errors).unwrap_or_default()
+    }
+}
+
+/// One agent run currently in flight, for the admin "live chats" panel.
+///
+/// Held in memory by the website process, not in ClickHouse: it describes work being
+/// done *right now* by this process, and a row that outlives the process that was doing
+/// the work would be a lie. See `backend::api::chat::live_runs`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LiveChatRun {
+    pub run_id: u64,
+    pub username: String,
+    pub session_id: String,
+    pub title: String,
+    /// First ~200 chars of the message being answered.
+    pub message_preview: String,
+    pub deep_research: bool,
+    pub internet_tools: bool,
+    /// Milliseconds since this run started.
+    pub running_ms: u64,
+    /// RFC3339 start time.
+    pub started_at: String,
+    /// Which attempt is in flight (1-based).
+    pub attempt: u32,
+    /// Set when an admin has asked for it to stop and it has not noticed yet.
+    pub cancel_requested: bool,
 }
 
 /// Result of [`send_message`](crate) / the matching server function.

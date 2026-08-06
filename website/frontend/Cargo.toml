@@ -26,6 +26,12 @@ common = { path = "../common" }
 backend = { path = "../backend", optional = true }
 axum = { version = "0.8.6", optional = true }
 gloo-timers = "0.3"
+# Cross-platform async sleep. `n0-future::time::sleep` picks the right timer per target
+# (browser timers under wasm, tokio elsewhere), which `gloo-timers` cannot do — it is
+# wasm-only, so a poll loop written against it breaks the server-side render build.
+# This is the crate `_crack_utils::sleep_ms` wraps; used directly because _crack_utils
+# lives outside this repo and would not resolve inside the website container.
+n0-future = "0.3.2"
 anyhow = "1"
 serde_json = "1"
 web-sys = {version = "0.3", features = ["Window", "Navigator", "Clipboard", "Url", "Permissions"]}

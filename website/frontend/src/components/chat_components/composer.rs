@@ -2,25 +2,25 @@
 //!
 //! Deliberately has **no** file-attachment / paperclip control — documents enter through
 //! the processing pipeline, not the chat UI.
+//!
+//! The two checkboxes disappear from here once the conversation has a turn in it: they
+//! are frozen onto the session at that point and shown read-only above the transcript
+//! by [`LockedOptionsBar`](super::locked_options::LockedOptionsBar). Leaving an editable
+//! control that silently no longer does anything would be worse than removing it.
 
-use common::chat_types::MAX_MESSAGE_CHARS;
+use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
 use dioxus::prelude::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct ComposerOptions {
-    pub deep_research: bool,
-    pub internet_tools: bool,
-}
 
 #[component]
 pub fn ChatComposer(
     draft: Signal<String>,
-    options: Signal<ComposerOptions>,
+    options: Signal<ChatOptions>,
     sending: Signal<bool>,
     retry_after_seconds: Signal<Option<u64>>,
     on_submit: EventHandler<()>,
 ) -> Element {
     let disabled = *sending.read() || retry_after_seconds.read().is_some();
+    let locked = options.read().locked;
 
     rsx! {
         div {
@@ -48,35 +48,37 @@ pub fn ChatComposer(
             }
             div {
                 style: "display: flex; align-items: center; gap: 16px; flex-wrap: wrap;",
-                label {
-                    style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
-                            color: #475569; cursor: pointer; user-select: none;",
-                    input {
-                        r#type: "checkbox",
-                        checked: options.read().deep_research,
-                        disabled: disabled,
-                        onchange: move |e| {
-                            let mut o = *options.read();
-                            o.deep_research = e.checked();
-                            options.set(o);
-                        },
+                if !locked {
+                    label {
+                        style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
+                                color: #475569; cursor: pointer; user-select: none;",
+                        input {
+                            r#type: "checkbox",
+                            checked: options.read().deep_research,
+                            disabled: disabled,
+                            onchange: move |e| {
+                                let mut o = *options.read();
+                                o.deep_research = e.checked();
+                                options.set(o);
+                            },
+                        }
+                        "Deep Research"
                     }
-                    "Deep Research"
-                }
-                label {
-                    style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
-                            color: #475569; cursor: pointer; user-select: none;",
-                    input {
-                        r#type: "checkbox",
-                        checked: options.read().internet_tools,
-                        disabled: disabled,
-                        onchange: move |e| {
-                            let mut o = *options.read();
-                            o.internet_tools = e.checked();
-                            options.set(o);
-                        },
+                    label {
+                        style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
+                                color: #475569; cursor: pointer; user-select: none;",
+                        input {
+                            r#type: "checkbox",
+                            checked: options.read().internet_tools,
+                            disabled: disabled,
+                            onchange: move |e| {
+                                let mut o = *options.read();
+                                o.internet_tools = e.checked();
+                                options.set(o);
+                            },
+                        }
+                        "Internet tools"
                     }
-                    "Internet tools"
                 }
                 div { style: "flex: 1;" }
                 if let Some(secs) = *retry_after_seconds.read() {

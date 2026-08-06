@@ -68,7 +68,18 @@ pub async fn generate_title_and_summary(
          User: {user_message}\n\nAssistant: {assistant_answer}"
     );
 
-    let model = llm_model()?;
+    // Unset `LLM_MODEL` disables the summariser entirely, and used to do so in complete
+    // silence — every conversation kept its truncated first message as a title, no
+    // summary ever appeared on the homepage cards, and nothing anywhere said why. Say
+    // it once per turn rather than making the next person bisect the chat page.
+    let Some(model) = llm_model() else {
+        tracing::warn!(
+            "chat summariser disabled: LLM_MODEL is unset, so titles stay as the \
+             truncated first message and summaries stay empty. Set LLM_MODEL / \
+             LLM_BASE_URL on the website service."
+        );
+        return None;
+    };
     let body = ChatCompletionRequest {
         model: &model,
         messages: vec![
@@ -136,8 +147,11 @@ pub async fn generate_title_and_summary(
     // Strip optional <think>…</think> blocks some local models emit.
     let cleaned = strip_think_blocks(&raw);
     let mut lines = cleaned.lines().map(str::trim).filter(|l| !l.is_empty());
-    let title = lines.next()?.chars().take(80).collect::<String>();
-    let summary = lines.collect::<Vec<_>>().join(" ");
+    let title: String = strip_label(lines.next()?).chars().take(80).collect();
+    let summary = lines
+        .map(strip_label)
+        .collect::<Vec<_>>()
+        .join(" ");
     if title.is_empty() {
         return None;
     }
@@ -149,6 +163,43 @@ pub async fn generate_title_and_summary(
             summary.chars().take(400).collect()
         },
     })
+}
+
+/// Drop a `Title:` / `**Summary:**` style label the model prefixed to a line.
+///
+/// The prompt asks for two bare lines and Qwen3.5 answers with
+/// `**Title:** Water Testing Document Identified` anyway. Labelling is the model being
+/// helpful, but it lands verbatim in the sidebar, so it is stripped here rather than by
+/// escalating the prompt — prompt wording is not a reliable parser.
+fn strip_label(line: &str) -> String {
+    const LABELS: [&str; 4] = ["title", "summary", "line 1", "line 2"];
+
+    let trimmed = line.trim();
+    // The emphasis can sit outside the colon (`**Title:**`) or inside it (`**Title**:`),
+    // so the label is identified by stripping decoration from everything before the
+    // first colon rather than by matching a fixed prefix.
+    if let Some(colon) = trimmed.find(':') {
+        let head: String = trimmed[..colon]
+            .chars()
+            .filter(|c| !matches!(c, '*' | '#' | '_'))
+            .collect();
+        if LABELS.contains(&head.trim().to_ascii_lowercase().as_str()) {
+            return trimmed[colon + 1..]
+                .trim()
+                .trim_start_matches('*')
+                .trim_matches('*')
+                .trim()
+                .to_string();
+        }
+    }
+    // Not a label — a colon in ordinary prose ("Danube: a summary") must survive. Only
+    // decoration wrapping the whole line is noise.
+    trimmed
+        .trim_start_matches('#')
+        .trim()
+        .trim_matches('*')
+        .trim()
+        .to_string()
 }
 
 fn strip_think_blocks(s: &str) -> String {
@@ -165,4 +216,57 @@ fn strip_think_blocks(s: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bold_label_is_stripped() {
+        // Verbatim from a live Qwen3.5-2B run: the prompt asks for two bare lines and
+        // the model labels them anyway.
+        assert_eq!(
+            strip_label("**Title:** Water Testing Document Identified"),
+            "Water Testing Document Identified"
+        );
+        assert_eq!(
+            strip_label("**Summary:** Search results located a PDF file."),
+            "Search results located a PDF file."
+        );
+    }
+
+    #[test]
+    fn labels_are_stripped_in_every_spelling_the_model_uses() {
+        for line in [
+            "Title: Water levels",
+            "title: Water levels",
+            "**Title**: Water levels",
+            "## Title: Water levels",
+            "Line 1: Water levels",
+        ] {
+            assert_eq!(strip_label(line), "Water levels", "failed on {line:?}");
+        }
+    }
+
+    #[test]
+    fn an_unlabelled_line_keeps_its_text() {
+        assert_eq!(strip_label("Water levels on the Danube"), "Water levels on the Danube");
+        assert_eq!(strip_label("  spaced out  "), "spaced out");
+    }
+
+    #[test]
+    fn emphasis_around_a_whole_line_is_dropped_but_inner_text_survives() {
+        assert_eq!(strip_label("**Water levels**"), "Water levels");
+        // A colon that is not a label must not truncate the title.
+        assert_eq!(strip_label("Danube: a summary"), "Danube: a summary");
+    }
+
+    #[test]
+    fn think_blocks_are_removed() {
+        assert_eq!(strip_think_blocks("<think>hmm</think>Answer"), "Answer");
+        assert_eq!(strip_think_blocks("no think here"), "no think here");
+        // An unterminated block must not leave the whole response in place.
+        assert_eq!(strip_think_blocks("before<think>never closed"), "before");
+    }
 }

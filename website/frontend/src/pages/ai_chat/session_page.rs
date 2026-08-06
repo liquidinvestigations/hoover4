@@ -1,6 +1,6 @@
 //! `/ai_chat/c/:session_id/...` — conversation transcript + document preview (60/40).
 
-use common::chat_types::ChatMessageItem;
+use common::chat_types::{ChatMessageItem, ChatOptions};
 use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
@@ -9,7 +9,7 @@ use crate::api::chat_api::{
     chat_get_session, chat_send_message, chat_start_research,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatTranscript, ComposerOptions, ConversationFindBar,
+    ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar,
 };
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -83,7 +83,7 @@ fn AiChatSessionRoot(
     let detail_res = use_resource(move || chat_get_session(load_id.clone()));
 
     let mut draft = use_signal(String::new);
-    let mut options = use_signal(ComposerOptions::default);
+    let mut options = use_signal(ChatOptions::default);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
@@ -102,6 +102,11 @@ fn AiChatSessionRoot(
     if let Some(ref d) = detail {
         if *loaded_for.read() != d.session.session_id {
             messages.set(d.messages.clone());
+            // Seed from the session, not from Default: on a conversation that has
+            // already frozen its switches these are the values in force, and showing
+            // the composer defaults instead is what made a chat started with internet
+            // tools quietly continue without them.
+            options.set(d.session.options);
             loaded_for.set(d.session.session_id.clone());
         }
     }
@@ -137,7 +142,7 @@ fn AiChatSessionRoot(
         retry_after.set(None);
         spawn(async move {
             if opts.deep_research {
-                match chat_start_research(id.clone(), text).await {
+                match chat_start_research(id.clone(), text, opts).await {
                     Ok(_) => match chat_get_session(id).await {
                         Ok(d) => messages.set(d.messages),
                         Err(e) => error.set(Some(e.to_string())),
@@ -153,12 +158,17 @@ fn AiChatSessionRoot(
                     }
                 }
             } else {
-                match chat_send_message(id, text, opts.internet_tools).await {
+                match chat_send_message(id, text, opts).await {
                     Ok(result) => {
                         if let Some(secs) = result.retry_after_seconds {
                             retry_after.set(Some(secs));
                         } else {
                             messages.set(result.messages);
+                            // The first turn freezes the switches; reflect that in the
+                            // composer without waiting for a reload.
+                            let mut o = *options.peek();
+                            o.locked = true;
+                            options.set(o);
                         }
                     }
                     Err(e) => error.set(Some(e.to_string())),
@@ -169,7 +179,7 @@ fn AiChatSessionRoot(
     };
 
     let load_error = detail_res.read().as_ref().is_some_and(|r| r.is_err());
-    let Some(_detail) = detail else {
+    let Some(detail) = detail else {
         return rsx! {
             div {
                 style: "padding: 24px; color: #64748B;",
@@ -191,14 +201,31 @@ fn AiChatSessionRoot(
                             background: white; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;",
                     Link {
                         to: Route::AiChatPage {},
-                        style: "color: #4F46E5; text-decoration: none; font-size: 13px;",
+                        style: "color: #4F46E5; text-decoration: none; font-size: 13px; \
+                                white-space: nowrap;",
                         "\u{2190} Chats"
                     }
                     Link {
                         to: Route::AiChatHistoryPage {},
-                        style: "color: #64748B; text-decoration: none; font-size: 13px;",
+                        style: "color: #64748B; text-decoration: none; font-size: 13px; \
+                                white-space: nowrap;",
                         "History"
                     }
+                    // The conversation's own name, so a chat opened from the history
+                    // list still says which one it is once you have scrolled away from
+                    // the first message.
+                    div {
+                        style: "flex: 1; min-width: 0; font-size: 14px; font-weight: 600; \
+                                color: #0F172A; overflow: hidden; text-overflow: ellipsis; \
+                                white-space: nowrap;",
+                        title: "{detail.session.title}",
+                        "{detail.session.title}"
+                    }
+                }
+                // The frozen switches live here once the conversation has started —
+                // out of the composer, where they would look editable.
+                if options.read().locked {
+                    LockedOptionsBar { options: *options.read() }
                 }
                 ConversationFindBar {
                     query: find_query,

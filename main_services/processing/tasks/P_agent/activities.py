@@ -81,12 +81,29 @@ def run_research_agent(params: ResearchTaskParams) -> str:
 
 @dataclass
 class WriteResultParams:
+    """One `chat_messages` row.
+
+    The payload fields mirror the columns the website's synchronous chat path writes
+    (`website/backend/src/db_chat`). They were missing here for a while, which is why
+    research transcripts rendered as a raw JSON blob with the tool type shown as
+    "tool" and an expand panel that opened onto nothing: the columns the UI reads were
+    never populated on this path.
+    """
+
     username: str
     session_id: str
     seq: int
     role: str
     content: str
     tool_name: str = ""
+    #: JSON arguments the model passed to the tool.
+    tool_input: str = ""
+    #: JSON tool result, truncated to TOOL_PAYLOAD_CHARS.
+    tool_output: str = ""
+    #: JSON array of documents this step surfaced, for the result cards.
+    doc_refs: str = ""
+    #: Wall time the agent took to produce this row, 0 for anything else.
+    agent_duration_ms: int = 0
 
 
 @activity.defn
@@ -110,6 +127,10 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.role,
                 params.content,
                 params.tool_name,
+                params.tool_input,
+                params.tool_output,
+                params.doc_refs,
+                params.agent_duration_ms,
             ]],
             column_names=[
                 "session_id",
@@ -118,6 +139,10 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "role",
                 "content",
                 "tool_name",
+                "tool_input",
+                "tool_output",
+                "doc_refs",
+                "agent_duration_ms",
             ],
         )
     log.info(

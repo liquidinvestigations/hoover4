@@ -62,6 +62,39 @@ timeout is about the page, not the instance. A hung navigation otherwise leaves
 Chromium in a state the next call inherits, and the failure then looks intermittent and
 unrelated.
 
+## Per-chat browser sessions
+
+Each conversation browses in its own **Chromium browser context** — separate cookies,
+storage and cache, shared process. The session id arrives as `X-Hoover4-Chat-Session`,
+set by the research agent from the id the website gave it. It carries no authority; it is
+an isolation key.
+
+Before this, every chat shared one cookie jar. A consent cookie or a login from one
+conversation followed the next user into theirs, which is a cross-tenant leak through the
+one component whose job is fetching untrusted pages. A separate *browser* per chat would
+cost a few hundred MB each; a context is Chromium's own isolation boundary and costs
+almost nothing.
+
+A session is disposed on whichever comes first:
+
+* the chat ends and the website calls `POST /sessions/{id}/close` (idempotent — closing
+  an unknown session is a 200 with `closed: false`);
+* `BROWSER_SESSION_IDLE_SECONDS` (default 1 h) pass with no call and the reaper takes it;
+* `BROWSER_MAX_SESSIONS` is exceeded, and the least recently used is evicted;
+* the server restarts.
+
+Callers with no session header share one anonymous session — the pre-existing behaviour,
+kept so `curl` and any agent not yet passing the header still work, at the cost of no
+isolation between them.
+
+`GET /sessions` and `GET /health` both list what is live, which is the quickest way to
+confirm isolation is actually happening: if every chat shows `has_context: false`,
+`create_context` is failing and the server has silently fallen back to the shared context
+(it logs a warning when it does).
+
+Isolation partitions *state*, not throughput — the single lock below still serialises
+every call across all sessions.
+
 ## The nodriver return-value trap
 
 `tab.evaluate(..., return_by_value=True)` returns a plain Python value **only for
@@ -83,6 +116,9 @@ reported as a successful empty read.
 | `BROWSER_SETTLE_SECONDS` | `1.5` | pause after load, for JS-rendered bodies |
 | `BROWSER_MAX_LINKS` | `50` | a nav-heavy page has hundreds and they are mostly chrome |
 | `MAX_DOCUMENT_CHARS` | `20000` | one long article must not eat the agent's context |
+| `BROWSER_SESSION_IDLE_SECONDS` | `3600` | drop a chat's context after this long unused |
+| `BROWSER_SESSION_REAP_INTERVAL` | `360` | how often the reaper sweeps |
+| `BROWSER_MAX_SESSIONS` | `32` | live contexts before the LRU one is evicted |
 
 `shm_size: 1gb` is set in compose: Chromium fills the default 64 MB `/dev/shm` and crashes
 on content-heavy pages.
@@ -96,9 +132,11 @@ back as garbage, which is a silent content failure rather than a visible one.
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 40 tests
+docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 51 tests
 ```
 
-Almost all of them are the URL check, because that is the security boundary: schemes,
-every non-public address range in v4 and v6, the named services on this network, and the
-public-name-with-private-record bypass.
+Most of them are the URL check, because that is the security boundary: schemes, every
+non-public address range in v4 and v6, the named services on this network, and the
+public-name-with-private-record bypass. The rest cover session lifetime — expiry, the LRU
+cap, and idempotent close — against the registry directly, with the disposer injected, so
+they need no Chromium.

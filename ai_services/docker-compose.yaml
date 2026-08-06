@@ -296,7 +296,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
-      - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5-2b}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
       # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
       # arrived without `arguments` and never accumulated, so the agent silently
@@ -334,8 +334,11 @@ services:
     networks:
       - hoover4
 
-  # Full research agent: collections plus the open-web tools. Not used by the chat page
-  # yet; it is the target for the Temporal long-running research task.
+  # Full research agent: collections plus the open-web tools. Two callers: the chat
+  # page when "Internet tools" is ticked (HOOVER4_FULL_AGENT_URL on the website
+  # service), and the Temporal long-running research task (RESEARCH_AGENT_URL on the
+  # worker). Both address it by container name over the shared `hoover4` network — the
+  # published loopback port below is for host-side debugging only.
   hoover4-full-research-agent:
     build:
       context: .
@@ -348,7 +351,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - LLM_API_KEY=${LLM_API_KEY:-hoover4-local-key}
-      - LLM_MODEL=${LLM_MODEL:-qwen3-4b}
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5-2b}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
       # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
       # arrived without `arguments` and never accumulated, so the agent silently

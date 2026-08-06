@@ -3,7 +3,9 @@
 //! Each of these resolves the current user server-side and hands it to the backend; the
 //! browser never supplies an identity, and never supplies a permission list.
 
-use common::chat_types::{ChatSendResult, ChatSessionDetail, ChatSessionItem};
+use common::chat_types::{
+    ChatOptions, ChatSendResult, ChatSessionDetail, ChatSessionItem, LiveChatRun,
+};
 use dioxus::prelude::*;
 
 #[cfg(feature = "server")]
@@ -57,17 +59,19 @@ pub async fn chat_set_collections(
 /// This is a long call — the agent runs several LLM turns and searches before it
 /// answers — so the UI must show a pending state while it is in flight.
 ///
-/// `use_internet_tools` routes to the full research agent (`HOOVER4_FULL_AGENT_URL`)
-/// instead of the internal search agent. When rate-limited, `retry_after_seconds` is
-/// set and `messages` is empty (nothing was written).
+/// `options.internet_tools` routes to the full research agent
+/// (`HOOVER4_FULL_AGENT_URL`) instead of the internal search agent. The options are
+/// honoured on the **first** turn only and frozen onto the session; later turns reuse
+/// the frozen values whatever the client sends. When rate-limited,
+/// `retry_after_seconds` is set and `messages` is empty (nothing was written).
 #[server]
 pub async fn chat_send_message(
     session_id: String,
     message: String,
-    use_internet_tools: bool,
+    options: ChatOptions,
 ) -> Result<ChatSendResult, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::send_message(&user, session_id, message, use_internet_tools)
+    backend::api::chat::send_message(&user, session_id, message, options)
         .await
         .map_err(to_server_fn_error)
 }
@@ -80,9 +84,10 @@ pub async fn chat_send_message(
 pub async fn chat_start_research(
     session_id: String,
     message: String,
+    options: ChatOptions,
 ) -> Result<String, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    match backend::api::chat::start_research_task(&user, session_id, message)
+    match backend::api::chat::start_research_task(&user, session_id, message, options)
         .await
         .map_err(to_server_fn_error)?
     {
@@ -91,4 +96,21 @@ pub async fn chat_start_research(
             "rate_limited:{retry_after_seconds}"
         ))),
     }
+}
+
+/// Agent runs the website is holding open right now. Admin only.
+///
+/// Inline chat turns only — deep research runs in a Temporal worker and is visible in
+/// the Temporal UI, which the admin page links to rather than duplicating.
+#[server]
+pub async fn chat_admin_live_runs() -> Result<Vec<LiveChatRun>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::admin_list_live_runs(&user).map_err(to_server_fn_error)
+}
+
+/// Ask an in-flight run to stop. Admin only. `false` means it had already finished.
+#[server]
+pub async fn chat_admin_cancel_run(run_id: u64) -> Result<bool, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::admin_cancel_live_run(&user, run_id).map_err(to_server_fn_error)
 }

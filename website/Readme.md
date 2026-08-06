@@ -89,7 +89,61 @@ Routes (see `frontend/src/routes.rs`):
 
 Storage lives in the global ClickHouse database (`chat_sessions`, `chat_messages`).
 Migration `00014` adds `tool_input` / `tool_output` / `doc_refs` / `created_ms` /
-`agent_duration_ms`; `00015` adds `chat_sessions.summary`.
+`agent_duration_ms`; `00015` adds `chat_sessions.summary`; `00019` adds the frozen
+option flags; `00020` adds `chat_messages.retry_errors`.
+
+### The two switches are frozen at the first turn
+
+`Deep Research` and `Internet tools` decide **which agent answers**, and therefore which
+tools exist. Changing them mid-thread would produce a transcript where some answers had
+web access and some did not, with nothing on screen saying which was which. So the first
+message writes them to `chat_sessions` (`use_internet_tools`, `deep_research`,
+`options_locked`) and the UI moves them out of the composer to a read-only bar above the
+transcript.
+
+The freeze is enforced **server-side** in `db_chat::lock_session_options`, not just by
+hiding the checkboxes: later turns reuse the stored values whatever the client sends.
+
+`Internet tools` defaults to **on** (`ChatOptions::default`). The chat is more useful with
+them than without, and a user who wants a documents-only answer can untick before sending.
+
+### Reaching the agents
+
+Two services, and **both URLs must be set explicitly in compose**:
+
+| Env | Service | Used when |
+|---|---|---|
+| `HOOVER4_AGENT_URL` | `hoover4-internal-search-agent` | Internet tools **off** |
+| `HOOVER4_FULL_AGENT_URL` | `hoover4-full-research-agent` | Internet tools **on** |
+
+The code defaults (`localhost:9099` / `localhost:9090`) are the loopback ports published
+on the *host*, for running the website outside Docker. Inside the container `localhost` is
+the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
+internet-tools turn fail with `AI agent unreachable at http://localhost:9090` while the
+agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
+
+### Retries
+
+Each turn gets `HOOVER4_AGENT_ATTEMPTS` attempts (default 4) with exponential backoff from
+`HOOVER4_AGENT_RETRY_BASE_MS` (default 2 s, so 2/4/8 s). Retries cover *every* failure
+class rather than a curated list — unreachable, 5xx, timeout, malformed body are one thing
+from the user's seat, and this stack fails transiently in all four ways.
+
+Failed attempts are kept in `chat_messages.retry_errors` even when the turn eventually
+succeeds, and the transcript shows them behind a disclosure. A turn that only worked on
+the third try is a healthy answer over an unhealthy agent tier, and that is worth seeing.
+
+### Admin: live chats
+
+`/admin/metrics` lists the agent runs this website process is holding open right now —
+user, conversation, both switches, elapsed time, attempt number — with a **Kill** button.
+The registry is in-process (`backend::api::chat::live_runs`), not in ClickHouse: a row
+means "this process is doing this work now", and a persisted row would outlive the process
+and show an admin ghosts to kill. Cancellation is cooperative — it lands between retry
+attempts, and cannot abort a generation already in flight.
+
+Deep-research turns run in a Temporal worker and are **not** listed there; the Temporal UI
+owns that view.
 
 ### Q8 — Guests and LLM access (**revisit**)
 
@@ -116,6 +170,16 @@ end    {"output": {"content": …, "type": "tool", "name": "…", "tool_call_id"
 
 `search_collections` hits carry `collection_dataset` + `file_hash` (the
 `DocumentIdentifier` key used by the document-preview stack).
+
+Note there is **no tool name on a start event** — it appears only at `output.name` on the
+end event, which is why the events have to be paired before a call can be labelled at all.
+
+This format is parsed in two places, and they must agree: `api::chat::agent_client` for
+inline chat, and `tasks/P_agent/trajectory.py` for the Temporal research path. The Python
+side was for a while writing `json.dumps(event)[:400]` as the message body with the tool
+name hardcoded to `"tool"` and none of the payload columns populated, so research
+transcripts rendered as a wall of JSON in a card whose expand panel opened onto nothing.
+If you change the shape, change both.
 
 ## Development Notes
 

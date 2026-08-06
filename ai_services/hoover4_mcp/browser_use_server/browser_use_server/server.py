@@ -18,9 +18,11 @@ import os
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
-from browser_use_server.browser import NAV_TIMEOUT, with_page
+from browser_use_server.browser import NAV_TIMEOUT, close_session, start_reaper, with_page
+from browser_use_server.sessions import registry
 from browser_use_server.urlcheck import UrlNotAllowed, check_url
 
 logging.basicConfig(
@@ -36,6 +38,37 @@ MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "20000"))
 #: How many links to return. A navigation-heavy page has hundreds and they are mostly
 #: chrome; the model needs enough to pick a next hop, not a sitemap.
 MAX_LINKS = int(os.getenv("BROWSER_MAX_LINKS", "50"))
+
+#: Header carrying the chat session id, so each conversation browses in its own cookie
+#: jar. Set by the research agent from the id the website passes it. Absent means the
+#: shared anonymous session — see browser_use_server.sessions.
+SESSION_HEADER = "x-hoover4-chat-session"
+
+
+#: The idle-session reaper, started on the first tool call rather than at import.
+#: FastMCP owns the event loop, so there is no loop to attach a task to until a request
+#: is being served — and a server that is never called needs no reaper.
+_reaper_task: Any = None
+
+
+async def _ensure_reaper() -> None:
+    global _reaper_task
+    if _reaper_task is None or _reaper_task.done():
+        _reaper_task = await start_reaper()
+        log.info("browser session reaper started")
+
+
+def _session_id() -> str | None:
+    """Chat session id for this call, or None outside an HTTP request."""
+    try:
+        headers = get_http_headers()
+    except Exception:  # noqa: BLE001 - called outside a request in tests
+        return None
+    # Starlette lower-cases header names, but a direct dict does not.
+    for key, value in dict(headers).items():
+        if key.lower() == SESSION_HEADER and value.strip():
+            return value.strip()
+    return None
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_browser"),
@@ -104,6 +137,7 @@ _EXTRACT_JS = """
     ),
 )
 async def browse_page(url: str, timeout_seconds: float = NAV_TIMEOUT) -> PageContent:
+    await _ensure_reaper()
     try:
         checked = check_url(url)
     except UrlNotAllowed as exc:
@@ -115,7 +149,9 @@ async def browse_page(url: str, timeout_seconds: float = NAV_TIMEOUT) -> PageCon
         return await tab.evaluate(_EXTRACT_JS, await_promise=False, return_by_value=True)
 
     try:
-        payload = await with_page(checked, extract, timeout=timeout_seconds)
+        payload = await with_page(
+            checked, extract, timeout=timeout_seconds, session_id=_session_id()
+        )
     except TimeoutError as exc:
         return PageContent(success=False, url=url, error=str(exc))
     except Exception as exc:  # noqa: BLE001 - surfaced to the model
@@ -159,7 +195,36 @@ async def browse_page(url: str, timeout_seconds: float = NAV_TIMEOUT) -> PageCon
 async def health(_request: Any):
     from starlette.responses import JSONResponse
 
-    return JSONResponse({"status": "ok", "service": "hoover4-browser"})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "hoover4-browser",
+            "sessions": registry.describe(),
+        }
+    )
+
+
+@mcp.custom_route("/sessions/{session_id}/close", methods=["POST", "DELETE"])
+async def close_browser_session(request: Any):
+    """Drop one chat's browser context.
+
+    Called by the website when a conversation ends, so a chat's cookies go when the
+    chat does rather than an hour later. Idempotent: closing an unknown or
+    already-closed session is a 200 with `closed: false`, because the caller's goal
+    ("this session must not be open") is satisfied either way.
+    """
+    from starlette.responses import JSONResponse
+
+    session_id = request.path_params["session_id"]
+    closed = await close_session(session_id)
+    return JSONResponse({"session_id": session_id, "closed": closed})
+
+
+@mcp.custom_route("/sessions", methods=["GET"])
+async def list_browser_sessions(_request: Any):
+    from starlette.responses import JSONResponse
+
+    return JSONResponse({"sessions": registry.describe()})
 
 
 def main() -> None:

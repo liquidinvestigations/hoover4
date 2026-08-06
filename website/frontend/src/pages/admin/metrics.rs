@@ -6,7 +6,8 @@ use dioxus::prelude::*;
 
 use crate::api::admin_api::admin_get_metrics;
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
+    AdminGuard, AdminShell, LiveChatsPanel, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION,
+    TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 
@@ -40,6 +41,8 @@ fn MetricsContent() -> Element {
     let metrics = metrics_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
 
     rsx! {
+        // Live first: it is the only thing on this page that is actionable right now.
+        LiveChatsPanel {}
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
             "Rolling last 24 hours. Events record who, which route class or function name, and when — never a URL or a query string."
         }

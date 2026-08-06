@@ -8,13 +8,14 @@
 //! so a permission revoked after a chat started takes effect on the next message.
 
 pub mod agent_client;
+pub mod live_runs;
 pub mod summarize;
 
 use std::time::Instant;
 
 use common::chat_types::{
-    extract_doc_refs, title_from_message, truncate_payload, ChatRole, ChatSendResult,
-    ChatSessionDetail, ChatSessionItem, MAX_MESSAGE_CHARS, TOOL_PAYLOAD_CHARS,
+    extract_doc_refs, title_from_message, truncate_payload, ChatOptions, ChatRole,
+    ChatSendResult, ChatSessionDetail, ChatSessionItem, MAX_MESSAGE_CHARS, TOOL_PAYLOAD_CHARS,
 };
 use common::current_user::CurrentUser;
 
@@ -77,6 +78,7 @@ pub async fn get_chat_session(
     let messages = db_chat::list_messages(username, &session_id).await?;
     let available_collections = list_permitted_collections(user).await?;
 
+    let options = row.options();
     Ok(ChatSessionDetail {
         session: ChatSessionItem {
             session_id: row.session_id,
@@ -86,6 +88,7 @@ pub async fn get_chat_session(
             created_at: String::new(),
             updated_at: String::new(),
             message_count: messages.len() as u32,
+            options,
         },
         messages,
         available_collections,
@@ -107,6 +110,16 @@ pub async fn set_chat_collections(
     let permitted = list_permitted_collections(user).await?;
     let selected = intersect_collections(&collections, &permitted);
     db_chat::touch_session(username, &session_id, None, Some(&selected)).await
+}
+
+/// Serialise the failed-attempt list for the `retry_errors` column. Empty stays empty
+/// rather than becoming `"[]"`, so "no retries" costs no bytes on the overwhelmingly
+/// common row.
+fn encode_errors(errors: &[String]) -> String {
+    if errors.is_empty() {
+        return String::new();
+    }
+    serde_json::to_string(errors).unwrap_or_default()
 }
 
 /// Keep only requested collections the user may actually read.
@@ -137,11 +150,15 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
 /// how far it got rather than nothing at all.
 ///
 /// When the rate limiter refuses, nothing is written and `retry_after_seconds` is set.
+///
+/// `requested_options` only has effect on the **first** turn of a conversation; after
+/// that the frozen values on the session win, so a client that forgets to send them —
+/// or forges them — cannot change which agent a thread is talking to mid-way.
 pub async fn send_message(
     user: &CurrentUser,
     session_id: String,
     message: String,
-    use_internet_tools: bool,
+    requested_options: ChatOptions,
 ) -> anyhow::Result<ChatSendResult> {
     let username = require_named_user(user)?;
 
@@ -181,6 +198,10 @@ pub async fn send_message(
         })
         .collect();
 
+    // Freeze the agent switches onto the conversation on the first turn; afterwards
+    // this returns what was frozen and ignores what the client asked for.
+    let options = db_chat::lock_session_options(username, &session_id, requested_options).await?;
+
     let mut seq = db_chat::next_seq(username, &session_id).await?;
     db_chat::append_message(
         username,
@@ -195,31 +216,38 @@ pub async fn send_message(
 
     // Provisional title from the first user turn; LLM title/summary replaces it below.
     let is_first_turn = history.is_empty();
+    let provisional_title = title_from_message(&message);
     if is_first_turn {
-        db_chat::touch_session(
-            username,
-            &session_id,
-            Some(&title_from_message(&message)),
-            None,
-        )
-        .await?;
+        db_chat::touch_session(username, &session_id, Some(&provisional_title), None).await?;
     } else {
         db_chat::touch_session(username, &session_id, None, None).await?;
     }
 
     let message_id = format!("{session_id}-{seq}");
     let started = Instant::now();
-    let result = agent_client::ask_agent(
+    let run = live_runs::register(
+        username,
+        &session_id,
+        &provisional_title,
+        &message,
+        options,
+    );
+    let call = agent_client::ask_agent_with_retries(
         username,
         &session_id,
         &message_id,
         &message,
         &agent_history,
         &allowed,
-        use_internet_tools,
+        options.internet_tools,
+        |attempt| run.set_attempt(attempt),
+        || run.is_cancelled(),
     )
     .await;
     let agent_duration_ms = started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+    let attempt_errors = call.attempt_errors;
+    let result = call.result;
+    drop(run);
 
     let mut assistant_answer_for_summary: Option<String> = None;
 
@@ -247,6 +275,7 @@ pub async fn send_message(
                         tool_output,
                         doc_refs,
                         agent_duration_ms: 0,
+                        retry_errors: String::new(),
                     },
                 )
                 .await?;
@@ -268,6 +297,10 @@ pub async fn send_message(
                 &answer,
                 AppendMessageExtras {
                     agent_duration_ms,
+                    // Kept on a *successful* row too: a turn that only worked on the
+                    // third try is worth surfacing, and it is the only trace that the
+                    // agent tier was flapping.
+                    retry_errors: encode_errors(&attempt_errors),
                     ..Default::default()
                 },
             )
@@ -285,6 +318,7 @@ pub async fn send_message(
                 &format!("The assistant could not answer: {e}"),
                 AppendMessageExtras {
                     agent_duration_ms,
+                    retry_errors: encode_errors(&attempt_errors),
                     ..Default::default()
                 },
             )
@@ -334,6 +368,7 @@ pub async fn start_research_task(
     user: &CurrentUser,
     session_id: String,
     message: String,
+    requested_options: ChatOptions,
 ) -> anyhow::Result<Result<String, u64>> {
     let username = require_named_user(user)?;
 
@@ -355,6 +390,18 @@ pub async fn start_research_task(
         .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
     let permitted = list_permitted_collections(user).await?;
     let allowed = intersect_collections(&session.collections, &permitted);
+
+    // Deep research is one of the two frozen switches; a thread that started as a
+    // research thread stays one.
+    db_chat::lock_session_options(
+        username,
+        &session_id,
+        ChatOptions {
+            deep_research: true,
+            ..requested_options
+        },
+    )
+    .await?;
 
     let history = db_chat::list_messages(username, &session_id).await?;
     let mut seq = db_chat::next_seq(username, &session_id).await?;
@@ -392,6 +439,33 @@ pub async fn start_research_task(
 
     let run_id = start_research_workflow(username, &session_id, &message, &allowed, seq).await?;
     Ok(Ok(run_id))
+}
+
+/// Every agent run this website process currently has in flight. Admin only.
+///
+/// Scope is honest about its limits: this is *this process's* inline chat turns. Deep
+/// research runs in a Temporal worker and is visible in the Temporal UI instead — the
+/// admin page links there rather than pretending to own that view.
+pub fn admin_list_live_runs(user: &CurrentUser) -> anyhow::Result<Vec<common::chat_types::LiveChatRun>> {
+    require_admin(user)?;
+    Ok(live_runs::snapshot())
+}
+
+/// Ask an in-flight run to stop. Admin only.
+///
+/// Cooperative: the run notices between retry attempts and before it writes. It cannot
+/// abort an HTTP call already in flight against the agent, so a kill during a slow
+/// generation takes effect when that call returns.
+pub fn admin_cancel_live_run(user: &CurrentUser, run_id: u64) -> anyhow::Result<bool> {
+    require_admin(user)?;
+    Ok(live_runs::request_cancel(run_id))
+}
+
+fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
+    if !user.is_admin {
+        anyhow::bail!("admin access required");
+    }
+    Ok(())
 }
 
 /// Start the `ResearchTask` workflow over Temporal's HTTP API.

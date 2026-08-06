@@ -5,7 +5,7 @@
 //! restricted collections, so the owner is part of the primary key of every query. A
 //! session id alone is never sufficient to read a conversation.
 
-use common::chat_types::{ChatMessageItem, ChatRole, ChatSessionItem};
+use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem};
 use time::format_description::well_known::Rfc3339;
 
 use crate::db_auth::{insert_row, now};
@@ -24,6 +24,27 @@ pub struct ChatSessionRow {
     #[serde(with = "clickhouse::serde::time::datetime")]
     pub updated_at: time::OffsetDateTime,
     pub is_deleted: u8,
+    #[serde(default)]
+    pub use_internet_tools: u8,
+    #[serde(default)]
+    pub deep_research: u8,
+    #[serde(default)]
+    pub options_locked: u8,
+}
+
+impl ChatSessionRow {
+    pub fn options(&self) -> ChatOptions {
+        // Before the first turn nothing is frozen, so the composer defaults apply
+        // rather than the zeroes this row was created with.
+        if self.options_locked == 0 {
+            return ChatOptions::default();
+        }
+        ChatOptions {
+            deep_research: self.deep_research != 0,
+            internet_tools: self.use_internet_tools != 0,
+            locked: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
@@ -48,14 +69,17 @@ pub struct ChatMessageRow {
     pub created_ms: i64,
     #[serde(default)]
     pub agent_duration_ms: u32,
+    #[serde(default)]
+    pub retry_errors: String,
 }
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
-     updated_at, is_deleted FROM chat_sessions FINAL";
+     updated_at, is_deleted, use_internet_tools, deep_research, options_locked \
+     FROM chat_sessions FINAL";
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
-     tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms \
-     FROM chat_messages FINAL";
+     tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
+     retry_errors FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -90,6 +114,9 @@ pub async fn create_session(
         created_at: now(),
         updated_at: now(),
         is_deleted: 0,
+        use_internet_tools: 0,
+        deep_research: 0,
+        options_locked: 0,
     };
     insert_row("chat_sessions", &row).await?;
     Ok(session_id)
@@ -139,6 +166,7 @@ pub async fn list_sessions(username: &str, limit: u32) -> anyhow::Result<Vec<Cha
         .into_iter()
         .map(|r| ChatSessionItem {
             message_count: counts.get(&r.session_id).copied().unwrap_or(0) as u32,
+            options: r.options(),
             session_id: r.session_id,
             title: r.title,
             summary: r.summary,
@@ -176,6 +204,7 @@ pub async fn list_messages(
             created_at: fmt(r.created_at),
             created_ms: fmt_ms(r.created_ms),
             agent_duration_ms: r.agent_duration_ms,
+            retry_errors: r.retry_errors,
         })
         .collect())
 }
@@ -209,6 +238,8 @@ pub struct AppendMessageExtras {
     pub tool_output: String,
     pub doc_refs: String,
     pub agent_duration_ms: u32,
+    /// JSON array of errors from earlier attempts, for an `error` row.
+    pub retry_errors: String,
 }
 
 pub async fn append_message(
@@ -234,6 +265,7 @@ pub async fn append_message(
         updated_at: ts,
         created_ms: ts.unix_timestamp_nanos() as i64 / 1_000_000,
         agent_duration_ms: extras.agent_duration_ms,
+        retry_errors: extras.retry_errors,
     };
     insert_row("chat_messages", &row).await
 }
@@ -287,6 +319,30 @@ pub async fn touch_session(
     }
     row.updated_at = now();
     insert_row("chat_sessions", &row).await
+}
+
+/// Freeze the Deep Research / Internet tools switches onto the conversation.
+///
+/// Called once, from the first message. Later calls are no-ops so a second turn cannot
+/// silently change which agent the transcript was produced by — the whole point of
+/// locking. Returns the options now in force.
+pub async fn lock_session_options(
+    username: &str,
+    session_id: &str,
+    requested: ChatOptions,
+) -> anyhow::Result<ChatOptions> {
+    let Some(mut row) = get_session(username, session_id).await? else {
+        anyhow::bail!("chat session not found");
+    };
+    if row.options_locked != 0 {
+        return Ok(row.options());
+    }
+    row.use_internet_tools = u8::from(requested.internet_tools);
+    row.deep_research = u8::from(requested.deep_research);
+    row.options_locked = 1;
+    row.updated_at = now();
+    insert_row("chat_sessions", &row).await?;
+    Ok(row.options())
 }
 
 /// Set title and/or summary without clearing the other.

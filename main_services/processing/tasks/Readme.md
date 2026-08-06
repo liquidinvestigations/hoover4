@@ -51,6 +51,27 @@ runs `CollectEtaSamples` — the self-scheduling singleton that writes
 bytes/s combined pessimistically, 20x-cost throttle, finished collections skipped).
 Runs on `processing-common-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
 
+### P_agent - Long-running AI research
+
+`ResearchTask` runs the full research agent for one question and writes the answer back
+into the chat, so the run survives a browser reload, a website restart and a worker
+crash. Two activities on purpose: the agent call is slow and retryable, the write is fast
+and keyed, so a retried agent call cannot leave half a transcript.
+
+`trajectory.py` turns the agent's raw event list into transcript rows. It is the **Python
+twin** of `pair_tool_calls` / `extract_doc_refs` in the website's
+`api::chat::agent_client` and `common::chat_types` — the synchronous chat path is Rust in
+the website and this one is Python in a worker, and neither can call the other. They must
+agree, and for a while they did not: this path wrote `json.dumps(event)[:400]` as the
+message body with the tool name hardcoded to `"tool"` and none of `tool_input` /
+`tool_output` / `doc_refs` populated, so a research transcript rendered as a wall of JSON
+in a card whose expand panel opened onto nothing. **If you change the event format, change
+both.**
+
+The one shape fact that catches everyone: there is **no tool name on a start event**. It
+appears only at `output.name` on the end event, so events have to be paired before a call
+can be labelled at all.
+
 ## Temporal visibility
 
 Every workflow the pipeline starts — top-level submissions and child workflows alike —
