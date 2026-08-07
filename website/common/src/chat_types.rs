@@ -230,6 +230,16 @@ pub struct StreamToolRow {
     pub summary: String,
     /// False between start_tool and end_tool — the card renders a running state.
     pub done: bool,
+    /// How long this call has been running, in milliseconds, as of this poll.
+    ///
+    /// Computed server-side rather than from a start timestamp the client subtracts:
+    /// this type is rendered by a component compiled into the server-side build too,
+    /// where there is no browser clock, and a wrong-by-a-timezone counter is worse than
+    /// none. Refreshing a page mid-tool-call used to restart the counter at 0 — a
+    /// two-minute browse read as having just begun, which is the opposite of the signal
+    /// the counter exists to give.
+    #[serde(default)]
+    pub elapsed_ms: u32,
 }
 
 /// The turn currently being produced, reconstructed from `chat_message_stream`.
@@ -339,12 +349,192 @@ pub fn title_from_message(message: &str) -> String {
     format!("{}\u{2026}", flat.chars().take(TITLE_CHARS).collect::<String>())
 }
 
-/// Truncate a JSON/text payload for storage.
+/// Prefix a rate-limit refusal carries through the server-function boundary.
+///
+/// The typed [`crate::chat_types::rate_limited_seconds`] pair is the whole contract: a
+/// rate limit is not a broken connection, and a client that cannot tell the two apart
+/// declares the chat lost while the turn is still running.
+pub const RATE_LIMITED_PREFIX: &str = "rate_limited:";
+
+/// The retry-after seconds in a rate-limit error, or `None` if it is a different error.
+///
+/// Searches rather than matching a prefix: by the time the browser sees it the message has
+/// been through `ServerFnError`, which is free to wrap it in prose. Anything this does not
+/// recognise is a real error and must stay one — silently treating an unknown failure as
+/// "wait and retry" is how a dead backend looks like a slow one forever.
+pub fn rate_limited_seconds(message: &str) -> Option<u64> {
+    let at = message.find(RATE_LIMITED_PREFIX)? + RATE_LIMITED_PREFIX.len();
+    let digits: String = message[at..]
+        .trim_start()
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
+}
+
+/// Truncate a text payload for storage, by cutting it off.
+///
+/// For anything that is **not** a JSON document. A tool result is one — use
+/// [`truncate_tool_payload`], which keeps it parseable.
 pub fn truncate_payload(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
     }
     format!("{}\u{2026}", text.chars().take(max_chars).collect::<String>())
+}
+
+/// Headroom left for the `"truncated": true` markers before they are added.
+const TRUNCATION_MARK_RESERVE: usize = 64;
+
+/// Below this a string is not worth clipping — the quotes and key cost nearly as much.
+const MIN_CLIPPABLE_STRING: usize = 80;
+
+/// Fit a tool result into `max_chars` **without breaking its JSON**.
+///
+/// Byte-chopping a serialised document at a character count leaves a `{` with no `}`, and
+/// everything downstream then treats a recorded result as an absent one: the card parsed
+/// nothing, fell through to `tool_content == None`, and told the user "the result payload
+/// was not recorded" about data sitting in the row it was reading. Truncating a document
+/// is a thing you do *inside* it.
+///
+/// So: drop whole elements off the biggest array (the result list, almost always), mark the
+/// object that owned it with `"truncated": true`, and only clip long strings if dropping
+/// alone cannot get there. A payload that is not JSON at all — or that is one enormous
+/// scalar with nothing to drop — falls back to [`truncate_payload`]; the cards render the
+/// raw bytes in that case rather than claiming there was nothing to render.
+pub fn truncate_tool_payload(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return truncate_payload(text, max_chars);
+    };
+
+    let target = max_chars.saturating_sub(TRUNCATION_MARK_RESERVE);
+    let mut marked: Vec<String> = Vec::new();
+    shrink_to_fit(&mut value, target, &mut marked);
+    for pointer in &marked {
+        if let Some(serde_json::Value::Object(map)) = value.pointer_mut(pointer) {
+            map.insert("truncated".to_string(), serde_json::Value::Bool(true));
+        }
+    }
+
+    let out = serde_json::to_string(&value).unwrap_or_default();
+    if out.chars().count() <= max_chars && !out.is_empty() {
+        return out;
+    }
+    // The markers themselves pushed it back over, or the document has nothing left to
+    // give. Cutting the text is the last resort it always was — but now a rare one.
+    truncate_payload(text, max_chars)
+}
+
+fn json_len(v: &serde_json::Value) -> usize {
+    serde_json::to_string(v).map(|s| s.chars().count()).unwrap_or(usize::MAX)
+}
+
+/// JSON Pointer segment escaping (RFC 6901).
+fn escape_pointer(key: &str) -> String {
+    key.replace('~', "~0").replace('/', "~1")
+}
+
+/// Every array in the document with something to give, as (pointer, serialised size).
+fn collect_arrays(v: &serde_json::Value, at: &str, out: &mut Vec<(String, usize)>) {
+    match v {
+        serde_json::Value::Array(items) => {
+            if !items.is_empty() {
+                out.push((at.to_string(), json_len(v)));
+            }
+            for (i, item) in items.iter().enumerate() {
+                collect_arrays(item, &format!("{at}/{i}"), out);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (k, item) in map {
+                collect_arrays(item, &format!("{at}/{}", escape_pointer(k)), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every string long enough to be worth clipping, as (pointer, length in chars).
+fn collect_strings(v: &serde_json::Value, at: &str, out: &mut Vec<(String, usize)>) {
+    match v {
+        serde_json::Value::String(s) => {
+            let n = s.chars().count();
+            if n > MIN_CLIPPABLE_STRING {
+                out.push((at.to_string(), n));
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (i, item) in items.iter().enumerate() {
+                collect_strings(item, &format!("{at}/{i}"), out);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (k, item) in map {
+                collect_strings(item, &format!("{at}/{}", escape_pointer(k)), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The pointer to whatever contains the node at `pointer`, or `None` for the root.
+fn parent_pointer(pointer: &str) -> Option<String> {
+    let cut = pointer.rfind('/')?;
+    Some(pointer[..cut].to_string())
+}
+
+/// Reduce `value` until it serialises to at most `target` chars.
+///
+/// Arrays first and biggest-first: dropping the tail of a result list costs the reader the
+/// results they were least likely to read, while clipping strings costs every result a
+/// little. Strings are the fallback for a document whose bulk is one long field.
+fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<String>) {
+    while json_len(value) > target {
+        let mut arrays = Vec::new();
+        collect_arrays(value, "", &mut arrays);
+        arrays.sort_by_key(|(_, size)| std::cmp::Reverse(*size));
+        let Some((pointer, _)) = arrays.into_iter().next() else {
+            break;
+        };
+        let over = json_len(value).saturating_sub(target);
+        let Some(serde_json::Value::Array(items)) = value.pointer_mut(&pointer) else {
+            break;
+        };
+        // Pop by measured size rather than one-at-a-time-then-reserialise: a hundred
+        // results would otherwise mean a hundred serialisations of the whole document.
+        let mut freed = 0usize;
+        while !items.is_empty() && freed <= over {
+            let dropped = items.pop().unwrap_or(serde_json::Value::Null);
+            freed += json_len(&dropped) + 1;
+        }
+        let owner = parent_pointer(&pointer).unwrap_or_default();
+        if !marked.contains(&owner) {
+            marked.push(owner);
+        }
+    }
+
+    // Every array is empty and it still does not fit: the bulk is in the strings.
+    while json_len(value) > target {
+        let mut strings = Vec::new();
+        collect_strings(value, "", &mut strings);
+        strings.sort_by_key(|(_, len)| std::cmp::Reverse(*len));
+        let Some((pointer, len)) = strings.into_iter().next() else {
+            return;
+        };
+        let Some(serde_json::Value::String(s)) = value.pointer_mut(&pointer) else {
+            return;
+        };
+        let keep = (len / 2).max(MIN_CLIPPABLE_STRING / 2);
+        *s = format!("{}\u{2026}", s.chars().take(keep).collect::<String>());
+        if let Some(owner) = parent_pointer(&pointer) {
+            if !marked.contains(&owner) {
+                marked.push(owner);
+            }
+        }
+    }
 }
 
 /// Pull document references out of a completed tool call's name + input + output JSON.
@@ -510,6 +700,116 @@ mod tests {
         assert_eq!(refs[0].collection_dataset, "testdata_testfiles");
         assert_eq!(refs[0].file_hash, "abc123");
         assert_eq!(refs[0].display_title(), "PublicWaterMassMailing.pdf");
+    }
+
+    /// A realistic `web_search` payload: an envelope, a result list, long snippets.
+    fn search_payload(results: usize, snippet_chars: usize) -> String {
+        let rows: Vec<serde_json::Value> = (0..results)
+            .map(|i| {
+                serde_json::json!({
+                    "title": format!("Result {i}"),
+                    "url": format!("https://example.com/{i}"),
+                    "snippet": "x".repeat(snippet_chars),
+                    "sources": ["ddg_api", "yahoo"],
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "output": {
+                "name": "web_search",
+                "content": {
+                    "success": true,
+                    "query": "danube water level",
+                    "sources_used": ["ddg_api", "yahoo", "wikipedia"],
+                    "results": rows,
+                }
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_truncated_payload_is_still_parseable_json() {
+        // The bug this replaces: chopping the serialised document at N chars left a `{`
+        // with no `}`, the card parsed nothing, and the transcript told the user "the
+        // result payload was not recorded" about a row it was holding.
+        let raw = search_payload(60, 400);
+        assert!(raw.chars().count() > 4_000);
+        let out = truncate_tool_payload(&raw, 4_000);
+        assert!(out.chars().count() <= 4_000);
+        let v: serde_json::Value =
+            serde_json::from_str(&out).expect("a truncated tool payload must still parse");
+        assert_eq!(v["output"]["content"]["query"], "danube water level");
+    }
+
+    #[test]
+    fn whole_results_are_dropped_rather_than_the_document_being_cut() {
+        let raw = search_payload(60, 400);
+        let out = truncate_tool_payload(&raw, 4_000);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let results = v["output"]["content"]["results"].as_array().unwrap();
+        assert!(!results.is_empty(), "some results must survive");
+        assert!(results.len() < 60, "and some must have been dropped");
+        // Best-first order: the ones kept are the ones the reader was going to read.
+        assert_eq!(results[0]["title"], "Result 0");
+        // Every surviving row is whole — no half-written last element.
+        for row in results {
+            assert!(row["url"].is_string() && row["snippet"].is_string());
+        }
+    }
+
+    #[test]
+    fn the_object_that_lost_rows_says_so() {
+        let out = truncate_tool_payload(&search_payload(60, 400), 4_000);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["output"]["content"]["truncated"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn a_payload_that_already_fits_is_returned_byte_for_byte() {
+        let raw = search_payload(2, 40);
+        assert_eq!(truncate_tool_payload(&raw, 24_000), raw);
+    }
+
+    #[test]
+    fn a_document_whose_bulk_is_one_string_clips_the_string() {
+        // Nothing to drop: a `get_document_text` result is one enormous field.
+        let raw = serde_json::json!({"path": "/a.pdf", "text": "y".repeat(50_000)}).to_string();
+        let out = truncate_tool_payload(&raw, 2_000);
+        assert!(out.chars().count() <= 2_000);
+        let v: serde_json::Value = serde_json::from_str(&out).expect("still JSON");
+        assert_eq!(v["path"], "/a.pdf", "the fields that identify it survive");
+        assert!(v["text"].as_str().unwrap().ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn a_payload_that_is_not_json_falls_back_to_cutting_it() {
+        // The cards render these bytes rather than claiming nothing was recorded.
+        let raw = "z".repeat(500);
+        let out = truncate_tool_payload(&raw, 100);
+        assert_eq!(out.chars().count(), 101);
+        assert!(out.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn a_rate_limit_error_yields_its_retry_after_however_it_is_wrapped() {
+        // The message reaches the browser through ServerFnError, which is free to wrap it.
+        // A prefix match got this right only by luck.
+        assert_eq!(rate_limited_seconds("rate_limited:12"), Some(12));
+        assert_eq!(
+            rate_limited_seconds("error running server function: rate_limited:7 polling too fast (1min window)"),
+            Some(7)
+        );
+        assert_eq!(rate_limited_seconds("rate_limited: 30 "), Some(30));
+    }
+
+    #[test]
+    fn anything_else_stays_a_real_error() {
+        // The failure mode this guards: treating an unknown error as "wait and retry"
+        // makes a dead backend look like a slow one, forever.
+        assert_eq!(rate_limited_seconds("connection refused"), None);
+        assert_eq!(rate_limited_seconds("rate_limited:soon"), None);
+        assert_eq!(rate_limited_seconds(""), None);
     }
 
     #[test]

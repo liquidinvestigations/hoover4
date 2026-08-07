@@ -42,14 +42,20 @@ fn LlmContent() -> Element {
     let mut summary_model = use_signal(String::new);
     let mut filter = use_signal(String::new);
 
-    if let Some(p) = page.as_ref() {
+    // Seeding the two selects from the loaded page, in an effect rather than in the
+    // render body: a signal written during render schedules another render from inside
+    // one. Read (not peeked) so a Refresh that clears them re-seeds.
+    use_effect(move || {
+        let Some(p) = page_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned() else {
+            return;
+        };
         if chat_model.read().is_empty() && !p.default_chat_model.is_empty() {
             chat_model.set(p.default_chat_model.clone());
         }
         if summary_model.read().is_empty() && !p.summarization_model.is_empty() {
             summary_model.set(p.summarization_model.clone());
         }
-    }
+    });
 
     rsx! {
         if let Some(msg) = flash.read().as_ref() {

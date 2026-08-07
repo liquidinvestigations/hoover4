@@ -2,7 +2,10 @@ FROM rust:1.91.0-trixie
 
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
-RUN cargo binstall dioxus-cli@0.7.1
+# MUST match the `dioxus` version in Cargo.lock. A mismatch is not cosmetic: dx prints
+# `ERROR 🚫dx and dioxus versions are incompatible!` at every boot, and the two halves
+# disagree about the manifest format the built app is described by.
+RUN cargo binstall dioxus-cli@0.7.9
 RUN apt update -yq && apt install -yq libwebkit2gtk-4.1-dev \
   build-essential \
   curl \

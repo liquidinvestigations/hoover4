@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from fastmcp import FastMCP
@@ -141,10 +142,12 @@ class RoutedTool(Tool):
             #    matters most. A tool that captures nothing still gets an empty marker:
             #    the card authenticates the marker by its position, and that only works
             #    if every result this router returns ends with one.
+            result = _drop_dead_links(result)
+
             captured = None
             if capture_mod.should_capture(tool_name):
                 captured = await capture_mod.capture(chat, tool_name, username, failed=failed)
-            result = _attach_artifact(result, captured)
+            result = _attach_artifact(result, captured, failed=failed)
 
             # 4. Tab cap, AFTER the capture: capture reads the active tab, and closing
             #    tabs first could take the one the agent just acted on.
@@ -188,6 +191,34 @@ class RoutedTool(Tool):
         )
 
 
+#: Markdown links into playwright-mcp's own output directory, e.g.
+#: `- [Snapshot](.playwright-mcp/page-2026-08-07T16-54-18-139Z.yml)`.
+#:
+#: The sidecar writes large snapshots to a file inside its own container and links them by
+#: relative path. Nothing on either side of this router can open that path: the model
+#: cannot read files, and the website renders it as a broken link in the transcript. It is
+#: dead weight that also invites the model to ask for a file that does not exist for it.
+_DEAD_LINK = re.compile(r"^\s*-?\s*\[[^\]]*\]\(\.playwright-mcp/[^)]*\)\s*$", re.MULTILINE)
+
+#: A section heading left with nothing under it once the dead link above is gone.
+_EMPTY_TAIL_HEADING = re.compile(r"\n#+ *\w[^\n]*\s*$")
+
+
+def _drop_dead_links(result: ToolResult) -> ToolResult:
+    """Strip links into the sidecar's output directory from every text block."""
+    content = []
+    for block in result.content or []:
+        text = getattr(block, "text", None)
+        if isinstance(block, TextContent) and isinstance(text, str):
+            cleaned = _DEAD_LINK.sub("", text)
+            if cleaned != text:
+                # `### Snapshot` followed by only that link is now a heading over nothing.
+                cleaned = _EMPTY_TAIL_HEADING.sub("", cleaned.rstrip())
+                block = TextContent(type="text", text=cleaned.rstrip())
+        content.append(block)
+    return ToolResult(content=content, structured_content=result.structured_content)
+
+
 #: Marker line carrying the capture ids in the tool result's **text**.
 #:
 #: `structured_content` is the right place for this and is where it also goes — but it
@@ -199,30 +230,41 @@ class RoutedTool(Tool):
 #: The cost is ~15 tokens of opaque line per browser call. The card parses it out and
 #: **strips it before display**, so it is never shown to the user either.
 #:
-#: **It is always the last block, and it is always present** — `[hoover4:artifacts] []`
-#: when there is nothing to report. That is not tidiness: the rest of a browser tool's
-#: text *is the fetched page*, so a hostile page can write this marker into its own body
-#: and, if it were the only one, have attacker-chosen titles and URLs rendered inside the
-#: trusted "Archived page" chrome. The card only honours a marker on the final line, and
-#: an unconditional trailing marker is what makes that check hold for every tool rather
-#: than only for the ones that happened to capture something.
+#: **It is always the last block, and it is always present** — `[hoover4:artifacts]
+#: {"artifacts": []}` when there is nothing to report. That is not tidiness: the rest of a
+#: browser tool's text *is the fetched page*, so a hostile page can write this marker into
+#: its own body and, if it were the only one, have attacker-chosen titles and URLs rendered
+#: inside the trusted "Archived page" chrome. The card only honours a marker on the final
+#: line, and an unconditional trailing marker is what makes that check hold for every tool
+#: rather than only for the ones that happened to capture something.
+#:
+#: The payload is an **object**, `{"artifacts": [...], "failed": true}`. It used to be the
+#: bare array, and the card still reads that form for rows already in a transcript — but a
+#: bare array had nowhere to put the one other thing the card cannot work out for itself:
+#: whether the call *failed*. Playwright reports failure as `is_error` plus a prose line;
+#: by the time the result reaches the website that flag is gone, and the card was left
+#: rendering "opened http://clickhouse:8123" for a navigation that never happened. `failed`
+#: is written only when true, so a successful call's marker is unchanged in size.
 ARTIFACT_MARKER = "[hoover4:artifacts]"
 
 
 def _attach_artifact(
-    result: ToolResult, captured: capture_mod.CaptureResult | None
+    result: ToolResult,
+    captured: capture_mod.CaptureResult | None,
+    failed: bool = False,
 ) -> ToolResult:
-    """Record the capture on the tool result, in both places a consumer might look.
+    """Record the capture and the call's outcome on the tool result.
 
     The model is told nothing about this beyond an id it has no use for. It exists so the
-    website can render the screenshot and the archived page on the tool card.
+    website can render the screenshot and the archived page on the tool card, and say out
+    loud when the call did not do what its name suggests.
 
     `captured` of `None` (or a capture that produced no artifact) still appends an **empty**
     marker. See `ARTIFACT_MARKER`: the card trusts the marker only on the last line, and
     that only means anything if every result ends with one.
     """
     if captured is None or not captured.artifact_id:
-        return _append_marker(result, [])
+        return _append_marker(result, [], failed=failed)
     entry = {
         "artifact_id": captured.artifact_id,
         "kind": artifacts.KIND_PAGE_CAPTURE,
@@ -233,13 +275,20 @@ def _attach_artifact(
     if captured.detail:
         entry["detail"] = captured.detail
 
-    return _append_marker(result, [entry])
+    return _append_marker(result, [entry], failed=failed)
 
 
-def _append_marker(result: ToolResult, entries: list[dict]) -> ToolResult:
+def _append_marker(
+    result: ToolResult, entries: list[dict], failed: bool = False
+) -> ToolResult:
     """Put `entries` in both places a consumer might look, text marker last."""
+    payload: dict[str, Any] = {"artifacts": entries}
+    if failed:
+        payload["failed"] = True
+
     # 1. The structured key, for any client that preserves structured content (the host's
-    #    .mcp.json entries do).
+    #    .mcp.json entries do). It keeps the bare-array shape: a client reading the
+    #    structured key has `is_error` from MCP itself and needs no flag from us.
     structured = result.structured_content
     if isinstance(structured, dict):
         structured = dict(structured)
@@ -251,7 +300,7 @@ def _append_marker(result: ToolResult, entries: list[dict]) -> ToolResult:
     #    that position is what the card authenticates it by. See ARTIFACT_MARKER.
     content = list(result.content or [])
     content.append(
-        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps(entries)}")
+        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps(payload)}")
     )
 
     return ToolResult(content=content, structured_content=structured)

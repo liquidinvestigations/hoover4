@@ -32,9 +32,13 @@ pub fn ChatTranscript(
             .collect()
     };
     let count = matches.len();
-    if *match_count.read() != count {
-        match_count.set(count);
-    }
+    // Reported to the find bar from an effect, never from the render body: writing a
+    // signal mid-render schedules another render from inside one.
+    use_effect(move || {
+        if *match_count.peek() != count {
+            match_count.set(count);
+        }
+    });
     let active_msg = matches.get(*match_index.read()).copied();
 
     rsx! {
@@ -76,6 +80,7 @@ pub fn ChatTranscript(
                             tool_output: String::new(),
                             content_summary: tool.summary.clone(),
                             running: !tool.done,
+                            elapsed_ms: tool.elapsed_ms,
                         }
                     }
                 }

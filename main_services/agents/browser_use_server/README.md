@@ -202,7 +202,24 @@ takes a capture through its own CDP connection:
 2. `Page.captureSnapshot{format: "mhtml"}` → inlined to self-contained HTML by
    [`mhtml.py`](browser_use_server/mhtml.py);
 3. one `chat_artifacts` row, and `{"artifact_id": …}` appended to the tool result under
-   `_hoover4_artifacts`.
+   `_hoover4_artifacts` — and, in the text, a trailing
+   `[hoover4:artifacts] {"artifacts": [...], "failed": true}` marker.
+
+The marker's `failed` flag exists because **`is_error` does not survive to the transcript**.
+LangGraph hands the website the text blocks and nothing else, and for a browser tool that
+text *is the fetched page* — so "Error:" in it proves nothing, and the card was left
+describing the tool's arguments instead of its outcome ("opened http://clickhouse:8123" for
+a navigation urlcheck had refused). The router knows, so the router writes it down. The
+flag is written only when true; the array form without it is still read, for rows already
+stored.
+
+The router also strips markdown links into playwright-mcp's own output directory —
+`- [Snapshot](.playwright-mcp/page-2026-08-07T16-54-18-139Z.yml)` — from every text block,
+along with the section heading left standing over nothing. That file exists inside the
+sidecar's container and nowhere else: the model cannot read files, and the website rendered
+it as a dead link in the transcript. Lines that merely *mention* the path are untouched;
+the rule matches a whole line that is only the link, because the rest of the result is
+evidence and must not be rewritten.
 
 **Capture is never a tool argument.** The completeness of the transcript must not depend on
 the model's judgement — a model that forgets to screenshot the CAPTCHA it hit produces a

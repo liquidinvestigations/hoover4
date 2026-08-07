@@ -91,6 +91,11 @@ DEFAULTS = {
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
         "tesseract_languages": "eng",
+        # How the website is served. false = `dx serve` (the development loop). true =
+        # build once with `dx build --release` and serve the binary, which is what a
+        # visitor should get: no dev overlay, no rebuild-on-boot 500s. See
+        # compose/website-release.yaml.
+        "website_release_mode": "false",
         "ocr_pdf_enabled": "true",
         # runtime behaviour when the GPU host is unreachable (Part 2 consumers)
         "gpu_fallback": "true",
@@ -169,6 +174,8 @@ AI_OVERLAYS = [
 MAIN_OVERLAYS = [
     (None, "compose/agents.yaml", None),          # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
+    # Overrides hoover4-website's command; adds no service of its own.
+    ("website_release_mode", "compose/website-release.yaml", None),
     # Part 2 adds ocr-pdf.yaml here.
 ]
 

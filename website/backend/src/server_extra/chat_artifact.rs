@@ -150,7 +150,7 @@ async fn _chat_artifact(
             tracing::error!("chat_artifact lookup failed for {artifact_id}: {e:#}");
             (StatusCode::INTERNAL_SERVER_ERROR, "lookup failed".to_string())
         })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "no such artifact".to_string()))?;
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "artifact not found".to_string()))?;
 
     if !may_read(&user.username, user.is_admin, &row.username) {
         tracing::warn!(

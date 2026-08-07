@@ -71,9 +71,122 @@ def _tool_call_id(content: dict[str, Any]) -> str | None:
 
 
 def truncate(text: str, max_chars: int = TOOL_PAYLOAD_CHARS) -> str:
+    """Cut a *text* payload off. For a JSON document use `truncate_json` instead."""
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "…"
+
+
+#: Headroom for the `"truncated": true` markers, added after the shrinking.
+_MARK_RESERVE = 64
+
+#: Below this a string is not worth clipping.
+_MIN_CLIPPABLE = 80
+
+
+def truncate_json(text: str, max_chars: int = TOOL_PAYLOAD_CHARS) -> str:
+    """Fit a serialised tool result into `max_chars` **without breaking its JSON**.
+
+    The Python twin of `truncate_tool_payload` in `website/common/src/chat_types.rs`; a
+    research turn's transcript must read identically to an inline one's, and this is one
+    of the places the two are the same code written twice.
+
+    Cutting the serialised document leaves a `{` with no `}`, and every reader then treats
+    a recorded result as an absent one — the card printed "the result payload was not
+    recorded" about a row it had just read. So: drop whole elements off the biggest array
+    (the result list, in practice), mark the object that owned it, and only clip long
+    strings when there is nothing left to drop. Anything that is not JSON, or that is one
+    huge scalar, falls back to `truncate`.
+    """
+    if len(text) <= max_chars:
+        return text
+    try:
+        value = json.loads(text)
+    except (TypeError, ValueError):
+        return truncate(text, max_chars)
+
+    target = max(max_chars - _MARK_RESERVE, 0)
+    marked: list[list[Any]] = []
+    _shrink_to_fit(value, target, marked)
+    for path in marked:
+        owner = _at(value, path)
+        if isinstance(owner, dict):
+            owner["truncated"] = True
+
+    out = _dumps(value)
+    if len(out) <= max_chars:
+        return out
+    return truncate(text, max_chars)
+
+
+def _at(value: Any, path: list[Any]) -> Any:
+    for step in path:
+        try:
+            value = value[step]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return value
+
+
+def _collect(value: Any, path: list[Any], out: list, want: str) -> None:
+    """Every array (or long string) in the document, as (path, size)."""
+    if want == "array" and isinstance(value, list) and value:
+        out.append((list(path), len(_dumps(value))))
+    if want == "string" and isinstance(value, str) and len(value) > _MIN_CLIPPABLE:
+        out.append((list(path), len(value)))
+    if isinstance(value, list):
+        for i, item in enumerate(value):
+            _collect(item, path + [i], out, want)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _collect(item, path + [key], out, want)
+
+
+def _shrink_to_fit(value: Any, target: int, marked: list[list[Any]]) -> None:
+    """Arrays first and biggest-first, then strings.
+
+    Dropping the tail of a result list costs the reader the results they were least
+    likely to read; clipping strings costs every result a little.
+    """
+    while len(_dumps(value)) > target:
+        arrays: list = []
+        _collect(value, [], arrays, "array")
+        if not arrays:
+            break
+        arrays.sort(key=lambda pair: pair[1], reverse=True)
+        path = arrays[0][0]
+        items = _at(value, path)
+        if not isinstance(items, list):
+            break
+        # By measured size rather than one-at-a-time: a hundred results would otherwise
+        # mean a hundred serialisations of the whole document.
+        over = len(_dumps(value)) - target
+        freed = 0
+        while items and freed <= over:
+            freed += len(_dumps(items.pop())) + 1
+        owner = path[:-1]
+        if owner not in marked:
+            marked.append(owner)
+
+    # Every array is empty and it still does not fit: the bulk is in the strings.
+    while len(_dumps(value)) > target:
+        strings: list = []
+        _collect(value, [], strings, "string")
+        if not strings:
+            return
+        strings.sort(key=lambda pair: pair[1], reverse=True)
+        path, length = strings[0]
+        owner = _at(value, path[:-1])
+        keep = max(length // 2, _MIN_CLIPPABLE // 2)
+        clipped = _at(value, path)[:keep] + "…"
+        if isinstance(owner, dict):
+            owner[path[-1]] = clipped
+        elif isinstance(owner, list):
+            owner[path[-1]] = clipped
+        else:
+            return
+        if path[:-1] not in marked:
+            marked.append(path[:-1])
 
 
 def _dumps(value: Any) -> str:
@@ -126,7 +239,8 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
         # pane shows the result rather than a second copy of the arguments.
         output = _as_dict(content.get("output"))
         result = output.get("content", content)
-        tool_output = truncate(_dumps(result))
+        # Inside the JSON, never across it — see `truncate_json`.
+        tool_output = truncate_json(_dumps(result))
 
         name = _tool_name(content)
         if name == "tool":
@@ -135,7 +249,7 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
         paired.append(
             PairedToolCall(
                 tool_name=name,
-                tool_input=truncate(tool_input),
+                tool_input=truncate_json(tool_input),
                 tool_output=tool_output,
                 summary=truncate(tool_input, TOOL_SUMMARY_CHARS),
                 doc_refs=_dumps(refs) if refs else "",

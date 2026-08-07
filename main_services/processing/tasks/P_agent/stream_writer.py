@@ -56,6 +56,28 @@ def _tool_call_id(content: Any) -> str | None:
         return str(output["tool_call_id"])
     return str(content["tool_call_id"]) if content.get("tool_call_id") else None
 
+def _chat_model() -> str:
+    """The model a research turn runs on, and the one its transcript row records.
+
+    `server_settings.llm_default_chat_model` — the same key the website resolves against,
+    so a deep-research answer and an inline one in the same conversation say the same
+    thing. The worker used to write `os.getenv("LLM_MODEL")` into the row instead: unset
+    in this container, so every research row recorded an empty model, while the agent
+    quietly answered with whatever *its* container's env said.
+
+    Empty means "no admin default configured" and is passed through as such — the agent
+    then falls back to its own, which is the pre-existing behaviour and better than
+    refusing the turn.
+    """
+    try:
+        from database.clickhouse import get_server_setting
+
+        return (get_server_setting("llm_default_chat_model") or "").strip()
+    except Exception:  # noqa: BLE001 - a research turn must not die over a settings read
+        log.warning("[P_agent] could not read llm_default_chat_model", exc_info=True)
+        return ""
+
+
 #: Where the full research agent lives on the shared `hoover4` network.
 AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://hoover4-full-research-agent:8000")
 
@@ -201,6 +223,7 @@ class ResearchStreamWriter:
         )
         self._keepalive_thread.start()
 
+        llm_model = _chat_model()
         response = requests.post(
             f"{AGENT_URL}/chat/stream",
             json={
@@ -211,6 +234,7 @@ class ResearchStreamWriter:
                 "chat_history": [],
                 "username": self.params.username,
                 "allowed_collections": self.params.allowed_collections,
+                "llm_model": llm_model,
             },
             timeout=(CONNECT_TIMEOUT_SECONDS, AGENT_TIMEOUT_SECONDS),
             stream=True,
@@ -249,7 +273,7 @@ class ResearchStreamWriter:
             "answer": answer,
             "reasoning": reasoning,
             "tool_calls": self.tool_events,
-            "model": os.getenv("LLM_MODEL", ""),
+            "model": llm_model,
         }
 
     def _handle(self, kind: str | None, content: Any) -> None:

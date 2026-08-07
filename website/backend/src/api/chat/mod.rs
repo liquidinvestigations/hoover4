@@ -15,7 +15,7 @@ pub mod summarize;
 use std::time::{Duration, Instant};
 
 use common::chat_types::{
-    extract_doc_refs, title_from_message, truncate_payload, ChatOptions, ChatPollResult, ChatRole,
+    extract_doc_refs, title_from_message, truncate_tool_payload, ChatOptions, ChatPollResult, ChatRole,
     ChatSendResult, ChatSessionDetail, ChatSessionItem, StreamToolRow, StreamTurn,
     MAX_MESSAGE_CHARS, TOOL_PAYLOAD_CHARS,
 };
@@ -121,7 +121,8 @@ pub async fn get_chat_artifact_detail(
 ) -> anyhow::Result<String> {
     let username = require_named_user(user)?;
     let Some(row) = db_chat::artifacts::get_artifact(&artifact_id).await? else {
-        anyhow::bail!("no such artifact");
+        // Phrased to match `guard::is_not_found`, so this answers 404 rather than 500.
+        anyhow::bail!("artifact not found");
     };
     if row.username != username && !user.is_admin {
         anyhow::bail!("forbidden: this artifact belongs to another user");
@@ -455,6 +456,11 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             tool_name: r.tool_name.clone(),
             summary: r.content.clone(),
             done: false,
+            // A running tool's stream row is written once, at `start_tool`, and not
+            // touched again until the call finalises into `chat_messages` — the keepalive
+            // rewrites the *assistant* row. So its `updated_at` is when the call started,
+            // which is what the card's counter needs to survive a refresh.
+            elapsed_ms: now_ms.saturating_sub(r.updated_at).clamp(0, i64::from(u32::MAX)) as u32,
         })
         .collect();
     let assistant = live
@@ -523,8 +529,18 @@ pub async fn poll_chat(
     sig: String,
 ) -> anyhow::Result<ChatPollResult> {
     let username = require_named_user(user)?;
-    check_and_record(username, RateLimitKind::ChatPoll)
-        .map_err(|e| anyhow::anyhow!("poll rate limited: {e}"))?;
+    // Typed, not prose. The client counts consecutive poll failures and declares "lost
+    // contact with the chat" at three — and a rate limit is the opposite of lost contact:
+    // the server is answering, the turn is still running, and the only correct response is
+    // to wait exactly this long and ask again.
+    check_and_record(username, RateLimitKind::ChatPoll).map_err(|e| {
+        anyhow::anyhow!(
+            "{}{} polling too fast ({} window)",
+            common::chat_types::RATE_LIMITED_PREFIX,
+            e.retry_after_seconds,
+            e.window
+        )
+    })?;
 
     // Ownership: reading another user's transcript is not allowed even to poll it.
     db_chat::get_session(username, &session_id)
@@ -799,6 +815,7 @@ async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::R
         username,
         session_id,
         turn_uuid: &turn_uuid,
+        llm_model: &llm_model,
         state: &state,
         outcome,
         cancelled,
@@ -821,6 +838,11 @@ struct FinaliseArgs<'a> {
     username: &'a str,
     session_id: &'a str,
     turn_uuid: &'a str,
+    /// The model this turn actually ran on, resolved and allowlist-checked in
+    /// `send_message`. Not `env LLM_MODEL`: that variable is unset in the website
+    /// container, so every row recorded an empty string, and it would be the wrong answer
+    /// anyway the moment a user picks a model from the dropdown.
+    llm_model: &'a str,
     state: &'a TurnState,
     outcome: anyhow::Result<()>,
     cancelled: bool,
@@ -837,6 +859,7 @@ async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
         username,
         session_id,
         turn_uuid,
+        llm_model,
         state,
         outcome,
         cancelled,
@@ -867,7 +890,7 @@ async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
                 agent_duration_ms,
                 retry_errors: encode_errors(&attempt_errors),
                 reasoning: state.reasoning.clone(),
-                model: std::env::var("LLM_MODEL").unwrap_or_default(),
+                model: llm_model.to_string(),
                 message_uuid: turn_uuid.to_string(),
                 ..Default::default()
             },
@@ -917,7 +940,7 @@ async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
                 agent_duration_ms,
                 retry_errors: encode_errors(&attempt_errors),
                 reasoning: state.reasoning.clone(),
-                model: std::env::var("LLM_MODEL").unwrap_or_default(),
+                model: llm_model.to_string(),
                 message_uuid: turn_uuid.to_string(),
                 ..Default::default()
             },
@@ -1167,8 +1190,10 @@ async fn finalize_tool_row(
     turn_uuid: &str,
     call: &agent_client::PairedToolCall,
 ) -> anyhow::Result<()> {
-    let tool_input = truncate_payload(&call.tool_input, TOOL_PAYLOAD_CHARS);
-    let tool_output = truncate_payload(&call.tool_output, TOOL_PAYLOAD_CHARS);
+    // Inside the JSON, never across it: a `{` stored without its `}` is a result the whole
+    // read path reports as missing. See `truncate_tool_payload`.
+    let tool_input = truncate_tool_payload(&call.tool_input, TOOL_PAYLOAD_CHARS);
+    let tool_output = truncate_tool_payload(&call.tool_output, TOOL_PAYLOAD_CHARS);
     let refs = extract_doc_refs(&call.tool_name, &call.tool_output);
     let doc_refs = if refs.is_empty() {
         String::new()

@@ -1,6 +1,6 @@
 //! `/ai_chat/c/:session_id/...` — conversation transcript + document preview (60/40).
 
-use common::chat_types::{ChatMessageItem, ChatOptions};
+use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions};
 use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
@@ -133,25 +133,42 @@ fn AiChatSessionRoot(
         .and_then(|r| r.as_ref().ok())
         .copied()
         .unwrap_or(true);
+    // `None` while `whoami` is in flight, not `false`: defaulting to "not a guest" drew
+    // the model picker for a moment on every guest's first paint and then removed it.
     let is_guest = whoami_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
-        .map(|u| u.is_guest)
-        .unwrap_or(false);
+        .map(|u| u.is_guest);
     let choices = models_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    if selected_model.read().is_empty() {
+    let show_models = is_guest == Some(false) && !choices.is_empty();
+    // In an effect, not in the render body — a signal written during render schedules a
+    // render from inside one. It also has to re-run per conversation: the switch below
+    // clears `selected_model`, and this is what re-seeds it.
+    use_effect(move || {
+        let choices = models_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
+        // Read, not peeked: this effect must re-run when the value is *cleared*, which
+        // is how a conversation switch asks for a fresh default. The write below then
+        // re-runs it once more and it returns immediately.
+        if !selected_model.read().is_empty() {
+            return;
+        }
         if let Some(def) = choices.iter().find(|c| c.is_default) {
             selected_model.set(def.model_id.clone());
         } else if let Some(first) = choices.first() {
             selected_model.set(first.model_id.clone());
         }
-    }
+    });
 
     // Filtered on the session on screen: while the resource refetches it still holds the
     // *previous* conversation's detail, and using that would re-seed the transcript the
@@ -227,6 +244,18 @@ fn AiChatSessionRoot(
                         }
                     }
                     Err(e) => {
+                        // A rate limit is not lost contact — it is the server answering,
+                        // promptly, to say "slower". Counting it toward `failures` made
+                        // three tabs on one conversation declare the chat lost while the
+                        // turn was still running. Wait exactly as long as it asked and
+                        // carry on; `failures` is untouched, because nothing failed.
+                        if let Some(secs) = rate_limited_seconds(&e.to_string()) {
+                            n0_future::time::sleep(std::time::Duration::from_secs(
+                                secs.clamp(1, 30),
+                            ))
+                            .await;
+                            continue;
+                        }
                         failures += 1;
                         if failures >= 3 {
                             error.set(Some(format!("lost contact with the chat: {e}")));
@@ -325,8 +354,8 @@ fn AiChatSessionRoot(
                     }
                     Err(e) => {
                         let msg = e.to_string();
-                        if let Some(secs) = msg.strip_prefix("rate_limited:").and_then(|s| s.parse().ok())
-                        {
+                        // Searched for, not stripped: ServerFnError wraps the message.
+                        if let Some(secs) = rate_limited_seconds(&msg) {
                             retry_after.set(Some(secs));
                         } else {
                             error.set(Some(msg));
@@ -365,7 +394,16 @@ fn AiChatSessionRoot(
         spawn(async move {
             // The turn finalises its partial with a marker; the poll loop sees the
             // finished row and clears `sending`.
-            let _ = chat_stop(id).await;
+            //
+            // A failure here was swallowed, so a stop that did not happen was
+            // indistinguishable from one that did: the button reacted, the answer kept
+            // arriving, and there was nothing to read. `Ok(false)` is not a failure — it
+            // means the turn had already finished, which is the outcome the user wanted.
+            if let Err(e) = chat_stop(id).await {
+                error.set(Some(format!(
+                    "could not stop the answer: {e} \u{2014} it is still running"
+                )));
+            }
         });
     };
 
@@ -481,7 +519,7 @@ fn AiChatSessionRoot(
                             "."
                         }
                     } else {
-                        if !is_guest && !choices.is_empty() {
+                        if show_models {
                             div { style: "margin-bottom: 8px;",
                                 ModelSelector {
                                     choices: choices.clone(),

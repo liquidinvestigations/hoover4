@@ -451,11 +451,16 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
             telemetry::RouteClass::Document => telemetry::EVENT_USER_GET_DOCUMENT,
             _ => telemetry::EVENT_USER_OTHER_REQUEST,
         };
+        // A 404 is not breakage: it is a complete, correct answer about something that is
+        // not there. Counting it made a crawler walking chat URLs with fresh guest
+        // cookies read as a 22 % error rate on the admin metrics page.
+        let counts_as_error = (status.is_server_error() || status.is_client_error())
+            && status != axum::http::StatusCode::NOT_FOUND;
         telemetry::record_api_event(
             &current_user.username,
             event_type,
             fn_name,
-            status.is_server_error() || status.is_client_error(),
+            counts_as_error,
             started.elapsed().as_millis().min(u32::MAX as u128) as u32,
             bytes_in,
             bytes_out,

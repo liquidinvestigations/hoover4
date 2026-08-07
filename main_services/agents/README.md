@@ -58,11 +58,23 @@ enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`), 
 card refuses any id that is not a UUID before it builds that URL.
 
 Because the structured key does not survive LangGraph, the browser router also appends a
-`[hoover4:artifacts] [...]` line to the result text — **always**, even when it captured
-nothing, and always as the last block. That position is what the card authenticates the
-marker by: a browser tool's text is the fetched page, so a hostile page that plants the
-marker in its own body would otherwise get attacker-chosen titles and URLs rendered in the
-trusted "Archived page" chrome.
+`[hoover4:artifacts] {"artifacts": [...]}` line to the result text — **always**, even when
+it captured nothing, and always as the last block. That position is what the card
+authenticates the marker by: a browser tool's text is the fetched page, so a hostile page
+that plants the marker in its own body would otherwise get attacker-chosen titles and URLs
+rendered in the trusted "Archived page" chrome.
+
+The payload used to be a bare array and the card still reads that form for rows already in
+transcripts. It became an object to carry one more thing the card cannot work out for
+itself: `"failed": true` when the sidecar reported `is_error`. Playwright says a call
+failed in prose, and by the time the result reaches the website that prose is
+indistinguishable from the page it was trying to fetch — so the card rendered "opened
+http://clickhouse:8123" for a navigation that never happened. The flag is written only
+when true.
+
+The router also strips links into playwright-mcp's own output directory
+(`- [Snapshot](.playwright-mcp/page-….yml)`) from every text block. Nothing downstream can
+open that path: the model cannot read files and the website renders it as a broken link.
 
 `P0_scan_disk` must never walk the `derived/` prefix: an artifact the ingest walker can
 see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`

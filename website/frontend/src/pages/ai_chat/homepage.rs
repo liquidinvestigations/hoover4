@@ -1,12 +1,13 @@
 //! `/ai_chat` — "What are you researching?" homepage.
 
-use common::chat_types::ChatOptions;
+use common::chat_types::{rate_limited_seconds, ChatOptions};
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
 use crate::api::auth_api::whoami;
 use crate::api::chat_api::{
-    chat_create_session, chat_list_sessions, chat_send_message, chat_start_research,
+    chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
+    chat_start_research,
 };
 use crate::components::chat_components::{ChatComposer, ChatSessionCard, ModelSelector};
 use crate::routes::Route;
@@ -33,25 +34,42 @@ pub fn AiChatPage() -> Element {
         .and_then(|r| r.as_ref().ok())
         .copied()
         .unwrap_or(true);
+    // `None` while `whoami` is in flight, not `false`. Defaulting to "not a guest" drew
+    // the model picker for a moment on every guest's first paint, then took it away —
+    // a control that appears and vanishes reads as a bug or as something being withheld.
     let is_guest = whoami_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
-        .map(|u| u.is_guest)
-        .unwrap_or(false);
+        .map(|u| u.is_guest);
     let choices = models_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    if selected_model.read().is_empty() {
+    let show_models = is_guest == Some(false) && !choices.is_empty();
+    // In an effect, not in the render body: a signal written during render schedules
+    // another render from inside one, which Dioxus tolerates and nobody should rely on.
+    use_effect(move || {
+        let choices = models_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
+        // Read, not peeked: this effect must re-run when the value is *cleared*, which
+        // is how a conversation switch asks for a fresh default. The write below then
+        // re-runs it once more and it returns immediately.
+        if !selected_model.read().is_empty() {
+            return;
+        }
         if let Some(def) = choices.iter().find(|c| c.is_default) {
             selected_model.set(def.model_id.clone());
         } else if let Some(first) = choices.first() {
             selected_model.set(first.model_id.clone());
         }
-    }
+    });
 
     let on_submit = move |_| {
         let text = draft.read().trim().to_string();
@@ -67,31 +85,45 @@ pub fn AiChatPage() -> Element {
         spawn(async move {
             match chat_create_session(Vec::new()).await {
                 Ok(id) => {
-                    if opts.deep_research {
+                    // The session exists before the first message can be refused. When
+                    // that message never lands, the empty "New chat" it left behind is
+                    // pure litter — and rate limiting is exactly the case that produces
+                    // one per press. So the failure paths take it back out.
+                    let sent = if opts.deep_research {
                         match chat_start_research(id.clone(), text, opts).await {
-                            Ok(_) => {
-                                nav.push(Route::ai_chat_session(id, None, None));
-                            }
+                            Ok(_) => true,
                             Err(e) => {
-                                if let Some(secs) = parse_rate_limited(&e.to_string()) {
+                                if let Some(secs) = rate_limited_seconds(&e.to_string()) {
                                     retry_after.set(Some(secs));
                                 } else {
                                     error.set(Some(e.to_string()));
                                 }
+                                false
                             }
                         }
                     } else {
                         let model_id = if model.is_empty() { None } else { Some(model) };
                         match chat_send_message(id.clone(), text, opts, model_id).await {
-                            Ok(result) => {
-                                if let Some(secs) = result.retry_after_seconds {
+                            Ok(result) => match result.retry_after_seconds {
+                                Some(secs) => {
                                     retry_after.set(Some(secs));
-                                } else {
-                                    nav.push(Route::ai_chat_session(id, None, None));
+                                    false
                                 }
+                                None => true,
+                            },
+                            Err(e) => {
+                                error.set(Some(e.to_string()));
+                                false
                             }
-                            Err(e) => error.set(Some(e.to_string())),
                         }
+                    };
+                    if sent {
+                        nav.push(Route::ai_chat_session(id, None, None));
+                    } else {
+                        // Best effort: a conversation that failed to start is worth less
+                        // than the error message already on screen, so a failure to clean
+                        // it up must not replace that message with a second one.
+                        let _ = chat_delete_session(id).await;
                     }
                 }
                 Err(e) => error.set(Some(e.to_string())),
@@ -152,7 +184,7 @@ pub fn AiChatPage() -> Element {
                         "."
                     }
                 } else {
-                    if !is_guest && !choices.is_empty() {
+                    if show_models {
                         div { style: "margin-bottom: 10px;",
                             ModelSelector {
                                 choices: choices.clone(),
@@ -183,7 +215,3 @@ pub fn AiChatPage() -> Element {
     }
 }
 
-fn parse_rate_limited(msg: &str) -> Option<u64> {
-    msg.strip_prefix("rate_limited:")
-        .and_then(|s| s.trim().parse().ok())
-}

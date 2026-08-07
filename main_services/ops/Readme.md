@@ -150,6 +150,14 @@ in the compose file yet** (tracked in `plans/3-auth-and-ai/open-questions.md`).
       HOOVER4_RATE_API_W24H_FACTOR: "0.20"
 ```
 
+`HOOVER4_RATE_CHAT_POLL_*` exists too, and its ladder is **flat** — every window factor
+defaults to `1.00` rather than decaying. Polling is machine-paced: a tab watching a
+streaming answer polls at the 500 ms floor for as long as the model generates, so for
+that limiter "sustained" is simply "working". Under the decaying ladder one tab sat
+exactly on the 1 h window's ceiling and two tripped it, at which point the page declared
+the chat lost mid-turn. The per-minute default is 600 (~5 streaming tabs); the expensive
+half of a poll, the held request, has its own separate cap.
+
 The counters are **in-process** (a `Mutex<HashMap>` in the website, pruned on access),
 correct only while the website is a single container. Redis was considered and rejected
 for now: the container runs with `--maxmemory-policy allkeys-lru`, which would silently
@@ -168,3 +176,40 @@ Drive a browser across every page as fast as possible for 5 minutes, read the co
 and set `HOOVER4_RATE_API_PER_MINUTE` to 10x that rate (count / 5 * 10). The baseline
 above was measured this way on 2026-08-05 (scripted flood, 1380 calls / 5 min).
 
+## How the website is served: `dx serve` vs a release build
+
+`website_release_mode` in `hoover4.ini` picks between the two. It is `false` by default.
+
+| | `false` — `dx serve` | `true` — `compose/website-release.yaml` |
+|---|---|---|
+| build | on start, and again on every source change | once, at boot |
+| dev overlay | "Your app is being rebuilt." on every page | none |
+| CORS | `access-control-allow-origin: *` added by the proxy | only what the app sets (nothing) |
+| after a container recreate | every route 500s until the build finishes | same wait, then a clean site |
+| editing code | hot rebuild | needs a restart |
+
+**This is not a preference, it is a demo-versus-development split.** `dx serve` is a
+development server and behaves like one in front of visitors — the toast is baked into
+the served HTML for every fresh profile, not a session-local nag, and the boot rebuild
+was observed 500ing `/admin/ai_status` for about five minutes. A visitor should get the
+release build; whoever is writing the code should not.
+
+Two related fixes landed with it:
+
+* **The dx CLI version must equal the `dioxus` version in `Cargo.lock`** (0.7.9 today).
+  A mismatch prints `ERROR 🚫dx and dioxus versions are incompatible!` at every boot and
+  means the two halves disagree about the built app's manifest format.
+* **The build-cache volume was mounted one directory too deep**
+  (`/app/frontend/target`, while the workspace manifest is at `/app`, so cargo writes to
+  `/app/target`). The named volume held nothing and the 3 GB build tree lived in the
+  container's writable layer — which is precisely why recreating the container cost a
+  multi-minute cold rebuild. Now mounted at `/app/target`.
+
+### Known: the first release boot is a cold build
+
+Switching `website_release_mode` on for the first time compiles the workspace in release
+mode inside the container, with an empty release profile in the target volume. That is
+minutes, and the site is down for all of them. Watch `docker logs -f hoover4-website`;
+it prints `[website] release build starting` and then `[website] serving <path>`. If the
+server binary cannot be found afterwards the container prints the tree it searched and
+exits, rather than serving a blank page.

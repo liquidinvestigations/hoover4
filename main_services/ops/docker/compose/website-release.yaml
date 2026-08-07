@@ -1,0 +1,47 @@
+# Serve the website as a built release binary instead of through `dx serve`.
+#
+# Enabled by `website_release_mode = true` in hoover4.ini. Off by default: `dx serve` is
+# the development loop and losing it to gain a demo would be a bad trade.
+#
+# Why this exists (plan 2 B4). `dx serve` is a *development* server and it behaves like
+# one in front of visitors:
+#
+#   * it bakes "Your app is being rebuilt." into the served page — every page, every
+#     fresh profile, not a session-local toast;
+#   * it injects `access-control-allow-origin: *` on responses the application itself
+#     never marks cross-origin (A8 chased this into the app before finding it here);
+#   * it recompiles on start, and until that finishes every route 500s. Observed: ~5
+#     minutes of `/admin/ai_status` 500s after a container recreate.
+#
+# The build happens in the container on boot rather than in the image, because the image
+# is shared with the development path and a `dx build` layer there would be rebuilt on
+# every source change. With the target volume warm the release build is incremental; the
+# FIRST run after enabling this is a cold release build and takes a while — watch it.
+#
+# The server binary is *discovered*, not hardcoded to a path: `dx` decides the layout
+# (today `target/dx/<package>/release/web/<package>`), and a wrong guess would fail as a
+# blank page rather than as an error. If it is not found the container prints the tree
+# and exits, which is the failure you can act on.
+services:
+  hoover4-website:
+    command:
+      - bash
+      - -euc
+      - |
+        cd /app
+        echo "[website] release build starting (cold builds take several minutes)"
+        dx build --fullstack --package frontend --renderer web --release
+        bin="$$(find /app/target/dx -type f -path '*/release/web/*' -name frontend -perm -u+x | head -1)"
+        if [ -z "$$bin" ]; then
+          echo "[website] FATAL: no release server binary under /app/target/dx" >&2
+          find /app/target/dx -maxdepth 5 >&2 || true
+          exit 1
+        fi
+        echo "[website] serving $$bin"
+        cd "$$(dirname "$$bin")"
+        exec "$$bin"
+    environment:
+      # How the dioxus fullstack server picks its socket. `dx serve` passed these on the
+      # command line; the built binary reads the environment.
+      - IP=0.0.0.0
+      - PORT=8080

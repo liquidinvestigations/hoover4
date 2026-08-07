@@ -164,6 +164,17 @@ at least 500 ms — with content flowing each poll returns immediately, so witho
 floor the client spins as fast as the network allows. Concurrently-held polls are capped
 per user (`MAX_HELD_POLLS_PER_USER`).
 
+**Rate limiting a poll loop is not rate limiting a person.** `RateLimitKind::ChatPoll` has
+a *flat* window ladder — factor 1.0 everywhere, unlike chat messages and API calls, whose
+budget decays the longer a burst lasts. That decay distinguishes a burst of human activity
+from an hour of it; a streaming turn polls at the 500 ms floor for as long as the model
+generates, so for this limiter "sustained" is simply "working". Under the decaying ladder
+one tab sat exactly on the 1 h window's ceiling and two or three tripped it. The refusal is
+also typed — `rate_limited:<secs>`, parsed with `chat_types::rate_limited_seconds` — so the
+poll loop waits and retries instead of counting it toward `failures >= 3` and declaring
+"lost contact with the chat" while the turn is still running. The parser searches for the
+marker rather than stripping a prefix: `ServerFnError` may wrap the message.
+
 Stop and interruption: the composer's stop button calls `live_runs::request_cancel_for`;
 the turn notices within 200 ms and finalises whatever partial exists with an explicit
 marker. A turn whose rows stop advancing for `CHAT_STREAM_STALL_SECONDS` (default 60)

@@ -397,7 +397,12 @@ services:
       - ../../../website/backend:/app/backend
       - ../../../website/Cargo.toml:/app/Cargo.toml
       - ../../../website/Cargo.lock:/app/Cargo.lock
-      - hoover4-website-target:/app/frontend/target
+      # /app/target, not /app/frontend/target: the workspace manifest is at /app, so
+      # that is where cargo writes. Mounted one directory too deep, the volume held
+      # nothing and the 3 GB build tree lived in the container's writable layer — which
+      # is why recreating this container cost a multi-minute cold rebuild, during which
+      # every page 500s.
+      - hoover4-website-target:/app/target
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     ports:
       - "0.0.0.0:12345:8080"

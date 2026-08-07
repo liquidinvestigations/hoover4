@@ -94,11 +94,57 @@ the strict one; an omitted attribute means no sandbox at all. The response addit
 carries `default-src 'none'`. Both are required: the CSP alone still allows scripts, and
 the sandbox alone still lets a stylesheet fetch leak that the capture was viewed.
 
+### Every card says whether the call worked, collapsed
+
+A card built from the tool's **arguments** describes what was attempted, and most readers
+never expand it. Live, a `browser_navigate` that urlcheck refused rendered as "opened
+http://clickhouse:8123" and a dead `web_search` as "0 results · 0 sources" — the demo
+stating as fact something it knew to be false. So every card asks `tool_failure()` before
+it writes its header, and a failure turns the whole card red with a `⚠ refused` / `⚠ failed`
+pip and the message as its tooltip.
+
+Three signals, because no one of them covers everything:
+
+| signal | where it comes from |
+|---|---|
+| `{"success": false}` / non-empty `error` | urlcheck refusals, `web_search` errors |
+| `"failed": true` in the trailing artifact marker | Playwright's `is_error`, written down by the browser router |
+| a first line starting `Error:` | Playwright prose, when there is no marker |
+
+Only the **first** line is examined for that last one. The rest of a browser result is the
+fetched page, and a page whose body contains "Error: 404" has not failed the tool call.
+
+Browser labels carry two tenses for this — `opened {url}` and `could not open {url}` — so
+the header is a statement about the outcome rather than about the argument.
+
 ### The rule every card follows
 
 **Tool payloads are never rendered as HTML.** Titles, snippets and page text come from the
 open web and are attacker-controlled; every one is a Dioxus text node, and a URL becomes an
 `href` only after `http_link` has confirmed it is plainly `http`/`https`.
+
+### Popups: Escape, a focus trap, and focus back where it came from
+
+Both popups go through `ModalShell`, which supplies `role="dialog"`, `aria-modal`, an
+announced label, Escape, and a focus trap made of two guard elements — Tab off either end
+lands on a guard, which bounces focus back into the pane. There is no DOM to query for
+focusable descendants from here, which is why guards rather than a focus list.
+
+Before this, neither popup could be closed or navigated without a mouse: nothing was
+announced, Tab walked straight past the overlay into the transcript behind it, and the
+search-detail popup had no Escape at all. The capture thumbnails became real `<button>`s
+in the same change — they open a modal, so they have to be in the tab order and they have
+to be the element focus returns to on close.
+
+### A truncated payload is truncated inside its JSON
+
+Storage cut the serialised document at `TOOL_PAYLOAD_CHARS`, which leaves a `{` with no
+`}` — so `tool_content` parsed nothing and the card printed "the result payload was not
+recorded" about data sitting in the row it had just read. `truncate_tool_payload` now drops
+whole elements off the biggest array and marks the owning object `"truncated": true`, which
+the card reports as a line rather than letting the list stop silently. When a payload
+genuinely cannot be parsed the card shows the **bytes**; a card must never deny data the
+transcript is holding.
 
 ### Pending cards read their arguments from the stream row's summary
 
@@ -107,6 +153,14 @@ only when the call finalises into `chat_messages`. Its `summary` **is** the argu
 while the call runs (`AgentToolCall::summary` takes `input` first), which is what lets the
 pending `web_search` card show the query. It is truncated at 400 chars, so the cards parse
 it best-effort and fall back to a bare label.
+
+The row also carries `elapsed_ms`, measured **server-side**. A running tool's stream row is
+written once, at `start_tool`, and not rewritten until the call finalises — the keepalive
+touches the assistant row — so its `updated_at` is when the call started. Refreshing the
+page mid-call used to restart the counter at 0, which made a two-minute browse read as
+having just begun: the reassuring number showing up exactly when the worrying one is true.
+It is a duration rather than a start timestamp because this component is compiled into the
+server-side render build too, where there is no browser clock.
 
 ## Reuse of search / document preview
 

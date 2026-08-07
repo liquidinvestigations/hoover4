@@ -75,10 +75,20 @@ and all `api_events` in the session middleware (it is the only choke point that 
 duration and byte counts), and the LLM events in the chat API via
 `telemetry::record_event`.
 
+**A 404 is not an error.** `is_error` is derived from the response status, and every
+`anyhow` error out of a server function used to become a 500 — including "this chat
+session is not yours", which is the normal answer to a stranger asking. One crawler with
+fresh guest cookies walking chat URLs put 11 errors and 22 % on this page overnight.
+`guard::is_not_found` now maps those to 404, and the middleware excludes 404 from
+`is_error`: a not-found is a correct, complete answer about something that is not there.
+The message stays indistinguishable from "does not exist at all" — an id that 404s only
+for strangers is an existence oracle.
+
 ## Rate limiting (api/rate_limit.rs)
 
-Two in-process sliding-window limiters, chat (`HOOVER4_RATE_CHAT_PER_MINUTE`, default
-40) and API (`HOOVER4_RATE_API_PER_MINUTE`, default 1000), each with a window ladder —
+Three in-process sliding-window limiters: chat (`HOOVER4_RATE_CHAT_PER_MINUTE`, default
+40), API (`HOOVER4_RATE_API_PER_MINUTE`, default 1000), and chat polling
+(`HOOVER4_RATE_CHAT_POLL_PER_MINUTE`, default 600). The first two have a window ladder —
 1 min at `X`, then 10 min / 30 min / 1 h / 6 h / 24 h at decaying factors (1.00 / 0.75
 / 0.50 / 0.30 / 0.20), every factor an env var, `0` disables a window. A request is
 allowed only if every enabled window still has budget, so a burst is fine and sustained
@@ -86,6 +96,13 @@ abuse is not. Refusals are `429` with `Retry-After`. The limiter **fails open** 
 internal errors. Counters are in-process — correct only while the website is one
 container. Defaults, the measured numbers behind them, and the paste-ready env block
 live in `main_services/ops/Readme.md`.
+
+The poll limiter's ladder is **flat** (1.00 in every window) and its refusal is typed
+(`rate_limited:<secs>`) rather than a 429, because it is consumed by a server function.
+Polling is machine-paced — a tab watching a streaming answer polls at the 500 ms floor for
+as long as the model generates — so the decay that separates a human burst from an hour of
+one is simply wrong here: it put a single streaming tab on the 1 h window's ceiling. See
+`website/Readme.md`.
 
 The chat API enforces the chat limiter and records the LLM events through:
 

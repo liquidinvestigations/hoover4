@@ -92,6 +92,15 @@ tesseract_cpu_enabled = true
 tesseract_languages   = eng
 ocr_pdf_enabled       = true
 
+# ---- how the website is served --------------------------------------------------
+# false: `dx serve` — hot rebuilds, and the development loop this repo is built around.
+# true:  `dx build --release` once at boot, then serve the binary. That is what a
+#        visitor should get: `dx serve` bakes "Your app is being rebuilt." into every
+#        page, adds `access-control-allow-origin: *` of its own, and 500s every route
+#        for the length of a rebuild after a container recreate.
+# The first boot after switching this on is a cold release build — watch it.
+website_release_mode  = false
+
 # ---- runtime behaviour when the GPU host is unreachable -------------------------
 gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
 gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline

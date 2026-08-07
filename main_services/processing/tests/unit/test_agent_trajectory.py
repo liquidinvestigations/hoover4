@@ -6,6 +6,8 @@ top level of the event when it actually only appears under `output.name` on the 
 event.
 """
 
+import json
+
 from tasks.P_agent.trajectory import (
     TOOL_PAYLOAD_CHARS,
     TOOL_SUMMARY_CHARS,
@@ -153,7 +155,11 @@ def test_payloads_are_truncated_rather_than_stored_whole():
     long_result = {"text": "z" * (TOOL_PAYLOAD_CHARS * 4)}
     paired = pair_tool_calls([_start(q="x"), _end("get_document_text", long_result)])
     assert len(paired[0].tool_output) <= TOOL_PAYLOAD_CHARS + 1
-    assert paired[0].tool_output.endswith("…")
+    # And it is still a JSON document. It used to end in a bare "…", i.e. a `{` with no
+    # `}`, which every reader downstream reported as "the payload was not recorded".
+    stored = json.loads(paired[0].tool_output)
+    assert stored["text"].endswith("…"), "the clip is inside the field, not across the doc"
+    assert stored["truncated"] is True
 
 
 def test_the_summary_is_the_arguments_not_the_whole_event():

@@ -24,6 +24,12 @@
 //! `X = 1000` (~10x a fast sweep of every route, on the order of 100 calls —
 //! see `main_services/ops/Readme.md` for the measured numbers).
 //!
+//! **The ladder does not apply to polling.** `ChatPoll` uses a factor of `1.0`
+//! in every window, so its per-minute number is a flat ceiling. The decay
+//! exists to distinguish a burst of human activity from an hour of it; a
+//! streaming turn polls at the 500 ms floor for as long as the model generates,
+//! so for that limiter "sustained" is simply "working". See `load_config`.
+//!
 //! **Why in-process and not Redis.** The counters follow the
 //! `PERM_CACHE`/`SYNC_CACHE` idiom from `session_middleware.rs`: a
 //! `Mutex<HashMap<String, VecDeque<Instant>>>`, pruned on access. Redis is
@@ -113,20 +119,32 @@ fn env_u64(name: &str, default: u64) -> u64 {
 }
 
 fn load_config(kind: RateLimitKind) -> LimiterConfig {
-    let (base, default_x) = match kind {
-        RateLimitKind::ChatMessage => ("HOOVER4_RATE_CHAT", 40),
-        RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 240),
-        RateLimitKind::ApiCall => ("HOOVER4_RATE_API", 1000),
+    // `decays`: whether the ladder's sustained-rate discount applies. It is right for
+    // anything a *person* does — a burst is fine, an hour of bursts is abuse. It is wrong
+    // for a loop the client is required to run: a streaming turn polls at the 500 ms floor
+    // for as long as the model is generating, so the sustained rate IS the normal rate.
+    // With the discount on, one tab watching a long answer ran at exactly the 1 h window's
+    // ceiling and two or three tripped it, and the page then declared the chat lost while
+    // the turn was still running. Flat windows, and a per-minute number chosen for the
+    // real cost instead.
+    let (base, default_x, decays) = match kind {
+        RateLimitKind::ChatMessage => ("HOOVER4_RATE_CHAT", 40, true),
+        // 600/min ≈ 5 tabs of the same conversation streaming flat out. The expensive
+        // half of a poll — the held request — has its own cap (`HeldPollGuard`), so this
+        // number is about query load, which a poll barely makes.
+        RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 600, false),
+        RateLimitKind::ApiCall => ("HOOVER4_RATE_API", 1000, true),
     };
     LimiterConfig {
         per_minute: env_u64(&format!("{base}_PER_MINUTE"), default_x),
         factors: WINDOWS
             .iter()
             .map(|w| {
+                let default = if decays { w.default_factor } else { 1.0 };
                 if w.env_suffix.is_empty() {
-                    w.default_factor
+                    default
                 } else {
-                    env_f64(&format!("{base}_{}", w.env_suffix), w.default_factor)
+                    env_f64(&format!("{base}_{}", w.env_suffix), default)
                 }
             })
             .collect(),
@@ -366,6 +384,31 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&username);
+    }
+
+    /// The poll limiter must NOT decay, and must clear a streaming tab by a wide margin.
+    ///
+    /// One tab watching a turn polls at the 500 ms floor — 120/min, for as long as the
+    /// model generates. Under the decaying ladder the 1 h window's budget was exactly
+    /// 120/min, so a single long answer sat on the ceiling and two tabs went over; the
+    /// page then counted the refusals as failures and declared the chat lost mid-turn.
+    #[test]
+    fn the_poll_limiter_lets_a_streaming_tab_run() {
+        let config = &*CHAT_POLL_CONFIG;
+        assert!(
+            config.factors.iter().all(|f| (*f - 1.0).abs() < f64::EPSILON),
+            "polling is machine-paced: its sustained rate IS its normal rate"
+        );
+        // Every window, expressed back as a sustained per-minute rate, must leave room
+        // for several tabs at 120/min.
+        for (w, factor) in WINDOWS.iter().zip(&config.factors) {
+            let per_minute = budget(config.per_minute, w, *factor) * 60 / w.duration.as_secs();
+            assert!(
+                per_minute >= 4 * 120,
+                "{} allows only {per_minute}/min sustained",
+                w.name
+            );
+        }
     }
 
     #[test]

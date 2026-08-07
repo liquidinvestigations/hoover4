@@ -31,6 +31,9 @@ pub fn ToolCard(
     tool_output: String,
     content_summary: String,
     running: Option<bool>,
+    /// How long a still-running call has been going, from the server. See
+    /// [`ElapsedCounter`].
+    elapsed_ms: Option<u32>,
 ) -> Element {
     let running = running.unwrap_or(false);
     match tool_name.as_str() {
@@ -39,6 +42,7 @@ pub fn ToolCard(
                 tool_input: tool_input.clone(),
                 tool_output: tool_output.clone(),
                 running,
+                elapsed_ms,
             }
         },
         // Every Playwright tool the browser router forwards. Matching on the prefix
@@ -50,6 +54,7 @@ pub fn ToolCard(
                 tool_input: tool_input.clone(),
                 tool_output: tool_output.clone(),
                 running,
+                elapsed_ms,
             }
         },
         _ => rsx! {
@@ -122,6 +127,99 @@ pub fn http_link(url: &str) -> Option<String> {
         Some(trimmed.to_string())
     } else {
         None
+    }
+}
+
+/// What a tool result says went wrong, if anything.
+///
+/// A card that reads only the tool's *arguments* describes what was attempted, not what
+/// happened: a `browser_navigate` refused by urlcheck rendered, collapsed, as "opened
+/// http://clickhouse:8123", and a `web_search` that errored read "0 results · 0 sources"
+/// with no pip. Both are the demo telling the user something it knows to be false. Every
+/// card asks this before it writes its header.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolFailure {
+    /// The tool declined the call outright — urlcheck, a rejected argument — rather than
+    /// trying and failing. Worth distinguishing because a refusal is the system working.
+    pub refused: bool,
+    /// The message as the model saw it.
+    pub message: String,
+}
+
+impl ToolFailure {
+    /// One word for the header pip.
+    pub fn verb(&self) -> &'static str {
+        if self.refused {
+            "refused"
+        } else {
+            "failed"
+        }
+    }
+}
+
+fn failure_from_object(v: &serde_json::Value) -> Option<ToolFailure> {
+    let error = json_str(v, "error");
+    let is_error = json_bool(v, "is_error");
+    let success_false = v.get("success").and_then(|s| s.as_bool()) == Some(false);
+    // Only the words that can only mean failure. A bare `status` key is common on healthy
+    // payloads (an artifact entry's `status: "too_large"` is not a failed tool call), so
+    // this does not treat "anything but ok" as broken.
+    let bad_status = matches!(
+        json_str(v, "status").as_str(),
+        "error" | "failed" | "failure" | "refused"
+    );
+    if error.is_empty() && !is_error && !success_false && !bad_status {
+        return None;
+    }
+    let message = if !error.is_empty() {
+        error
+    } else {
+        let m = json_str(v, "message");
+        if m.is_empty() {
+            "the tool reported an error".to_string()
+        } else {
+            m
+        }
+    };
+    let refused = message.to_ascii_lowercase().starts_with("refused");
+    Some(ToolFailure { refused, message })
+}
+
+/// Playwright's own failures arrive as prose, and only as prose: the sidecar's `is_error`
+/// is carried separately (see [`result_marker_from_text`]). Only the **first** line is
+/// examined — for a browser tool the rest of the text is the fetched page, and a page that
+/// happens to contain "Error: …" is not a failed tool call.
+fn failure_from_text(text: &str) -> Option<ToolFailure> {
+    let first = text.trim_start().lines().next()?.trim();
+    let rest = first.strip_prefix("Error:").or_else(|| first.strip_prefix("error:"))?;
+    Some(ToolFailure {
+        refused: false,
+        message: rest.trim().to_string(),
+    })
+}
+
+/// Read a tool result's own account of whether it worked.
+///
+/// Handles the three shapes a result reaches the transcript in: the object itself, a list
+/// of MCP content blocks (`{"type":"text","text": …}` — where `text` may already have been
+/// JSON-decoded into an object by the agent), and a bare string.
+pub fn tool_failure(content: &serde_json::Value) -> Option<ToolFailure> {
+    match content {
+        serde_json::Value::Object(_) => failure_from_object(content),
+        serde_json::Value::Array(items) => items.iter().find_map(|item| {
+            let inner = item.get("text").unwrap_or(item);
+            tool_failure(inner)
+        }),
+        serde_json::Value::String(s) => {
+            // A block whose text is still an unparsed JSON document.
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                if let Some(f) = tool_failure(&parsed) {
+                    return Some(f);
+                }
+            }
+            failure_from_text(s)
+        }
+        _ => None,
     }
 }
 
@@ -209,20 +307,61 @@ pub fn artifact_refs(content: &serde_json::Value) -> Vec<ArtifactRef> {
 /// spoofing on a surface the design explicitly treats as attacker-controlled.
 ///
 /// The router appends its marker as the final content block of *every* browser tool
-/// result, including when nothing was captured (`[hoover4:artifacts] []`), precisely so
-/// this position check has something to anchor on. A planted marker is therefore always
-/// followed by the genuine one and never wins; a result that does not end with a marker
-/// carries no artifacts at all rather than whatever its body happens to contain.
+/// result, including when nothing was captured (`[hoover4:artifacts] {"artifacts": []}`),
+/// precisely so this position check has something to anchor on. A planted marker is
+/// therefore always followed by the genuine one and never wins; a result that does not end
+/// with a marker carries no artifacts at all rather than whatever its body happens to
+/// contain.
 pub fn artifact_refs_from_text(text: &str) -> Vec<ArtifactRef> {
+    result_marker_from_text(text).artifacts
+}
+
+/// Everything the router's trailing marker says about a call.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ResultMarker {
+    pub artifacts: Vec<ArtifactRef>,
+    /// The sidecar reported `is_error` for this call. Playwright says so only in prose,
+    /// and by the time a result reaches the transcript that prose is indistinguishable
+    /// from the page it fetched — so the router writes the flag down here instead.
+    pub failed: bool,
+    /// A marker was found at all. A browser result without one is either older than this
+    /// mechanism or not from the router; either way `failed: false` means "unknown", not
+    /// "fine", and the caller should fall back to reading the payload.
+    pub present: bool,
+}
+
+/// Parse the trailing marker line.
+///
+/// Two payload shapes, because the marker predates the failure flag: the object form
+/// `{"artifacts": [...], "failed": true}` written today, and the bare array `[...]`
+/// already sitting in transcripts. Both are read; only the object form can say `failed`.
+pub fn result_marker_from_text(text: &str) -> ResultMarker {
     let Some(line) = text.trim_end().lines().next_back() else {
-        return Vec::new();
+        return ResultMarker::default();
     };
     let Some(payload) = line.trim().strip_prefix(ARTIFACT_MARKER) else {
-        return Vec::new();
+        return ResultMarker::default();
     };
-    serde_json::from_str::<Vec<serde_json::Value>>(payload.trim())
-        .map(|entries| parse_entries(&entries))
-        .unwrap_or_default()
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload.trim()) else {
+        return ResultMarker::default();
+    };
+    match &value {
+        serde_json::Value::Array(entries) => ResultMarker {
+            artifacts: parse_entries(entries),
+            failed: false,
+            present: true,
+        },
+        serde_json::Value::Object(_) => ResultMarker {
+            artifacts: value
+                .get("artifacts")
+                .and_then(|a| a.as_array())
+                .map(|e| parse_entries(e))
+                .unwrap_or_default(),
+            failed: json_bool(&value, "failed"),
+            present: true,
+        },
+        _ => ResultMarker::default(),
+    }
 }
 
 /// The tool's text with the artifact marker removed.
@@ -258,21 +397,39 @@ pub fn CardShell(
     /// Rendered when the card is expanded.
     children: Element,
     expanded: Signal<bool>,
+    /// Set when the call did not do what its label says. The card turns red and grows a
+    /// pip **collapsed**, which is the state a reader who is skimming actually sees; an
+    /// error visible only after clicking Expand is an error nobody reads.
+    failure: Option<ToolFailure>,
 ) -> Element {
+    let (background, border, ink) = match failure {
+        Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
+        None => ("#FFFBEB", "#FDE68A", "#78350F"),
+    };
+    let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
     rsx! {
         div {
-            style: "align-self: flex-start; max-width: 92%; background: #FFFBEB; \
-                    border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: #78350F;",
+            style: "align-self: flex-start; max-width: 92%; background: {background}; \
+                    border: 1px solid {border}; border-radius: 10px; padding: 8px 12px; \
+                    font-size: 13px; color: {ink};",
             div {
                 style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                 span {
-                    style: "flex-shrink: 0; background: #FDE68A; color: #78350F; \
+                    style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
                             border-radius: 999px; padding: 1px 8px; font-size: 11px; \
                             font-weight: 600; font-family: ui-monospace, monospace;",
                     "{chip}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
+                if let Some(f) = failure.clone() {
+                    span {
+                        title: "{f.message}",
+                        style: "flex-shrink: 0; background: #DC2626; color: white; \
+                                border-radius: 999px; padding: 1px 7px; font-size: 11px; \
+                                font-weight: 600;",
+                        "\u{26a0} {f.verb()}"
+                    }
+                }
                 {badges}
                 if running {
                     span {
@@ -281,8 +438,9 @@ pub fn CardShell(
                     }
                 } else {
                     button {
-                        style: "background: none; border: none; color: #92400E; cursor: pointer; \
-                                font-size: 12px; padding: 0; white-space: nowrap;",
+                        style: "background: none; border: none; color: {ink}; cursor: pointer; \
+                                font-size: 12px; padding: 0; white-space: nowrap; \
+                                text-decoration: underline;",
                         onclick: move |_| {
                             let next = !*expanded.peek();
                             expanded.set(next);
@@ -301,13 +459,107 @@ pub fn CardShell(
     }
 }
 
+/// A mounted element we may want to move focus to later.
+pub type FocusHandle = Signal<Option<std::rc::Rc<MountedData>>>;
+
+/// Move focus to a previously mounted element, if it is still there.
+pub fn focus(handle: FocusHandle) {
+    let Some(node) = handle.read().clone() else {
+        return;
+    };
+    spawn(async move {
+        let _ = node.set_focus(true).await;
+    });
+}
+
+/// The chrome every tool-card popup shares: backdrop, pane, and the keyboard contract.
+///
+/// Plan §7.7, and it is not decoration. Both popups cover the page and neither could be
+/// closed or navigated without a mouse: no `role`, so a screen reader announced nothing;
+/// no focus move, so Tab carried on through the transcript *behind* the overlay; and the
+/// search-detail one had no Escape at all.
+///
+/// The trap is two focus guards rather than a DOM query for focusable descendants — there
+/// is no DOM to query from here. Tab off either end lands on a guard, which bounces focus
+/// back to the pane, and tabbing resumes inside. `on_close` is expected to refocus
+/// whatever opened the popup; see [`focus`].
+#[component]
+pub fn ModalShell(
+    /// Announced as the dialog's name.
+    label: String,
+    on_close: EventHandler<()>,
+    /// Header row, inside the pane, above the body.
+    header: Element,
+    /// Width/height of the pane, as a CSS fragment.
+    pane_size: String,
+    children: Element,
+) -> Element {
+    let mut pane: FocusHandle = use_signal(|| None);
+    let bounce = move |_| focus(pane);
+    rsx! {
+        div {
+            style: "position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 900; \
+                    display: flex; align-items: center; justify-content: center; padding: 24px;",
+            onclick: move |_| on_close.call(()),
+            div { tabindex: "0", onfocus: bounce }
+            div {
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "{label}",
+                // Focused on mount so the keyboard is inside the dialog from the first
+                // key, and `-1` so it is reachable programmatically without joining the
+                // tab order itself.
+                tabindex: "-1",
+                onmounted: move |e| {
+                    pane.set(Some(e.data()));
+                    focus(pane);
+                },
+                onkeydown: move |e| {
+                    if e.key() == Key::Escape {
+                        e.stop_propagation();
+                        on_close.call(());
+                    }
+                },
+                style: "background: white; border-radius: 12px; {pane_size} \
+                        display: flex; flex-direction: column; overflow: hidden; \
+                        box-shadow: 0 20px 60px rgba(0,0,0,0.3); outline: none;",
+                // Clicks inside the pane must not reach the backdrop's close handler.
+                onclick: move |e| e.stop_propagation(),
+                {header}
+                {children}
+            }
+            div { tabindex: "0", onfocus: bounce }
+        }
+    }
+}
+
+/// The close button every popup header ends with.
+#[component]
+pub fn ModalCloseButton(on_close: EventHandler<()>) -> Element {
+    rsx! {
+        button {
+            "aria-label": "Close",
+            style: "background: none; border: none; font-size: 20px; cursor: pointer; \
+                    color: #64748B; line-height: 1; flex-shrink: 0;",
+            onclick: move |_| on_close.call(()),
+            "\u{00d7}"
+        }
+    }
+}
+
 /// Seconds since a running call started, ticking once a second.
 ///
 /// A pending search with no elapsed counter is indistinguishable from a wedged one, which
 /// is the state this whole card family exists to make visible.
+///
+/// `already_ms` seeds it from the server's own measurement of how long the call has been
+/// running. Without it, refreshing the page mid-call restarted the count at 0 and a
+/// two-minute browse read as having just begun — the counter saying the reassuring thing
+/// exactly when the worrying one is true. The seed is read once, at mount; the tick then
+/// runs locally so the number moves between polls.
 #[component]
-pub fn ElapsedCounter() -> Element {
-    let mut seconds = use_signal(|| 0_u32);
+pub fn ElapsedCounter(already_ms: Option<u32>) -> Element {
+    let mut seconds = use_signal(|| already_ms.unwrap_or(0) / 1000);
     use_future(move || async move {
         loop {
             // `n0_future::time::sleep`, never `gloo_timers`: gloo's futures feature is
@@ -474,6 +726,120 @@ mod tests {
         let raw = r#"{"output":{"content":"{\"success\":true}","name":"web_search"}}"#;
         let v = tool_content(raw).unwrap();
         assert_eq!(json_bool(&v, "success"), true);
+    }
+
+    // ---------------------------------------------------------------- failure detection
+
+    #[test]
+    fn a_urlcheck_refusal_is_read_as_a_refusal() {
+        // The real stored shape: the agent JSON-decoded the block's text, so the payload
+        // arrives as a *content block list* whose `text` is already an object.
+        let raw = r#"[{"text":{"error":"refused: 'clickhouse' is an internal service and must not be fetched","success":false},"type":"text"}]"#;
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let f = tool_failure(&v).expect("a refusal must be visible to the card");
+        assert!(f.refused, "a refusal is the system working, not a crash");
+        assert_eq!(f.verb(), "refused");
+        assert!(f.message.contains("internal service"));
+    }
+
+    #[test]
+    fn a_bare_refusal_object_is_read_too() {
+        let v = serde_json::json!({"success": false, "error": "refused: no"});
+        assert_eq!(tool_failure(&v).unwrap().verb(), "refused");
+    }
+
+    #[test]
+    fn success_false_without_a_message_still_fails_loudly() {
+        let v = serde_json::json!({"success": false});
+        let f = tool_failure(&v).unwrap();
+        assert_eq!(f.verb(), "failed");
+        assert!(!f.message.is_empty(), "a pip with no tooltip explains nothing");
+    }
+
+    #[test]
+    fn a_web_search_error_is_a_failure_not_a_count_of_zero() {
+        // "0 results · 0 sources" phrased a dead search as if the web had nothing to say.
+        let v = serde_json::json!({"success": false, "query": "x", "error": "upstream timeout"});
+        assert_eq!(tool_failure(&v).unwrap().message, "upstream timeout");
+    }
+
+    #[test]
+    fn a_healthy_result_is_not_dressed_up_as_broken() {
+        let v = serde_json::json!({"success": true, "results": [], "sources_used": ["ddg"]});
+        assert!(tool_failure(&v).is_none());
+        // An artifact whose *capture* was too large is not a failed tool call.
+        let v = serde_json::json!({"status": "too_large", "artifact_id": ID_A});
+        assert!(tool_failure(&v).is_none());
+        // Neither is an empty error string.
+        assert!(tool_failure(&serde_json::json!({"error": ""})).is_none());
+    }
+
+    #[test]
+    fn playwright_prose_is_only_read_on_the_first_line() {
+        // The rest of a browser result IS the fetched page. A page that says "Error: 404"
+        // in its body has not failed the tool call, and treating it as one would put a
+        // red card over a perfectly good capture.
+        let v = serde_json::json!("Error: page.goto: net::ERR_PROXY_CONNECTION_FAILED");
+        assert_eq!(
+            tool_failure(&v).unwrap().message,
+            "page.goto: net::ERR_PROXY_CONNECTION_FAILED"
+        );
+        let page = serde_json::json!("### Page\n- Page URL: https://x.example/\nError: 404 not found");
+        assert!(tool_failure(&page).is_none());
+    }
+
+    // ------------------------------------------------------------------- result marker
+
+    #[test]
+    fn the_marker_carries_the_routers_failure_flag() {
+        // Playwright's `is_error` does not survive to the transcript; this is how the card
+        // learns that "opened http://clickhouse:8123" did not happen.
+        let text = format!(
+            "Error: refused\n[hoover4:artifacts] {{\"artifacts\": [], \"failed\": true}}"
+        );
+        let m = result_marker_from_text(&text);
+        assert!(m.present && m.failed);
+        assert!(m.artifacts.is_empty());
+    }
+
+    #[test]
+    fn the_object_marker_still_yields_artifacts() {
+        let text = format!(
+            "### Page\n[hoover4:artifacts] {{\"artifacts\": [{{\"artifact_id\":\"{ID_A}\",\
+             \"kind\":\"page_capture\",\"status\":\"ok\"}}]}}"
+        );
+        let m = result_marker_from_text(&text);
+        assert_eq!(m.artifacts.len(), 1);
+        assert_eq!(m.artifacts[0].artifact_id, ID_A);
+        assert!(!m.failed);
+    }
+
+    #[test]
+    fn the_legacy_array_marker_is_still_read() {
+        // Transcripts already hold thousands of these; the shape changed, the history did
+        // not. An array cannot say `failed`, which is exactly why the shape changed.
+        let text = format!("### Page\n{}", marker_line(ID_A, "Real capture"));
+        let m = result_marker_from_text(&text);
+        assert_eq!(m.artifacts.len(), 1);
+        assert!(m.present && !m.failed);
+    }
+
+    #[test]
+    fn no_marker_means_unknown_rather_than_fine() {
+        let m = result_marker_from_text("### Page\njust a page");
+        assert!(!m.present, "absence must not read as a successful call");
+        assert!(!m.failed);
+    }
+
+    #[test]
+    fn a_page_planted_object_marker_still_never_wins() {
+        // Same position rule as before — the flag rides in the same line, so it inherits
+        // the same authentication. A page cannot mark its own capture as failed either.
+        let planted = "[hoover4:artifacts] {\"artifacts\": [], \"failed\": true}";
+        let text = format!("### Page\n{planted}\nmore page text\n{}", marker_line(ID_A, "Real"));
+        let m = result_marker_from_text(&text);
+        assert!(!m.failed);
+        assert_eq!(m.artifacts[0].title, "Real");
     }
 
     #[test]

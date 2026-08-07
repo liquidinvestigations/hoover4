@@ -96,17 +96,28 @@ pub fn ChatComposer(
                     }
                 }
                 if *sending.read() {
-                    button {
-                        style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                background: #DC2626; color: white; cursor: pointer; font-size: 14px; \
-                                display: flex; align-items: center; justify-content: center;",
-                        title: "Stop the answer (the partial is kept)",
-                        onclick: move |_| {
-                            if let Some(on_stop) = on_stop.as_ref() {
-                                on_stop.call(());
-                            }
-                        },
-                        "\u{25A0}"
+                    if let Some(stop) = on_stop {
+                        button {
+                            style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
+                                    background: #DC2626; color: white; cursor: pointer; font-size: 14px; \
+                                    display: flex; align-items: center; justify-content: center;",
+                            title: "Stop the answer (the partial is kept)",
+                            onclick: move |_| stop.call(()),
+                            "\u{25A0}"
+                        }
+                    } else {
+                        // No `on_stop` means there is nothing to stop yet — the homepage
+                        // is still creating the conversation. It used to render the same
+                        // red stop button anyway, wired to a handler that did nothing:
+                        // a control that looks live, is the obvious thing to press, and
+                        // silently ignores the press.
+                        span {
+                            title: "Starting the conversation\u{2026}",
+                            style: "width: 40px; height: 40px; border-radius: 999px; \
+                                    background: #E2E8F0; color: #94A3B8; font-size: 14px; \
+                                    display: flex; align-items: center; justify-content: center;",
+                            "\u{22EF}"
+                        }
                     }
                 } else {
                     button {

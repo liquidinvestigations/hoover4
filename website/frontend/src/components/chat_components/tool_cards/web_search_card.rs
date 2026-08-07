@@ -20,8 +20,9 @@ use dioxus::prelude::*;
 
 use crate::api::chat_api::chat_artifact_detail;
 use crate::components::chat_components::tool_cards::{
-    http_link, json_bool, json_f64, json_str, json_strings, json_u64, tool_content, CardShell,
-    ElapsedCounter,
+    focus, http_link, json_bool, json_f64, json_str, json_strings, json_u64, tool_content,
+    tool_failure, CardShell, ElapsedCounter, FocusHandle, ModalCloseButton, ModalShell,
+    ToolFailure,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,9 +63,16 @@ fn parse_rows(v: &serde_json::Value, key: &str) -> Vec<Row> {
 }
 
 #[component]
-pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> Element {
+pub fn WebSearchCard(
+    tool_input: String,
+    tool_output: String,
+    running: bool,
+    elapsed_ms: Option<u32>,
+) -> Element {
     let expanded = use_signal(|| false);
     let mut popup_open = use_signal(|| false);
+    // The button that opened the popup, so focus returns to it on close (§7.7).
+    let mut opener: FocusHandle = use_signal(|| None);
 
     let query = serde_json::from_str::<serde_json::Value>(&tool_input)
         .ok()
@@ -76,11 +84,15 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
         .unwrap_or_default();
 
     if running {
-        return rsx! { PendingSearch { query, sources: requested_sources } };
+        return rsx! { PendingSearch { query, sources: requested_sources, elapsed_ms } };
     }
 
     let Some(content) = tool_content(&tool_output) else {
-        return rsx! { EmptySearch { query } };
+        // Not "the payload was not recorded": the payload IS recorded, it just did not
+        // survive as JSON. Showing the bytes is worth more than a card that denies the
+        // data exists — see `truncate_tool_payload`, which is why this happens far less
+        // often now.
+        return rsx! { UnparseableSearch { query, raw: tool_output.clone() } };
     };
 
     let results = parse_rows(&content, "results");
@@ -90,7 +102,10 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
     let rerank_applied = json_bool(&content, "rerank_applied");
     let rerank_error = json_str(&content, "rerank_error");
     let artifact_id = json_str(&content, "artifact_id");
-    let error = json_str(&content, "error");
+    // A dead search used to read "0 results · 0 sources" — a count, phrased as if the web
+    // simply had nothing to say. The failure is the headline, so it goes in the header.
+    let failure = tool_failure(&content);
+    let error = failure.as_ref().map(|f| f.message.clone()).unwrap_or_default();
     let total_ms = json_f64(&content, "total_ms").unwrap_or(0.0);
     let before = json_u64(&content, "total_before_dedupe");
     let after = json_u64(&content, "total_after_dedupe");
@@ -108,11 +123,16 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
             label,
             running: false,
             expanded,
+            failure: failure.clone(),
             badges: rsx! {
-                span {
-                    style: "flex-shrink: 0; font-size: 11px; opacity: 0.8; \
-                            font-variant-numeric: tabular-nums;",
-                    "{results.len()} results \u{b7} {sources_used.len()} sources"
+                // Counts only when there was a search to count. Beside a "failed" pip they
+                // read as a result rather than as the absence of one.
+                if failure.is_none() {
+                    span {
+                        style: "flex-shrink: 0; font-size: 11px; opacity: 0.8; \
+                                font-variant-numeric: tabular-nums;",
+                        "{results.len()} results \u{b7} {sources_used.len()} sources"
+                    }
                 }
                 if !degraded.is_empty() {
                     span {
@@ -122,7 +142,9 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
                         "\u{26a0} {degraded.len()} degraded"
                     }
                 }
-                if !rerank_applied {
+                // Only meaningful about a search that ran: "not reranked" beside a failure
+                // pip invites the reader to think ranking was the problem.
+                if !rerank_applied && failure.is_none() {
                     span {
                         title: "The cross-encoder did not run, so these are in fusion order",
                         style: "flex-shrink: 0; background: #E0E7FF; color: #3730A3; \
@@ -162,11 +184,22 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
                 }
             }
 
+            // Said out loud, because the alternative is a list that silently stops. The
+            // model saw the whole result set; this row is the transcript's copy of it.
+            if json_bool(&content, "truncated") {
+                div {
+                    style: "font-size: 11px; font-style: italic; opacity: 0.75;",
+                    "The lowest-ranked results were dropped so this call fits in the \
+                     transcript. The assistant saw all of them."
+                }
+            }
+
             if has_artifact {
                 div {
                     button {
                         style: "background: none; border: none; color: #92400E; cursor: pointer; \
                                 font-size: 12px; padding: 0; text-decoration: underline;",
+                        onmounted: move |e| opener.set(Some(e.data())),
                         onclick: move |_| popup_open.set(true),
                         "Search detail \u{2014} before and after reranking"
                     }
@@ -177,7 +210,10 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
         if *popup_open.read() {
             SearchDetailPopup {
                 artifact_id: artifact_id.clone(),
-                on_close: move |_| popup_open.set(false),
+                on_close: move |_| {
+                    popup_open.set(false);
+                    focus(opener);
+                },
             }
         }
     }
@@ -185,7 +221,7 @@ pub fn WebSearchCard(tool_input: String, tool_output: String, running: bool) -> 
 
 /// While the search runs: the query, the sources it is waiting on, and a clock.
 #[component]
-fn PendingSearch(query: String, sources: Vec<String>) -> Element {
+fn PendingSearch(query: String, sources: Vec<String>, elapsed_ms: Option<u32>) -> Element {
     let waiting = if sources.is_empty() {
         "all sources".to_string()
     } else {
@@ -205,18 +241,52 @@ fn PendingSearch(query: String, sources: Vec<String>) -> Element {
             }
             span { style: "flex: 1; min-width: 0;", "\u{201c}{query}\u{201d}" }
             span { style: "flex-shrink: 0; font-size: 11px; opacity: 0.75;", "{waiting}" }
-            ElapsedCounter {}
+            ElapsedCounter { already_ms: elapsed_ms }
         }
     }
 }
 
+/// The stored payload did not parse as JSON.
+///
+/// It used to say "the result payload was not recorded", which was the card denying data
+/// the transcript is holding: the payload was recorded and then byte-chopped at
+/// `TOOL_PAYLOAD_CHARS`, and the card read the wreckage as absence. Storage now truncates
+/// *inside* the JSON so this is rare, but when it happens the bytes are shown — an
+/// unreadable result is exactly the case where seeing the literal text matters.
 #[component]
-fn EmptySearch(query: String) -> Element {
+fn UnparseableSearch(query: String, raw: String) -> Element {
+    let expanded = use_signal(|| false);
+    let label = if query.is_empty() {
+        "searched the web".to_string()
+    } else {
+        format!("\u{201c}{query}\u{201d}")
+    };
     rsx! {
-        div {
-            style: "align-self: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; \
-                    border-radius: 10px; padding: 8px 12px; font-size: 13px; color: #78350F;",
-            "web_search \u{b7} \u{201c}{query}\u{201d} \u{2014} the result payload was not recorded."
+        CardShell {
+            chip: "web_search".to_string(),
+            label,
+            running: false,
+            expanded,
+            failure: ToolFailure {
+                refused: false,
+                message: "the stored result could not be read back as JSON".to_string(),
+            },
+            badges: rsx! {},
+
+            if raw.trim().is_empty() {
+                div {
+                    style: "font-size: 12px; font-style: italic; opacity: 0.75;",
+                    "Nothing was stored for this call."
+                }
+            } else {
+                pre {
+                    style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
+                            font-family: ui-monospace, monospace; font-size: 11px; \
+                            background: #FEE2E2; padding: 8px; border-radius: 6px; \
+                            max-height: 320px; overflow: auto;",
+                    "{raw}"
+                }
+            }
         }
     }
 }
@@ -411,29 +481,22 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
     };
 
     rsx! {
-        div {
-            style: "position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 900; \
-                    display: flex; align-items: center; justify-content: center; padding: 24px;",
-            onclick: move |_| on_close.call(()),
-            div {
-                style: "background: white; border-radius: 12px; width: min(1100px, 96vw); \
-                        height: min(80vh, 900px); display: flex; flex-direction: column; \
-                        overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);",
-                // Clicks inside the pane must not reach the backdrop's close handler.
-                onclick: move |e| e.stop_propagation(),
+        // Escape, the focus trap and the announced role all come from ModalShell. This
+        // popup had none of the three: it could only be closed with a mouse, and Tab
+        // walked straight past it into the transcript behind.
+        ModalShell {
+            label: "Search detail".to_string(),
+            on_close,
+            pane_size: "width: min(1100px, 96vw); height: min(80vh, 900px);".to_string(),
+            header: rsx! {
                 div {
                     style: "display: flex; align-items: center; justify-content: space-between; \
                             padding: 12px 16px; border-bottom: 1px solid #E2E8F0;",
                     strong { style: "font-size: 14px;", "Search detail" }
-                    button {
-                        style: "background: none; border: none; font-size: 20px; cursor: pointer; \
-                                color: #64748B; line-height: 1;",
-                        onclick: move |_| on_close.call(()),
-                        "\u{00d7}"
-                    }
+                    ModalCloseButton { on_close }
                 }
-                {body}
-            }
+            },
+            {body}
         }
     }
 }

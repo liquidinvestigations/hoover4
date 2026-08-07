@@ -14,6 +14,7 @@
 use common::search_query::SearchQuery;
 use dioxus::prelude::*;
 
+use crate::components::chat_components::tool_cards::{tool_content, tool_failure};
 use crate::routes::Route;
 
 /// Longest value rendered inline in the readable view before it is clipped. Past this
@@ -37,6 +38,15 @@ pub fn ToolCallDisclosure(
     let label = collapsed_label(&tool_name, &tool_input, &content_summary);
     let chip = tool_chip(&tool_name);
     let search_route = search_route_from_tool_input(&tool_name, &tool_input);
+    // The collapsed label is built from the *arguments*, so on its own it describes what
+    // was asked for and never whether it happened. Any tool can fail; the ones without a
+    // card of their own must say so here or nowhere.
+    let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
+    let (background, border, ink) = match failure {
+        Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
+        None => ("#FFFBEB", "#FDE68A", "#78350F"),
+    };
+    let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
 
     // Older rows (and any writer that has not been taught the payload columns) have
     // empty input/output. Fall back to the summary so the expansion is never blank —
@@ -47,18 +57,27 @@ pub fn ToolCallDisclosure(
 
     rsx! {
         div {
-            style: "align-self: flex-start; max-width: 92%; background: #FFFBEB; \
-                    border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: #78350F;",
+            style: "align-self: flex-start; max-width: 92%; background: {background}; \
+                    border: 1px solid {border}; border-radius: 10px; padding: 8px 12px; \
+                    font-size: 13px; color: {ink};",
             div {
                 style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                 span {
-                    style: "flex-shrink: 0; background: #FDE68A; color: #78350F; \
+                    style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
                             border-radius: 999px; padding: 1px 8px; font-size: 11px; \
                             font-weight: 600; font-family: ui-monospace, monospace;",
                     "{chip}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
+                if let Some(f) = failure.clone() {
+                    span {
+                        title: "{f.message}",
+                        style: "flex-shrink: 0; background: #DC2626; color: white; \
+                                border-radius: 999px; padding: 1px 7px; font-size: 11px; \
+                                font-weight: 600;",
+                        "\u{26a0} {f.verb()}"
+                    }
+                }
                 if running {
                     span {
                         style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #B45309;",
@@ -92,6 +111,15 @@ pub fn ToolCallDisclosure(
             if *expanded.read() {
                 div {
                     style: "margin-top: 8px; display: flex; flex-direction: column; gap: 8px;",
+
+                    if let Some(f) = failure.clone() {
+                        div {
+                            style: "background: white; color: #991B1B; border: 1px solid #FECACA; \
+                                    border-radius: 6px; padding: 6px 8px; font-size: 12px; \
+                                    word-break: break-word;",
+                            "{f.message}"
+                        }
+                    }
 
                     if !has_payload {
                         div {
