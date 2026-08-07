@@ -127,6 +127,38 @@ Outbound HTTP from activities (NER today, OCR/embeddings in Part 2) goes through
 time-boxed circuit breaker (`GPU_CIRCUIT_BREAK_SECONDS`). A connect failure falls back;
 a read timeout does not. `RemoteResult.provider` records which endpoint actually served.
 
+## Where processing time goes (`task_timing.py`)
+
+Every worker installs `TaskTimingInterceptor` — a Temporal **activity inbound
+interceptor** — so one row lands in the collection's `processing_task_runs` per activity
+execution: task name, dataset, artifact hash, wall duration, outcome, attempt, queue and
+worker process. The interceptor is the hook rather than the 55 call sites or
+`@with_heartbeat` for one reason: it cannot be forgotten by the next activity someone
+adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
+
+Three properties are load-bearing:
+
+- **Failures are in the same table.** An activity that raises is recorded with
+  `outcome = 'error'` and its real duration, so "where did the time go" includes the time
+  spent failing and retrying. `processing_errors` still holds the stack traces — the two
+  are joined on `(collection_dataset, hash)`, not merged.
+- **Batched.** Rows buffer in-process and a daemon thread drains them every 5 s or every
+  500 rows. A ~200k-file ingest is millions of executions, and one insert each would
+  distort the measurement it is taking.
+- **Never silent.** Instrumentation may not fail an ingest, so every write is wrapped —
+  but every drop is logged with a count: a failed insert, an overflowing buffer, and the
+  handful of activities whose parameters carry no `collectionname`
+  (`ensure_temp_dir_exists`, `cleanup_temp_dir`, the P_agent chat activities), which
+  cannot be routed to a collection database and are therefore not recorded at all.
+
+The same thread samples what is *running* into `processing_task_inflight`, because a
+finished-rows table cannot show the twenty-minute activity that has not finished yet.
+Samples are levels, not counters: a reader takes the newest per worker and sums those.
+
+Read it back with `main_services/task-time-report.sh` (per-task totals, shares, p95, wall
+clock, achieved parallelism) or on `/admin/collections/<name>/processing`, which has both
+the after-the-fact breakdown and a live view.
+
 ## The AI tier is optional (Q11)
 
 The website and pipeline degrade rather than hard-fail when the AI services are down:

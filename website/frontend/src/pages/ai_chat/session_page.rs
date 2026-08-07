@@ -503,7 +503,11 @@ fn AiChatSessionRoot(
                     }
                 }
                 if let Some(e) = error.read().clone() {
-                    div { style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;", "{e}" }
+                    div {
+                        class: "x-error-display",
+                        style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;",
+                        "{e}"
+                    }
                 }
                 div { style: "padding: 12px 14px; flex-shrink: 0;",
                     if !configured {

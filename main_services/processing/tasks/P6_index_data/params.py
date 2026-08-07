@@ -24,6 +24,14 @@ class IndexShardParams:
     hashes: list[str]
 
 @dataclass
+class BuildVfsNodesParams:
+    """Dataset-scoped, not plan-scoped: the tree is a property of the whole dataset and
+    a plan only ever holds a slice of it."""
+    collectionname: str
+    collection_dataset: str
+
+
+@dataclass
 class FinalizeIndexBatchParams:
     collectionname: str
     collection_dataset: str

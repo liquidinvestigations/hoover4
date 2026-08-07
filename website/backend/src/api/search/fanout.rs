@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use futures::stream::{self, StreamExt};
 
 use common::current_user::CurrentUser;
-use common::search_query::SearchQuery;
+use common::search_query::{SearchQuery, SortSpec};
 use common::search_result::FacetOriginalValue;
 
 use crate::api::search::search_sql::{
@@ -218,9 +218,60 @@ where
 }
 
 /// What the merge needs from a hit's `_source` to order results deterministically.
+///
+/// `sort_value` is what makes the merge sort-aware: each shard has already ordered its
+/// own rows by the same key, and the merge has to reproduce that order across shards.
+/// It returns the value of the ACTIVE sort key, which the per-shard SELECT is required
+/// to include — a merge sorting on a column the query did not select would silently
+/// order everything by the default and produce pages that overlap.
 pub trait HitIdentity {
     fn collection_dataset(&self) -> &str;
     fn file_hash(&self) -> &str;
+
+    /// The comparable value of the active sort key. `None` means "use `_score`", which
+    /// is the Relevance case and the only one the pre-plan-3 merge knew about.
+    ///
+    /// Takes the whole `SortSpec`, not just the key, because `Date` compares a
+    /// different column per direction (`date_min` ascending, `date_max` descending) —
+    /// exactly as `search_sql::sort_column` builds it. Handing the implementor only the
+    /// key would let the merge compare one end while the SQL ordered by the other.
+    fn sort_value(&self, _sort: SortSpec) -> Option<SortValue> {
+        None
+    }
+}
+
+/// One hit's position under the active sort key. An enum because the four keys are two
+/// different orderings (numeric and lexicographic) and comparing them through a common
+/// string would sort `10` before `9`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SortValue {
+    Int(i64),
+    Text(String),
+}
+
+/// Text compares WITHOUT case, because Manticore's `collation_connection` is `libc_ci`
+/// and the per-shard `ORDER BY` already ran under it. `primary_filename` keeps the
+/// filesystem's own case, so a byte-wise merge would sort `README` before `alpha.pdf`
+/// while every shard sorted it after — and a document at a shard's truncation boundary
+/// would land on two pages or on none.
+impl Ord for SortValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (SortValue::Int(a), SortValue::Int(b)) => a.cmp(b),
+            (SortValue::Text(a), SortValue::Text(b)) => a
+                .to_lowercase()
+                .cmp(&b.to_lowercase())
+                .then_with(|| a.cmp(b)),
+            (SortValue::Int(_), SortValue::Text(_)) => std::cmp::Ordering::Less,
+            (SortValue::Text(_), SortValue::Int(_)) => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for SortValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Merge per-shard search responses into one ordered window.
@@ -238,13 +289,37 @@ pub fn merge_hits<T: HitIdentity>(
     offset: usize,
     limit: usize,
 ) -> Vec<crate::db_utils::manticore_utils::RawSearchResultHit<T>> {
+    merge_hits_sorted(sources, SortSpec::default(), offset, limit)
+}
+
+/// Merge per-shard responses under an arbitrary sort key.
+///
+/// The per-shard queries were built with the SAME `SortSpec` (see
+/// `search_sql::sort_order_by`), so each source is already a sorted prefix; this
+/// reproduces that order globally and slices the `[offset, offset+limit)` window. The
+/// tie-break on `(collection_dataset, file_hash)` must stay identical to the SQL's, or
+/// a document tied at a shard's truncation boundary lands on two pages or on none.
+pub fn merge_hits_sorted<T: HitIdentity>(
+    sources: Vec<(FanoutTarget, RawSarchResult<T>)>,
+    sort: SortSpec,
+    offset: usize,
+    limit: usize,
+) -> Vec<crate::db_utils::manticore_utils::RawSearchResultHit<T>> {
     let mut hits: Vec<_> = sources
         .into_iter()
         .flat_map(|(_, response)| response.hits.hits)
         .collect();
     hits.sort_by(|a, b| {
-        b._score
-            .cmp(&a._score)
+        let primary = match (a._source.sort_value(sort), b._source.sort_value(sort)) {
+            // Relevance, or a source that does not carry the key: fall back to the
+            // score, which Manticore always returns.
+            (None, None) => b._score.cmp(&a._score),
+            (left, right) => {
+                let ordering = left.cmp(&right);
+                if sort.desc { ordering.reverse() } else { ordering }
+            }
+        };
+        primary
             .then_with(|| a._source.collection_dataset().cmp(b._source.collection_dataset()))
             .then_with(|| a._source.file_hash().cmp(b._source.file_hash()))
     });
@@ -381,6 +456,7 @@ pub async fn shard_targets(collections: &[String]) -> Vec<FanoutTarget> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::search_query::SortKey;
     use crate::db_utils::manticore_utils::{
         RawSarchResult, RawSearchResultHit, RawSearchResultHits,
     };
@@ -539,6 +615,173 @@ mod tests {
         assert!(merge_hits::<FixtureSource>(vec![], 0, 10).is_empty());
     }
 
+    /// A source that DOES carry sort values, for the sort-aware merge.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct SortableSource {
+        collection_dataset: String,
+        file_hash: String,
+        date_min: i64,
+        date_max: i64,
+        file_size_bytes: i64,
+        primary_filename: String,
+    }
+
+    impl HitIdentity for SortableSource {
+        fn collection_dataset(&self) -> &str {
+            &self.collection_dataset
+        }
+        fn file_hash(&self) -> &str {
+            &self.file_hash
+        }
+        fn sort_value(&self, sort: SortSpec) -> Option<SortValue> {
+            match sort.key {
+                SortKey::Relevance => None,
+                SortKey::Date if sort.desc => Some(SortValue::Int(self.date_max)),
+                SortKey::Date => Some(SortValue::Int(self.date_min)),
+                SortKey::FileSize => Some(SortValue::Int(self.file_size_bytes)),
+                SortKey::Name => Some(SortValue::Text(self.primary_filename.clone())),
+            }
+        }
+    }
+
+    fn sortable(
+        file_hash: &str,
+        date_min: i64,
+        date_max: i64,
+        size: i64,
+        name: &str,
+    ) -> RawSearchResultHit<SortableSource> {
+        RawSearchResultHit {
+            _source: SortableSource {
+                collection_dataset: "td".to_string(),
+                file_hash: file_hash.to_string(),
+                date_min,
+                date_max,
+                file_size_bytes: size,
+                primary_filename: name.to_string(),
+            },
+            // Every hit has the SAME score on purpose: a merge that silently fell back
+            // to the score would look correct here only by accident, and this way it
+            // cannot.
+            _score: 100,
+        }
+    }
+
+    fn mk(
+        shard: &str,
+        hits: Vec<RawSearchResultHit<SortableSource>>,
+    ) -> (FanoutTarget, RawSarchResult<SortableSource>) {
+        (
+            FanoutTarget::shard("testdata", shard),
+            RawSarchResult {
+                hits: RawSearchResultHits {
+                    total: hits.len() as u64,
+                    total_relation: "eq".to_string(),
+                    hits,
+                },
+                timed_out: false,
+                took: 1,
+                aggregations: None,
+            },
+        )
+    }
+
+    fn sortable_sources() -> Vec<(FanoutTarget, RawSarchResult<SortableSource>)> {
+        vec![
+            mk("testdata_1", vec![
+                sortable("h1", 100, 900, 30, "delta.pdf"),
+                sortable("h3", 300, 700, 10, "bravo.pdf"),
+            ]),
+            mk("testdata_2", vec![
+                sortable("h2", 200, 800, 20, "charlie.pdf"),
+                sortable("h4", -400, -400, 40, "alpha.pdf"),
+            ]),
+        ]
+    }
+
+    fn sorted_hashes(sort: SortSpec) -> Vec<String> {
+        merge_hits_sorted(sortable_sources(), sort, 0, 10)
+            .into_iter()
+            .map(|h| h._source.file_hash)
+            .collect()
+    }
+
+    /// Every `SortKey` in both directions. Without this the merge and the per-shard
+    /// `ORDER BY` can disagree silently: each shard comes back correctly ordered, the
+    /// merge reorders them by score, and the result is a page that looks plausible and
+    /// is wrong.
+    #[test]
+    fn merge_hits_sorted_orders_by_every_key() {
+        // Date descending compares date_max; ascending compares date_min. The pre-1970
+        // document (h4, negative epoch) must sort below everything ascending.
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::Date, desc: true }),
+                   vec!["h1", "h2", "h3", "h4"]);
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::Date, desc: false }),
+                   vec!["h4", "h1", "h2", "h3"]);
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::FileSize, desc: true }),
+                   vec!["h4", "h1", "h2", "h3"]);
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::FileSize, desc: false }),
+                   vec!["h3", "h2", "h1", "h4"]);
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::Name, desc: false }),
+                   vec!["h4", "h3", "h2", "h1"]);
+        assert_eq!(sorted_hashes(SortSpec { key: SortKey::Name, desc: true }),
+                   vec!["h1", "h2", "h3", "h4"]);
+    }
+
+    /// The name merge ignores case, because the per-shard `ORDER BY` does: Manticore's
+    /// `collation_connection` is `libc_ci`, and `primary_filename` carries the
+    /// filesystem's own case. A byte-wise merge puts every capitalised name first.
+    #[test]
+    fn merge_hits_sorted_by_name_is_case_insensitive() {
+        let sources = vec![
+            mk("testdata_1", vec![
+                sortable("h1", 0, 0, 1, "README"),
+                sortable("h2", 0, 0, 1, "apple.txt"),
+            ]),
+            mk("testdata_2", vec![
+                sortable("h3", 0, 0, 1, "Banana.txt"),
+                sortable("h4", 0, 0, 1, "zebra.txt"),
+            ]),
+        ];
+        let order: Vec<String> = merge_hits_sorted(sources, SortSpec { key: SortKey::Name, desc: false }, 0, 10)
+            .into_iter()
+            .map(|h| h._source.file_hash)
+            .collect();
+        assert_eq!(order, vec!["h2", "h3", "h1", "h4"], "apple, Banana, README, zebra");
+    }
+
+    /// Pages must be disjoint and complete under every key — the property the acceptance
+    /// checklist calls "no skipped or duplicated results at page boundaries".
+    #[test]
+    fn merge_hits_sorted_pages_are_disjoint_and_complete() {
+        for key in SortKey::ALL {
+            for desc in [true, false] {
+                let sort = SortSpec { key, desc };
+                let full = sorted_hashes(sort);
+                let mut paged: Vec<String> = Vec::new();
+                for page in 0..2 {
+                    paged.extend(
+                        merge_hits_sorted(sortable_sources(), sort, page * 2, 2)
+                            .into_iter()
+                            .map(|h| h._source.file_hash),
+                    );
+                }
+                assert_eq!(paged, full, "{key:?} desc={desc}: paging changed the order");
+                let unique: std::collections::BTreeSet<_> = paged.iter().collect();
+                assert_eq!(unique.len(), paged.len(), "{key:?} desc={desc}: duplicate rows");
+            }
+        }
+    }
+
+    /// Relevance keeps the old behaviour exactly: `_score` descending. `merge_hits` is
+    /// the same call with the default spec, so the pre-plan-3 tests above still pin it.
+    #[test]
+    fn merge_hits_sorted_falls_back_to_score_for_relevance() {
+        let by_relevance = merge_hits_sorted(two_sources(), SortSpec::default(), 0, 10);
+        let by_default = merge_hits(two_sources(), 0, 10);
+        assert_eq!(ids(&by_relevance), ids(&by_default));
+    }
+
     #[test]
     fn merge_facet_pairs_sums_and_resorts() {
         let s1 = vec![
@@ -654,9 +897,9 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
         );
         SearchQuery {
-            collection_datasets: vec![],
             query_string: "word".to_string(),
             facet_filters,
+            ..Default::default()
         }
     }
 

@@ -64,10 +64,15 @@ def drop_collection_database(params: CollectionDatabaseParams) -> str:
 @activity.defn
 @with_heartbeat
 def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:
-    """Delete a dataset's rows from every shard table of its collection."""
-    from database.manticore import get_manticore_client, list_shard_tables
+    """Delete a dataset's rows from every Manticore table of its collection.
 
-    tables = list_shard_tables(params.collectionname)
+    Every table, not every SHARD table: the collection's `<name>_vfs` structure index
+    holds one row per VFS node scoped by `collection_dataset` too, and a purge that
+    skipped it would leave the purged dataset's folders in the tree sidebar.
+    """
+    from database.manticore import get_manticore_client, list_collection_tables
+
+    tables = list_collection_tables(params.collectionname)
     with get_manticore_client() as cnx:
         cursor = cnx.cursor()
         for table in tables:
@@ -79,7 +84,7 @@ def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:
             )
         cnx.commit()
     log.info(
-        "[P_admin] Purged %s from %d Manticore shard tables of %s",
+        "[P_admin] Purged %s from %d Manticore tables of %s",
         params.collection_dataset, len(tables), params.collectionname,
     )
     return "ok"

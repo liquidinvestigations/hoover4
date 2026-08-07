@@ -29,7 +29,11 @@ pub fn AiChatHistoryPage() -> Element {
             match sessions_res.read().as_ref() {
                 None => rsx! { div { style: "color: #94A3B8;", "Loading\u{2026}" } },
                 Some(Err(e)) => rsx! {
-                    div { style: "color: #B91C1C;", "Could not load history: {e}" }
+                    div {
+                        class: "x-error-display",
+                        style: "color: #B91C1C;",
+                        "Could not load history: {e}"
+                    }
                 },
                 Some(Ok(list)) if list.is_empty() => rsx! {
                     div { style: "color: #94A3B8;", "No conversations yet." }

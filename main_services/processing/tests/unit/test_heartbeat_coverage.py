@@ -18,11 +18,25 @@ TASKS_ROOT = Path(__file__).resolve().parents[2] / "tasks"
 
 
 def _is_execute_activity(node: ast.AST) -> bool:
+    """A *workflow scheduling* an activity, which is what needs the timeout.
+
+    ``self.next.execute_activity(input)`` in ``task_timing.py`` has the same method name
+    and is the opposite thing: an activity inbound interceptor forwarding an activity
+    the worker is already running. There is no timeout to declare there -- the ones on
+    the scheduling side, which this test checks, are already in force -- so the
+    interceptor chain is excluded by shape rather than by filename.
+    """
     if not isinstance(node, ast.Call):
         return False
     func = node.func
     if isinstance(func, ast.Attribute):
-        return func.attr == "execute_activity"
+        if func.attr != "execute_activity":
+            return False
+        receiver = func.value
+        forwards_the_chain = (
+            isinstance(receiver, ast.Attribute) and receiver.attr == "next"
+        )
+        return not forwards_the_chain
     if isinstance(func, ast.Name):
         return func.id == "execute_activity"
     return False

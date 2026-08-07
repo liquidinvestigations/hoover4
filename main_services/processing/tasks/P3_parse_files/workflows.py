@@ -31,8 +31,9 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_audio import parse_audio_metadata_and_store, ParseAudioParams
     from tasks.P3_parse_files.parse_video import VideoProcessingAndScan
     from tasks.P3_parse_files.parse_ocr import run_ocr_and_store, RunOcrParams
+    from tasks.P3_parse_files.parse_office_xml import parse_office_xml_and_store, ParseOfficeXmlParams
     from tasks.text_sources import OCR_ENGINES
-    from tasks.P2_execute_plan.activities import record_processing_errors
+    from tasks.P0_scan_disk.mime_type_mapper import is_zip_based_document_mime, should_expand_as_archive
     from tasks.visibility import dataset_search_attributes
 
 
@@ -104,6 +105,7 @@ class ParseSingleFile:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
+        detectors_started_at = workflow.now()
         mime_res, tika_res, magika_res = await asyncio.gather(mime_fut, tika_fut, magika_fut, return_exceptions=True)
 
         def _as_list(d: dict | Any, key: str) -> List[str]:
@@ -112,30 +114,12 @@ class ParseSingleFile:
                 return []
             return list({str(x) for x in v if isinstance(x, str) and x})
 
-        async def _combine_detector_results(detector_results: List[Any]) -> Dict[str, List[str]]:
+        def _combine_detector_results(detector_results: List[Any]) -> Dict[str, List[str]]:
             all_coarse: List[str] = []
             all_mime: List[str] = []
             all_enc: List[str] = []
-            detector_names = ["file", "tika", "magika"]
-            for det_name, res in zip(detector_names, detector_results):
+            for res in detector_results:
                 if isinstance(res, Exception):
-                    # Record error asynchronously with detector-specific task id
-                    try:
-                        await workflow.execute_activity(
-                            record_processing_errors,
-                            {
-                                "collectionname": params.collectionname,
-                                "collection_dataset": params.collection_dataset,
-                                "item_hashes": [params.item_hash],
-                                "task_ids": [f"detector_error_{det_name}"],
-                                "errors": [str(res)],
-                            },
-                            start_to_close_timeout=timedelta(minutes=15),
-                            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                            retry_policy=RetryPolicy(maximum_attempts=1),
-                        )
-                    except Exception:
-                        pass
                     continue
                 all_coarse += _as_list(res, "coarse_types")
                 all_mime += _as_list(res, "mime_types")
@@ -146,7 +130,28 @@ class ParseSingleFile:
                 "mime_encodings": sorted(set(all_enc)),
             }
 
-        combined = await _combine_detector_results([mime_res, tika_res, magika_res])
+        detector_results = [mime_res, tika_res, magika_res]
+        detector_names = ["file", "tika", "magika"]
+        try:
+            await record_errors_from_results(
+                detector_results,
+                task_ids=[f"detector_error_{name}" for name in detector_names],
+                starts=[detectors_started_at] * len(detector_results),
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=[params.item_hash] * len(detector_results),
+                default_task_name="detector_error_unknown",
+            )
+        except Exception:
+            # Best-effort: a detector that failed must not also fail the parse. But never
+            # silently -- this call site lost every detector error for months by swallowing
+            # a param-shape TypeError here.
+            log.exception(
+                "[P3] failed to record detector errors for %s/%s",
+                params.collection_dataset, params.item_hash,
+            )
+
+        combined = _combine_detector_results(detector_results)
         coarse_types: List[str] = combined["coarse_types"]
         mime_types: List[str] = combined["mime_types"]
         mime_encodings: List[str] = combined["mime_encodings"]
@@ -158,7 +163,7 @@ class ParseSingleFile:
 
 
         # Route by type
-        if "archive" in coarse_types:
+        if should_expand_as_archive(coarse_types, mime_types):
             child_id = f"archive-scan-{params.collection_dataset}-{params.item_hash}"
             futs.append(
                 workflow.execute_child_workflow(
@@ -217,6 +222,32 @@ class ParseSingleFile:
                 )
             )
             task_ids.append("extract_plaintext_chunks")
+            starts.append(workflow.now())
+
+        # Zip-based office documents get a SECOND extractor, always, not only when
+        # Extractous fails -- the same arrangement a PDF has had all along with
+        # `extractous` + `pdftotext`. Until this existed, one Tika bug (easychair.docx,
+        # TIKA-198) left a document with no searchable text at all.
+        #
+        # The condition is the MIME set, not a coarse type: `doc`/`xls`/`ppt` also cover
+        # the legacy binary formats, which are not zips and have nothing here to read.
+        if any(is_zip_based_document_mime(m) for m in mime_types):
+            futs.append(
+                workflow.execute_activity(
+                    parse_office_xml_and_store,
+                    ParseOfficeXmlParams(
+                        collectionname=params.collectionname,
+                        collection_dataset=params.collection_dataset,
+                        file_hash=params.item_hash,
+                        file_path=params.file_path,
+                        timeout_seconds=proc_secs,
+                    ),
+                    start_to_close_timeout=timedelta(seconds=proc_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=3),
+                )
+            )
+            task_ids.append("parse_office_xml_and_store")
             starts.append(workflow.now())
 
         if "pdf" in coarse_types:

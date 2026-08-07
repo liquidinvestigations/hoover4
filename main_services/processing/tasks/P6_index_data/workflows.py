@@ -17,13 +17,21 @@ with workflow.unsafe.imports_passed_through():
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .params import (
+        BuildVfsNodesParams,
         FinalizeIndexBatchParams,
         IndexDatasetPlanParams,
         IndexShardParams,
         PlanShardsParams,
         RecordIndexedParams,
     )
-    from .activities import index_metadata, index_text_pages, index_vectors
+    from .activities import (
+        build_vfs_nodes,
+        index_filenames_row,
+        index_metadata,
+        index_text_pages,
+        index_vectors,
+        index_vfs_structure,
+    )
     from .shard_planner import finalize_index_batch, plan_shards, record_indexed
 
 # plan_shards mutates the shard ledger and must never run concurrently for the
@@ -45,6 +53,7 @@ class ScheduledChunk:
     pages_future: Any
     metadata_future: Any
     vectors_future: Any
+    filenames_future: Any
 
 
 @workflow.defn
@@ -63,6 +72,20 @@ class IndexDatasetPlan:
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
 
+        # The VFS tree, before anything reads it. `index_metadata` builds each document's
+        # ancestor closure from `vfs_nodes`, so a document indexed against a stale tree
+        # gets a closure missing whatever this plan just ingested — and nothing
+        # re-indexes it later. Dataset-scoped and idempotent, so running it once per plan
+        # is redundant work rather than wrong work.
+        await workflow.execute_activity(
+            build_vfs_nodes,
+            BuildVfsNodesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+
         assignments = await workflow.execute_activity(
             plan_shards,
             PlanShardsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=plan_hashes),
@@ -70,6 +93,17 @@ class IndexDatasetPlan:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=PLANNER_TASK_QUEUE,
+        )
+
+        # After plan_shards, which is what creates `<coll>_vfs`, and before the writers
+        # only because there is nothing to gain from overlapping them.
+        await workflow.execute_activity(
+            index_vfs_structure,
+            BuildVfsNodesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
         )
 
         chunks: list[ScheduledChunk] = []
@@ -111,10 +145,19 @@ class IndexDatasetPlan:
                         retry_policy=RetryPolicy(maximum_attempts=2),
                         task_queue=INDEXING_TASK_QUEUE,
                     ),
+                    filenames_future=workflow.execute_activity(
+                        index_filenames_row,
+                        shard_params,
+                        start_to_close_timeout=INDEXING_TIMEOUT,
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=2),
+                        task_queue=INDEXING_TASK_QUEUE,
+                    ),
                 ))
         pages_results = await gather(*[c.pages_future for c in chunks], return_exceptions=True)
         metadata_results = await gather(*[c.metadata_future for c in chunks], return_exceptions=True)
         vectors_results = await gather(*[c.vectors_future for c in chunks], return_exceptions=True)
+        filenames_results = await gather(*[c.filenames_future for c in chunks], return_exceptions=True)
 
         # A failed writer chunk (retries already exhausted) becomes one
         # processing_errors row per hash in the chunk, so every document that
@@ -128,8 +171,12 @@ class IndexDatasetPlan:
         # metadata writer committed DID reach the shard (its meta row), so it
         # counts; a permanently failed writer chunk contributes nothing.
         indexed_entries: set[tuple[str, str]] = set()
-        for chunk, pages_res, metadata_res, vectors_res in zip(chunks, pages_results, metadata_results, vectors_results):
-            for res, task_id in ((pages_res, "P6_IndexTextPages"), (metadata_res, "P6_IndexMetadata"), (vectors_res, "P6_IndexVectors")):
+        for chunk, pages_res, metadata_res, vectors_res, filenames_res in zip(
+                chunks, pages_results, metadata_results, vectors_results, filenames_results):
+            for res, task_id in ((pages_res, "P6_IndexTextPages"),
+                                 (metadata_res, "P6_IndexMetadata"),
+                                 (vectors_res, "P6_IndexVectors"),
+                                 (filenames_res, "P6_IndexFilenamesRow")):
                 if isinstance(res, Exception):
                     for item_hash in chunk.hashes:
                         failed_results.append(res)

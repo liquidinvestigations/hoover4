@@ -167,3 +167,54 @@ returns without infix indexing, not equal to it.
 ## Navigation
 
 -  [Go Back](../Readme.md)
+
+## The plan-3 schema epoch (2026-08-08)
+
+Three tables were appended above the collapsed baseline — `email_addresses` (00032),
+`document_dates` (00033), `vfs_nodes` (00034) — and **two baseline files were edited in
+place**: `00005_vfs_files.sql` (adds `container_hash` to the sort key, plus
+`mtime`/`mtime_source`) and `00008_email_headers.sql` (adds `date_sent_known`).
+
+Editing history is normally forbidden: the runner records an md5 per applied migration, so
+an edit fails on every deployment that already ran it. It was safe here for exactly one
+reason — **the rollout is a docker reset, which wipes the applied-migration table** — and
+that reason expires the moment a deployment exists that must be upgraded rather than
+rebuilt. `COLLAPSED_BASELINE` was deliberately NOT raised, so the next change is a new
+numbered file again.
+
+The readiness sentinel moved from `index_state` to `vfs_nodes`, in both copies. The rule is
+unchanged: it names whatever the LAST table-creating migration creates, because "ready"
+means the schema is fully built. (It moved again in the Phase 7 epoch below — `vfs_nodes`'s
+own comment still claims to be last, and is deliberately not edited to say otherwise.)
+
+`vfs_files`'s sort key needed `container_hash` because two containers holding the same
+inner path (two copies of one archive) collapsed into one ReplacingMergeTree row, and the
+second container lost its children. The P0 dedupe read had the same blind spot and gained
+the same filter.
+
+## The Phase 7 epoch: processing-time instrumentation (2026-08-08)
+
+Two tables appended to the collection set, and **nothing edited** — the plan-3 note above
+that `COLLAPSED_BASELINE` was deliberately not raised is exactly what this obeys:
+
+| | |
+|---|---|
+| `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only ever recorded failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
+| `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters — read the newest per worker and sum those. TTL 2 days. |
+
+Both are written by `tasks/task_timing.py` (a Temporal activity interceptor, batched,
+best-effort but never silent) and read by the admin processing page and
+`main_services/task-time-report.sh`.
+
+The readiness sentinel is now `processing_task_inflight`, updated in both copies
+(`db_collection_migrations/READINESS_SENTINEL` and
+`website/backend/src/db_auth/READINESS_SENTINEL`). `00034_vfs_nodes.sql` still says it
+must stay the last table-creating migration; that sentence is stale and is **left alone on
+purpose** — the file is applied history, the runner records its md5, and editing it would
+fail every deployment that already ran it. The rule the sentence states is still in force,
+which is why the sentinel moved.
+
+Volume, so nobody is surprised by it: a full ~200k-file ingest produces single-digit
+millions of `processing_task_runs` rows (a handful of activities per file), which is a
+fraction of a second to aggregate and a few tens of megabytes on disk. The in-flight table
+is thousands of rows for the same run, and zero while nothing is being processed.

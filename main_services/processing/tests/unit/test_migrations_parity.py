@@ -60,6 +60,8 @@ EXPECTED_COLLECTION_TABLES = {
     "audio_metadata",
     "blob_values",
     "blobs",
+    "document_dates",
+    "email_addresses",
     "email_headers",
     "emails",
     "entity_hit",
@@ -78,6 +80,8 @@ EXPECTED_COLLECTION_TABLES = {
     "processing_plan_finished",
     "processing_plan_hits",
     "processing_plans",
+    "processing_task_inflight",
+    "processing_task_runs",
     "raw_ocr_results",
     "string_term_id_to_text",
     "string_term_text_to_id",
@@ -87,6 +91,7 @@ EXPECTED_COLLECTION_TABLES = {
     "tika_metadata",
     "vfs_directories",
     "vfs_files",
+    "vfs_nodes",
     "video_metadata",
 }
 
@@ -286,10 +291,13 @@ def test_readiness_sentinel_matches_last_collection_migration():
     "Last table-creating file" rather than plain "last file": a migration that only drops
     or backfills is a legitimate way to end the sequence and creates nothing, and
     anchoring on the literal last file would fail on it. Readiness means "the schema is
-    fully built", which is decided by the last CREATE. The collapsed tree has no such
-    trailing file today — `index_state` is both the last CREATE and the last file — but
-    the distinction is what keeps the next one from making every collection report
-    un-ready.
+    fully built", which is decided by the last CREATE. There is no such trailing file
+    today — `vfs_nodes` (00034) is both the last CREATE and the last file — but the
+    distinction is what keeps the next one from making every collection report un-ready.
+    (It moved once already: `vfs_nodes` (00034) held it until Phase 7 appended
+    `processing_task_runs` (00035) and `processing_task_inflight` (00036). 00034's own
+    comment still claims to be last -- it is applied history and its md5 is recorded, so
+    it is not edited to say otherwise.)
 
     The sentinel name is checked in next to the migrations (READINESS_SENTINEL) so this
     test does not depend on the website sources being mounted — the old version read

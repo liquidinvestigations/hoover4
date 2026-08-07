@@ -36,6 +36,10 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P1_compute_plans.workflows import ComputePlans
     from tasks.P3_parse_files.workflows import ParseSingleFile
     from tasks.P3_parse_files.parse_common import record_errors_from_results
+    from tasks.P3_parse_files.document_dates import (
+        resolve_document_dates,
+        ResolveDocumentDatesParams,
+    )
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
     from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan, ChunkEmbedForPlanParams
     from tasks.P6_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
@@ -269,7 +273,24 @@ class ExecuteSinglePlan:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        # 5) NLP stage: extract entities. Must complete before indexing starts -
+        # 5) Date resolution. Reads what the parse stages just wrote (tika_metadata,
+        # email_headers.date_sent_known) plus P0's archive mtimes, and writes the
+        # document_dates rows. Must run after parsing and before indexing: P6 builds the
+        # `dates` search attribute from that table, so a document indexed first is
+        # permanently undated until something re-indexes it.
+        await workflow.execute_activity(
+            resolve_document_dates,
+            ResolveDocumentDatesParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                plan_hash=params.plan_hash,
+            ),
+            start_to_close_timeout=timedelta(minutes=20),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+
+        # 6) NLP stage: extract entities. Must complete before indexing starts -
         # the indexing stage reads the entity_hit rows and nlp_processed
         # watermarks written here.
         await workflow.execute_child_workflow(
@@ -280,7 +301,7 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 6) Chunk+embed stage: writes text_chunks and text_chunk_vectors (the durable
+        # 7) Chunk+embed stage: writes text_chunks and text_chunk_vectors (the durable
         # vector store). Must complete before indexing starts - the P6 vector indexer
         # copies these rows into the shard's HNSW table.
         await workflow.execute_child_workflow(
@@ -291,7 +312,7 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 7) Indexing stage
+        # 8) Indexing stage
         await workflow.execute_child_workflow(
             IndexDatasetPlan.run,
             IndexDatasetPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
@@ -300,7 +321,7 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 8) Mark finished
+        # 9) Mark finished
         await workflow.execute_activity(
             mark_plan_finished,
             MarkPlanFinishedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),

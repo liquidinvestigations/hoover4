@@ -38,17 +38,12 @@ pub fn DocumentPreviewTextWithSearch(
         };
         state.find_query.clone()
     });
-    let mut hit_counts_res = use_resource(move || {
-        let doc_id = document_identifier.read().clone();
+    let document_identifier_value = document_identifier();
+    let hit_counts_res = use_resource(use_reactive!(|document_identifier_value| {
+        // `find_query` is a memo, so reading it here already re-runs this resource.
         let find_query = find_query.read().clone();
-        search_document_text_for_hit_count(doc_id, find_query)
-    });
-    use_effect(move || {
-        let _doc_id = document_identifier.read().clone();
-        let _find_query = find_query.read().clone();
-        hit_counts_res.clear();
-        hit_counts_res.restart();
-    });
+        search_document_text_for_hit_count(document_identifier_value, find_query)
+    }));
     let hit_counts_memo: Memo<Option<Vec<DocumentTextSourceHitCount>>> = use_memo(move || {
         let hit_counts_res = hit_counts_res.read().cloned();
         let Some(Ok(hit_counts)) = hit_counts_res else {

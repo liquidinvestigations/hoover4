@@ -5,14 +5,14 @@
 //! merged list. Deep pagination requires over-fetching `offset + limit` rows from
 //! every shard; the merge then slices the global window.
 
-use crate::api::search::fanout::{self, FanoutTarget, HitIdentity, ShardQueryParts};
-use crate::api::search::search_sql::sql_options_clause;
+use crate::api::search::fanout::{self, FanoutTarget, HitIdentity, ShardQueryParts, SortValue};
+use crate::api::search::search_sql::{EXCLUDE_FILENAME_ROW, sql_options_clause, sort_order_by};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
 };
 use common::{
     current_user::CurrentUser,
-    search_query::SearchQuery,
+    search_query::{SearchQuery, SortKey, SortSpec},
     search_result::{DocumentIdentifier, SearchResultDocumentItem, SearchResultDocuments},
 };
 
@@ -24,13 +24,26 @@ use serde::{Deserialize, Serialize};
 struct SearchForResultsResponse {
     collection_dataset: String,
     file_hash: String,
-    page_ids: String,
-    filenames: String,
+    /// The result-card title. A string ATTRIBUTE on meta since the `filenames` text
+    /// field was dropped — see `database/manticore.py::meta_table_ddl`.
+    primary_filename: String,
 
     highlight_text: String,
-    highlight_filenames: String,
 
     file_types: Vec<u64>,
+
+    // The active sort key's value, selected so the cross-shard merge can reproduce the
+    // per-shard ORDER BY. Manticore always returns every selected column, so all three
+    // are here rather than one conditional column: a SELECT list that changed shape
+    // with the sort would need the response struct to change shape with it.
+    date_min: i64,
+    date_max: i64,
+    file_size_bytes: i64,
+
+    /// 1 when at least one row in this document's group came from something other than
+    /// the synthetic filename row. Computed in the same grouped query — knowing it needs
+    /// the group, and a second round trip per result to learn it is not worth a snippet.
+    has_text_match: i64,
 }
 
 impl HitIdentity for SearchForResultsResponse {
@@ -39,6 +52,17 @@ impl HitIdentity for SearchForResultsResponse {
     }
     fn file_hash(&self) -> &str {
         &self.file_hash
+    }
+    fn sort_value(&self, sort: SortSpec) -> Option<SortValue> {
+        match sort.key {
+            SortKey::Relevance => None,
+            // Same split as `search_sql::sort_column`: newest-first compares the LATEST
+            // date a document carries, oldest-first the earliest.
+            SortKey::Date if sort.desc => Some(SortValue::Int(self.date_max)),
+            SortKey::Date => Some(SortValue::Int(self.date_min)),
+            SortKey::FileSize => Some(SortValue::Int(self.file_size_bytes)),
+            SortKey::Name => Some(SortValue::Text(self.primary_filename.clone())),
+        }
     }
 }
 
@@ -53,17 +77,17 @@ impl HitIdentity for SearchForResultsResponse {
 /// the merge's tie-break in `fanout::merge_hits` exactly (score, then
 /// `(collection_dataset, file_hash)`), so the truncated per-shard result is a stable
 /// prefix of the merged order.
-fn build_results_sql(parts: &ShardQueryParts, fetch_limit: u64) -> String {
+fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) -> String {
     let options_clause = sql_options_clause(fetch_limit);
     let from_clause = &parts.from_clause;
     let sql_where_clause = &parts.where_clause;
     let meta_table = &parts.meta_table;
+    let order_by = sort_order_by(&sort, meta_table);
     format!(
         "
     SELECT collection_dataset,
         file_hash,
-        group_concat(page_id) AS page_ids,
-        {meta_table}.filenames as filenames,
+        {meta_table}.primary_filename as primary_filename,
 
         HIGHLIGHT({{
             limit=400,
@@ -74,29 +98,83 @@ fn build_results_sql(parts: &ShardQueryParts, fetch_limit: u64) -> String {
             after_match='</hoover4_strong>',
             around=50
         }}, page_text) as highlight_text,
-        HIGHLIGHT({{
-            limit=400,
-            limit_words=100,
-            limit_snippets=1,
-            html_strip_mode=strip,
-            before_match='<hoover4_strong>',
-            after_match='</hoover4_strong>',
-            around=50
-        }}, filenames) as highlight_filenames,
 
-        {meta_table}.file_types as file_types
+        {meta_table}.file_types as file_types,
+        {meta_table}.date_min as date_min,
+        {meta_table}.date_max as date_max,
+        {meta_table}.file_size_bytes as file_size_bytes,
+
+        MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match
 
     {from_clause}
 
     {sql_where_clause}
 
     GROUP BY file_hash
-    ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC
+    {order_by}
     LIMIT {fetch_limit} OFFSET 0
 
     {options_clause}
     ;"
     )
+}
+
+/// Highlight the query's terms inside the result title, client-side.
+///
+/// Route (b) of the two the plan allows. With `meta.filenames` gone the filename
+/// highlight can no longer come from a `HIGHLIGHT()` over a meta text field, and the
+/// alternative — a second `HIGHLIGHT` scoped to the `filename_index` pages row — needs a
+/// per-result subquery for a decoration. Matching the query's whitespace-separated terms
+/// against the title is simpler, has no extra round trip, and is honest about what it is:
+/// a visual aid, not the thing that decided the document matched.
+///
+/// Case-insensitive substring matching, longest term first so `report` does not consume
+/// the start of `reports` and leave a stray fragment.
+fn highlight_title(title: &str, query_string: &str) -> String {
+    let mut terms: Vec<String> = query_string
+        .split_whitespace()
+        .map(|t| t.trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    terms.sort_by_key(|t| std::cmp::Reverse(t.len()));
+    terms.dedup();
+    if terms.is_empty() {
+        return title.to_string();
+    }
+
+    let lower = title.to_lowercase();
+    // Mark every matched byte range, then emit once. Marking avoids the classic bug of
+    // rewriting the string term by term and then matching the markers themselves.
+    let mut marked = vec![false; title.len()];
+    for term in &terms {
+        let mut from = 0;
+        while let Some(found) = lower[from..].find(term.as_str()) {
+            let start = from + found;
+            let end = start + term.len();
+            for flag in marked.iter_mut().take(end).skip(start) {
+                *flag = true;
+            }
+            from = end;
+        }
+    }
+
+    let mut out = String::with_capacity(title.len() + 32);
+    let mut inside = false;
+    for (index, ch) in title.char_indices() {
+        let hit = marked.get(index).copied().unwrap_or(false);
+        if hit && !inside {
+            out.push_str("<hoover4_strong>");
+            inside = true;
+        } else if !hit && inside {
+            out.push_str("</hoover4_strong>");
+            inside = false;
+        }
+        out.push(ch);
+    }
+    if inside {
+        out.push_str("</hoover4_strong>");
+    }
+    out
 }
 
 pub async fn search_for_results(
@@ -141,39 +219,32 @@ pub async fn search_for_results(
         });
     }
 
+    // Relevance is meaningless without something to be relevant to; the resolution is
+    // done here as well as in the UI so a hand-written URL cannot ask for it.
+    let sort = query.sort.resolved(&query.query_string);
+
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
         async move {
             let parts = fanout::shard_query_parts(&target, &query).await?;
-            let sql = build_results_sql(&parts, fetch_limit);
+            let sql = build_results_sql(&parts, sort, fetch_limit);
             manticore_search_sql::<SearchForResultsResponse>(sql, &parts.salt).await
         }
     })
     .await?;
     let partial = outcome.is_partial();
 
-    let merged = fanout::merge_hits(outcome.results, merge_offset, merge_limit);
+    let merged = fanout::merge_hits_sorted(outcome.results, sort, merge_offset, merge_limit);
 
+    let query_string = query.query_string.clone();
     let mut search_results = merged
         .into_iter()
         .map(|hit| {
-            // title: the first plain filename. highlight_filenames_spans: the first
-            // highlighted filename line (it carries <hoover4_strong> markers), or
-            // the plain title when the query matched nothing in the filenames.
-            let title = hit
-                ._source
-                .filenames
-                .split("\n")
-                .next()
-                .unwrap_or("")
-                .to_string();
-            let highlighted_filename = hit
-                ._source
-                .highlight_filenames
-                .split("\n")
-                .find(|line| line.contains("<hoover4_strong>"))
-                .map(|line| line.to_string())
-                .unwrap_or_else(|| title.clone());
+            // The title is `primary_filename` — the lexicographically first basename of
+            // the document, written by the indexer. The highlight is applied here rather
+            // than by Manticore; see `highlight_title`.
+            let title = hit._source.primary_filename.clone();
+            let highlighted_filename = highlight_title(&title, &query_string);
 
             SearchResultDocumentItem {
                 collection_dataset: hit._source.collection_dataset,
@@ -182,6 +253,7 @@ pub async fn search_for_results(
                 highlight_text_spans: decompose_text_into_spans(hit._source.highlight_text),
                 highlight_filenames_spans: decompose_text_into_spans(highlighted_filename),
                 result_index_in_page: 0_u64,
+                matched_by_filename: hit._source.has_text_match == 0,
             }
         })
         .collect::<Vec<_>>();
@@ -241,9 +313,9 @@ mod tests {
             );
         }
         let query = SearchQuery {
-            collection_datasets: vec![],
             query_string: query_string.to_string(),
             facet_filters,
+            ..Default::default()
         };
         let (pages_table, meta_table) =
             crate::api::search::search_sql::shard_table_names("testdata_1").unwrap();
@@ -266,24 +338,30 @@ mod tests {
         sql.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
+    fn relevance() -> SortSpec {
+        SortSpec { key: SortKey::Relevance, desc: true }
+    }
+
     /// Golden string for the full per-shard results query — the largest interpolated
     /// SQL string in the repo. In particular this locks the `ORDER BY` that makes
-    /// pagination a stable prefix (B3): removing it must fail loudly here.
+    /// pagination a stable prefix (B3): removing it must fail loudly here. It also
+    /// locks the SELECT list, which the cross-shard merge depends on: the sort key must
+    /// be selected or the merge has nothing to compare.
     #[test]
     fn build_results_sql_golden() {
-        let sql = build_results_sql(&parts_for("easychair", &[]), 21);
+        let sql = build_results_sql(&parts_for("easychair", &[]), relevance(), 21);
         let expected = "
             SELECT collection_dataset,
                 file_hash,
-                group_concat(page_id) AS page_ids,
-                testdata_1_meta.filenames as filenames,
+                testdata_1_meta.primary_filename as primary_filename,
                 HIGHLIGHT({ limit=400, limit_words=100, limit_snippets=1, html_strip_mode=strip,
                     before_match='<hoover4_strong>', after_match='</hoover4_strong>', around=50 },
                     page_text) as highlight_text,
-                HIGHLIGHT({ limit=400, limit_words=100, limit_snippets=1, html_strip_mode=strip,
-                    before_match='<hoover4_strong>', after_match='</hoover4_strong>', around=50 },
-                    filenames) as highlight_filenames,
-                testdata_1_meta.file_types as file_types
+                testdata_1_meta.file_types as file_types,
+                testdata_1_meta.date_min as date_min,
+                testdata_1_meta.date_max as date_max,
+                testdata_1_meta.file_size_bytes as file_size_bytes,
+                MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match
             FROM testdata_1_pages
             LEFT JOIN testdata_1_meta
             ON testdata_1_pages.collection_dataset = testdata_1_meta.collection_dataset
@@ -309,8 +387,62 @@ mod tests {
                 )],
             )],
         );
-        let sql = normalize(&build_results_sql(&parts, 1));
+        let sql = normalize(&build_results_sql(&parts, relevance(), 1));
         assert!(sql.contains("AND collection_dataset IN ('testdata_testfiles')"), "{sql}");
         assert!(sql.contains("ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC"), "{sql}");
+    }
+
+    /// Every sort key must both order the query AND appear in the SELECT list. A key
+    /// that is ordered but not selected produces per-shard pages the merge cannot
+    /// reproduce, which shows up as documents appearing on two pages.
+    #[test]
+    fn every_sort_key_orders_and_selects_its_column() {
+        for (sort, expected_order, expected_select) in [
+            (SortSpec { key: SortKey::Date, desc: true },
+             "ORDER BY testdata_1_meta.date_max DESC", "date_max as date_max"),
+            (SortSpec { key: SortKey::Date, desc: false },
+             "ORDER BY testdata_1_meta.date_min ASC", "date_min as date_min"),
+            (SortSpec { key: SortKey::FileSize, desc: true },
+             "ORDER BY testdata_1_meta.file_size_bytes DESC", "file_size_bytes as file_size_bytes"),
+            (SortSpec { key: SortKey::Name, desc: false },
+             "ORDER BY testdata_1_meta.primary_filename ASC", "primary_filename as primary_filename"),
+        ] {
+            let sql = normalize(&build_results_sql(&parts_for("word", &[]), sort, 5));
+            assert!(sql.contains(expected_order), "{sort:?} -> {sql}");
+            assert!(sql.contains(expected_select), "{sort:?} -> {sql}");
+            assert!(sql.contains("collection_dataset ASC, file_hash ASC"),
+                    "{sort:?} lost the stable tie-break: {sql}");
+        }
+    }
+
+    #[test]
+    fn highlight_title_marks_query_terms() {
+        assert_eq!(
+            highlight_title("EasyChair.docx", "easychair"),
+            "<hoover4_strong>EasyChair</hoover4_strong>.docx"
+        );
+        // Two terms, one of them a prefix of the other: the longest wins and there is
+        // no stray fragment left over.
+        assert_eq!(
+            highlight_title("annual_report_2024.pdf", "report reports"),
+            "annual_<hoover4_strong>report</hoover4_strong>_2024.pdf"
+        );
+    }
+
+    #[test]
+    fn highlight_title_leaves_non_matches_alone() {
+        assert_eq!(highlight_title("notes.txt", "easychair"), "notes.txt");
+        assert_eq!(highlight_title("notes.txt", "   "), "notes.txt");
+        assert_eq!(highlight_title("", "word"), "");
+    }
+
+    #[test]
+    fn highlight_title_survives_multibyte_titles() {
+        // Byte-indexed marking over a UTF-8 title: the char boundaries must line up or
+        // this panics rather than merely looking wrong.
+        assert_eq!(
+            highlight_title("Räksmörgås-raport.pdf", "raport"),
+            "Räksmörgås-<hoover4_strong>raport</hoover4_strong>.pdf"
+        );
     }
 }

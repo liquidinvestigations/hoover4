@@ -463,7 +463,7 @@ fn SearchForResultsHitCountString(
     let hit_count = search_results_state.hit_count;
 
     match hit_count.read().cloned() {
-        Some(Err(e)) => return rsx! { "! error: {e:?}" },
+        Some(Err(e)) => return rsx! { span { class: "x-error-display", "! error: {e:?}" } },
         // partial: the total is a lower bound — some shards could not be searched.
         Some(Ok(s)) if s.partial => return rsx! { "≥ {s.total} documents found (some collections could not be searched)" },
         Some(Ok(s)) => return rsx! { "{s.total} documents found" },

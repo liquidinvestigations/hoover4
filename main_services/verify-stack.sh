@@ -6,15 +6,46 @@
 #   --reset   wipe all containers and volumes first (destructive, dev only)
 #
 # Steps: migrate, create the two canonical collections (testdata + other),
-# ingest the two canonical datasets, wait for the pipeline, then assert the
+# ingest the three canonical datasets, wait for the pipeline, then assert the
 # epic's invariants (see plans/2-collections/2-plan-0-overview.md §6) one by
 # one. Prints OK/FAIL per check and exits non-zero on the first failure
 # category with failures.
 #
+# THE INGEST ROOTS ARE DELIBERATELY TINY (~5 MB in total, about a minute of
+# pipeline). This script is a per-phase gate, and a 47-minute run is a gate
+# nobody runs. The full 514 MB corpus is one variable away:
+#
+#     INGEST_ROOT_TESTDATA=/testdata/hoover-testdata/data/disk-files ./verify-stack.sh
+#
+# which is the pre-plan-3 behaviour and takes roughly 47 minutes. Run it before
+# a release, not between commits.
+#
+# The four roots are not interchangeable:
+#   * INGEST_ROOT_TESTDATA is where check 8's SEARCH_WORD has to live.
+#     `pdf-doc-txt` is the default because it is the only folder whose FILENAMES
+#     contain `easychair` -- keep that property, or change SEARCH_WORD with it.
+#   * INGEST_ROOT_EMAILS carries the email-shaped fixtures (containers with
+#     attachments, `Date:` headers, address roles).
+#   * INGEST_ROOT_ZIPS is `zip-in-multiple-locations`: two copies of the same
+#     archive under different paths. It is the fixture that catches VFS keys
+#     that forget which container a path belongs to.
+#   * INGEST_ROOT_SHAPES is `many-children`: a 42-level chain (`deep-stuff`) and
+#     a folder with 334 sibling directories (`the-directory`). It is the only
+#     fixture in the corpus that exercises the tree's ancestor elision, its
+#     sibling capping and the breadcrumb's `...` popup. It costs almost nothing
+#     to ingest despite its 668 files, because they hold only THREE distinct
+#     contents -- the pipeline dedupes by content hash, so it is 3 documents and
+#     668 VFS paths. That property is the reason this root is affordable here;
+#     if it stops holding, the ingest time is the thing that will say so.
+#
 # Environment knobs:
-#   WEBSITE_URL   default http://localhost:12345 (containerized website)
-#   SEARCH_WORD   default easychair (present in the disk-files fixture data)
-#   POLL_TIMEOUT  seconds to wait for ingestion, default 3600
+#   WEBSITE_URL           default http://localhost:12345 (containerized website)
+#   SEARCH_WORD           default easychair (present in the pdf-doc-txt fixture)
+#   POLL_TIMEOUT          seconds to wait for ingestion, default 3600
+#   INGEST_ROOT_TESTDATA  disk root for testdata/testfiles
+#   INGEST_ROOT_EMAILS    disk root for other/emails
+#   INGEST_ROOT_ZIPS      disk root for testdata/zips
+#   INGEST_ROOT_SHAPES    disk root for testdata/shapes (deep + wide VFS shapes)
 set -euo pipefail
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
@@ -24,6 +55,12 @@ WEBSITE_URL="${WEBSITE_URL:-http://localhost:12345}"
 WORKER="${WORKER:-hoover4-worker}"
 SEARCH_WORD="${SEARCH_WORD:-easychair}"
 POLL_TIMEOUT="${POLL_TIMEOUT:-3600}"
+INGEST_ROOT_TESTDATA="${INGEST_ROOT_TESTDATA:-/testdata/hoover-testdata/data/disk-files/pdf-doc-txt}"
+INGEST_ROOT_EMAILS="${INGEST_ROOT_EMAILS:-/testdata/hoover-testdata/data/eml-2-attachment}"
+INGEST_ROOT_ZIPS="${INGEST_ROOT_ZIPS:-/testdata/hoover-testdata/data/zip-in-multiple-locations}"
+# `-` and not `:-`: setting it to the EMPTY string is how the root is switched off,
+# which is what the before/after ingest-cost measurement needs.
+INGEST_ROOT_SHAPES="${INGEST_ROOT_SHAPES-/testdata/hoover-testdata/data/many-children}"
 MAX_SHARD_TEXT_BYTES=1000000000
 
 CH() { docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 -q "$1"; }
@@ -114,7 +151,12 @@ ensure_collection_row() {
 }
 
 if [ "${1:-}" = "--reset" ]; then
+    # `--reset` tears the stack DOWN; it does not bring it back up. Without the deploy
+    # that follows, every readiness gate below waits five minutes for a ClickHouse that
+    # was never started and the run dies with "ClickHouse did not become healthy in time"
+    # -- which reads as a broken database rather than as a missing step.
     ./reset-docker.sh
+    ../deploy
 fi
 
 echo "== waiting for ClickHouse, Manticore, the worker and Temporal =="
@@ -122,6 +164,12 @@ wait_for_clickhouse
 wait_for_manticore
 wait_for_worker
 wait_for_temporal
+
+# The fixture paths below are pinned to an upstream revision that nothing in this
+# repository otherwise records, because testdata/ is gitignored. Say so before ingesting
+# rather than after a check fails for a reason that is not in any diff.
+echo "== testdata =="
+./fetch-testdata.sh --check || fail "testdata fixtures are missing — run ./fetch-testdata.sh"
 
 echo "== migrate =="
 run_step migrate
@@ -132,6 +180,23 @@ ensure_collection_row other "Other Collection"
 run_step ensure-collection testdata
 run_step ensure-collection other
 
+ingest_dataset() {
+    local coll="$1" ds="$2" root="$3"
+    # An empty root means "not this run" -- how the shapes fixture is switched off to
+    # measure what it costs, and how any root can be dropped without editing the script.
+    if [ -z "$root" ]; then
+        echo "${coll}_${ds}: no root configured, skipping"
+        return 0
+    fi
+    if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
+                   WHERE collection_dataset = '${coll}_${ds}' AND is_deleted = 0")" ]; then
+        echo "${coll}_${ds} already registered, skipping ingest"
+        return 0
+    fi
+    echo "     ${coll}_${ds} <- $root"
+    run_step add-disk-dataset "$coll" "$ds" "$root"
+}
+
 # These block until each dataset is fully ingested, which is correct: the three
 # stages (scan, compute plans, execute plans) must run in order, and only the
 # CLI sequences them today. It does mean the ingest is tied to this script --
@@ -139,16 +204,10 @@ run_step ensure-collection other
 # docker exec while the workflows carried on server-side. DO NOT redeploy while
 # this is running; the poll loop below is the safety net if you do.
 echo "== ingest canonical datasets =="
-if [ -z "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL WHERE collection_dataset = 'testdata_testfiles' AND is_deleted = 0")" ]; then
-    run_step add-disk-dataset testdata testfiles /testdata/hoover-testdata/data/disk-files
-else
-    echo "testdata_testfiles already registered, skipping ingest"
-fi
-if [ -z "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL WHERE collection_dataset = 'other_emails' AND is_deleted = 0")" ]; then
-    run_step add-disk-dataset other emails /testdata/hoover-testdata/data/eml-2-attachment
-else
-    echo "other_emails already registered, skipping ingest"
-fi
+ingest_dataset testdata testfiles "$INGEST_ROOT_TESTDATA"
+ingest_dataset other    emails    "$INGEST_ROOT_EMAILS"
+ingest_dataset testdata zips      "$INGEST_ROOT_ZIPS"
+ingest_dataset testdata shapes    "$INGEST_ROOT_SHAPES"
 
 echo "== waiting for plans to finish (timeout ${POLL_TIMEOUT}s per collection) =="
 for coll_db in Hoover4_Collection_testdata Hoover4_Collection_other; do
@@ -254,6 +313,10 @@ fi
 #    it expected exactly pages+meta, so it has been failing on the live stack ever since
 #    — and because §12 requires it green per phase, that made every later phase's
 #    verification meaningless. Whether `_vectors` is expected follows the probe, above.
+#    Plan 3 added a FOURTH family, `<collectionname>_vfs` — one table per collection
+#    rather than per shard (it holds one small row per VFS node and is never sharded). It
+#    has no ledger row to derive from, so it is expected for every collection that has
+#    any shard at all: the same indexing run that opens a shard also creates it.
 manticore_tables=$(MC "show tables" | awk -F'|' 'NF>2 {gsub(/ /,"",$2); if ($2 != "") print $2}' | sort)
 ledger_tables=""
 for coll in $COLLECTIONS; do
@@ -262,6 +325,7 @@ for coll in $COLLECTIONS; do
         ledger_tables="$ledger_tables${shard}_pages\n${shard}_meta\n"
         [ "$EXPECT_VECTOR_SHARDS" = "1" ] && ledger_tables="$ledger_tables${shard}_vectors\n"
     done
+    [ -n "$shards" ] && ledger_tables="$ledger_tables${coll}_vfs\n"
 done
 ledger_tables=$(printf "%b" "$ledger_tables" | sort)
 if [ "$manticore_tables" = "$ledger_tables" ]; then
@@ -314,6 +378,106 @@ for coll in $COLLECTIONS; do
     [ "$recorded" = "$indexed" ] && ok "$coll: $indexed indexed docs == $recorded index_state rows" \
         || fail "$coll: $indexed indexed docs != $recorded index_state rows"
 done
+
+# 6b. Every indexed document has exactly one `filename_index` pages row.
+#     That row is what makes a query for a FILENAME find the document. It is written by a
+#     writer of its own, so a failure there is invisible: search still works, filenames
+#     just stop matching, and nothing says so. Comparing against `index_state` (what the
+#     writers actually committed) is the only check that notices.
+for coll in $COLLECTIONS; do
+    recorded=$(CH "SELECT count() FROM Hoover4_Collection_$coll.index_state FINAL")
+    filename_rows=0
+    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_pages"); do
+        n=$(MC "SELECT collection_dataset, file_hash FROM $table
+                WHERE extracted_by = 'filename_index'
+                GROUP BY collection_dataset, file_hash
+                LIMIT 100000 OPTION max_matches=100000" | grep -c '^|' || true)
+        filename_rows=$((filename_rows + n))
+    done
+    [ "$recorded" = "$filename_rows" ] && ok "$coll: $filename_rows filename rows == $recorded index_state rows" \
+        || fail "$coll: $filename_rows filename rows != $recorded index_state rows"
+done
+
+# 6c. The structure index matches the materialised tree it is built from. A mismatch
+#     means the tree sidebar is showing a different corpus from the one the filters use.
+for coll in $COLLECTIONS; do
+    ch_nodes=$(CH "SELECT count() FROM (SELECT DISTINCT collection_dataset, node_key
+                   FROM Hoover4_Collection_$coll.vfs_nodes FINAL)")
+    mc_nodes=$(MC "SELECT count(*) FROM ${coll}_vfs" 2>/dev/null | awk -F'|' 'NF>2 {gsub(/ /,"",$2); print $2}' | tail -1)
+    mc_nodes=${mc_nodes:-0}
+    [ "$ch_nodes" = "$mc_nodes" ] && ok "$coll: ${coll}_vfs has $mc_nodes rows == $ch_nodes vfs_nodes" \
+        || fail "$coll: ${coll}_vfs has $mc_nodes rows but vfs_nodes has $ch_nodes"
+done
+
+# 6d. No meta row carries a size below the "unknown" sentinel. -1 means "this document
+#     exists in file_types but in no vfs_files row"; anything below it is a writer bug,
+#     and it would silently join the "under 1 MB" bucket.
+bad_sizes=0
+for coll in $COLLECTIONS; do
+    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_meta"); do
+        n=$(MC "SELECT file_hash FROM $table WHERE file_size_bytes < -1 LIMIT 1000" | grep -c '^|' || true)
+        bad_sizes=$((bad_sizes + n))
+    done
+done
+[ "$bad_sizes" = "0" ] && ok "no meta row has file_size_bytes < -1" \
+    || fail "$bad_sizes meta row(s) have file_size_bytes < -1"
+
+# 6e. `zip-in-multiple-locations` is TWO copies of one archive. Because containers are
+#     content-addressed they share a container_hash, so a VFS model with a single parent
+#     picks one location and makes the other one's folder filter return nothing — the
+#     §4.4 regression. Filtering on each location's folder node must find the archive's
+#     child under BOTH.
+if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
+               WHERE collection_dataset = 'testdata_zips' AND is_deleted = 0")" ]; then
+    for location in location-1 location-2; do
+        node_key=$(printf 'testdata_zips\037\037/%s' "$location")
+        term_id=$(CH "SELECT term_id FROM Hoover4_Collection_testdata.string_term_text_to_id FINAL
+                      WHERE collection_dataset = 'testdata_zips' AND term_field = 'vfs_node'
+                      AND term_value = '$node_key' LIMIT 1")
+        if [ -z "$term_id" ]; then
+            fail "zip fixture: no vfs_node term for /$location"
+            continue
+        fi
+        found=0
+        for table in $(MC "show tables" | grep -oE "testdata_[0-9]+_meta"); do
+            n=$(MC "SELECT file_hash FROM $table
+                    WHERE collection_dataset = 'testdata_zips' AND file_paths = $term_id
+                    LIMIT 1000" | grep -c '^|' || true)
+            found=$((found + n))
+        done
+        # The archive itself plus the child.txt inside it: at least 2 documents are
+        # reachable through each location.
+        [ "$found" -ge 2 ] && ok "zip fixture: /$location reaches $found documents" \
+            || fail "zip fixture: /$location reaches only $found documents (expected >= 2)"
+    done
+fi
+
+# 6f. The `shapes` fixture is the only deep/wide tree in the corpus, and the tree UI's
+#     ancestor elision (MAX_VISIBLE_ANCESTORS=8), sibling capping (10 each side) and the
+#     breadcrumb `...` popup (MAX_CRUMBS_SHOWN=3) are all invisible without it. Assert the
+#     SHAPE, not the row count: the point is that one path is deeper than the elision
+#     threshold and one folder is wider than the sibling cap.
+if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
+               WHERE collection_dataset = 'testdata_shapes' AND is_deleted = 0")" ]; then
+    deepest=$(CH "SELECT max(depth) FROM Hoover4_Collection_testdata.vfs_nodes FINAL
+                  WHERE collection_dataset = 'testdata_shapes'")
+    [ "${deepest:-0}" -ge 20 ] && ok "shapes fixture: deepest VFS node is at depth $deepest" \
+        || fail "shapes fixture: deepest VFS node is at depth ${deepest:-0} (expected >= 20)"
+
+    widest=$(CH "SELECT max(n) FROM (
+                    SELECT count() AS n FROM Hoover4_Collection_testdata.vfs_nodes FINAL
+                    WHERE collection_dataset = 'testdata_shapes' AND kind = 'dir'
+                    GROUP BY parent_key)")
+    [ "${widest:-0}" -ge 100 ] && ok "shapes fixture: widest folder has $widest sibling directories" \
+        || fail "shapes fixture: widest folder has ${widest:-0} sibling directories (expected >= 100)"
+
+    # The reason this root is cheap: 668 files, 3 distinct contents. If dedupe regresses
+    # this becomes 668 documents and the ~1 minute gate becomes something nobody runs.
+    docs=$(CH "SELECT count() FROM Hoover4_Collection_testdata.index_state FINAL
+               WHERE collection_dataset = 'testdata_shapes'")
+    [ "${docs:-0}" -le 20 ] && ok "shapes fixture: $docs documents from 668 deduped files" \
+        || fail "shapes fixture: $docs documents (expected <= 20 — content dedupe regressed?)"
+fi
 
 # 7. The website serves.
 code=$(curl -s -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")

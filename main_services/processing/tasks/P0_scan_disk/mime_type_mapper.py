@@ -1,5 +1,70 @@
 """Utility for mapping MIME types to coarse file categories."""
 
+from typing import Iterable
+
+
+# Container formats that are ZIP on the inside but a single document to the reader.
+# `file -k` keeps going past the first match, so a .docx comes back as the OOXML type
+# *and* `application/zip` *and* `application/octet-stream`; without this set the union of
+# coarse types contains `archive` and the file gets 7z-exploded into one indexed document
+# per internal XML part. `.jar`/`.apk` are deliberately absent: `file` names them with
+# their own MIME rather than `application/zip`, so they never reached the archive branch
+# in the first place and this set must not be the thing that changes their handling.
+_ZIP_BASED_DOCUMENT_MIMES = frozenset({
+    # OOXML: Word / Excel / PowerPoint, plus macro-enabled and template variants.
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+    'application/vnd.ms-word.document.macroEnabled.12',
+    'application/vnd.ms-word.template.macroEnabled.12',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+    'application/vnd.ms-excel.sheet.macroEnabled.12',
+    'application/vnd.ms-excel.template.macroEnabled.12',
+    'application/vnd.ms-excel.addin.macroEnabled.12',
+    'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.presentationml.template',
+    'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+    'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
+    'application/vnd.ms-powerpoint.template.macroEnabled.12',
+    'application/vnd.ms-powerpoint.slideshow.macroEnabled.12',
+    'application/vnd.ms-powerpoint.addin.macroEnabled.12',
+    # OpenDocument: text / spreadsheet / presentation / graphics, plus templates.
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.oasis.opendocument.text-template',
+    'application/vnd.oasis.opendocument.spreadsheet',
+    'application/vnd.oasis.opendocument.spreadsheet-template',
+    'application/vnd.oasis.opendocument.presentation',
+    'application/vnd.oasis.opendocument.presentation-template',
+    'application/vnd.oasis.opendocument.graphics',
+    'application/vnd.oasis.opendocument.graphics-template',
+    # E-books.
+    'application/epub+zip',
+})
+
+# Coarse types that make a file a document even when a detector also called it an archive.
+_DOCUMENT_COARSE_TYPES = frozenset({'doc', 'xls', 'ppt'})
+
+
+def is_zip_based_document_mime(mime_type: str) -> bool:
+    """Whether this single MIME type names a container format that is a document."""
+    return mime_type in _ZIP_BASED_DOCUMENT_MIMES
+
+
+def should_expand_as_archive(coarse_types: Iterable[str], mime_types: Iterable[str]) -> bool:
+    """Whether a file should be exploded into its members by the archive extractor.
+
+    The decision is over the *whole* detected type set, not membership in the union:
+    detectors disagree by design, and `file -k` alone reports a .docx four ways. One
+    detector saying "archive" must not outvote another saying "document".
+    """
+    coarse = set(coarse_types)
+    if 'archive' not in coarse:
+        return False
+    if any(is_zip_based_document_mime(m) for m in mime_types):
+        return False
+    return not (coarse & _DOCUMENT_COARSE_TYPES)
+
 
 def coarse_file_type(mime_type: str) -> str:
 
@@ -9,14 +74,16 @@ def coarse_file_type(mime_type: str) -> str:
     ):
         return 'html'
 
-    if mime_type in (
+    # The document-container guard comes before the archive branch: a member of the set
+    # is never an archive, whatever else the detector said about it.
+    if not is_zip_based_document_mime(mime_type) and (mime_type in (
         "application/zip", "application/x-tar", "application/x-7z-compressed", "application/x-rar-compressed", "application/x-rar",
         "application/x-bzip2", "application/x-gzip", "application/x-lzma",
         "application/x-lzip", "application/x-xz", "application/x-zstd",
         "application/zip", "application/rar", "application/x-7z-compressed", "application/x-tar",
         "application/x-bzip2", "application/x-zip", "application/x-gzip", "application/x-zip-compressed",
         "application/x-rar-compressed", "application/vnd.rar",
-    ) or mime_type.startswith("application/x-zip"):
+    ) or mime_type.startswith("application/x-zip")):
         return "archive"
 
     if mime_type in (

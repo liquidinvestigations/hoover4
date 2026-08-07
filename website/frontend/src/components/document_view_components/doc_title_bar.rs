@@ -119,12 +119,25 @@ fn CollectionIcon() -> Element {
 
 #[component]
 fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
-    let mut file_path_resource =
-        use_resource(move || get_file_path(document_identifier.read().clone()));
+    let document_identifier_value = document_identifier();
+    let file_path_resource = use_resource(use_reactive!(|document_identifier_value| {
+        get_file_path(document_identifier_value)
+    }));
     let file_path = match file_path_resource.read().clone() {
-        Some(Ok(path)) => path.split("/").last().unwrap_or("").to_string(),
+        Some(Ok(Some(path))) => path.split("/").last().unwrap_or("").to_string(),
+        // The identifier resolves to no file: a bookmark that outlived its ingest, or a
+        // hand-edited URL. A neutral name, not an error marker — the rest of the viewer
+        // still has something to show, and there is nothing here for the user to fix.
+        Some(Ok(None)) => {
+            return rsx! { div {
+                style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.45); font-style: italic;",
+                title: "This document is not at any path in its dataset",
+                "Unknown file"
+            }};
+        }
         Some(Err(e)) => {
             return rsx! { div {
+                class: "x-error-display",
                 "error! {e}"
             }};
         }
@@ -134,11 +147,6 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             }};
         }
     };
-    use_effect(move || {
-        let _document_identifier = document_identifier();
-        file_path_resource.clear();
-        file_path_resource.restart();
-    });
     rsx! {
         div {
             style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.75)",
@@ -173,8 +181,12 @@ fn FileTypeIcon() -> Element {
     }
 }
 
+/// `Ok(None)` is "this dataset has no file with that hash" — a dead bookmark, not a
+/// failure. See the backend fn.
 #[server]
-async fn get_file_path(document_identifier: DocumentIdentifier) -> Result<String, ServerFnError> {
+async fn get_file_path(
+    document_identifier: DocumentIdentifier,
+) -> Result<Option<String>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::get_file_path::get_file_path(&user, document_identifier)
         .await

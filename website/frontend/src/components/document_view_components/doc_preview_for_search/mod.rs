@@ -50,23 +50,17 @@ fn DocumentPreviewForSearchContent(
         document_identifier
     );
 
-    let mut doc_sources: Resource<Vec<DocumentSourceItem>> = use_resource(move || {
-        let document_identifier = Some(document_identifier.read().clone());
-        async move {
-            let Some(document_identifier) = document_identifier else {
-                return vec![];
-            };
-            get_document_sources(document_identifier)
-                .await
-                .unwrap_or_default()
-        }
-    });
-    use_effect(move || {
-        let _document_identifier = Some(document_identifier.read().clone());
-        // let Some(_document_identifier) = document_identifier else { return };
-        doc_sources.clear();
-        doc_sources.restart();
-    });
+    let document_identifier_value = document_identifier();
+    // By value through `use_reactive`: a `ReadSignal` prop is a new signal on every
+    // parent render, so a resource subscribed to it never re-runs on its own.
+    let doc_sources: Resource<Vec<DocumentSourceItem>> =
+        use_resource(use_reactive!(|document_identifier_value| {
+            async move {
+                get_document_sources(document_identifier_value)
+                    .await
+                    .unwrap_or_default()
+            }
+        }));
     let doc_sources: ReadSignal<Option<Vec<DocumentSourceItem>>> =
         use_memo(move || doc_sources.read().clone()).into();
 
@@ -106,8 +100,7 @@ fn DocumentPreviewForSearchContent(
 
     // ================ ITEM HIT COUNTS: ================
     let mut item_hit_counts = use_signal(move || ItemHitCounts(Vec::new()));
-    let mut _r = use_resource(move || {
-        let document_identifier = document_identifier.read().clone();
+    let _r = use_resource(use_reactive!(|document_identifier_value| {
         let sources = doc_sources.read().clone().unwrap_or_default();
         let find_query = control
             .doc_viewer_state
@@ -119,20 +112,15 @@ fn DocumentPreviewForSearchContent(
             {
                 item_hit_counts.set(ItemHitCounts(Vec::new()));
             }
-            let item = search_document_item_hit_counts(document_identifier, find_query, sources)
-                .await
-                .unwrap_or_default();
+            let item =
+                search_document_item_hit_counts(document_identifier_value, find_query, sources)
+                    .await
+                    .unwrap_or_default();
             {
                 item_hit_counts.set(item);
             }
         }
-    });
-    use_effect(move || {
-        let _document_identifier = document_identifier.read().clone();
-        let _sources = doc_sources.read().clone().unwrap_or_default();
-        _r.clear();
-        _r.restart();
-    });
+    }));
 
     let preview_selector = rsx! {
         DocumentPreviewSourceSelectorDropdown {

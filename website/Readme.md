@@ -263,6 +263,189 @@ name hardcoded to `"tool"` and none of the payload columns populated, so researc
 transcripts rendered as a wall of JSON in a card whose expand panel opened onto nothing.
 If you change the shape, change both.
 
+
+## Filters, sorting and the folder tree (plan 3)
+
+### Dates are HISTORICAL dates only
+
+There is no upload date and no index date anywhere in the schema, by decision. Every date
+the UI shows or filters on came from the document's own metadata, or from an archive that
+stored it:
+
+* Tika's `dcterms:created` / `dcterms:modified`, `xmp:CreateDate` / `xmp:ModifyDate`,
+  `pdf:docinfo:created` / `pdf:docinfo:modified`, `exif:DateTimeOriginal`;
+* an email `Date:` header that actually parsed (`email_headers.date_sent_known = 1`);
+* the mtime of an **archive member** — 7z restores the timestamps the archive stored.
+
+Deliberately NOT dates: Tika's `File Modified Date` (the mtime of the worker's temp file,
+which would date the whole corpus "today"), and the mtime of a top-level disk file (the
+clone or save time of the corpus, recorded in `vfs_files.mtime_source = 'filesystem'` and
+never indexed).
+
+A document has a SET of dates, not one, and `document_dates` keeps each with the key it
+came from. The viewer's **Dates** section shows all of them with provenance — that is
+where a user finds out why a date filter did or did not match.
+
+**Archive-mtime limitation.** An archive member's mtime is only as good as the archive.
+Many archives store the extraction machine's clock rather than the document's, and nothing
+in the file distinguishes the two. Those dates are indexed because a wrong-ish date is
+more useful than none for narrowing a corpus, and the viewer names the source so the user
+can discount it.
+
+**A date range is an interval-overlap test.** The filter compiles to
+`date_min <= hi AND date_max >= lo`, not `ANY(dates) BETWEEN lo AND hi` — Manticore 14.1.0
+cannot evaluate `ANY(mva)` across the pages⋈meta join in any spelling (see
+`search_sql.rs::range_predicate`). A document whose dates STRADDLE the range with none
+inside it therefore matches: created 2007, modified 2020, filtered 2013–2016. The error is
+one-sided — a superset, never a subset — and the viewer explains each result.
+
+**Three range shapes, one filter.** `RangeFilter`'s bounds are `Option`s and an absent one
+compiles to an open end, so a low-pass (`before X`), a high-pass (`after X`) and a
+band-pass (`between X and Y`) are the same predicate with different bounds. The Date pane
+names all three rather than expecting a user to discover that an empty box means "no
+bound". The open low end is `i64::MIN + 1` and not `i64::MIN`, which is what keeps
+`DATE_UNKNOWN` documents out of a pure low-pass; `Unknown only` is the separate mode that
+asks for them.
+
+### The date histogram
+
+Under the date selector, one bar per computed bin, over **the query without its own date
+filter** — a facet that filtered itself would be one solid block inside the cutoffs and
+zero outside. The bars the cutoffs cover are drawn in the accent, so the picture is
+"what you selected against what is there".
+
+`search_date_histogram` (`api/search/date_histogram.rs`) does it in two fan-outs:
+
+1. **Measure the domain.** `min(date_min)` and `max(date_max)` over the filtered set, plus
+   the undated count. The bounds come from `ORDER BY … LIMIT 1` in each direction rather
+   than from `min()`/`max()`, which is not a shape this codebase has ever got an answer
+   out of Manticore for. There is no histogram, date-bucket or date-truncate function to
+   use instead, and `date_min` is a signed `bigint` rather than a `timestamp` precisely
+   because the timestamp type is 32-bit unsigned and cannot hold a 1936 date.
+2. **Count the bins.** One `INTERVAL(date_min, e0, e1, …)` + `GROUP BY` per shard — the
+   same shape as the size facet, with up to thirty edges instead of three.
+
+Bins are computed, not fixed: a per-year bucket is unreadable for a corpus spanning a week
+and useless for one spanning four centuries. The width is chosen off a ladder of durations
+people name (hour, day, week, month, quarter, year, decade…), stepped up until the total
+fits `HISTOGRAM_MAX_BUCKETS`. **The active cutoffs are forced to be bin edges**, so the
+three intervals a band-pass creates each get their own run of bins at a comparable width
+and no bar is half-selected. `histogram_edges` is a pure function and is where the tests
+live.
+
+Clicking a bar means whatever the active mode means — in `Before` it moves the upper
+cutoff, in `After` the lower one, otherwise it selects that bin. Each bar's `title` says
+which, because the answer is not visible from the bar.
+
+### Sorting
+
+Four keys: `Relevance` (BM25 `weight()`, unavailable without a query string and resolved
+to Date server-side if one is asked for anyway), `Date`, `File size`, `Name`.
+
+`Date` sorts on a different column per direction: newest-first on `date_max`, oldest-first
+on `date_min`, because a document spanning 1990..2020 belongs at a different place in each.
+Undated documents carry `DATE_UNKNOWN` (`i64::MIN`) and sort last descending, first
+ascending.
+
+Sorting is cross-shard, so the per-shard `ORDER BY` and the merge comparator must agree
+exactly — the sort column is SELECTed for that reason alone. `merge_hits_sorted` is tested
+over every key in both directions for page disjointness.
+
+### Filename search
+
+One synthetic pages row per document (`extracted_by = 'filename_index'`, `page_id = -1`)
+carries its distinct basenames, so a query for a filename finds the document. It is built
+from `vfs_files` paths and never from page text.
+
+**It is not a page**, and every query over a pages table must exclude it — `page_id` is
+deserialised as `u32` in the document endpoints, so a leak is a failed query rather than an
+off-by-one. `EXCLUDE_FILENAME_ROW` is the predicate; `test_filename_row_excluded.py` greps
+for readers that forget it.
+
+Folder names are deliberately NOT in that row. They go through the structure index, where a
+folder is one row rather than one row per document under it.
+
+### The folder tree
+
+`<collectionname>_vfs` is one Manticore table per collection (not per shard, not per
+dataset) holding one row per VFS node. It powers the storage sidebar, the filter pane's
+folder picker, and in-folder search.
+
+**Three independent caps bound what it renders**, and they are separate because they
+answer different questions (`components/search_components/vfs_tree.rs`):
+
+| cap | bounds | overflow row |
+|---|---|---|
+| `MAX_CHILDREN_PER_NODE` (500) | what is FETCHED per expansion | `N more…`, raises the limit and refetches |
+| `MAX_SIBLINGS_EACH_SIDE` (10) | what is RENDERED either side of the folder you are in | `N more above/below…`, client-side only |
+| `MAX_VISIBLE_ANCESTORS` (8) | how many levels of the path to that folder render at all | `N more levels…`, collapses the middle |
+
+The last two are measured from the tree's **focus** — the node the URL names — and are
+inert in the filter pane, which has no "here". Only one of the first two is ever on screen
+at once: while a sibling window is capping, the fetch row is suppressed, because raising
+the fetch limit would not reveal anything the window is hiding. `elide_ancestors` and
+`window_siblings` are pure functions with unit tests; the fixture that exercises them on
+screen is `many-children` (a 42-level chain and a folder of 334 siblings), ingested by
+`verify-stack.sh` as `testdata_shapes`.
+
+Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
+crosses container boundaries — `PathDescriptor` carries a single `container_hash`, so an
+archive inside an archive used to render one hop and lose the rest. Past
+`MAX_CRUMBS_SHOWN` (3) the leading crumbs collapse into a `…` chip whose popup lists them.
+
+Every read of it goes through `manticore_search_sql_uncached`: the tree changes while
+ingestion runs, watching a folder fill up is the normal case, and a stale tree is worse
+than a slow one.
+
+Filtering on a folder finds everything below it **including through containers**, and a
+content-addressed container that sits at two paths contributes both ancestries — the
+`zip-in-multiple-locations` fixture, which `verify-stack.sh` asserts on. `vfs_nodes.parent_key`
+is single-valued and is only for breadcrumbs; membership always uses the full closure.
+
+### Cache invalidation
+
+Every search response is cached under a salt made of the collection's shard-ledger
+generation AND `server_settings.cache_epoch`. The generation covers data changes; the epoch
+is the manual lever for SEMANTICS changes, where every cached response is a correct answer
+to a question the code no longer asks. Bump it (any new value) after changing a query
+shape.
+
+## Testing
+
+| what | how |
+|---|---|
+| unit (Rust) | `cargo test --offline` inside `hoover4-website` — Rust is not on `$PATH` there, so `export PATH=/usr/local/cargo/bin:$PATH` first |
+| live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
+| whole stack | `main_services/verify-stack.sh` |
+| screenshots | `./take-screenshots.sh` |
+
+**The stack tests are split by NAME, not by attribute.** Every test in
+`backend/tests/stack_integration.rs` is `#[ignore]` already, because they all need a live
+stack, so `#[ignore]` cannot also mean "slow". The ones that wait on something with its own
+clock — the 30 s shard-state cache, a ClickHouse mutation — carry a `slow_` prefix and are
+skipped by default. Every other test asserts its own wall time against
+`HOOVER4_STACK_TEST_BUDGET_MS` (5 s), which is what notices when an endpoint quietly starts
+doing a full scan: without it a test that grows from 0.3 s to 9 s still passes.
+
+### Screenshots
+
+`./take-screenshots.sh` walks `screenshots.ini` and writes a PNG, a text snapshot of the
+rendered DOM and any console errors per page into `test_reports/screenshots/` (gitignored,
+wiped each run), plus a `report.md` index.
+
+It does **not** use the browser MCP endpoint. `hoover4-mcp-browser` refuses internal hosts
+at two independent layers by design — a deny-list in `urlcheck.py` and a PAC script handed
+to Chromium in `netfilter.py` — so `hoover4-website` is unreachable through it. The script
+copies `tools/capture_screenshots.py` into that container and runs a plain Chromium with
+neither filter, touching nothing about the MCP server's own behaviour. The container has no
+bind mounts, so both the script and the output travel by `docker cp`.
+
+Two traps the script exists to encapsulate: setting an input's `.value` is invisible to
+Dioxus unless you go through the prototype's setter and dispatch a bubbling `input` event,
+and the home box submits on `onkeypress`, so Enter has to be a real CDP key event. The long
+base64 segments in the ini are CBOR route parameters (`data_definitions/url_param.rs`);
+`9g==` is `None`.
+
 ## Development Notes
 
 For local development, bring up `main_services` and `ai_services` first. Configure the service URLs in `.env.development` using `.env.development.example` as a template.

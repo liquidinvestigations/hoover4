@@ -10,7 +10,7 @@ deliberate, like `collectionname` validation: neither runtime may depend on the 
 being right, and `tests/unit/test_text_sources.py` plus a cargo test keep the two
 conventions from drifting.
 
-    native:       pdftotext | extractous | email_parser | raw_text | qpdf
+    native:       pdftotext | extractous | office_xml | email_parser | raw_text | qpdf
     OCR variants: ocr_<engine>_<languages>   e.g. ocr_tesseract_eng+ron, ocr_easyocr_en
 
 Language codes are joined with `+`, which is Tesseract's own convention, for both

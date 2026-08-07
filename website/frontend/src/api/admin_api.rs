@@ -72,6 +72,8 @@ admin_server_fn!(admin_list_document_failures, backend::api::admin::processing::
 admin_server_fn!(admin_retry_failed_task, backend::api::admin::processing::admin_retry_failed_task, (collectionname: String, collection_dataset: String, task_name: String) -> String);
 admin_server_fn!(admin_retry_document, backend::api::admin::processing::admin_retry_document, (collectionname: String, collection_dataset: String, hash: String) -> String);
 admin_server_fn!(admin_list_eta_samples, backend::api::admin::processing::admin_list_eta_samples, (collectionname: String) -> Vec<EtaSamplePoint>);
+admin_server_fn!(admin_task_time_breakdown, backend::api::admin::processing::admin_task_time_breakdown, (collectionname: String) -> TaskTimeBreakdown);
+admin_server_fn!(admin_task_time_live, backend::api::admin::processing::admin_task_time_live, (collectionname: String, window_seconds: u32) -> LiveTaskActivity);
 
 admin_server_fn!(admin_list_deployment_config, backend::api::admin::settings::admin_list_deployment_config, () -> Vec<ServerSettingItem>);
 

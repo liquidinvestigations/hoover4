@@ -6,6 +6,12 @@ edition = "2024"
 serde = "1"
 serde_json = "1"
 
+[dev-dependencies]
+# The URL round-trip test decodes a CBOR blob written by the pre-plan-3 build: the
+# bookmark-compatibility guarantee is only meaningful against the real encoder the
+# frontend's `UrlParam` uses.
+ciborium = "0.2"
+
 
 
 [lints]

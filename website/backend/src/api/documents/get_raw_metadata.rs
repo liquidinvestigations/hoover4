@@ -19,7 +19,37 @@ pub async fn get_raw_metadata(
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    fetch_table(&client, &document_identifier, &table_info).await
+}
 
+/// Every requested table for one document, in the order asked for.
+///
+/// The metadata panel wants a dozen tables at once. One request per table meant a dozen
+/// permission checks, a dozen telemetry events and — the part that matters — a dozen
+/// ClickHouse queries opened simultaneously per document view. Here they share the
+/// preamble and run one after another, so a page view costs ClickHouse one query at a
+/// time instead of a burst.
+pub async fn get_raw_metadata_tables(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    table_list: Vec<DocumentMetadataTableInfo>,
+) -> anyhow::Result<Vec<Vec<serde_json::Value>>> {
+    crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+
+    let mut results = Vec::with_capacity(table_list.len());
+    for table_info in &table_list {
+        results.push(fetch_table(&client, &document_identifier, table_info).await?);
+    }
+    Ok(results)
+}
+
+async fn fetch_table(
+    client: &clickhouse::Client,
+    document_identifier: &DocumentIdentifier,
+    table_info: &DocumentMetadataTableInfo,
+) -> anyhow::Result<Vec<serde_json::Value>> {
     let query = "SELECT * FROM ? WHERE ? = ? AND collection_dataset = ? LIMIT 11";
     let query = client
         .query(query)

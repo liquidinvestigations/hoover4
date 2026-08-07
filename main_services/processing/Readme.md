@@ -45,3 +45,60 @@ Usage:
 
 - [database/Readme.md](database/Readme.md)
 - [tasks/Readme.md](tasks/Readme.md)
+
+## What plan 3 added to the pipeline
+
+**P0 (`scan_disk`)** now records `vfs_files.mtime` alongside a `mtime_source` that says
+how far to trust it. The number alone means nothing: the same field carries "the archive
+recorded this in 2013" in one row and "the worker wrote this temp file a second ago" in the
+next.
+
+| `mtime_source` | when | indexed as a date? |
+|---|---|---|
+| `archive` | the container is an `archives` row — 7z restores stored timestamps | **yes** |
+| `untrusted` | the container is an email — attachments are re-written by the worker | no |
+| `filesystem` | top level — the clone/save time of the corpus | no |
+| `''` | a container we do not recognise (extracted PDF images, video frames) | no |
+
+**P3 (`parse_files`)** gained `document_dates.py`: a pure `resolve_dates` plus the
+`resolve_document_dates` activity that runs between parsing and indexing. It COLLECTS
+every confirmed date rather than picking a best one, applies a `[1800-01-01, now + 1y]`
+sanity window (outside → dropped and logged, never clamped), and records the metadata key
+each date came from. `parse_email` writes structured `email_addresses` rows and sets
+`date_sent_known` so the epoch stops meaning two things.
+
+**P6 (`index_data`)** gained:
+
+* `build_vfs_nodes` — materialises the dataset's tree into ClickHouse `vfs_nodes`.
+  Dataset-scoped and idempotent, because a plan holds only a slice and a tree assembled
+  slice by slice has holes.
+* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table.
+* `index_filenames_row` — one synthetic pages row per document carrying its basenames.
+* a rewritten `index_metadata` emitting the typed attributes (`dates`, `date_min`,
+  `date_max`, `file_size_bytes`, `struct_flags`, `primary_filename`, `email_from`,
+  `email_to`) and the `vfs_node` closure term ids.
+
+### The ancestor closure, and its caps
+
+`file_paths` holds every node a document can be reached THROUGH, and "through" crosses
+container boundaries. Containers are content-addressed, so one container hash can sit at
+several paths and the closure includes all of them.
+
+The caps in `vfs_nodes.py` are not tuning knobs — the corpus contains an email that
+contains itself (`eml-7-recursive`) and one archive in two places
+(`zip-in-multiple-locations`):
+
+* a `visited` set on `(container_hash, path)`;
+* `MAX_ANCESTOR_DEPTH = 64` container hops;
+* `MAX_ANCESTOR_TERMS = 4096` terms per document.
+
+Hitting either cap sets `struct_flags` bit 1 (`truncated_ancestry`) and logs, rather than
+silently returning a short closure.
+
+### Two wire-format traps, both found on the live stack
+
+* **Temporal deserialises an activity argument into its ANNOTATED type.** An unannotated
+  `params` arrives as a raw dict and every attribute access fails at runtime.
+* **ClickHouse `Enum8` takes the NAME on insert and returns the ORDINAL on read.**
+  Comparing that int against `'container'` never raises; it silently makes every container
+  a directory. Use `kind_from_wire` on every read.

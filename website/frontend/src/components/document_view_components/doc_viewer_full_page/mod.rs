@@ -51,19 +51,19 @@ pub fn DocViewerRoot(
         }),
     });
 
-    let mut doc_sources: Resource<Vec<DocumentSourceItem>> = use_resource(move || {
-        let document_identifier = document_identifier.read().clone();
-        async move {
-            get_document_sources(document_identifier)
-                .await
-                .unwrap_or_default()
-        }
-    });
-    use_effect(move || {
-        let _document_identifier = document_identifier.read().clone();
-        doc_sources.clear();
-        doc_sources.restart();
-    });
+    let document_identifier_value = document_identifier();
+    // The identifier is passed by value through `use_reactive` rather than read as a
+    // signal: a `ReadSignal` prop is a new signal on every parent render, so a resource
+    // subscribed to it never re-runs and the pairing of `use_effect` + `restart()` that
+    // used to compensate fired a second, identical request on every mount.
+    let doc_sources: Resource<Vec<DocumentSourceItem>> =
+        use_resource(use_reactive!(|document_identifier_value| {
+            async move {
+                get_document_sources(document_identifier_value)
+                    .await
+                    .unwrap_or_default()
+            }
+        }));
     let doc_sources: ReadSignal<Option<Vec<DocumentSourceItem>>> =
         use_memo(move || doc_sources.read().clone()).into();
 
@@ -104,8 +104,7 @@ pub fn DocViewerRoot(
 
     // ================ ITEM HIT COUNTS: ================
     let mut item_hit_counts = use_signal(move || ItemHitCounts(Vec::new()));
-    let mut _r = use_resource(move || {
-        let document_identifier = document_identifier.read().clone();
+    let _r = use_resource(use_reactive!(|document_identifier_value| {
         let sources = doc_sources.read().clone().unwrap_or_default();
         let find_query = control
             .doc_viewer_state
@@ -117,20 +116,15 @@ pub fn DocViewerRoot(
             {
                 item_hit_counts.set(ItemHitCounts(Vec::new()));
             }
-            let item = search_document_item_hit_counts(document_identifier, find_query, sources)
-                .await
-                .unwrap_or_default();
+            let item =
+                search_document_item_hit_counts(document_identifier_value, find_query, sources)
+                    .await
+                    .unwrap_or_default();
             {
                 item_hit_counts.set(item);
             }
         }
-    });
-    use_effect(move || {
-        let _document_identifier = document_identifier.read().clone();
-        let _sources = doc_sources.read().clone().unwrap_or_default();
-        _r.clear();
-        _r.restart();
-    });
+    }));
 
     use_context_provider(move || ViewerPageControls {
         document_identifier,

@@ -428,12 +428,19 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
         None => rsx! { div { style: "padding: 20px; opacity: 0.7;", "Loading search detail\u{2026}" } },
         Some(Err(e)) => rsx! {
             div {
+                class: "x-error-display",
                 style: "padding: 20px; color: #991B1B;",
                 "Could not load the search detail: {e}"
             }
         },
         Some(Ok(text)) => match serde_json::from_str::<serde_json::Value>(text) {
-            Err(e) => rsx! { div { style: "padding: 20px; color: #991B1B;", "Malformed detail: {e}" } },
+            Err(e) => rsx! {
+                div {
+                    class: "x-error-display",
+                    style: "padding: 20px; color: #991B1B;",
+                    "Malformed detail: {e}"
+                }
+            },
             Ok(doc) => {
                 let before = parse_rows(&doc, "before_rerank");
                 let after = parse_rows(&doc, "after_rerank");

@@ -16,15 +16,10 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
     let mut filter_value = use_signal(|| "".to_string());
     let mut provider_filter = use_signal(|| "".to_string());
 
-    let mut entities_res = use_resource(move || {
-        let document_identifier = document_identifier.read().clone();
-        async move { get_document_entities(document_identifier).await }
-    });
-    use_effect(move || {
-        let _ = document_identifier.read().clone();
-        entities_res.clear();
-        entities_res.restart();
-    });
+    let document_identifier_value = document_identifier();
+    let entities_res = use_resource(use_reactive!(|document_identifier_value| {
+        async move { get_document_entities(document_identifier_value).await }
+    }));
 
     let items: Vec<DocumentEntityItem> = match entities_res.read().clone() {
         Some(Ok(r)) => r.items,

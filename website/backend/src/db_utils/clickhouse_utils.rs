@@ -219,8 +219,44 @@ pub async fn list_shards(collectionname: &str) -> anyhow::Result<Vec<String>> {
 
 /// Cache-busting generation of a collection's shard ledger (cached ~30 s).
 pub async fn shard_generation(collectionname: &str) -> anyhow::Result<String> {
-    Ok(fetch_shard_state(collectionname).await?.generation)
+    let epoch = cache_epoch().await;
+    Ok(format!("{}#{epoch}", fetch_shard_state(collectionname).await?.generation))
 }
+
+/// A deliberate, global cache-invalidation lever, appended to every search cache salt.
+///
+/// The shard generation invalidates a collection's cached searches when its DATA
+/// changes. Nothing invalidated them when the SEMANTICS changed: after a schema or
+/// query-shape change every cached response is a correct answer to a question the code
+/// no longer asks, and the only remedy was to truncate the cache table by hand. Bumping
+/// `server_settings.cache_epoch` (any new value) retires every cached search at once.
+///
+/// Read through the same 30 s TTL as the shard state, and defaulting to `0`: a missing
+/// key, an unprovisioned database or a transient failure must degrade to "no extra
+/// invalidation", never to an error on the search path.
+pub async fn cache_epoch() -> String {
+    {
+        let cache = CACHE_EPOCH_CACHE.lock().unwrap();
+        if let Some((value, fetched)) = cache.as_ref()
+            && fetched.elapsed() < SHARD_STATE_TTL
+        {
+            return value.clone();
+        }
+    }
+    let value: String = get_global_client()
+        .query(
+            "SELECT argMax(value, updated_at) FROM server_settings WHERE key = 'cache_epoch'",
+        )
+        .fetch_one()
+        .await
+        .unwrap_or_default();
+    let value = if value.is_empty() { "0".to_string() } else { value };
+    *CACHE_EPOCH_CACHE.lock().unwrap() = Some((value.clone(), Instant::now()));
+    value
+}
+
+static CACHE_EPOCH_CACHE: LazyLock<Mutex<Option<(String, Instant)>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 /// The shard a document was indexed into (`manticore_shard_assignments`), or `None`
 /// when the document has not been indexed yet.

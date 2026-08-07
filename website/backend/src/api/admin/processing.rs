@@ -399,6 +399,293 @@ pub async fn admin_list_eta_samples(
 }
 
 // ---------------------------------------------------------------------------
+// Where processing time goes
+// ---------------------------------------------------------------------------
+//
+// Both endpoints read `processing_task_runs` / `processing_task_inflight`, written by
+// the worker-side activity interceptor (`main_services/processing/tasks/task_timing.py`).
+// Unlike the stage progress above, these are not derived from watermarks: they are a
+// direct record of every activity execution, so they need no `FINAL` and no `uniqExact`.
+//
+// Everything is reported per COLLECTION, not per dataset: the question these answer is
+// "what should I optimise" and "should I add workers", and both are properties of the
+// pipeline, not of one dataset.
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct TaskTimeRawRow {
+    task_name: String,
+    total_seconds: f64,
+    executions: u64,
+    error_count: u64,
+    mean_ms: f64,
+    p95_ms: f64,
+    max_ms: u64,
+}
+
+/// Per-task-type time breakdown for one collection, plus wall clock and the achieved
+/// parallelism (summed task time / wall clock).
+///
+/// The parallelism ratio is the number worth reading first: at 1.0 the pipeline is
+/// serial and making the top task faster is the whole win; at 8.0 on an 8-slot worker
+/// the slots are saturated and more workers is the only thing that helps.
+pub async fn admin_task_time_breakdown(
+    user: &CurrentUser,
+    collectionname: String,
+) -> anyhow::Result<TaskTimeBreakdown> {
+    guard::require_admin(user)?;
+    let empty = TaskTimeBreakdown {
+        rows: Vec::new(),
+        total_seconds: 0.0,
+        total_executions: 0,
+        wall_clock_seconds: 0.0,
+        achieved_parallelism: 0.0,
+        first_started: None,
+        last_finished: None,
+    };
+    if !collections::collection_db_ready(&collectionname).await? {
+        return Ok(empty);
+    }
+    let client = get_collection_client(&collectionname);
+
+    // Every aggregate is cast explicitly — see the `last_seen` note above: RowBinary is
+    // positional and untyped, so a `UInt32` decoded into an `i64` field desynchronises
+    // the whole row.
+    let raw = client
+        .query(
+            "SELECT task_name, \
+                    toFloat64(sum(run_time_ms)) / 1000 AS total_seconds, \
+                    toUInt64(count()) AS executions, \
+                    toUInt64(countIf(outcome = 'error')) AS error_count, \
+                    toFloat64(avg(run_time_ms)) AS mean_ms, \
+                    toFloat64(quantileExact(0.95)(run_time_ms)) AS p95_ms, \
+                    toUInt64(max(run_time_ms)) AS max_ms \
+             FROM processing_task_runs \
+             GROUP BY task_name \
+             ORDER BY total_seconds DESC",
+        )
+        .fetch_all::<TaskTimeRawRow>()
+        .await?;
+
+    if raw.is_empty() {
+        return Ok(empty);
+    }
+
+    // The wall clock is the span from the first execution's start to the last one's
+    // end. An aggregate over an empty table still returns a row (of zeroes), which is
+    // why `raw.is_empty()` is the emptiness test rather than this.
+    let (first_ms, last_ms) = client
+        .query(
+            "SELECT toInt64(min(toUnixTimestamp64Milli(started_at))) AS first_ms, \
+                    toInt64(max(toUnixTimestamp64Milli(started_at) + toInt64(run_time_ms))) AS last_ms \
+             FROM processing_task_runs",
+        )
+        .fetch_one::<(i64, i64)>()
+        .await?;
+
+    let total_seconds: f64 = raw.iter().map(|r| r.total_seconds).sum();
+    let total_executions: u64 = raw.iter().map(|r| r.executions).sum();
+    let wall_clock_seconds = ((last_ms - first_ms).max(0) as f64) / 1000.0;
+
+    Ok(TaskTimeBreakdown {
+        rows: raw
+            .into_iter()
+            .map(|r| TaskTimeRow {
+                task_name: r.task_name,
+                share_percent: share(r.total_seconds, total_seconds),
+                total_seconds: r.total_seconds,
+                executions: r.executions,
+                error_count: r.error_count,
+                mean_ms: r.mean_ms,
+                p95_ms: r.p95_ms,
+                max_ms: r.max_ms,
+            })
+            .collect(),
+        total_seconds,
+        total_executions,
+        wall_clock_seconds,
+        achieved_parallelism: if wall_clock_seconds > 0.0 {
+            total_seconds / wall_clock_seconds
+        } else {
+            0.0
+        },
+        first_started: Some(format_ts(first_ms / 1000)),
+        last_finished: Some(format_ts(last_ms / 1000)),
+    })
+}
+
+/// `part` as a percentage of `whole`, and 0 rather than NaN when there is no whole.
+fn share(part: f64, whole: f64) -> f64 {
+    if whole > 0.0 {
+        (part / whole * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    }
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct LiveWindowRow {
+    task_name: String,
+    seconds_in_window: f64,
+    completed: u64,
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct InFlightRow {
+    task_name: String,
+    in_flight: u64,
+    oldest_age_ms: u64,
+}
+
+/// What the pipeline is spending time on *right now*: a trailing window of completed
+/// executions, plus the sampled set of executions still running.
+///
+/// The two halves answer different questions and neither is enough alone. Completed
+/// executions give the share of time per task type but cannot see a task that has been
+/// running for twenty minutes — it has not finished, so it has no row. The in-flight
+/// samples see exactly that one, but only as a count.
+///
+/// Window arithmetic is an overlap, not a "finished inside the window" filter: an
+/// execution that straddles an edge contributes only the part inside, so the shares sum
+/// to the window and `average_concurrency` is a real average rather than an artefact of
+/// where the boundary fell.
+pub async fn admin_task_time_live(
+    user: &CurrentUser,
+    collectionname: String,
+    window_seconds: u32,
+) -> anyhow::Result<LiveTaskActivity> {
+    guard::require_admin(user)?;
+    let window = window_seconds.clamp(10, 3600);
+    let empty = LiveTaskActivity {
+        rows: Vec::new(),
+        window_seconds: window,
+        total_seconds_in_window: 0.0,
+        average_concurrency: 0.0,
+        in_flight_total: 0,
+        sampled_at: None,
+    };
+    if !collections::collection_db_ready(&collectionname).await? {
+        return Ok(empty);
+    }
+    let client = get_collection_client(&collectionname);
+
+    // Lookback is the window plus an hour: an execution that started before the window
+    // opened still overlaps it, and the longest activities in this pipeline (OCR over a
+    // large scan, ffmpeg over a long video) run for minutes, not hours.
+    let lookback = window as u64 + 3600;
+    let window_ms = window as i64 * 1000;
+    let window_rows = client
+        .query(&format!(
+            "WITH toUnixTimestamp64Milli(now64(3)) AS t1, t1 - {window_ms} AS t0 \
+             SELECT task_name, \
+                    toFloat64(sum(greatest(toInt64(0), \
+                        least(toUnixTimestamp64Milli(started_at) + toInt64(run_time_ms), t1) \
+                      - greatest(toUnixTimestamp64Milli(started_at), t0)))) / 1000 AS seconds_in_window, \
+                    toUInt64(countIf(toUnixTimestamp64Milli(started_at) + toInt64(run_time_ms) >= t0)) AS completed \
+             FROM processing_task_runs \
+             WHERE started_at >= now() - INTERVAL {lookback} SECOND \
+             GROUP BY task_name \
+             HAVING seconds_in_window > 0 \
+             ORDER BY seconds_in_window DESC"
+        ))
+        .fetch_all::<LiveWindowRow>()
+        .await?;
+
+    // A sample is a LEVEL, not a counter: take the newest one per worker and sum those.
+    // Summing the raw rows would multiply concurrency by the number of samples taken.
+    let fresh = INFLIGHT_FRESHNESS_SECONDS;
+    let inflight_rows = client
+        .query(&format!(
+            "SELECT task_name, \
+                    toUInt64(sum(worker_in_flight)) AS in_flight, \
+                    toUInt64(max(worker_oldest_ms)) AS oldest_age_ms \
+             FROM ( \
+                SELECT task_name, worker_id, \
+                       argMax(in_flight, sampled_at) AS worker_in_flight, \
+                       argMax(oldest_age_ms, sampled_at) AS worker_oldest_ms \
+                FROM processing_task_inflight \
+                WHERE sampled_at >= now() - INTERVAL {fresh} SECOND \
+                GROUP BY task_name, worker_id \
+             ) \
+             GROUP BY task_name"
+        ))
+        .fetch_all::<InFlightRow>()
+        .await?;
+
+    let newest_sample = client
+        .query(&format!(
+            "SELECT toInt64(toUnixTimestamp(max(sampled_at))) \
+             FROM processing_task_inflight WHERE sampled_at >= now() - INTERVAL {fresh} SECOND"
+        ))
+        .fetch_one::<i64>()
+        .await?;
+
+    Ok(merge_live(window, window_rows_to_pairs(window_rows), inflight_rows, newest_sample))
+}
+
+fn window_rows_to_pairs(rows: Vec<LiveWindowRow>) -> Vec<(String, f64, u64)> {
+    rows.into_iter()
+        .map(|r| (r.task_name, r.seconds_in_window, r.completed))
+        .collect()
+}
+
+/// Join the completed-window rows with the in-flight samples.
+///
+/// Split out of the query path so it can be tested: the case that matters is a task
+/// that appears in ONE of the two halves only — a long activity still running (in
+/// flight, no completed time) or one that just finished (time, nothing in flight).
+/// Dropping either would make the live view lie about what is happening.
+fn merge_live(
+    window: u32,
+    window_rows: Vec<(String, f64, u64)>,
+    inflight_rows: Vec<InFlightRow>,
+    newest_sample_unix: i64,
+) -> LiveTaskActivity {
+    let mut inflight: BTreeMap<String, (u64, u64)> = inflight_rows
+        .into_iter()
+        .map(|r| (r.task_name, (r.in_flight, r.oldest_age_ms)))
+        .collect();
+
+    let total_seconds_in_window: f64 = window_rows.iter().map(|(_, s, _)| *s).sum();
+    let mut rows: Vec<LiveTaskRow> = window_rows
+        .into_iter()
+        .map(|(task_name, seconds, completed)| {
+            let (in_flight, oldest_ms) = inflight.remove(&task_name).unwrap_or((0, 0));
+            LiveTaskRow {
+                share_percent: share(seconds, total_seconds_in_window),
+                task_name,
+                seconds_in_window: seconds,
+                completed,
+                in_flight,
+                oldest_age_seconds: oldest_ms / 1000,
+            }
+        })
+        .collect();
+
+    // Whatever is left is running but has not completed anything inside the window —
+    // the stuck-task case, and the single most useful row on the panel.
+    for (task_name, (in_flight, oldest_ms)) in inflight {
+        rows.push(LiveTaskRow {
+            task_name,
+            seconds_in_window: 0.0,
+            share_percent: 0.0,
+            completed: 0,
+            in_flight,
+            oldest_age_seconds: oldest_ms / 1000,
+        });
+    }
+
+    let in_flight_total = rows.iter().map(|r| r.in_flight).sum();
+    LiveTaskActivity {
+        window_seconds: window,
+        total_seconds_in_window,
+        average_concurrency: total_seconds_in_window / window as f64,
+        in_flight_total,
+        sampled_at: (newest_sample_unix > 0).then(|| format_ts(newest_sample_unix)),
+        rows,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Temporal workflow browser
 // ---------------------------------------------------------------------------
 /// Strip Temporal's `WORKFLOW_EXECUTION_STATUS_` prefix, e.g.
@@ -967,6 +1254,59 @@ mod tests {
             wf.temporal_url,
             "http://localhost:21909/namespaces/default/workflows/execute-plans-c_ds/abc/history"
         );
+    }
+
+    fn inflight(task: &str, count: u64, oldest_ms: u64) -> InFlightRow {
+        InFlightRow {
+            task_name: task.to_string(),
+            in_flight: count,
+            oldest_age_ms: oldest_ms,
+        }
+    }
+
+    #[test]
+    fn live_shares_add_up_and_concurrency_is_per_second() {
+        let live = merge_live(
+            60,
+            vec![("a".into(), 90.0, 3), ("b".into(), 30.0, 1)],
+            vec![inflight("a", 2, 5_000)],
+            1_700_000_000,
+        );
+        assert_eq!(live.rows[0].task_name, "a");
+        assert_eq!(live.rows[0].share_percent, 75.0);
+        assert_eq!(live.rows[1].share_percent, 25.0);
+        // 120 task-seconds inside a 60 s window is two activities running on average.
+        assert_eq!(live.average_concurrency, 2.0);
+        assert_eq!(live.in_flight_total, 2);
+        assert_eq!(live.rows[0].oldest_age_seconds, 5);
+        assert!(live.sampled_at.is_some());
+    }
+
+    /// The stuck-task case: running for minutes, so it has completed nothing and would
+    /// vanish from a completed-rows-only view exactly when it matters most.
+    #[test]
+    fn a_task_that_is_only_running_still_gets_a_row() {
+        let live = merge_live(60, vec![], vec![inflight("slow_ocr", 1, 900_000)], 17);
+        assert_eq!(live.rows.len(), 1);
+        assert_eq!(live.rows[0].task_name, "slow_ocr");
+        assert_eq!(live.rows[0].seconds_in_window, 0.0);
+        assert_eq!(live.rows[0].oldest_age_seconds, 900);
+        assert_eq!(live.in_flight_total, 1);
+    }
+
+    #[test]
+    fn nothing_running_is_empty_not_an_error() {
+        let live = merge_live(60, vec![], vec![], 0);
+        assert!(live.rows.is_empty());
+        assert_eq!(live.in_flight_total, 0);
+        assert_eq!(live.average_concurrency, 0.0);
+        assert_eq!(live.sampled_at, None);
+    }
+
+    #[test]
+    fn share_of_nothing_is_zero_not_nan() {
+        assert_eq!(share(0.0, 0.0), 0.0);
+        assert_eq!(share(1.0, 4.0), 25.0);
     }
 
     #[test]

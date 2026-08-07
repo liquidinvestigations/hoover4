@@ -1,0 +1,12 @@
+# Console errors that do NOT fail the screenshot gate.
+#
+# One rule per line: a plain substring, or `re:` followed by a Python regex.
+# `#` starts a comment; blank lines are ignored.
+#
+# The bar for adding a line here is that the message is genuinely outside this codebase
+# and cannot be fixed -- third-party noise, or the browser complaining about itself.
+# Anything the site emits belongs in a fix, not here. Whitelisted messages are still
+# printed in report.md as warnings, so an entry that stops being needed stays visible.
+#
+# A single page's local noise goes in screenshots.ini as `allow_console = <substring>`
+# instead, so it cannot silently excuse the same message everywhere else.

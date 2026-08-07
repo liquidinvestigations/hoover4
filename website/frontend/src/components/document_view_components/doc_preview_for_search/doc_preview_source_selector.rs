@@ -8,7 +8,7 @@ use dioxus_free_icons::{
     icons::{
         md_action_icons::MdQuestionAnswer,
         md_communication_icons::MdEmail,
-        md_file_icons::MdTextSnippet,
+        md_file_icons::{MdFolder, MdTextSnippet},
         md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
         md_navigation_icons::MdCheck,
         md_toggle_icons::MdRadioButtonUnchecked,
@@ -131,8 +131,6 @@ fn SelectedItemList(
             position: relative; top: 0px; left: 0px;",
 
             for source in sources.into_iter() {
-                if _should_display(&source) {
-
                     div {
                         key: "{source:?}",
                         style: "
@@ -154,17 +152,8 @@ fn SelectedItemList(
                             item_hit_counts: item_hit_counts,
                         }
                     }
-                }
             }
         }
-    }
-}
-
-fn _should_display(source: &DocumentSourceItem) -> bool {
-    match source {
-        DocumentSourceItem::FileLocations => false,
-        DocumentSourceItem::Metadata => false,
-        _ => true,
     }
 }
 
@@ -236,7 +225,12 @@ fn SourceItemRow(
         DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),
         DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), "Audio".to_string()),
         DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), "Video".to_string()),
-        _ => (_item_icon_rsx(MdQuestionAnswer), format!("{:?}", source)),
+        DocumentSourceItem::FileLocations => {
+            (_item_icon_rsx(MdFolder), "File locations".to_string())
+        }
+        // Never `{source:?}`: a variant name is a storage detail, and a selector that
+        // offers a row nobody can read is worse than one that says "other".
+        _ => (_item_icon_rsx(MdQuestionAnswer), "Other".to_string()),
     };
     let text_color = if selected { "#111" } else { "#333" };
     let dot_icon = if selected {

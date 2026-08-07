@@ -8,6 +8,7 @@ This directory contains the core data plane for Hoover4. It includes database in
 - Database schema definitions and migrations for ClickHouse and Manticore — including the global telemetry tables (`processing_eta_samples`, `usage_events`, `api_events`) that feed the admin processing and metrics pages.
 - Operational assets for running dependencies via Docker Compose (Temporal, ClickHouse, Manticore, MinIO, Tika, Redis, and monitoring UIs).
 - Convenience scripts (`run.sh`, `start-docker.sh`, `reset-docker.sh`, `run-uv.sh`) for local orchestration — the docker ones are thin aliases for `./deploy` at the repo root — plus `verify-stack.sh` for end-to-end smoke checks against a live stack (migrations, ingestion, sharding invariants, website search). Its invariants run against **every** registered collection, read from `Hoover4_Processing.collections` rather than a hardcoded `testdata other` — a leftover collection that no check iterated is exactly how the Manticore/ledger equality check stopped noticing things.
+- `task-time-report.sh` — where processing time went, out of `processing_task_runs`: per-task-type totals, shares, counts, mean/p50/p95/p99/max, per-queue and per-dataset splits, the twenty slowest single executions, and the headline trio of summed task time, wall clock and achieved parallelism. `--csv` for a spreadsheet, `--since '<UTC timestamp>'` to scope it to one ingest (without it the wall clock spans every ingest the collection has ever had, and the parallelism figure is meaningless). Read-only, and it ingests nothing.
 
 ## Subdirectories
 

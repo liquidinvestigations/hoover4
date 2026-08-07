@@ -211,8 +211,10 @@ async fn flush() {
 
 /// Server-function names that count as `user_search`.
 const SEARCH_FUNCTIONS: &[&str] = &[
+    "search_date_histogram",
     "search_for_results",
     "search_for_results_hit_count",
+    "search_numeric_facet",
     "search_string_facet",
 ];
 
@@ -224,9 +226,9 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
     "get_document_sources",
     "get_document_first_vfs_path",
     "get_document_text_by_id_and_source",
+    "get_file_locations",
     "get_file_path",
     "get_raw_metadata",
-    "lookup_container_descriptor",
     "search_document_item_hit_counts",
     "search_document_pdf",
     "search_document_text_for_hit_count",
@@ -236,6 +238,10 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
 /// Every other server-function name we know. Anything under `/api/` that is not
 /// in this list or the two classes above still records an `api_events` row,
 /// bucketed under the constant `other_server_fn` — never under its path.
+/// The list is the whole classification: a server function missing from it is not a
+/// missing row, it is a row bucketed under `other_server_fn`, which is invisible unless
+/// somebody counts. Every `#[server]` function in the frontend belongs in exactly one of
+/// these three lists — the two above only if its own handler records the event.
 const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_add_member",
     "admin_collection_processing",
@@ -265,21 +271,40 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_set_collection_public",
     "admin_set_group_admin",
     "admin_set_setting",
+    "admin_task_time_breakdown",
+    "admin_task_time_live",
     "admin_trigger_workflow",
     "admin_update_collection",
     "admin_update_dataset",
     "admin_update_group",
     "admin_update_user",
+    "chat_admin_cancel_run",
+    "chat_admin_live_runs",
+    "chat_artifact_detail",
     "chat_create_session",
     "chat_delete_session",
+    "chat_dismiss_interrupted",
     "chat_get_session",
+    "chat_list_models",
     "chat_list_sessions",
+    "chat_llm_configured",
+    "chat_poll",
     "chat_send_message",
     "chat_set_collections",
     "chat_start_research",
+    "chat_stop",
+    "collection_overview",
     "fetch_db_terms_for_ints",
-    "list_collections",
+    "get_document_dates",
+    "get_document_email",
+    "get_raw_metadata_tables",
     "list_folder_children",
+    "list_storage_tree",
+    "vfs_node_term_id",
+    "vfs_node_term_ids",
+    "vfs_search_in_folder",
+    "vfs_tree_children",
+    "vfs_tree_path_to",
     "whoami",
 ];
 

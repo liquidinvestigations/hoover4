@@ -90,6 +90,32 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     Ok(response)
 }
 
+/// Run one SQL statement against Manticore's `/sql` endpoint with NO caching at all.
+///
+/// Same wire call as [`manticore_search_sql`], minus the cache read and the cache
+/// write. It exists for the VFS structure index: the tree changes as ingestion
+/// proceeds, a user watching a folder fill up is the normal case, and a stale tree is
+/// worse than a slow one. Structure queries are also cheap — one small attribute table,
+/// no text bodies — so there is little to cache.
+///
+/// Do NOT route ordinary search through this. The result cache is what keeps repeated
+/// facet fan-outs off Manticore.
+pub async fn manticore_search_sql_uncached<T: DeserializeOwned + std::fmt::Debug>(
+    sql: String,
+) -> anyhow::Result<RawSarchResult<T>> {
+    let database_url =
+        std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
+    let database_url = format!("{}/sql", database_url);
+    let client = reqwest::Client::new();
+    let response = client.post(database_url).body(sql.clone()).send().await?;
+    let status = response.status();
+    let response_txt = response.text().await?;
+    if status.is_client_error() || status.is_server_error() {
+        anyhow::bail!("Error: {}: {}", status, response_txt);
+    }
+    Ok(serde_json::from_str(&response_txt)?)
+}
+
 async fn get_cached_response(query_hash: &String, query_string: &String) -> anyhow::Result<String> {
     let client = get_global_client();
     let sql = "

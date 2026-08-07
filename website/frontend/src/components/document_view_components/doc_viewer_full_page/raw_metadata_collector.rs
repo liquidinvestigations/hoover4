@@ -1,8 +1,20 @@
 //! Component for rendering raw metadata.
 
-use common::{document_metadata::DocumentMetadataTableInfo, search_result::DocumentIdentifier};
+use common::{
+    document_metadata::DocumentMetadataTableInfo,
+    document_provenance::{DocumentDates, DocumentEmail, format_epoch_utc},
+    search_result::DocumentIdentifier,
+};
 use dioxus::prelude::*;
-use dioxus_free_icons::{Icon, icons::go_icons::GoCopy};
+use dioxus_free_icons::{
+    Icon,
+    icons::{
+        go_icons::GoCopy,
+        md_action_icons::MdDateRange,
+        md_communication_icons::MdEmail,
+        md_file_icons::MdAttachment,
+    },
+};
 use std::collections::BTreeMap;
 
 use crate::components::{
@@ -30,6 +42,33 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
         DocumentMetadataTableInfo::new("processing_errors", "hash"),
     ];
 
+    let document_identifier_value = document_identifier();
+    // One request for every table. Reading the values (not the signals) through
+    // `use_reactive` is what makes this re-fetch when the document actually changes:
+    // a `ReadSignal` prop is a fresh signal on every parent render, so a resource that
+    // subscribes to it is subscribed to a signal nobody will ever write to.
+    let raw_metadata = use_resource(use_reactive!(|document_identifier_value, table_list| {
+        async move { get_raw_metadata_tables(document_identifier_value, table_list).await }
+    }));
+
+    let sections = match raw_metadata().clone() {
+        Some(Ok(results)) => rsx! {
+            for (table_info, rows) in table_list.iter().cloned().zip(results) {
+                RawMetadataCollectorSection {
+                    key: "{document_identifier_value:?}-{table_info:?}",
+                    table_info,
+                    rows,
+                }
+            }
+        },
+        Some(Err(e)) => rsx! {
+            div { ComponentErrorDisplay { error_txt: format!("{:#?}", e) } }
+        },
+        None => rsx! {
+            div { LoadingIndicator {} }
+        },
+    };
+
     rsx! {
         ul {
             style: "
@@ -39,58 +78,21 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
                 overflow-y: scroll;
                 max-height: 100%;
             ",
-            for table_info in table_list {
-                RawMetadataCollectorSection {
-                    document_identifier,
-                    table_info
-                }
-            }
+            // Curated first, raw dumps after. These two answer the questions people
+            // arrive with; the tables below answer "what else is there".
+            DatesSection { document_identifier }
+            EmailSection { document_identifier }
+            {sections}
         }
     }
 }
 
 #[component]
 fn RawMetadataCollectorSection(
-    document_identifier: ReadSignal<DocumentIdentifier>,
     table_info: ReadSignal<DocumentMetadataTableInfo>,
+    rows: ReadSignal<Vec<serde_json::Value>>,
 ) -> Element {
-    let section_header = rsx! {
-        h1 {
-            style: "font-size: 28px; display: flex; flex-direction: row; gap: 10px;",
-            "{table_info().table_name}",
-            span {
-                style: "font-size: 14px;",
-                "{table_info().hash_column_name}"
-            }
-        }
-    };
-    let mut raw_metadata = use_resource(move || {
-        let document_identifier = document_identifier();
-        let table_info = table_info();
-        async move { get_raw_metadata(document_identifier, table_info).await }
-    });
-    use_effect(move || {
-        let _document_identifier = document_identifier();
-        let _table_info = table_info();
-        raw_metadata.clear();
-        raw_metadata.restart();
-    });
-    let result = match raw_metadata().clone() {
-        Some(Ok(result)) => result,
-        Some(Err(e)) => {
-            return rsx! { div {
-                // {section_header},
-                ComponentErrorDisplay { error_txt: format!("{:#?}", e) }
-            }};
-        }
-        None => {
-            return rsx! { div {
-                // {section_header},
-                LoadingIndicator{}
-            }};
-        }
-    };
-    if result.is_empty() {
+    if rows().is_empty() {
         return rsx! {};
     }
     rsx! {
@@ -101,9 +103,15 @@ fn RawMetadataCollectorSection(
                 padding: 20px;
                 margin: 15px 30px;
             ",
-            key: "{document_identifier():?}-{table_info():?}",
-            {section_header}
-            for item in result {
+            h1 {
+                style: "font-size: 28px; display: flex; flex-direction: row; gap: 10px;",
+                "{table_info().table_name}",
+                span {
+                    style: "font-size: 14px;",
+                    "{table_info().hash_column_name}"
+                }
+            }
+            for item in rows() {
                 RawMetadataTable { value: item }
             }
         }
@@ -272,12 +280,214 @@ fn truncate_for_table(s: &str, max_chars: usize) -> String {
 }
 
 #[server]
-async fn get_raw_metadata(
+async fn get_raw_metadata_tables(
     document_identifier: DocumentIdentifier,
-    table_info: DocumentMetadataTableInfo,
-) -> Result<Vec<serde_json::Value>, ServerFnError> {
+    table_list: Vec<DocumentMetadataTableInfo>,
+) -> Result<Vec<Vec<serde_json::Value>>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::documents::get_raw_metadata::get_raw_metadata(&user, document_identifier, table_info)
+    backend::api::documents::get_raw_metadata::get_raw_metadata_tables(
+        &user,
+        document_identifier,
+        table_list,
+    )
+    .await
+    .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+
+// ---------- Curated provenance sections (plan 3 §12-b / §12-d) ----------
+
+const SECTION_STYLE: &str = "
+    border: 1px solid black;
+    border-radius: 20px;
+    padding: 20px;
+    margin: 15px 30px;
+";
+
+const SECTION_HEADER_STYLE: &str = "
+    font-size: 28px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+";
+
+/// Every date the indexer confirmed, with the metadata key it came from.
+///
+/// Always rendered, even when empty. "This document has no confirmed dates" is the
+/// answer to "why did my date filter miss it", and an absent section is not an answer —
+/// it is indistinguishable from a section that failed to load.
+#[component]
+fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let dates = use_resource(use_reactive!(|document_identifier_value| {
+        async move { get_document_dates(document_identifier_value).await }
+    }));
+
+    let body = match dates().clone() {
+        // Named states, unlike the anonymous red boxes the raw sections render.
+        None => rsx! {
+            div { style: "color: rgba(0,0,0,0.55);", "Loading dates…" }
+        },
+        Some(Err(error)) => rsx! {
+            div {
+                class: "x-error-display",
+                style: "color: rgb(160,30,30);",
+                "Could not load the dates for this document: {error}"
+            }
+        },
+        Some(Ok(DocumentDates { dates })) if dates.is_empty() => rsx! {
+            div {
+                style: "color: rgba(0,0,0,0.6);",
+                "No confirmed dates. Nothing in this document's metadata gave a date we
+                 trust, so it will not match any date range — only "
+                b { "Unknown only" }
+                "."
+            }
+        },
+        Some(Ok(DocumentDates { dates })) => rsx! {
+            table {
+                style: "width: 100%; border-collapse: collapse;",
+                tbody {
+                    for date in dates {
+                        tr {
+                            key: "{date.epoch_seconds}-{date.source}",
+                            td {
+                                style: "padding: 4px 12px 4px 0; white-space: nowrap; font-variant-numeric: tabular-nums;",
+                                "{format_epoch_utc(date.epoch_seconds)}"
+                            }
+                            td {
+                                style: "padding: 4px 0; color: rgba(0,0,0,0.65); font-size: 14px;",
+                                "{date.source}"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    };
+
+    rsx! {
+        li {
+            style: SECTION_STYLE,
+            h1 {
+                style: SECTION_HEADER_STYLE,
+                Icon { icon: MdDateRange, style: "width: 26px; height: 26px;" }
+                "Dates"
+            }
+            {body}
+        }
+    }
+}
+
+/// Subject, participants grouped by role, and the send date when it is real.
+///
+/// Rendered only when the document IS an email — unlike Dates, an absent Email section
+/// on a PDF is the correct answer rather than a missing one.
+#[component]
+fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let email = use_resource(use_reactive!(|document_identifier_value| {
+        async move { get_document_email(document_identifier_value).await }
+    }));
+
+    let value = match email().clone() {
+        None => return rsx! {},
+        Some(Err(error)) => {
+            return rsx! {
+                li {
+                    style: SECTION_STYLE,
+                    h1 {
+                        style: SECTION_HEADER_STYLE,
+                        Icon { icon: MdEmail, style: "width: 26px; height: 26px;" }
+                        "Email"
+                    }
+                    div {
+                        class: "x-error-display",
+                        style: "color: rgb(160,30,30);",
+                        "Could not load the email header: {error}"
+                    }
+                }
+            };
+        }
+        Some(Ok(None)) => return rsx! {},
+        Some(Ok(Some(value))) => value,
+    };
+
+    rsx! {
+        li {
+            style: SECTION_STYLE,
+            h1 {
+                style: SECTION_HEADER_STYLE,
+                Icon { icon: MdEmail, style: "width: 26px; height: 26px;" }
+                "Email"
+            }
+            table {
+                style: "width: 100%; border-collapse: collapse;",
+                tbody {
+                    if !value.subject.is_empty() {
+                        tr {
+                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", "Subject" }
+                            td { style: "padding: 4px 0;", "{value.subject}" }
+                        }
+                    }
+                    if let Some(sent) = value.date_sent {
+                        tr {
+                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", "Sent" }
+                            td { style: "padding: 4px 0; font-variant-numeric: tabular-nums;", "{format_epoch_utc(sent)}" }
+                        }
+                    }
+                    for (role, label) in [("from", "From"), ("to", "To"), ("cc", "Cc"), ("bcc", "Bcc")] {
+                        {
+                            let people = value.participants_with_role(role);
+                            if people.is_empty() {
+                                rsx! {}
+                            } else {
+                                let rendered: Vec<String> = people.iter().map(|p| p.display()).collect();
+                                rsx! {
+                                    tr {
+                                        key: "{role}",
+                                        td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", "{label}" }
+                                        td {
+                                            style: "padding: 4px 0;",
+                                            for person in rendered {
+                                                div { key: "{person}", "{person}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if value.attachment_count > 0 {
+                div {
+                    style: "display: flex; align-items: center; gap: 6px; margin-top: 10px; color: rgba(0,0,0,0.7);",
+                    Icon { icon: MdAttachment, style: "width: 20px; height: 20px;" }
+                    "{value.attachment_count} attachment(s) — browse them by opening this email in Storage."
+                }
+            }
+        }
+    }
+}
+
+#[server]
+async fn get_document_dates(
+    document_identifier: DocumentIdentifier,
+) -> Result<DocumentDates, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_document_provenance::get_document_dates(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+#[server]
+async fn get_document_email(
+    document_identifier: DocumentIdentifier,
+) -> Result<Option<DocumentEmail>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_document_provenance::get_document_email(&user, document_identifier)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)
 }

@@ -1,5 +1,8 @@
 //! Virtual file system browsing endpoints.
 
+pub mod tree;
+pub use tree::{vfs_search_in_folder, vfs_tree_children, vfs_tree_path_to};
+
 use std::collections::BTreeSet;
 
 use common::current_user::CurrentUser;
@@ -18,7 +21,7 @@ pub async fn get_first_vfs_path(
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let sql = "
         SELECT path, container_hash
-        FROM vfs_files
+        FROM vfs_files FINAL
         WHERE collection_dataset = ?
           AND hash = ?
         ORDER BY path
@@ -68,7 +71,7 @@ pub async fn list_folder_children(
 
     let dir_sql = "
         SELECT path
-        FROM vfs_directories
+        FROM vfs_directories FINAL
         WHERE collection_dataset = ?
           AND container_hash = ?
           AND startsWith(path, ?)
@@ -89,7 +92,7 @@ pub async fn list_folder_children(
 
     let file_sql = "
         SELECT path, hash, file_size_bytes
-        FROM vfs_files
+        FROM vfs_files FINAL
         WHERE collection_dataset = ?
           AND container_hash = ?
           AND startsWith(path, ?)
@@ -159,7 +162,7 @@ async fn _get_container_hashes(
 ) -> anyhow::Result<BTreeSet<String>> {
     let sql = "
         SELECT DISTINCT container_hash
-        FROM vfs_files
+        FROM vfs_files FINAL
         WHERE collection_dataset = ?
           AND container_hash IN (?)
     ";

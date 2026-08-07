@@ -6,6 +6,8 @@ import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
 
+from .task_timing import TaskTimingInterceptor
+
 log = logging.getLogger(__name__)
 
 
@@ -54,7 +56,9 @@ async def run_common_worker():
     from .P3_parse_files.workflows import ParseSingleFile
     from .P3_parse_files.parse_archives import ArchiveExtractionAndScan, extract_archive_to_temp, cleanup_temp_dir, record_archive_container
     from .P3_parse_files.parse_email import parse_email_extract_text_headers, extract_email_attachments_to_temp, EmailExtractionAndScan
+    from .P3_parse_files.document_dates import resolve_document_dates
     from .P3_parse_files.parse_text import extract_plaintext_chunks
+    from .P3_parse_files.parse_office_xml import parse_office_xml_and_store
     from .P3_parse_files.parse_mime import detect_mime_with_gnu_file, detect_mime_with_magika
     from .P3_parse_files.parse_pdf import PdfProcessingAndScan, pdf_get_metadata_and_store, pdf_small_extract_text_and_images, pdf_large_split_to_chunks
     from .P3_parse_files.parse_image import parse_image_metadata_and_store
@@ -129,6 +133,7 @@ async def run_common_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
+          interceptors=[TaskTimingInterceptor()],
           task_queue="processing-common-queue",
           workflows=[
             IngestDiskDataset,
@@ -173,7 +178,9 @@ async def run_common_worker():
             record_archive_container,
             parse_email_extract_text_headers,
             extract_email_attachments_to_temp,
+            resolve_document_dates,
             extract_plaintext_chunks,
+            parse_office_xml_and_store,
             pdf_get_metadata_and_store,
             pdf_small_extract_text_and_images,
             pdf_large_split_to_chunks,
@@ -229,6 +236,7 @@ async def run_tika_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
+          interceptors=[TaskTimingInterceptor()],
           task_queue="processing-tika-queue",
           workflows=[],
           activities=[run_tika_and_store],
@@ -262,6 +270,7 @@ async def run_ocr_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
+          interceptors=[TaskTimingInterceptor()],
           task_queue="processing-ocr-queue",
           workflows=[],
           activities=[run_ocr_and_store, run_ocr_pdf_and_store],
@@ -288,6 +297,7 @@ async def run_nlp_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
+      interceptors=[TaskTimingInterceptor()],
       task_queue="processing-nlp-queue",
       workflows=[],
       activities=[extract_entities_for_hashes],
@@ -310,6 +320,7 @@ async def run_embed_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
+      interceptors=[TaskTimingInterceptor()],
       task_queue="processing-embed-queue",
       workflows=[],
       activities=[chunk_embed_for_hashes],
@@ -320,7 +331,10 @@ async def run_embed_worker():
 
 
 async def run_indexing_worker():
-  from .P6_index_data.activities import index_metadata, index_text_pages, index_vectors
+  from .P6_index_data.activities import (
+      build_vfs_nodes, index_filenames_row, index_metadata, index_text_pages,
+      index_vectors, index_vfs_structure,
+  )
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
@@ -332,9 +346,11 @@ async def run_indexing_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
+      interceptors=[TaskTimingInterceptor()],
       task_queue="processing-indexing-queue",
       workflows=[],
-      activities=[index_text_pages, index_metadata, index_vectors],
+      activities=[index_text_pages, index_metadata, index_vectors,
+                  index_filenames_row, build_vfs_nodes, index_vfs_structure],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
@@ -355,6 +371,7 @@ async def run_index_planner_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
+      interceptors=[TaskTimingInterceptor()],
       task_queue="processing-index-planner-queue",
       workflows=[],
       activities=[plan_shards, finalize_index_batch, record_indexed],

@@ -8,6 +8,7 @@ use common::document_sources::DocumentSourceItem;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
+use crate::components::document_view_components::doc_file_locations_panel::DocumentFileLocationsPanel;
 use crate::components::document_view_components::doc_preview_for_search::{
     doc_preview_for_email::DocumentPreviewForEmail, doc_preview_for_pdf::DocumentPreviewForPdf,
     doc_preview_for_text::DocumentPreviewForTextWithSearch,
@@ -96,16 +97,21 @@ pub fn DocSourceDispatch(
                 }
             },
         },
-        DocumentSourceItem::Metadata => rsx! {
-            PreviewWrapper {
-                controls: rsx! {"Metadata"},
-                page: rsx! { "METADATA HIDDEN FROM PREVIEW"}
-            },
+        DocumentSourceItem::FileLocations => rsx! {
+            DocumentFileLocationsPanel { document_identifier }
         },
-        other => rsx! {
+        // A source this build has no viewer for. It is not an error — an older bookmark
+        // or a newer indexer can both produce one — so it says so plainly and carries no
+        // error marker, and in particular it never prints the variant at a reader.
+        _ => rsx! {
             PreviewWrapper {
-                controls: rsx! {"TODO CONTROLS: {other:?}"},
-                page: rsx! {"TODO PAGE: {other:?}"}
+                controls: rsx! {"Preview"},
+                page: rsx! {
+                    div {
+                        style: "padding: 12px; color: rgba(0,0,0,0.6);",
+                        "There is no preview for this source. Pick another one from the list."
+                    }
+                }
             },
         },
     }

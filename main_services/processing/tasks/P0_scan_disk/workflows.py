@@ -4,7 +4,7 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from typing import List, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import asyncio
 import hashlib
 import json
@@ -77,6 +77,11 @@ class HandleFilesParams:
     file_paths: List[str]
     container_hash: str = ""
     root_path_prefix: str = ""
+    #: Positionally aligned with ``file_paths``: epoch seconds from the scan's own
+    #: ``stat``. `list_disk_folder` has always collected these and this workflow used to
+    #: drop them on the floor; an archive member's mtime is the archive's own metadata
+    #: and is the only historical date many extracted files have.
+    file_mtimes: List[int] = field(default_factory=list)
 
 
 @workflow.defn
@@ -98,6 +103,7 @@ class HandleFiles:
                 file_paths=file_paths,
                 container_hash=(params.container_hash or ""),
                 root_path_prefix=(params.root_path_prefix or ""),
+                file_mtimes=list(params.file_mtimes or []),
             ),
             start_to_close_timeout=timedelta(hours=4),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -204,6 +210,7 @@ class HandleFolders:
                 file_paths=file_paths,
                 container_hash=(params.container_hash or ""),
                 root_path_prefix=(params.root_path_prefix or ""),
+                file_mtimes=[int(f.get("mtime") or 0) for f in file_batch],
             )
             child_futs.append(
                 workflow.execute_child_workflow(

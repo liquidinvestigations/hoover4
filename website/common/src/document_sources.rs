@@ -19,7 +19,7 @@ pub const OCR_ENGINES: [&str; 2] = ["tesseract", "easyocr"];
 /// One `extracted_by` value, taken apart for display.
 ///
 /// ```text
-/// native:       pdftotext | extractous | email_parser | raw_text | qpdf
+/// native:       pdftotext | extractous | office_xml | email_parser | raw_text | qpdf
 /// OCR variants: ocr_<engine>_<languages>   e.g. ocr_tesseract_eng+ron, ocr_easyocr_en
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +61,7 @@ impl TextSource {
             TextSource::Native { extractor } => match extractor.as_str() {
                 "pdftotext" => "PDF text".to_string(),
                 "extractous" => "Extracted text".to_string(),
+                "office_xml" => "Office XML".to_string(),
                 "email_parser" => "Email body".to_string(),
                 "raw_text" => "Plain text".to_string(),
                 other => other.to_string(),
@@ -110,7 +111,7 @@ mod tests {
 
     #[test]
     fn native_extractors_are_not_ocr() {
-        for native in ["pdftotext", "extractous", "email_parser", "raw_text", "qpdf"] {
+        for native in ["pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"] {
             assert!(!TextSource::parse(native).is_ocr(), "{native}");
         }
     }
@@ -258,6 +259,9 @@ pub enum DocumentSourceItem {
     Audio(DocumentAudioSourceItem),
     Text(DocumentTextSourceItem),
     FileLocations,
+    /// No longer offered as a preview source — the viewer's Metadata tab is the metadata
+    /// surface. Kept because it is part of the URL-encoded viewer state and dropping the
+    /// variant would turn every bookmark carrying it into a parse failure.
     Metadata,
 }
 

@@ -204,7 +204,11 @@ pub fn AiChatPage() -> Element {
             }
 
             if let Some(e) = error.read().clone() {
-                div { style: "margin-top: 12px; color: #B91C1C; font-size: 13px;", "{e}" }
+                div {
+                    class: "x-error-display",
+                    style: "margin-top: 12px; color: #B91C1C; font-size: 13px;",
+                    "{e}"
+                }
             }
             if *sending.read() {
                 div { style: "margin-top: 12px; color: #64748B; font-size: 13px;",

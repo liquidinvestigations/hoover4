@@ -24,14 +24,20 @@ import re
 
 log = logging.getLogger(__name__)
 
-# <collectionname>_<digits>_pages|_meta|_vectors — the only table families this
-# module manages.
+# <collectionname>_<digits>_pages|_meta|_vectors — the SHARDED table families.
+#
+# `<collectionname>_vfs` is deliberately NOT matched by this: it is one table per
+# collection rather than per shard, and everything that iterates shards (the ledger
+# equality check, the per-shard search fan-out) must not see it. It still has to be
+# dropped and purged with the collection, which is why `drop_collection_tables` and
+# `purge_dataset_from_manticore` name it explicitly.
 _SHARD_TABLE_RE_TEMPLATE = r'^{coll}_[0-9]+_(pages|meta|vectors)$'
 _SHARD_NAME_RE = re.compile(r'^([a-z0-9_]+)_([0-9]+)$')
 
 PAGES_TABLE_SUFFIX = 'pages'
 META_TABLE_SUFFIX = 'meta'
 VECTORS_TABLE_SUFFIX = 'vectors'
+VFS_TABLE_SUFFIX = 'vfs'
 
 
 @contextmanager
@@ -171,18 +177,56 @@ def pages_table_ddl(table_name: str) -> str:
     """
 
 
+#: `date_min`/`date_max` for a document with no confirmed date. Manticore attributes are
+#: not nullable, so "unknown" needs a reserved value, and i64::MIN is the one no real
+#: date can collide with. A BETWEEN range can never match it, so undated documents drop
+#: out of every date range automatically; the UI's "Unknown only" filters on equality.
+#: The Rust side pins the same constant — keep them in step.
+DATE_UNKNOWN = -9223372036854775808
+
+#: `file_size_bytes` for a document that exists in `file_types` but in no `vfs_files`
+#: row. 0 is a legitimate size (an empty file), so it cannot double as "unknown", and
+#: every size range excludes negatives.
+SIZE_UNKNOWN = -1
+
+
 def meta_table_ddl(table_name: str) -> str:
     """CREATE TABLE statement for a shard metadata table (one row per document).
 
-    Schema is identical to the retired global ``doc_metadata``. ``collection_dataset``
-    stays on the rows: one shard holds several datasets, and the website filters and
-    facets on it.
+    ``collection_dataset`` stays on the rows: one shard holds several datasets, and the
+    website filters and facets on it.
 
-    Infix indexed as well: the two text fields here are ``filenames`` and
-    ``metadata_values``, and a filename fragment is the single best fuzzy-match case in
-    the whole schema (``*report*`` finding ``annual_report_2024.pdf``). The percentage
-    cost is the same as on pages, but this table is ~0.25% of its size - 168 KB against
-    65 MB on the real `testdata` shard - so it is close to free in absolute terms.
+    **Attribute-only — no full-text fields.** The old ``filenames`` and
+    ``metadata_values`` text columns are gone: ``metadata_values`` was written as ``""``
+    unconditionally since the day it was created, and ``filenames`` is now covered twice
+    over by the ``filename_index`` pages row (match + highlight) and
+    ``primary_filename`` (title + name sort). Verified against the live Manticore
+    14.1.0 that a table with zero text fields is accepted rather than needing a dummy
+    field, and that ``min_infix_len`` on a table with no text field is pointless — hence
+    no infix setting here any more.
+
+    Typed attributes and what reads them:
+
+    * ``dates`` multi64 — every confirmed historical date, SIGNED epoch seconds.
+      Manticore's own ``timestamp`` is 32-bit unsigned (1970..2106), useless for a
+      corpus with pre-1970 material. Verified empirically that multi64 stores negatives
+      and that ``ANY(dates) BETWEEN lo AND hi`` matches across zero.
+    * ``date_min`` / ``date_max`` bigint — Manticore cannot ORDER BY an MVA, so "oldest
+      first" sorts on one and "newest first" on the other. :data:`DATE_UNKNOWN` when the
+      document has no dates.
+    * ``file_size_bytes`` bigint — buckets are computed at query time with
+      ``INTERVAL()``; pre-baking them would make adding a bucket a schema change.
+      :data:`SIZE_UNKNOWN` when the document has no ``vfs_files`` row.
+    * ``struct_flags`` bigint — a bitfield (see ``STRUCT_FLAG_*``) for the cheap
+      booleans that do not each deserve a column.
+    * ``primary_filename`` string — a string ATTRIBUTE, not a text field: Manticore can
+      ORDER BY the former and not the latter, and this is the result-card title and the
+      "sort by name" key.
+    * ``file_paths`` multi64 — repurposed from bare parent-path term ids to `vfs_node`
+      closure term ids, which are scoped by dataset AND container. The old ids were the
+      same integer for `/data` in every dataset and inside every archive.
+    * ``email_from`` / ``email_to`` multi64 — term ids of normalised addresses;
+      to+cc+bcc merge into ``email_to``.
     """
     return f"""
         create table if not exists {table_name}(
@@ -192,10 +236,66 @@ def meta_table_ddl(table_name: str) -> str:
             file_mime_types multi64,
             file_extensions multi64,
             file_paths multi64,
-            filenames text,
-            metadata_values text
+            dates multi64,
+            date_min bigint,
+            date_max bigint,
+            file_size_bytes bigint,
+            struct_flags bigint,
+            primary_filename string,
+            email_from multi64,
+            email_to multi64
+        ) engine='columnar'
+    """
+
+
+def vfs_table_name(collectionname: str) -> str:
+    """The structure-index table of a collection (``testdata_vfs``)."""
+    from database.clickhouse import validate_collectionname
+    validate_collectionname(collectionname)
+    return f'{collectionname}_{VFS_TABLE_SUFFIX}'
+
+
+def vfs_table_ddl(table_name: str) -> str:
+    """CREATE TABLE statement for a collection's VFS structure index.
+
+    One row per node of the materialised tree (ClickHouse ``vfs_nodes``). It powers the
+    tree sidebar, the filter pane's folder picker, and in-folder filename search.
+
+    **One table per COLLECTION, not per dataset and not per shard.** Every query already
+    filters ``collection_dataset``, a per-dataset table would multiply the table count
+    for no query-plan benefit, and a dataset purge is a ``DELETE WHERE
+    collection_dataset = …``. It holds one small attribute row per node and no text
+    bodies, so it does not need the shard budget: `testdata` has hundreds of rows, and a
+    million-file collection is a couple of hundred MB of attributes.
+
+    ``name`` is the only full-text field and it is infix indexed — matching
+    ``*report*`` against a basename is the entire point of in-folder search.
+
+    Every read of this table goes through the website's NON-caching Manticore primitive.
+    The tree changes as ingestion proceeds and a stale tree is worse than a slow one.
+    """
+    return f"""
+        create table if not exists {table_name}(
+            collection_dataset string,
+            container_hash string,
+            node_key string,
+            parent_key string,
+            ancestor_keys multi64,
+            name text,
+            path string,
+            kind int,
+            file_hash string,
+            file_size_bytes bigint,
+            depth int
         ) engine='columnar' {_INFIX_SETTING}
     """
+
+
+def create_vfs_table(collectionname: str) -> str:
+    """Create a collection's structure-index table if it does not exist. Idempotent."""
+    table = vfs_table_name(collectionname)
+    _execute_ddl(vfs_table_ddl(table))
+    return table
 
 
 def vectors_table_ddl(table_name: str, dims: int) -> str:
@@ -273,10 +373,12 @@ def _list_all_tables() -> list[str]:
 
 
 def list_shard_tables(collectionname: str) -> list[str]:
-    """All physical shard tables of a collection, sorted.
+    """All physical SHARD tables of a collection, sorted.
 
-    Matches exactly ``<collectionname>_<digits>_(pages|meta)`` - a collection named
-    ``testdata_x`` must not show up in ``testdata``'s list.
+    Matches exactly ``<collectionname>_<digits>_(pages|meta|vectors)`` - a collection
+    named ``testdata_x`` must not show up in ``testdata``'s list, and the collection's
+    single ``<collectionname>_vfs`` table is deliberately excluded (it is not sharded;
+    see :func:`list_collection_tables`).
     """
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
@@ -284,10 +386,24 @@ def list_shard_tables(collectionname: str) -> list[str]:
     return sorted(t for t in _list_all_tables() if pattern.match(t))
 
 
+def list_collection_tables(collectionname: str) -> list[str]:
+    """Every Manticore table a collection owns: its shard tables plus its VFS table.
+
+    What teardown and purge iterate. Kept separate from :func:`list_shard_tables`
+    because the callers that reason about *shards* — the ledger equality check, the
+    per-shard search fan-out — must not be handed a table that has no shard index.
+    """
+    tables = list_shard_tables(collectionname)
+    vfs_table = vfs_table_name(collectionname)
+    if vfs_table in _list_all_tables():
+        tables.append(vfs_table)
+    return tables
+
+
 def drop_collection_tables(collectionname: str) -> list[str]:
-    """Drop every shard table of a collection. Returns the dropped table names."""
+    """Drop every Manticore table of a collection. Returns the dropped table names."""
     dropped = []
-    for table in list_shard_tables(collectionname):
+    for table in list_collection_tables(collectionname):
         _execute_ddl(f"drop table if exists {table}")
         dropped.append(table)
     if dropped:
@@ -328,6 +444,10 @@ def manticore_migrate():
     from database.clickhouse import get_collection_client, list_collections
     vector_dims = probed_embedding_dims()
     for collectionname in list_collections():
+        # The structure index has no ledger to recover from — it is one table per
+        # collection, rebuilt from ClickHouse `vfs_nodes` by P6 — so it is healed here
+        # unconditionally rather than per recorded shard.
+        create_vfs_table(collectionname)
         with get_collection_client(collectionname) as client:
             rows = client.query(
                 "SELECT shard_index FROM manticore_shards FINAL ORDER BY shard_index"

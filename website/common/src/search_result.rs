@@ -41,6 +41,14 @@ pub struct SearchResultDocumentItem {
     pub file_hash: String,
     pub collection_dataset: String,
     pub result_index_in_page: u64,
+    /// The query matched this document's FILENAME and nothing in its text.
+    ///
+    /// The filename is searchable through a synthetic pages row, and when that row is the
+    /// only one that matched, the body snippet is `HIGHLIGHT()` over the filename — the
+    /// title again, in the place a reader reads as "here is where it says that". The card
+    /// says what happened instead of echoing the title.
+    #[serde(default)]
+    pub matched_by_filename: bool,
 }
 
 impl SearchResultDocumentItem {

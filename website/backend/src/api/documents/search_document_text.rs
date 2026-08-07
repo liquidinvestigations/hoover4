@@ -78,6 +78,7 @@ pub async fn search_document_text_for_hits(
                 }}) as text
             FROM {pages_table}
             WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {} AND page_id = {}
+            AND extracted_by != 'filename_index'
             AND MATCH({})
             LIMIT 1000
             {options_clause}
@@ -136,6 +137,7 @@ pub async fn search_document_text_all_hits(
             }}) as text
         FROM {pages_table}
         WHERE file_hash = {} AND collection_dataset = {}
+        AND extracted_by != 'filename_index'
         AND MATCH({})
         LIMIT 1000
         {options_clause}

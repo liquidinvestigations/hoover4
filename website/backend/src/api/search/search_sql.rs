@@ -12,20 +12,46 @@
 //! [`collectionname_valid`] plus a numeric suffix, field names against a whitelist.
 
 use anyhow::Context;
-use common::{search_query::SearchQuery, search_result::FacetOriginalValue};
+use common::{
+    search_query::{DATE_UNKNOWN, RangeFilter, SearchQuery, SortKey, SortSpec},
+    search_result::FacetOriginalValue,
+};
 
 use crate::api::admin::collections::collectionname_valid;
+
+/// `extracted_by` of the synthetic pages row that carries a document's filenames.
+///
+/// It exists so a query for a filename finds the document, and it is a row in the pages
+/// table with `page_id = -1`. That makes it a landmine for every consumer that treats a
+/// pages row as a real page: `page_id` is deserialised as `u32` in the document
+/// endpoints, and a "N other matches" count that includes it is off by one on every
+/// filename hit. Every such query excludes it with [`EXCLUDE_FILENAME_ROW`], and
+/// `test_filename_row_excluded.py` enumerates the readers.
+pub const FILENAME_INDEX_EXTRACTED_BY: &str = "filename_index";
+
+/// Drop-in `AND` predicate excluding the filename row. See
+/// [`FILENAME_INDEX_EXTRACTED_BY`].
+pub const EXCLUDE_FILENAME_ROW: &str = "extracted_by != 'filename_index'";
 
 /// Columns that live on the `<shard>_meta` table. Frontend-facing field names are
 /// bare (`file_types`, never `<table>.file_types`); they are qualified with the
 /// shard's meta table here so the reference is unambiguous inside the JOIN.
+///
+/// `filenames` and `metadata_values` are gone with the meta table's text fields (see
+/// `database/manticore.py::meta_table_ddl`).
 const META_TABLE_FIELDS: &[&str] = &[
     "file_types",
     "file_mime_types",
     "file_extensions",
     "file_paths",
-    "filenames",
-    "metadata_values",
+    "dates",
+    "date_min",
+    "date_max",
+    "file_size_bytes",
+    "struct_flags",
+    "primary_filename",
+    "email_from",
+    "email_to",
 ];
 
 /// Columns allowed to appear unqualified: pages-only attributes, plus the two
@@ -98,6 +124,113 @@ pub fn sql_options_clause(max_matches: u64) -> String {
     format!("OPTION agent_query_timeout=60000,max_query_time=60000,max_matches={max_matches}")
 }
 
+/// The `ORDER BY` column for one sort key, already qualified.
+///
+/// `Date` picks a different column per direction on purpose: a document has a SET of
+/// dates, so "oldest first" is `min(dates)` ascending and "newest first" is
+/// `max(dates)` descending. Sorting both directions on one end would put a document
+/// spanning 1990..2020 in the wrong place for one of them.
+///
+/// `Relevance` is `weight()` and never a column, which is why this returns the whole
+/// key expression rather than a name.
+pub fn sort_column(sort: &SortSpec, meta_table: &str) -> String {
+    match sort.key {
+        SortKey::Relevance => "weight()".to_string(),
+        SortKey::Date => {
+            if sort.desc {
+                format!("{meta_table}.date_max")
+            } else {
+                format!("{meta_table}.date_min")
+            }
+        }
+        SortKey::FileSize => format!("{meta_table}.file_size_bytes"),
+        SortKey::Name => format!("{meta_table}.primary_filename"),
+    }
+}
+
+/// The full `ORDER BY` for a per-shard query.
+///
+/// The tie-break on `(collection_dataset, file_hash)` is load-bearing and must match
+/// `fanout::merge_hits` exactly: Manticore's order among equal keys is not stable across
+/// queries with different `LIMIT`, and `fetch_limit` grows with the requested page, so
+/// without a total order a document tied at the truncation boundary appears on two pages
+/// or on none.
+pub fn sort_order_by(sort: &SortSpec, meta_table: &str) -> String {
+    let column = sort_column(sort, meta_table);
+    let direction = if sort.desc { "DESC" } else { "ASC" };
+    format!("ORDER BY {column} {direction}, collection_dataset ASC, file_hash ASC")
+}
+
+/// A range predicate over one indexed field.
+///
+/// **Dates are an interval-overlap test, not `ANY(dates) BETWEEN`, and that is a
+/// platform limit rather than a choice.** Manticore 14.1.0 cannot evaluate `ANY(mva)`
+/// inside this query shape at all: qualified (`ANY(m.dates)`) is a parse error
+/// (`unexpected SUBKEY`), unqualified resolves against the pages table and errors as an
+/// unknown column, and table aliases are not accepted in the JOIN either. `ANY(dates)`
+/// works only against `<shard>_meta` on its own — and the query cannot drop the JOIN,
+/// because `MATCH` lives on the pages side. (The JOIN itself is forced by the same
+/// version's inability to run this shape over distributed tables.)
+///
+/// So the predicate is `date_min <= hi AND date_max >= lo`: the document's date SPAN
+/// overlaps the requested range. For the ordinary document — one date, or several within
+/// a few days — this is exactly "any date in range". It differs only for a document whose
+/// dates STRADDLE the range with none inside it: a file created in 2007 and modified in
+/// 2020 matches a 2013–2016 filter. The error is one-sided (a superset, never a subset),
+/// which is the right direction for a search filter: a user can see and dismiss an extra
+/// result, and cannot see one that was silently withheld. The viewer's Dates section
+/// shows every date with its provenance, so the extra result explains itself.
+///
+/// The unknown sentinel is tested on `date_min` alone: an undated document has
+/// `date_min = date_max = DATE_UNKNOWN`, which is below every real bound, so the overlap
+/// test excludes it automatically.
+fn range_predicate(
+    field_name: &str,
+    filter: &RangeFilter,
+    meta_table: &str,
+) -> anyhow::Result<Option<String>> {
+    if !filter.is_active() {
+        return Ok(None);
+    }
+    if filter.is_inverted() {
+        anyhow::bail!(
+            "range filter on {field_name:?} has min > max ({:?} > {:?})",
+            filter.min,
+            filter.max
+        );
+    }
+    // Every bound is an i64 — see `RangeFilter`. Nothing here is user-supplied text.
+    let (lo, hi) = (filter.min.unwrap_or(i64::MIN + 1), filter.max.unwrap_or(i64::MAX));
+    let ranged = match field_name {
+        // Interval overlap; see the doc comment for why this is not `ANY(dates)`.
+        // The DATE_UNKNOWN sentinel is i64::MIN, so an undated document fails
+        // `date_max >= lo` for every real `lo` and drops out here rather than needing
+        // an extra clause.
+        "dates" => Some(format!(
+            "{meta_table}.date_min <= {hi} AND {meta_table}.date_max >= {lo}"
+        )),
+        "file_size_bytes" => {
+            // A document with no vfs_files row carries SIZE_UNKNOWN (-1), which would
+            // otherwise land inside any range whose lower bound is unset.
+            let lo = lo.max(0);
+            Some(format!("{meta_table}.file_size_bytes BETWEEN {lo} AND {hi}"))
+        }
+        other => anyhow::bail!("invalid range filter field: {other:?}"),
+    };
+    let unknown = match field_name {
+        "dates" => format!("{meta_table}.date_min = {DATE_UNKNOWN}"),
+        "file_size_bytes" => format!("{meta_table}.file_size_bytes < 0"),
+        _ => unreachable!("field validated above"),
+    };
+
+    Ok(Some(match (filter.min.is_some() || filter.max.is_some(), filter.include_unknown) {
+        (true, true) => format!("({} OR {unknown})", ranged.unwrap()),
+        (true, false) => ranged.unwrap(),
+        (false, true) => unknown,
+        (false, false) => unreachable!("is_active() ruled this out"),
+    }))
+}
+
 pub fn build_sql_where_clause(
     query: &SearchQuery,
     pages_table: &str,
@@ -126,6 +259,12 @@ pub fn build_sql_where_clause(
         terms.push(format!("{field_name} IN ({values_str})",));
     }
 
+    for (field_name, filter) in query.active_range_filters() {
+        if let Some(predicate) = range_predicate(field_name, filter, meta_table)? {
+            terms.push(predicate);
+        }
+    }
+
     Ok(terms.join(
         "
         AND ",
@@ -144,9 +283,9 @@ mod tests {
             facet_filters.insert(field.to_string(), values.iter().cloned().collect::<BTreeSet<_>>());
         }
         SearchQuery {
-            collection_datasets: vec![],
             query_string: query_string.to_string(),
             facet_filters,
+            ..Default::default()
         }
     }
 
@@ -273,9 +412,7 @@ mod tests {
 
     /// Every facet field the frontend can send must be accepted — a whitelist that
     /// drifts from its caller list is a runtime 500. Keep in sync with the facet
-    /// list in `frontend/src/components/search_components/search_facets.rs`,
-    /// INCLUDING the currently commented-out mime/extension/path facets (they are
-    /// one uncomment away from being sent).
+    /// list in `frontend/src/components/search_components/search_facets.rs`.
     #[test]
     fn qualify_field_name_accepts_every_frontend_facet_field() {
         for field in [
@@ -284,6 +421,14 @@ mod tests {
             "file_mime_types",
             "file_extensions",
             "file_paths",
+            "dates",
+            "date_min",
+            "date_max",
+            "file_size_bytes",
+            "struct_flags",
+            "primary_filename",
+            "email_from",
+            "email_to",
             "ner_per",
             "ner_org",
             "ner_loc",
@@ -294,5 +439,126 @@ mod tests {
                 "frontend facet field {field:?} rejected by the whitelist"
             );
         }
+    }
+
+    /// The dropped meta text columns must NOT come back through the whitelist: they no
+    /// longer exist on the table, so a filter naming one is a Manticore error on every
+    /// shard rather than an empty result.
+    #[test]
+    fn qualify_field_name_rejects_the_dropped_text_columns() {
+        for gone in ["filenames", "metadata_values"] {
+            assert!(qualify_field_name(gone, "testdata_1_meta").is_err(), "{gone} is gone");
+        }
+    }
+
+    fn ranged(field: &str, filter: RangeFilter) -> String {
+        let mut query = SearchQuery { query_string: "word".to_string(), ..Default::default() };
+        query.range_filters.insert(field.to_string(), filter);
+        normalize(&build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").unwrap())
+    }
+
+    /// The predicate is an interval-overlap test rather than `ANY(dates) BETWEEN`,
+    /// because Manticore 14.1.0 cannot evaluate `ANY(mva)` across this JOIN in any
+    /// spelling. See `range_predicate`'s doc comment; the substitution is deliberate and
+    /// one-sided (a superset), and this pins the shape so it is not "fixed" back into
+    /// something that 400s on every query.
+    #[test]
+    fn a_date_range_is_an_interval_overlap_over_the_scalar_bounds() {
+        let sql = ranged("dates", RangeFilter { min: Some(1356998400), max: Some(1483228799), include_unknown: false });
+        assert!(
+            sql.contains(
+                "AND testdata_1_meta.date_min <= 1483228799 AND testdata_1_meta.date_max >= 1356998400"
+            ),
+            "{sql}"
+        );
+        assert!(!sql.contains("ANY("), "ANY(mva) does not parse across the JOIN: {sql}");
+    }
+
+    #[test]
+    fn an_undated_document_falls_out_of_every_range_without_an_extra_clause() {
+        // DATE_UNKNOWN is i64::MIN, so `date_max >= lo` is false for every real lo.
+        assert!(DATE_UNKNOWN < 0);
+        let sql = ranged("dates", RangeFilter { min: Some(0), max: Some(i64::MAX), include_unknown: false });
+        assert!(sql.contains("date_max >= 0"), "{sql}");
+    }
+
+    #[test]
+    fn date_unknown_is_tested_on_the_scalar_not_the_mva() {
+        // An undated document's `dates` is EMPTY, so no MVA predicate can reach it.
+        let sql = ranged("dates", RangeFilter { min: None, max: None, include_unknown: true });
+        assert!(sql.contains(&format!("AND testdata_1_meta.date_min = {DATE_UNKNOWN}")), "{sql}");
+        assert!(!sql.contains("ANY("), "unknown-only must not emit an MVA predicate: {sql}");
+    }
+
+    #[test]
+    fn a_range_plus_unknown_is_a_disjunction() {
+        let sql = ranged("dates", RangeFilter { min: Some(0), max: Some(100), include_unknown: true });
+        assert!(
+            sql.contains(&format!(
+                "AND (testdata_1_meta.date_min <= 100 AND testdata_1_meta.date_max >= 0                  OR testdata_1_meta.date_min = {DATE_UNKNOWN})"
+            ).replace("                 ", "")),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn an_open_ended_size_range_still_excludes_the_unknown_sentinel() {
+        // SIZE_UNKNOWN is -1. Without the clamp, "under 1 MB" would sweep up every
+        // document that has no vfs_files row.
+        let sql = ranged("file_size_bytes", RangeFilter { min: None, max: Some(1048575), include_unknown: false });
+        assert!(sql.contains("AND testdata_1_meta.file_size_bytes BETWEEN 0 AND 1048575"), "{sql}");
+    }
+
+    #[test]
+    fn an_inverted_range_is_an_error_not_an_empty_filter() {
+        let mut query = SearchQuery { query_string: "word".to_string(), ..Default::default() };
+        query.range_filters.insert(
+            "dates".to_string(),
+            RangeFilter { min: Some(100), max: Some(1), include_unknown: false },
+        );
+        assert!(build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").is_err());
+    }
+
+    #[test]
+    fn an_inactive_range_filter_adds_no_predicate() {
+        let sql = ranged("dates", RangeFilter::default());
+        assert_eq!(sql, "WHERE MATCH('word', testdata_1_pages)");
+    }
+
+    #[test]
+    fn an_unknown_range_field_is_rejected() {
+        let mut query = SearchQuery { query_string: "word".to_string(), ..Default::default() };
+        query.range_filters.insert(
+            "page_text".to_string(),
+            RangeFilter { min: Some(1), ..Default::default() },
+        );
+        assert!(build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").is_err());
+    }
+
+    #[test]
+    fn sort_columns_are_whitelisted_and_direction_aware() {
+        let cases = [
+            (SortKey::Relevance, true, "weight()"),
+            (SortKey::Relevance, false, "weight()"),
+            (SortKey::Date, true, "testdata_1_meta.date_max"),
+            (SortKey::Date, false, "testdata_1_meta.date_min"),
+            (SortKey::FileSize, true, "testdata_1_meta.file_size_bytes"),
+            (SortKey::Name, false, "testdata_1_meta.primary_filename"),
+        ];
+        for (key, desc, expected) in cases {
+            assert_eq!(sort_column(&SortSpec { key, desc }, "testdata_1_meta"), expected);
+        }
+    }
+
+    #[test]
+    fn sort_order_by_keeps_the_stable_tie_break() {
+        assert_eq!(
+            sort_order_by(&SortSpec { key: SortKey::Name, desc: false }, "testdata_1_meta"),
+            "ORDER BY testdata_1_meta.primary_filename ASC, collection_dataset ASC, file_hash ASC"
+        );
+        assert_eq!(
+            sort_order_by(&SortSpec { key: SortKey::FileSize, desc: true }, "testdata_1_meta"),
+            "ORDER BY testdata_1_meta.file_size_bytes DESC, collection_dataset ASC, file_hash ASC"
+        );
     }
 }

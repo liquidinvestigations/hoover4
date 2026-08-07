@@ -241,6 +241,7 @@ fn AttemptDisclosure(
             }
             if *open.read() {
                 ul {
+                    class: "x-error-display",
                     style: "margin: 6px 0 0 0; padding-left: 18px; font-size: 12px; \
                             line-height: 1.5; opacity: 0.9;",
                     for (i, e) in errors.into_iter().enumerate() {

@@ -48,6 +48,9 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         file_hash: doc.file_hash.clone(),
         collection_dataset: doc.collection_dataset.clone(),
         result_index_in_page: index,
+        // The chat tool hands back a snippet it chose; whether the underlying hit was
+        // filename-only is not part of that contract, so the card shows the snippet.
+        matched_by_filename: false,
     };
 
     rsx! {

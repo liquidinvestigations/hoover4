@@ -26,6 +26,7 @@ pub fn SearchResultItemCard(
         highlight_filenames_spans,
         collection_dataset,
         result_index_in_page,
+        matched_by_filename,
         ..
     } = result.read().clone();
     let we_are_selected =
@@ -113,7 +114,7 @@ pub fn SearchResultItemCard(
                     padding: 2px;
                     border: 2px;
                 ",
-                HighlightTextSnippetSection {highlight_text_spans}
+                HighlightTextSnippetSection {highlight_text_spans, matched_by_filename}
                 div {
                     style: "
                         display: flex;
@@ -218,8 +219,34 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
     }
 }
 
+/// The body snippet, or — when the filename is the only thing that matched — a note.
+///
+/// The snippet for such a hit is `HIGHLIGHT()` over the synthetic filename row, so it
+/// renders the title a second time (`easychair.docx` → `easychair docx`) in the place a
+/// reader takes for "here is the sentence that matched". Saying what happened is both
+/// shorter and true.
 #[component]
-fn HighlightTextSnippetSection(highlight_text_spans: Vec<HighlightTextSpan>) -> Element {
+fn HighlightTextSnippetSection(
+    highlight_text_spans: Vec<HighlightTextSpan>,
+    matched_by_filename: bool,
+) -> Element {
+    if matched_by_filename {
+        return rsx! {
+            div {
+                class: "x-matched-by-filename",
+                style: "
+                    font-size: 15px;
+                    line-height: 23px;
+                    font-weight: 400;
+                    font-style: italic;
+                    color: rgba(0, 0, 0, 0.55);
+                    flex: 1;
+                    min-width: 0;
+                ",
+                "Matched by filename — no matching text inside this document."
+            }
+        };
+    }
     rsx! {
         div {
             // TEXT SNIPPET

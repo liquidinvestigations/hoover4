@@ -13,6 +13,55 @@ from tasks.heartbeat import HEARTBEAT_TIMEOUT, with_heartbeat
 log = logging.getLogger(__name__)
 
 
+#: The four participant headers, in the order the viewer shows them. `role` is a
+#: ClickHouse Enum8 on `email_addresses`, so these strings are the schema.
+ADDRESS_ROLES = ("from", "to", "cc", "bcc")
+
+
+def extract_email_addresses(
+    headers_by_role: dict[str, list[str]]
+) -> list[tuple[str, str, str]]:
+    """Parse participant headers into ``(role, address, display_name)`` triples.
+
+    Pure, because every interesting case here is a parsing case and none of them needs a
+    stack: folded headers, RFC 2822 group syntax (``undisclosed-recipients:;``), display
+    names containing the comma that would otherwise split the list, and the same header
+    appearing twice.
+
+    ``headers_by_role`` maps a role to the RAW header strings -- plural, because
+    ``msg.get(hdr)`` returns only the FIRST of a repeated header and mail in the wild
+    repeats ``Cc:``. Callers pass ``msg.get_all(hdr)``.
+
+    Addresses are lower-cased so ``E.Brandt@BlakeLaw.net`` and ``e.brandt@blakelaw.net``
+    are one facet value; the display name keeps its original casing in its own column.
+    Results are deduplicated on ``(role, address)`` -- the first display name seen for an
+    address wins, so a later bare ``To: a@b.com`` does not blank a name -- and returned
+    in a stable order.
+    """
+    from email.utils import getaddresses
+
+    seen: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for role in ADDRESS_ROLES:
+        raw_values = [v for v in (headers_by_role.get(role) or []) if v]
+        if not raw_values:
+            continue
+        for display_name, address in getaddresses([str(v) for v in raw_values]):
+            address = (address or "").strip().lower()
+            display_name = (display_name or "").strip()
+            # Group syntax yields ('', '') for the group label itself. A header holding
+            # only a display name is worse than empty: `getaddresses(["Just A Name"])`
+            # hands back the bare atom `Just` as an ADDRESS, which would become a facet
+            # value that matches nothing and looks like a person. Require a real
+            # `local@domain`.
+            local, _, domain = address.partition("@")
+            if not local or not domain or "@" in domain:
+                continue
+            key = (role, address)
+            if key not in seen:
+                seen[key] = (role, address, display_name)
+    return list(seen.values())
+
+
 @dataclass
 class ParseEmailHeadersParams:
     collectionname: str
@@ -36,8 +85,13 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
         msg = BytesParser(policy=policy.default).parse(f)
 
     subject = msg["subject"] or ""
-    # Parse RFC 2822 Date header and convert to UTC naive datetime for ClickHouse
+    # Parse RFC 2822 Date header and convert to UTC naive datetime for ClickHouse.
+    #
+    # `date_sent` is not nullable, so an absent or unparseable header still writes the
+    # epoch -- and 1970-01-01 is a real date a real email can carry. `date_sent_known`
+    # is what tells the two apart; the date resolver ignores `date_sent` without it.
     date_header = msg.get("date")
+    date_sent_known = 0
     try:
         parsed_dt = parsedate_to_datetime(str(date_header)) if date_header else None
         if parsed_dt is None:
@@ -45,16 +99,20 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
         if parsed_dt.tzinfo is not None:
             parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
         date_sent_dt = parsed_dt
+        date_sent_known = 1
     except Exception:
         # Fallback to epoch if invalid/missing to satisfy non-nullable DateTime
         date_sent_dt = datetime.utcfromtimestamp(0)
-    # Simple address aggregation
-    addresses = []
-    for hdr in ["from", "to", "cc", "bcc"]:
-        v = msg.get(hdr)
-        if v:
-            addresses.append(f"{hdr}: {v}")
-    addresses_str = "; ".join(addresses)
+
+    # `get_all`, not `get`: `get` returns only the first of a repeated header, and mail
+    # in the wild repeats Cc:. The flat `addresses` column keeps its old shape for
+    # display; the structured rows below are what search and the viewer read.
+    headers_by_role = {role: (msg.get_all(role) or []) for role in ADDRESS_ROLES}
+    addresses_str = "; ".join(
+        f"{role}: {', '.join(str(v) for v in values)}"
+        for role, values in headers_by_role.items() if values
+    )
+    address_rows = extract_email_addresses(headers_by_role)
 
     # Save email container row
     with get_collection_client(params.collectionname) as client:
@@ -71,8 +129,17 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             "subject": pa.array([subject], type=pa.string()),
             "addresses": pa.array([addresses_str], type=pa.string()),
             "date_sent": pa.array([date_sent_dt], type=pa.timestamp("s")),
+            "date_sent_known": pa.array([date_sent_known], type=pa.uint8()),
         })
         client.insert_arrow("email_headers", tbl_h)
+        if address_rows:
+            client.insert_arrow("email_addresses", pa.table({
+                "collection_dataset": pa.array([params.collection_dataset] * len(address_rows), type=pa.string()),
+                "email_hash": pa.array([params.email_hash] * len(address_rows), type=pa.string()),
+                "role": pa.array([r[0] for r in address_rows], type=pa.string()),
+                "address": pa.array([r[1] for r in address_rows], type=pa.string()),
+                "display_name": pa.array([r[2] for r in address_rows], type=pa.string()),
+            }))
 
     # Extract plaintext parts
     texts: List[str] = []

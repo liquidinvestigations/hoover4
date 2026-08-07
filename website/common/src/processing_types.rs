@@ -150,6 +150,93 @@ impl WorkflowFilter {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Where processing time goes
+// ---------------------------------------------------------------------------
+
+/// Default trailing window, in seconds, for the live activity view. Long enough that a
+/// short task shows up at all, short enough that the shares track what the pipeline is
+/// doing *now* rather than what it did five minutes ago.
+pub const LIVE_WINDOW_SECONDS: u32 = 60;
+
+/// How stale an in-flight sample may be and still count as "running". Workers sample
+/// every 5 s, so this tolerates two missed samples before a task disappears from the
+/// live view.
+pub const INFLIGHT_FRESHNESS_SECONDS: u32 = 20;
+
+/// One task type's share of the total processing time, all time.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TaskTimeRow {
+    /// Temporal activity type, which is the unit being optimised.
+    pub task_name: String,
+    /// Summed wall time of every execution, in seconds. This is the number to sort by:
+    /// the top row is where an optimisation pays the most.
+    pub total_seconds: f64,
+    /// `total_seconds` as a percentage of the collection's summed task time.
+    pub share_percent: f64,
+    pub executions: u64,
+    /// Executions that raised. Their time is included in `total_seconds` — failing is
+    /// not free, and a task that burns an hour retrying should read as an hour.
+    pub error_count: u64,
+    pub mean_ms: f64,
+    pub p95_ms: f64,
+    pub max_ms: u64,
+}
+
+/// The whole time breakdown for one collection, plus the two numbers that say whether
+/// the answer is "make the task faster" or "run more workers".
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TaskTimeBreakdown {
+    /// Sorted by `total_seconds` descending.
+    pub rows: Vec<TaskTimeRow>,
+    /// Summed task time across every task type, in seconds.
+    pub total_seconds: f64,
+    pub total_executions: u64,
+    /// End of the last execution minus the start of the first, in seconds. Includes
+    /// any idle gap between two ingests, which is why the ratio below is *achieved*
+    /// parallelism and not a hardware limit.
+    pub wall_clock_seconds: f64,
+    /// `total_seconds / wall_clock_seconds`. 1.0 means the pipeline was effectively
+    /// serial; 8.0 means eight task-seconds were spent per elapsed second.
+    pub achieved_parallelism: f64,
+    /// RFC 3339 bounds of the measured span, `None` when nothing has been recorded.
+    pub first_started: Option<String>,
+    pub last_finished: Option<String>,
+}
+
+/// One task type in the live view.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LiveTaskRow {
+    pub task_name: String,
+    /// Task-seconds spent inside the window. An execution that straddles the window
+    /// edge contributes only its overlap, so the shares add up to the window.
+    pub seconds_in_window: f64,
+    pub share_percent: f64,
+    /// Executions that finished inside the window.
+    pub completed: u64,
+    /// Executions running right now, summed over the newest sample of each worker.
+    pub in_flight: u64,
+    /// Age of the longest-running one, in seconds. A number that keeps climbing while
+    /// `completed` stays at zero is a stuck task.
+    pub oldest_age_seconds: u64,
+}
+
+/// What the pipeline is doing right now.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LiveTaskActivity {
+    /// Sorted by `seconds_in_window` descending, in-flight-only rows last.
+    pub rows: Vec<LiveTaskRow>,
+    pub window_seconds: u32,
+    pub total_seconds_in_window: f64,
+    /// `total_seconds_in_window / window_seconds`: how many activities ran in parallel
+    /// on average over the window.
+    pub average_concurrency: f64,
+    pub in_flight_total: u64,
+    /// RFC 3339 time of the newest in-flight sample, `None` when no worker has
+    /// reported recently — which is how "nothing is running" is expressed.
+    pub sampled_at: Option<String>,
+}
+
 /// A failure bucket: one task that failed, with how often and how recently.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TaskFailureGroup {

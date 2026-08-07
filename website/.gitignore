@@ -5,3 +5,5 @@ target/
 **/*.rs.bk
 
 /tmp
+# Screenshot runs (./take-screenshots.sh). Regenerated, never reviewed in a diff.
+test_reports/

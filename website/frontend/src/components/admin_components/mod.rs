@@ -66,10 +66,14 @@ pub fn SuccessBar(message: String) -> Element {
 }
 
 /// Django-style red error bar.
+///
+/// `x-error-bar`, not `x-error-display`: the screenshot gate reports these as warnings,
+/// because an admin form rejecting bad input is the panel working, not a defect.
 #[component]
 pub fn ErrorBar(message: String) -> Element {
     rsx! {
         div {
+            class: "x-error-bar",
             style: "display: flex; align-items: center; gap: 10px; background: #ffefef; color: #ba2121; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; border-radius: 4px; border: 1px solid #f3c1c1;",
             span {
                 style: "display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #ba2121; color: white; font-size: 12px; font-weight: 700; flex-shrink: 0;",

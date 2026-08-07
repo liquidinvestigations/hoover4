@@ -18,8 +18,11 @@ use crate::pages::admin::{
     users_list::AdminUsersPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
-use crate::pages::file_browser_page::{FileBrowserCollectionsPage, FileBrowserPage};
+use crate::pages::file_browser_page::{
+    FileBrowserCollectionPage, FileBrowserCollectionsPage, FileBrowserPage,
+};
 use crate::pages::home_page::HomePage;
+use crate::pages::not_found_page::NotFoundPage;
 use crate::pages::pdfdemo_page::PdfDemoPage;
 use crate::pages::search_page::SearchPage;
 use crate::pages::view_document_page::ViewDocumentPage;
@@ -53,6 +56,11 @@ pub enum Route {
 
     #[route("/file_browser")]
     FileBrowserCollectionsPage {},
+
+    // A collection landing page. Three segments against FileBrowserPage's five, so the
+    // two cannot shadow each other whatever a collection is called.
+    #[route("/file_browser/c/:collectionname")]
+    FileBrowserCollectionPage { collectionname: String },
 
     #[route("/file_browser/:collection/:path/:selected_result_hash/:doc_viewer_state")]
     FileBrowserPage {
@@ -121,6 +129,12 @@ pub enum Route {
     #[route("/admin/metrics")]
     AdminMetricsPage {},
 
+    // LAST, and it must stay last: the router tries the variants in order, so anything
+    // declared after this would be unreachable. It also catches a route whose parameter
+    // failed to parse, which is why a stale bookmark now lands on a page instead of in
+    // the global error boundary.
+    #[route("/:..segments")]
+    NotFoundPage { segments: Vec<String> },
 }
 
 impl Route {

@@ -1,4 +1,8 @@
 //! Error boundary component for rendering failures.
+//!
+//! Anything that puts an error in front of a user carries the class `x-error-display`.
+//! It has no stylesheet rule: it exists so `website/tools/capture_screenshots.py` can find
+//! surfaced errors structurally instead of guessing from the words on screen.
 
 use dioxus::prelude::*;
 
@@ -9,6 +13,7 @@ pub fn GlobalErrorBoundary(boundary_name: ReadSignal<String>, children: Element)
             handle_error: move |_err: ErrorContext| {
                 rsx! {
                     h1 {
+                        class: "x-error-display",
                         style: "color:red; font-size: 54px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
                         "Error",
                     }
@@ -69,6 +74,7 @@ pub fn ComponentErrorBoundary(children: Element) -> Element {
 pub fn ComponentErrorDisplay(error_txt: ReadSignal<String>, children: Element) -> Element {
     rsx! {
         div {
+            class: "x-error-display",
             width: "100%",
             height: "100%",
             display: "flex",

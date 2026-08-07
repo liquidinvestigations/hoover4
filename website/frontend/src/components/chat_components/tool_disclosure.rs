@@ -410,7 +410,7 @@ fn search_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Rou
     Some(Route::search_page_from_query(SearchQuery {
         query_string,
         collection_datasets: collections,
-        facet_filters: Default::default(),
+        ..Default::default()
     }))
 }
 

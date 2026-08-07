@@ -1,14 +1,18 @@
 //! Admin page: processing status, workflows and failures for one collection.
 
+use std::time::Duration;
+
 use common::processing_types::{
-    CollectionProcessingStatus, DocumentFailure, EtaSamplePoint, StageProgress, TaskFailureGroup,
-    WorkflowFilter, WorkflowSummary, STAGE_EXECUTE, STAGE_INDEX, STAGE_NLP, STAGE_PLAN,
+    CollectionProcessingStatus, DocumentFailure, EtaSamplePoint, LiveTaskActivity, StageProgress,
+    TaskFailureGroup, TaskTimeBreakdown, WorkflowFilter, WorkflowSummary, LIVE_WINDOW_SECONDS,
+    STAGE_EXECUTE, STAGE_INDEX, STAGE_NLP, STAGE_PLAN,
 };
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{
     admin_collection_processing, admin_list_document_failures, admin_list_eta_samples,
     admin_list_task_failures, admin_list_workflows, admin_retry_document, admin_retry_failed_task,
+    admin_task_time_breakdown, admin_task_time_live,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, DatasetJobStrip, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK,
@@ -102,6 +106,9 @@ fn ProcessingContent(collection_id: String) -> Element {
     let doc_failures_res =
         use_resource(move || admin_list_document_failures(df_id.clone(), String::new(), LIST_LIMIT));
 
+    let tt_id = collection_id.clone();
+    let task_time_res = use_resource(move || admin_task_time_breakdown(tt_id.clone()));
+
     let msg = use_signal(|| None::<String>);
     let error_msg = use_signal(|| None::<String>);
 
@@ -110,13 +117,20 @@ fn ProcessingContent(collection_id: String) -> Element {
     // `Resource` is `Copy`, so each call re-copies the handles; that keeps the closure
     // `Fn` and lets it be handed to more than one `EventHandler`.
     let refresh_all = move || {
-        let (mut s, mut w, mut t, mut d, mut e) =
-            (status_res, workflows_res, task_failures_res, doc_failures_res, eta_res);
+        let (mut s, mut w, mut t, mut d, mut e, mut tt) = (
+            status_res,
+            workflows_res,
+            task_failures_res,
+            doc_failures_res,
+            eta_res,
+            task_time_res,
+        );
         s.restart();
         w.restart();
         t.restart();
         d.restart();
         e.restart();
+        tt.restart();
     };
 
     rsx! {
@@ -150,6 +164,10 @@ fn ProcessingContent(collection_id: String) -> Element {
             status: load_state(status_res),
             eta_samples: eta_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
         }
+
+        LiveActivityPanel { collection_id: collection_id.clone() }
+
+        TaskTimePanel { breakdown: load_state(task_time_res) }
 
         WorkflowsPanel {
             workflows: load_state(workflows_res),
@@ -409,6 +427,267 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Where processing time goes
+// ---------------------------------------------------------------------------
+
+/// How often the live panel re-reads. Matches the worker's in-flight sampling interval
+/// (`tasks/task_timing.py`), so the page never renders the same sample twice in a row
+/// and never skips one.
+const LIVE_REFRESH_MS: u64 = 5_000;
+
+/// Seconds, in the largest unit that still shows the magnitude. A per-task total is
+/// read against the others on the page, so the raw seconds stay visible next to it.
+fn format_seconds(seconds: f64) -> String {
+    if seconds < 60.0 {
+        format!("{seconds:.1} s")
+    } else {
+        format!("{:.0} s ({})", seconds, humanize_seconds(seconds as u64))
+    }
+}
+
+/// A horizontal share bar, same visual language as [`StageBar`]'s fill.
+#[component]
+fn ShareBar(percent: f64, color: String) -> Element {
+    let width = percent.clamp(0.0, 100.0);
+    rsx! {
+        div {
+            style: "width: 120px; height: 10px; background: #eee; border-radius: 3px; overflow: hidden;",
+            div { style: "height: 100%; width: {width}%; background: {color};" }
+        }
+    }
+}
+
+/// Per-task-type time breakdown, sorted so the top row is where to optimise.
+///
+/// Reads `processing_task_runs`, one row per activity execution — failures included, at
+/// their real cost. This is the after-the-fact view; the live panel above it is the
+/// during-the-run one.
+#[component]
+fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
+    rsx! {
+        div { style: MODULE,
+            h2 { style: MODULE_CAPTION, "Where processing time goes" }
+            div { style: MODULE_BODY,
+                match breakdown {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(b) if b.rows.is_empty() => rsx! {
+                        p { style: HELP_TEXT,
+                            "No task executions recorded yet. Every activity the pipeline runs \
+                             writes one row here — an empty table means nothing has been \
+                             processed since the instrumentation was deployed."
+                        }
+                    },
+                    Load::Ready(b) => rsx! {
+                        div { style: "display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px;",
+                            Metric {
+                                label: "Summed task time".to_string(),
+                                value: format_seconds(b.total_seconds),
+                                note: format!("{} executions", b.total_executions),
+                            }
+                            Metric {
+                                label: "Wall clock".to_string(),
+                                value: format_seconds(b.wall_clock_seconds),
+                                note: b.first_started.clone().unwrap_or_default(),
+                            }
+                            Metric {
+                                label: "Achieved parallelism".to_string(),
+                                value: format!("{:.2}\u{00d7}", b.achieved_parallelism),
+                                note: "task-seconds per elapsed second".to_string(),
+                            }
+                        }
+                        p { style: "{HELP_TEXT} margin: 0 0 12px;",
+                            "Summed task time divided by wall clock is what the pipeline actually \
+                             achieved in parallel. Close to 1 means the top task below is the whole \
+                             cost and worth optimising; close to the worker slot count means the \
+                             slots are saturated and more workers is the cheaper fix. Wall clock \
+                             spans the first execution to the last, idle time included."
+                        }
+                        table { style: TABLE,
+                            thead {
+                                tr {
+                                    th { style: TH, "Task" }
+                                    th { style: TH, "Total" }
+                                    th { style: TH, "Share" }
+                                    th { style: TH, "Executions" }
+                                    th { style: TH, "Mean" }
+                                    th { style: TH, "p95" }
+                                    th { style: TH, "Max" }
+                                    th { style: TH, "Failed" }
+                                }
+                            }
+                            tbody {
+                                for row in b.rows {
+                                    tr { key: "{row.task_name}",
+                                        td { style: TD, "{row.task_name}" }
+                                        td { style: "{TD} white-space: nowrap;", {format_seconds(row.total_seconds)} }
+                                        td { style: TD,
+                                            div { style: "display: flex; align-items: center; gap: 8px;",
+                                                ShareBar { percent: row.share_percent, color: "#417690".to_string() }
+                                                span { {format!("{:.1}%", row.share_percent)} }
+                                            }
+                                        }
+                                        td { style: TD, "{row.executions}" }
+                                        td { style: TD, {format!("{:.0} ms", row.mean_ms)} }
+                                        td { style: TD, {format!("{:.0} ms", row.p95_ms)} }
+                                        td { style: TD, {format!("{} ms", row.max_ms)} }
+                                        td {
+                                            style: if row.error_count > 0 {
+                                                "{TD} color: #ba2121; font-weight: 700;"
+                                            } else {
+                                                "{TD} color: #999;"
+                                            },
+                                            "{row.error_count}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+/// One big number with a caption, for the summary strips.
+#[component]
+fn Metric(label: String, value: String, note: String) -> Element {
+    rsx! {
+        div {
+            div { style: "font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;", "{label}" }
+            div { style: "font-size: 20px; font-weight: 700; color: #333;", "{value}" }
+            div { style: HELP_TEXT, "{note}" }
+        }
+    }
+}
+
+/// What the pipeline is doing right now, refreshed on a timer.
+///
+/// Self-refreshing rather than driven by the page's `refresh_all`: an admin opens this
+/// page precisely to watch a running ingest, and the rest of the page is expensive to
+/// recompute every five seconds.
+///
+/// The poll is a `tick` signal read inside `use_resource` (the pattern
+/// `LiveChatsPanel` already uses), NOT `use_effect { clear(); restart(); }` — that
+/// pairing fires on mount and doubles every request. `collection_id` goes through
+/// `use_reactive!` because a prop is not reactive on its own.
+#[component]
+fn LiveActivityPanel(collection_id: String) -> Element {
+    let mut tick = use_signal(|| 0_u64);
+
+    let live_res = use_resource(use_reactive!(|collection_id| {
+        let _ = tick.read();
+        admin_task_time_live(collection_id.clone(), LIVE_WINDOW_SECONDS)
+    }));
+
+    // `n0_future::time::sleep`, never `gloo_timers`: this file is compiled both to wasm
+    // and for the server-side render build, and gloo's timers are wasm-only.
+    use_future(move || async move {
+        loop {
+            n0_future::time::sleep(Duration::from_millis(LIVE_REFRESH_MS)).await;
+            tick += 1;
+        }
+    });
+
+    rsx! {
+        div { style: MODULE,
+            h2 { style: MODULE_CAPTION, "Live activity" }
+            div { style: MODULE_BODY,
+                match load_state(live_res) {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(live) => rsx! { LiveActivityBody { live: live } },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn LiveActivityBody(live: LiveTaskActivity) -> Element {
+    if live.rows.is_empty() {
+        return rsx! {
+            p { style: HELP_TEXT,
+                "Nothing running. No activity finished in the last {live.window_seconds} s and no \
+                 worker reports anything in flight."
+            }
+        };
+    }
+
+    rsx! {
+        div { style: "display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px;",
+            Metric {
+                label: "In flight".to_string(),
+                value: format!("{}", live.in_flight_total),
+                note: match live.sampled_at.clone() {
+                    Some(at) => format!("as of {at}"),
+                    None => "no worker sample in the last few seconds".to_string(),
+                },
+            }
+            Metric {
+                label: "Average concurrency".to_string(),
+                value: format!("{:.2}\u{00d7}", live.average_concurrency),
+                note: format!("over the last {} s", live.window_seconds),
+            }
+            Metric {
+                label: "Task time in window".to_string(),
+                value: format_seconds(live.total_seconds_in_window),
+                note: "sums to the window \u{00d7} concurrency".to_string(),
+            }
+        }
+        p { style: "{HELP_TEXT} margin: 0 0 12px;",
+            "Share of processing time over the last {live.window_seconds} s, refreshed every 5 s. \
+             An execution that straddles the window edge counts only for the part inside it. A row \
+             with executions in flight but no share is one that started before the window and has \
+             not finished — check its age."
+        }
+        table { style: TABLE,
+            thead {
+                tr {
+                    th { style: TH, "Task" }
+                    th { style: TH, "Share of window" }
+                    th { style: TH, "Task time" }
+                    th { style: TH, "Completed" }
+                    th { style: TH, "In flight" }
+                    th { style: TH, "Oldest running" }
+                }
+            }
+            tbody {
+                for row in live.rows {
+                    tr { key: "{row.task_name}",
+                        td { style: TD, "{row.task_name}" }
+                        td { style: TD,
+                            div { style: "display: flex; align-items: center; gap: 8px;",
+                                ShareBar { percent: row.share_percent, color: "#c1883c".to_string() }
+                                span { {format!("{:.1}%", row.share_percent)} }
+                            }
+                        }
+                        td { style: "{TD} white-space: nowrap;", {format_seconds(row.seconds_in_window)} }
+                        td { style: TD, "{row.completed}" }
+                        td {
+                            style: if row.in_flight > 0 {
+                                "{TD} color: #417690; font-weight: 700;"
+                            } else {
+                                "{TD} color: #999;"
+                            },
+                            "{row.in_flight}"
+                        }
+                        td { style: TD,
+                            if row.in_flight > 0 {
+                                {humanize_seconds(row.oldest_age_seconds)}
+                            } else {
+                                span { style: "color: #999;", "\u{2014}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
     rsx! {
@@ -653,7 +932,16 @@ fn DocumentFailuresPanel(
 
 #[cfg(test)]
 mod tests {
-    use super::humanize_seconds;
+    use super::{format_seconds, humanize_seconds};
+
+    #[test]
+    fn seconds_keep_their_magnitude_and_gain_a_unit_when_large() {
+        assert_eq!(format_seconds(0.0), "0.0 s");
+        assert_eq!(format_seconds(12.34), "12.3 s");
+        // Past a minute the raw seconds are still there — they are what the rows are
+        // compared on — with a readable unit beside them.
+        assert_eq!(format_seconds(3661.0), "3661 s (1h 1m)");
+    }
 
     #[test]
     fn humanize_picks_the_largest_unit() {

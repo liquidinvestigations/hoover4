@@ -6,7 +6,15 @@ runtime Manticore syntax error; these pin the exact strings.
 
 import pytest
 
-from database.manticore import meta_table_ddl, pages_table_ddl, vectors_table_ddl
+from database.manticore import (
+    DATE_UNKNOWN,
+    SIZE_UNKNOWN,
+    meta_table_ddl,
+    pages_table_ddl,
+    vectors_table_ddl,
+    vfs_table_ddl,
+    vfs_table_name,
+)
 from tasks.P6_index_data.activities import (
     metadata_row_id,
     pages_row_id,
@@ -45,10 +53,87 @@ def test_meta_table_ddl_golden():
             file_mime_types multi64,
             file_extensions multi64,
             file_paths multi64,
-            filenames text,
-            metadata_values text
+            dates multi64,
+            date_min bigint,
+            date_max bigint,
+            file_size_bytes bigint,
+            struct_flags bigint,
+            primary_filename string,
+            email_from multi64,
+            email_to multi64
+        ) engine='columnar'
+    """)
+
+
+def test_meta_table_is_attribute_only():
+    """No full-text field at all, verified against the live Manticore 14.1.0 before the
+    schema was written. `filenames` was the last one and it is now covered by the
+    `filename_index` pages row plus `primary_filename`; `metadata_values` was written as
+    "" since the day it was created.
+
+    Consequences worth pinning: `min_infix_len` on a table with no text field is
+    meaningless, and `primary_filename` must be a string ATTRIBUTE — Manticore can
+    ORDER BY an attribute and cannot ORDER BY a text field.
+    """
+    ddl = meta_table_ddl("testdata_1_meta")
+    assert " text" not in ddl
+    assert "min_infix_len" not in ddl
+    assert "primary_filename string" in ddl
+
+
+def test_meta_table_carries_signed_columns_for_dates_and_sizes():
+    """Manticore's own `timestamp` is 32-bit UNSIGNED (1970..2106), useless for a corpus
+    with pre-1970 material — hence bigint seconds and a multi64 MVA."""
+    ddl = meta_table_ddl("testdata_1_meta")
+    for signed in ("dates multi64", "date_min bigint", "date_max bigint",
+                   "file_size_bytes bigint"):
+        assert signed in ddl
+    assert "timestamp" not in ddl
+
+
+def test_the_unknown_sentinels_cannot_collide_with_real_values():
+    # i64::MIN, which no real date can be; and -1, which no real size can be (0 is a
+    # legitimate size, so it cannot double as "unknown").
+    assert DATE_UNKNOWN == -(2 ** 63)
+    assert SIZE_UNKNOWN == -1
+
+
+def test_vfs_table_ddl_golden():
+    assert _normalize(vfs_table_ddl("testdata_vfs")) == _normalize("""
+        create table if not exists testdata_vfs(
+            collection_dataset string,
+            container_hash string,
+            node_key string,
+            parent_key string,
+            ancestor_keys multi64,
+            name text,
+            path string,
+            kind int,
+            file_hash string,
+            file_size_bytes bigint,
+            depth int
         ) engine='columnar' min_infix_len='3'
     """)
+
+
+def test_the_vfs_table_is_named_so_the_shard_regex_cannot_match_it():
+    """It is one table per COLLECTION, not per shard. Everything that iterates shards —
+    the ledger equality check in verify-stack, the per-shard search fan-out — must not
+    see it, and the shard regex requires a numeric segment."""
+    import re
+
+    from database.manticore import _SHARD_TABLE_RE_TEMPLATE
+
+    name = vfs_table_name("testdata")
+    assert name == "testdata_vfs"
+    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll="testdata"))
+    assert not pattern.match(name)
+
+
+def test_the_vfs_name_is_infix_indexed_because_that_is_what_folder_search_matches():
+    ddl = vfs_table_ddl("testdata_vfs")
+    assert "name text" in ddl
+    assert "min_infix_len='3'" in ddl
 
 
 def test_repr_manticore_tuple():

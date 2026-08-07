@@ -155,13 +155,14 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
     def _escape(v: str) -> str:
         return v.replace("'", "''")
 
-    # Deduplicate against existing
+    # Deduplicate against existing. FINAL: vfs_directories is a ReplacingMergeTree and an
+    # unmerged part would hide a row from this read, so the path is inserted a second time.
     existing_paths: Set[str] = set()
     with get_collection_client(params.collectionname) as client:
         in_list = ",".join([f"'{_escape(p)}'" for p in dir_paths])
         sql = f"""
             SELECT path
-            FROM vfs_directories
+            FROM vfs_directories FINAL
             WHERE collection_dataset = '{_escape(collection_dataset)}'
               AND container_hash = '{_escape(container_hash)}'
               AND path IN ({in_list})
@@ -187,6 +188,32 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
     return len(to_insert)
 
 
+#: How far a `vfs_files.mtime` can be trusted. Written next to the timestamp because the
+#: number alone says nothing: the same field means "the archive recorded this in 2013"
+#: in one row and "the worker wrote this temp file a second ago" in the next.
+MTIME_SOURCE_ARCHIVE = "archive"        # 7z restored a stored timestamp: historical.
+MTIME_SOURCE_UNTRUSTED = "untrusted"    # email attachment, re-written by the worker.
+MTIME_SOURCE_FILESYSTEM = "filesystem"  # top level: the clone/save time of the corpus.
+
+
+def resolve_mtime_source(container_hash: str, is_archive: bool, is_email: bool) -> str:
+    """Which trust level applies to the mtimes of one batch. See the constants above.
+
+    Pure so the trust decision is testable: getting it backwards would index the
+    worker's own clock as a document date for every email attachment in the corpus,
+    which is invisible in the data and obvious only as "every attachment is dated today".
+    """
+    if not container_hash:
+        return MTIME_SOURCE_FILESYSTEM
+    if is_archive:
+        return MTIME_SOURCE_ARCHIVE
+    if is_email:
+        return MTIME_SOURCE_UNTRUSTED
+    # A container we do not recognise (a PDF's extracted images, a video's frames): the
+    # mtime is the worker's, so it is not filesystem-level either. Empty means unknown.
+    return ""
+
+
 @dataclass
 class IngestFilesBatchParams:
     collectionname: str
@@ -195,6 +222,8 @@ class IngestFilesBatchParams:
     file_paths: List[str]
     container_hash: str = ""
     root_path_prefix: str = ""
+    #: Positionally aligned with ``file_paths``; empty when the caller has no stat data.
+    file_mtimes: List[int] = None  # type: ignore[assignment]
 
 
 @activity.defn
@@ -206,19 +235,36 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     file_paths: List[str] = list(params.file_paths or [])
     container_hash: str = params.container_hash or ""
     root_path_prefix: str = params.root_path_prefix or ""
+    mtime_by_path: Dict[str, int] = {
+        p: int(m or 0) for p, m in zip(file_paths, list(params.file_mtimes or []))
+    }
 
     def _escape(v: str) -> str:
         return v.replace("'", "''")
 
-    # 1) Filter out vfs_files duplicates by path
+    # 1) Filter out vfs_files duplicates.
+    #
+    # Two things this read has to get right, both of which it used to get wrong:
+    #   * it must compare the SAME strings step 7 inserts, i.e. prefixed with
+    #     `root_path_prefix`. `file_paths` here is relative to the container root, so an
+    #     archive or email member never matched and every re-run re-ingested it.
+    #   * it must scope by `container_hash`. Two containers holding the same inner path
+    #     (the `zip-in-multiple-locations` fixture) are distinct rows -- since 00005's
+    #     sort key includes `container_hash` -- and matching on the path alone would drop
+    #     the second container's children.
+    # FINAL because vfs_files is a ReplacingMergeTree: an unmerged part hides rows.
+    def _prefixed(p: str) -> str:
+        return (root_path_prefix.rstrip("/") + p) if root_path_prefix else p
+
     existing_paths: Set[str] = set()
     if file_paths:
         with get_collection_client(params.collectionname) as client:
-            in_list = ",".join([f"'{_escape(p)}'" for p in file_paths])
+            in_list = ",".join([f"'{_escape(_prefixed(p))}'" for p in file_paths])
             sql = f"""
                 SELECT path
-                FROM vfs_files
+                FROM vfs_files FINAL
                 WHERE collection_dataset = '{_escape(collection_dataset)}'
+                  AND container_hash = '{_escape(container_hash)}'
                   AND path IN ({in_list})
             """
             tbl = client.query_arrow(sql)
@@ -227,7 +273,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
                 for i in range(tbl.num_rows):
                     existing_paths.add(col[i].as_py())
 
-    todo_paths = [p for p in file_paths if p not in existing_paths]
+    todo_paths = [p for p in file_paths if _prefixed(p) not in existing_paths]
     if not todo_paths:
         return "0 files (all duplicates)"
 
@@ -391,11 +437,30 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
 
     # 6) MIME/type insertion moved to P3; no file_types writes here
 
-    # 7) Insert vfs_files for remaining
-    final_paths = [
-        (root_path_prefix.rstrip("/") + p) if root_path_prefix else p
-        for p in todo_paths
-    ]
+    # 7) Insert vfs_files for remaining.
+    #
+    # The mtime trust level is a property of the CONTAINER, so it costs one lookup per
+    # batch rather than one per file. FINAL on both: the archives/emails row is written
+    # by the P3 stage that spawned this scan, moments ago, and an unmerged part would
+    # silently demote a whole archive's members to "unknown".
+    final_paths = [_prefixed(p) for p in todo_paths]
+    is_archive = is_email = False
+    if container_hash:
+        with get_collection_client(params.collectionname) as client:
+            is_archive = bool(client.query(
+                "SELECT 1 FROM archives FINAL WHERE collection_dataset = {cd:String} "
+                "AND archive_hash = {ch:String} LIMIT 1",
+                {"cd": collection_dataset, "ch": container_hash},
+            ).result_rows)
+            if not is_archive:
+                is_email = bool(client.query(
+                    "SELECT 1 FROM emails FINAL WHERE collection_dataset = {cd:String} "
+                    "AND email_hash = {ch:String} LIMIT 1",
+                    {"cd": collection_dataset, "ch": container_hash},
+                ).result_rows)
+    mtime_source = resolve_mtime_source(container_hash, is_archive, is_email)
+    mtimes = [mtime_by_path.get(p, 0) for p in todo_paths]
+
     with get_collection_client(params.collectionname) as client:
         table_files = pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(final_paths), type=pa.string()),
@@ -404,6 +469,8 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             "hash": pa.array(hashes, type=pa.string()),
             "user_id": pa.array([user_id] * len(final_paths), type=pa.string()),
             "file_size_bytes": pa.array(sizes, type=pa.uint64()),
+            "mtime": pa.array(mtimes, type=pa.timestamp("s")),
+            "mtime_source": pa.array([mtime_source] * len(final_paths), type=pa.string()),
         })
         client.insert_arrow("vfs_files", table_files)
 
