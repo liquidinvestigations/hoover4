@@ -1,9 +1,9 @@
 # P_admin - Collection administration
 
 Administrative workflows: per-collection ClickHouse database lifecycle, dataset purges,
-and the rolling ETA sampler for the admin processing page. Not a pipeline stage: these
-run on demand (admin UI or CLI) or as a self-scheduling singleton, rather than as part
-of ingestion.
+the `change_ocr_languages` apply job, and the rolling ETA sampler for the admin processing
+page. Not a pipeline stage: these run on demand (admin UI or CLI) or as a self-scheduling
+singleton, rather than as part of ingestion.
 
 ## Key Responsibilities
 
@@ -12,6 +12,10 @@ of ingestion.
 - Purge a soft-deleted dataset's rows from its collection (Manticore shards and every
   collection-DB table with a `collection_dataset` column), then recompute the shard ledger.
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
+- Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
+  settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
+  the change dropped — from ClickHouse, then Manticore, then MinIO. The order is the
+  point; `ocr_languages.py`'s module docstring says why each step cannot move.
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has
 exactly one source of truth in Python.
@@ -19,15 +23,28 @@ exactly one source of truth in Python.
 ## Entry Points
 
 - Workflows: `EnsureCollectionDatabase`, `DropCollectionDatabase`, `PurgeDataset`,
-  `CollectEtaSamples` in `workflows.py`
+  `ChangeOcrLanguages`, `CollectEtaSamples` in `workflows.py`
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
+- OCR language job: `ocr_languages.py` (the variant diff, the purge, and the
+  `dataset_jobs` row the admin form polls)
 - ETA logic: `eta_collector.py` (SQL, rates, throttle — documented in its module docstring)
 - Queue: `processing-common-queue`
 - CLI: `main.py ensure-collection <collectionname>`
 - Website: `api/admin/temporal_trigger.rs` kinds `ensure_collection` /
-  `drop_collection_database` / `purge_dataset`
+  `drop_collection_database` / `purge_dataset`, plus `start_ocr_language_job` — which,
+  unlike those three, uses a **timestamped** workflow id: reusing an id makes a second
+  click a no-op, and two language changes are two different jobs with two different
+  before/after states.
+
+## One job per dataset
+
+`api/admin/dataset_ocr.rs::assert_no_running_job` refuses a dispatch while a non-terminal
+`dataset_jobs` row exists for the dataset. That row is also what the admin form polls, so
+what stops the second admin is exactly what the first one can see. A stale row is *not*
+treated as free: a job that has stopped reporting may still have activities in flight, and
+two workflows reopening the same plans would purge each other's variants.
 
 ## The ETA estimate, in words
 

@@ -16,6 +16,10 @@ This directory contains the core data plane for Hoover4. It includes database in
 - `processing/` - Click-based CLI, workflow definitions, workers, and database clients.
 - `ops/` - Docker compose configurations and environment-level operational notes.
 - `ocr_tesseract/` - Tesseract OCR over HTTP (`hoover4-tesseract-cpu`).
+- `ocr_pdf/` - searchable-PDF assembly over HTTP (`hoover4-ocr-pdf`). Renders a PDF's
+  pages, sends each to the OCR tier above, and writes back a PDF with an invisible text
+  layer. It owns no engine and no language data — see its Readme for the derived-prefix
+  guard that keeps the ingest walker from re-ingesting what it writes.
 - `ner_spacy/` - spaCy NER over HTTP (`hoover4-ner-spacy`).
 
 ### Why the CPU twins live here and not in `ai_services`
@@ -37,6 +41,8 @@ it. An unconfigured OCR engine simply produces no variant.
 
 -  [Go Back](../Readme.md)
 
+- [ocr_pdf/Readme.md](ocr_pdf/Readme.md)
+- [ocr_tesseract/Readme.md](ocr_tesseract/Readme.md)
 - [docs/Readme.md](docs/Readme.md)
 - [processing/Readme.md](processing/Readme.md)
 - [ops/Readme.md](ops/Readme.md)

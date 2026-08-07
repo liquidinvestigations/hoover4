@@ -17,6 +17,7 @@ struct EntityRow {
     pub entity_type: String,
     pub value: String,
     pub hit_count: u64,
+    pub providers: Vec<String>,
 }
 
 fn normalize_entity_type(s: &str) -> DocumentEntityType {
@@ -90,7 +91,8 @@ async fn _get_document_entities(
         SELECT
             entity_type as entity_type,
             entity_value as value,
-            count() as hit_count
+            count() as hit_count,
+            arraySort(groupUniqArray(nlp_model)) as providers
         FROM entity_hit
         ARRAY JOIN entity_values AS entity_value
         WHERE collection_dataset = ? AND file_hash = ?
@@ -119,6 +121,8 @@ async fn _get_document_entities(
             entity_type,
             value,
             hit_count,
+            // An empty model name is an ingest that predates the column, not a provider.
+            providers: r.providers.into_iter().filter(|p| !p.is_empty()).collect(),
         });
     }
 

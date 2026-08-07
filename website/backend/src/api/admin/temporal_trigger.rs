@@ -38,6 +38,54 @@ fn collection_dataset_search_attribute(collection_dataset: &str) -> serde_json::
     })
 }
 
+/// Start `ChangeOcrLanguages` for one dataset and return its job id.
+///
+/// The workflow id carries a timestamp, unlike the pipeline kinds above, and that is the
+/// difference that matters: `execute-plans-<dataset>` is deliberately reused so a second
+/// click is a no-op, while two OCR-language changes are two *different* jobs with
+/// different before/after states. Reusing the id would make the second one silently
+/// resolve to the first one's result. The job id is also the `dataset_jobs` key, so the
+/// form can poll the row it just created rather than guessing which is newest.
+pub async fn start_ocr_language_job(
+    collectionname: &str,
+    collection_dataset: &str,
+    tesseract_languages: &str,
+    easyocr_languages: &str,
+) -> anyhow::Result<String> {
+    let base_url = std::env::var("TEMPORAL_HTTP_URL")
+        .unwrap_or_else(|_| "http://localhost:21908".to_string());
+    let job_id = format!(
+        "ocr-languages-{collection_dataset}-{}",
+        time::OffsetDateTime::now_utc().unix_timestamp()
+    );
+
+    let body = serde_json::json!({
+        "workflowType": { "name": "ChangeOcrLanguages" },
+        "taskQueue": { "name": "processing-common-queue" },
+        "input": [ {
+            "collectionname": collectionname,
+            "collection_dataset": collection_dataset,
+            "job_id": job_id,
+            "tesseract_languages": tesseract_languages,
+            "easyocr_languages": easyocr_languages,
+        } ],
+        "searchAttributes": collection_dataset_search_attribute(collection_dataset),
+    });
+
+    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{job_id}");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("could not start the OCR language job: {text}");
+    }
+    Ok(job_id)
+}
+
 /// Start a Temporal workflow over the HTTP API.
 ///
 /// `target` is a `collection_dataset` for the pipeline kinds (`rescan`, `compute_plans`,
@@ -62,6 +110,28 @@ pub async fn trigger_workflow(target: &str, kind: &str) -> anyhow::Result<String
             (
                 "IngestDiskDataset",
                 format!("ingest-disk-{collection_dataset}"),
+                "processing-common-queue",
+                serde_json::json!({
+                    "collectionname": collectionname,
+                    "collection_dataset": collection_dataset,
+                    "dataset_path": dataset_path,
+                }),
+            )
+        }
+        // Scan, plan and execute in sequence. `rescan` only walks the disk — the plan
+        // stages must not start until it has finished, or they plan a subset of the
+        // files. The CLI blocks in the caller to get that ordering; a browser request
+        // cannot, so the ordering lives in a workflow instead. This is what a dataset
+        // created from the admin UI is started with.
+        "ingest_and_process" => {
+            let (collectionname, dataset_type, dataset_path) =
+                dataset_registry_row(collection_dataset).await?;
+            if dataset_type != "disk" {
+                anyhow::bail!("ingest_and_process only valid for disk datasets");
+            }
+            (
+                "IngestAndProcessDataset",
+                format!("ingest-and-process-{collection_dataset}"),
                 "processing-common-queue",
                 serde_json::json!({
                     "collectionname": collectionname,
@@ -147,7 +217,10 @@ pub async fn trigger_workflow(target: &str, kind: &str) -> anyhow::Result<String
     });
     // Dataset-scoped kinds get the CollectionDataset search attribute; the
     // collection-lifecycle kinds have no dataset to tag.
-    if matches!(kind, "rescan" | "compute_plans" | "execute_plans" | "purge_dataset") {
+    if matches!(
+        kind,
+        "rescan" | "ingest_and_process" | "compute_plans" | "execute_plans" | "purge_dataset"
+    ) {
         body["searchAttributes"] = collection_dataset_search_attribute(collection_dataset);
     }
 

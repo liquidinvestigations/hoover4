@@ -25,7 +25,11 @@ use axum::{
 };
 
 /// Path prefixes that serve bytes behind a per-request permission check.
-const PRIVATE_PREFIXES: [&str; 2] = ["/_chat_artifact/", "/_download_document/"];
+const PRIVATE_PREFIXES: [&str; 3] = [
+    "/_chat_artifact/",
+    "/_download_document/",
+    "/_download_ocr_pdf/",
+];
 
 pub fn is_private_path(path: &str) -> bool {
     PRIVATE_PREFIXES.iter().any(|p| path.starts_with(p))

@@ -7,12 +7,16 @@ This stage parses downloaded files by type and writes structured content and met
 - Detect MIME types using GNU `file`, Tika/Extractous, and Magika.
 - Parse archives, emails, PDFs, images, audio, video, and raw text.
 - Run OCR for images and extract text for indexing.
+- Assemble a searchable PDF per engine for every PDF (`parse_ocr_pdf.py`), through the
+  `hoover4-ocr-pdf` service.
 - Create temporary directories for extracted content and scan them as containers.
 
 ## Entry Points
 
 - Workflow: `ParseSingleFile` in `workflows.py`
 - Activities: `parse_*` modules (e.g., `parse_pdf.py`, `parse_email.py`, `parse_image.py`)
+- OCR: `parse_ocr.py` (images -> `raw_ocr_results` + text) and `parse_ocr_pdf.py`
+  (PDFs -> a derived searchable PDF + a `pdf_ocr_results` row)
 - Helpers: `parse_common.py` for text page/segment writing and error recording
 
 ## How text is stored — `page_id` is a page number
@@ -35,6 +39,22 @@ one row.
 PDF text comes from a single `pdftotext` call split on the form feed it writes after
 every page, so per-page storage costs no extra subprocesses. The label is
 `extracted_by = 'pdftotext'` (it was `'qpdf'`, which named the wrong tool).
+
+## Searchable PDFs are a derived object, not a document
+
+`parse_ocr_pdf.py` produces a *file*, not rows of text: a PDF with the page images and an
+invisible OCR text layer, written to MinIO under `derived/ocr-pdf/…` by the
+`hoover4-ocr-pdf` service. It gets **no `blobs` row and no `vfs_files` row** — the only
+index of its existence is `pdf_ocr_results`.
+
+That is not tidiness. If the ingest walker could see the object it would ingest it, OCR
+it, and produce another one, forever, billing a full OCR pass per lap. The guards are the
+`derived/` prefix (built by `ocr_pdf_client.derived_key`, re-checked by the service, which
+refuses anything else), the absence of those two rows, and the `verify-stack.sh` assertion
+that no `blobs` row references the prefix.
+
+The object is written before the row, always: an object with no row is found by a prefix
+scan, a row with no object is a broken link nothing can repair.
 
 ## Technical Details
 

@@ -25,6 +25,27 @@ const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("chat_artifact_ttl_days", "30"),
 ];
 
+/// Deployment configuration the page shows but cannot change: these come from
+/// `hoover4.ini` through the container's environment, so a form field for them would be a
+/// control that silently does nothing. They are listed because the alternative — a key
+/// that decides what the dataset-creation form can reach, visible nowhere in the UI — is
+/// how `chat_artifact_ttl_days` became unreachable in the first place.
+const DEPLOYMENT_KEYS: [(&str, &str); 1] = [("datasets_mount_path", "DATASETS_MOUNT_PATH")];
+
+/// `(key, value)` for every deployment key, read from the environment.
+pub async fn admin_list_deployment_config(
+    user: &CurrentUser,
+) -> anyhow::Result<Vec<ServerSettingItem>> {
+    guard::require_admin(user)?;
+    Ok(DEPLOYMENT_KEYS
+        .iter()
+        .map(|(key, env)| ServerSettingItem {
+            key: (*key).to_string(),
+            value: std::env::var(env).unwrap_or_default(),
+        })
+        .collect())
+}
+
 pub async fn admin_list_settings(user: &CurrentUser) -> anyhow::Result<Vec<ServerSettingItem>> {
     guard::require_admin(user)?;
     let rows = settings::list_settings().await?;

@@ -22,9 +22,20 @@ pub fn DocumentPreviewForPdf(
     document_identifier: ReadSignal<DocumentIdentifier>,
     source: ReadSignal<DocumentPdfSourceItem>,
 ) -> Element {
+    // The selected source decides the url, not just the document: an OCR'd variant is a
+    // different object with no `blobs` row of its own, served by its own route. Reading
+    // `source` here is also what makes switching sources reload the viewer.
     let pdf_url = use_memo(move || {
         let document_identifier = document_identifier.read().clone();
-        document_identifier.get_absolute_url_path()
+        let source = source.read().clone();
+        if source.is_ocr() {
+            source.url(
+                &document_identifier.collection_dataset,
+                &document_identifier.file_hash,
+            )
+        } else {
+            document_identifier.get_absolute_url_path()
+        }
     });
 
     let mut controller = use_signal(move || None);

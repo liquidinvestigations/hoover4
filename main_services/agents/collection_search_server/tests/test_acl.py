@@ -19,26 +19,34 @@ def headers(**kwargs):
 
 
 class TestParseAcl:
-    def test_reads_collections_and_user(self, monkeypatch):
+    @pytest.fixture(autouse=True)
+    def _no_ambient_secret(self, monkeypatch):
+        """Both secret sources cleared, not just the env var.
+
+        The deployed container has `MCP_SHARED_SECRET_FILE` bind-mounted, so a test
+        that only unsets `MCP_SHARED_SECRET` still finds a secret and every
+        no-auth case fails when the suite runs where it is meant to run —
+        `docker exec hoover4-mcp-collections`.
+        """
         monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
+        monkeypatch.delenv("MCP_SHARED_SECRET_FILE", raising=False)
+
+    def test_reads_collections_and_user(self):
         acl = parse_acl(
             {"X-Hoover4-Collections": "alpha,beta", "X-Hoover4-User": "ann"}
         )
         assert acl.collections == ("alpha", "beta")
         assert acl.username == "ann"
 
-    def test_header_lookup_is_case_insensitive(self, monkeypatch):
-        monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
+    def test_header_lookup_is_case_insensitive(self):
         assert parse_acl({"x-hoover4-collections": "alpha"}).collections == ("alpha",)
 
-    def test_missing_collections_header_is_denied(self, monkeypatch):
-        monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
+    def test_missing_collections_header_is_denied(self):
         with pytest.raises(AccessDenied, match="missing"):
             parse_acl({})
 
-    def test_empty_collections_header_means_no_access(self, monkeypatch):
+    def test_empty_collections_header_means_no_access(self):
         """An empty list is a valid statement: this user may read nothing."""
-        monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
         assert parse_acl({"X-Hoover4-Collections": ""}).collections == ()
 
     def test_bearer_token_is_required_when_configured(self, monkeypatch):
@@ -54,9 +62,8 @@ class TestParseAcl:
         )
         assert ok.collections == ("alpha",)
 
-    def test_bad_collectionname_is_rejected(self, monkeypatch):
+    def test_bad_collectionname_is_rejected(self):
         """A name reaching SQL must satisfy the shared collectionname rule."""
-        monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
         for bad in ["Alpha", "al-pha", "al pha", "a" * 49, "al';DROP"]:
             with pytest.raises(AccessDenied, match="invalid collectionname"):
                 parse_acl({"X-Hoover4-Collections": bad})

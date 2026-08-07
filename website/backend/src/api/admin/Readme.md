@@ -13,8 +13,16 @@ the actual gate.
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
   `main_services/processing/tasks/P_admin/` — the website never computes ETAs in a
   request path).
+- `dataset_ocr.rs` — per-dataset OCR languages, the `change_ocr_languages` apply job and
+  its `dataset_jobs` row, the collection-level defaults new datasets inherit, and dataset
+  **creation** (which was CLI-only). Two rules live here: one job per dataset, refused
+  server-side rather than by a disabled button; and the creation form takes a folder
+  *name* validated against the listing of `DATASETS_MOUNT_PATH`, never a path.
 - `temporal_trigger.rs` — starts pipeline workflows over the Temporal HTTP API,
   tagging dataset-scoped starts with the `CollectionDataset` search attribute.
+  `start_ocr_language_job` is the one kind with a **timestamped** workflow id: the others
+  reuse theirs so a second click is a no-op, but two OCR-language changes are two
+  different jobs with two different before/after states.
 - `metrics.rs` — aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
 - `llm.rs` — the model catalog, the defaults and the allowlist. See below.
 
@@ -175,6 +183,12 @@ users, have each open a chat that produces an artifact, and fetch the other's ar
 Expected: 403, and `api_events.is_error = 0` for it (a 403 is the system working).
 
 Until that is done, treat "the ACL is fine" as a code review result, not a test result.
+
+The same applies to the OCR'd-PDF route added in phase 6: `/_download_ocr_pdf/...` calls
+`permissions::assert_can_read` on the *source document's* dataset before it looks anything
+up, which is the same check `/_download_document/...` makes. In demo mode that check
+passes for everyone, so it is likewise a code result rather than a test result, and it is
+closed by the same two-real-users run.
 
 ## Navigation
 

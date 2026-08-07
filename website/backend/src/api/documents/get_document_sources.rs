@@ -49,10 +49,10 @@ use crate::api::documents::get_raw_metadata::get_raw_metadata;
 pub(crate) async fn get_pdf_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
-) -> anyhow::Result<Option<DocumentPdfSourceItem>> {
+) -> anyhow::Result<Vec<DocumentPdfSourceItem>> {
     let meta = get_raw_metadata(
         user,
-        document_identifier,
+        document_identifier.clone(),
         DocumentMetadataTableInfo::new("pdfs", "pdf_hash"),
     )
     .await?;
@@ -60,10 +60,50 @@ pub(crate) async fn get_pdf_sources(
     let page_count = obj
         .get("page_count")
         .and_then(|v| v.as_u64())
-        .context("No page count found")?;
-    Ok(Some(DocumentPdfSourceItem {
-        page_count: page_count as u32,
-    }))
+        .context("No page count found")? as u32;
+
+    // The original first, always: it is the file the investigation actually holds, and an
+    // OCR'd rendering of it is an aid, not a replacement.
+    let mut sources = vec![DocumentPdfSourceItem {
+        page_count,
+        engine: String::new(),
+        languages: String::new(),
+    }];
+
+    // One entry per live `pdf_ocr_results` row. `page_count` comes from the derived PDF's
+    // own row rather than the source's: the two agree today (the assembler emits one page
+    // per input page, deliberately, so page numbers keep matching the viewer) and if they
+    // ever stop agreeing the selector must report what the file it is about to serve
+    // actually contains.
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let variants = client
+        .query(
+            "SELECT engine, languages, argMax(page_count, updated_at) \
+             FROM pdf_ocr_results \
+             WHERE collection_dataset = ? AND pdf_hash = ? \
+             GROUP BY engine, languages \
+             HAVING argMax(is_deleted, updated_at) = 0 \
+             ORDER BY engine, languages",
+        )
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .fetch_all::<(String, String, u32)>()
+        .await
+        // A missing or unreadable table must not cost the reader the original PDF.
+        .unwrap_or_default();
+
+    for (engine, languages, variant_pages) in variants {
+        sources.push(DocumentPdfSourceItem {
+            page_count: if variant_pages > 0 {
+                variant_pages
+            } else {
+                page_count
+            },
+            engine,
+            languages,
+        });
+    }
+    Ok(sources)
 }
 
 async fn get_email_sources(

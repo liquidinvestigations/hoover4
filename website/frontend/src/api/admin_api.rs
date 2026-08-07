@@ -57,6 +57,14 @@ admin_server_fn!(admin_update_dataset, backend::api::admin::datasets::admin_upda
 admin_server_fn!(admin_delete_dataset, backend::api::admin::datasets::admin_delete_dataset, (collection_dataset: String));
 admin_server_fn!(admin_trigger_workflow, backend::api::admin::datasets::admin_trigger_workflow, (collection_dataset: String, kind: String) -> String);
 
+admin_server_fn!(admin_get_dataset_ocr, backend::api::admin::dataset_ocr::admin_get_dataset_ocr, (collection_dataset: String) -> DatasetOcrPanel);
+admin_server_fn!(admin_get_dataset_job, backend::api::admin::dataset_ocr::admin_get_dataset_job, (collection_dataset: String) -> Option<DatasetJobStatus>);
+admin_server_fn!(admin_apply_ocr_languages, backend::api::admin::dataset_ocr::admin_apply_ocr_languages, (collection_dataset: String, tesseract_languages: String, easyocr_languages: String) -> String);
+admin_server_fn!(admin_get_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_get_collection_ocr_defaults, (collectionname: String) -> (String, String));
+admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_set_collection_ocr_defaults, (collectionname: String, tesseract_languages: String, easyocr_languages: String));
+admin_server_fn!(admin_list_dataset_folders, backend::api::admin::dataset_ocr::admin_list_dataset_folders, (collectionname: String) -> Vec<DatasetFolderOption>);
+admin_server_fn!(admin_create_dataset, backend::api::admin::dataset_ocr::admin_create_dataset, (collectionname: String, folder_name: String, dataset_name: String, tesseract_languages: String, easyocr_languages: String) -> String);
+
 admin_server_fn!(admin_collection_processing, backend::api::admin::processing::admin_collection_processing, (collectionname: String) -> CollectionProcessingStatus);
 admin_server_fn!(admin_list_workflows, backend::api::admin::processing::admin_list_workflows, (collectionname: String, filter: WorkflowFilter, page_size: u32) -> Vec<WorkflowSummary>);
 admin_server_fn!(admin_list_task_failures, backend::api::admin::processing::admin_list_task_failures, (collectionname: String, limit: u32) -> Vec<TaskFailureGroup>);
@@ -64,6 +72,8 @@ admin_server_fn!(admin_list_document_failures, backend::api::admin::processing::
 admin_server_fn!(admin_retry_failed_task, backend::api::admin::processing::admin_retry_failed_task, (collectionname: String, collection_dataset: String, task_name: String) -> String);
 admin_server_fn!(admin_retry_document, backend::api::admin::processing::admin_retry_document, (collectionname: String, collection_dataset: String, hash: String) -> String);
 admin_server_fn!(admin_list_eta_samples, backend::api::admin::processing::admin_list_eta_samples, (collectionname: String) -> Vec<EtaSamplePoint>);
+
+admin_server_fn!(admin_list_deployment_config, backend::api::admin::settings::admin_list_deployment_config, () -> Vec<ServerSettingItem>);
 
 admin_server_fn!(admin_get_metrics, backend::api::admin::metrics::admin_get_metrics, () -> AdminMetrics);
 admin_server_fn!(admin_get_user_llm, backend::api::admin::metrics::admin_get_user_llm, (username: String) -> AdminUserLlmMetrics);

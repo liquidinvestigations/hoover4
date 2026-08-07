@@ -254,3 +254,57 @@ class IngestDiskDataset:
         log.info("Finished disk ingestion for %s", params.collection_dataset)
 
         return f"started ingestion for {params.collection_dataset}"
+
+
+@workflow.defn
+class IngestAndProcessDataset:
+    """Scan, plan and execute, in that order, for a newly created dataset.
+
+    `IngestDiskDataset` alone only walks the disk. The plan stages after it are separate
+    workflows because they must not start until the scan has finished — computing plans
+    over a half-scanned dataset silently plans a subset of the files, which is exactly why
+    `main.py add-disk-dataset --no-wait` refuses to submit them.
+
+    The CLI solves that by blocking in the caller. The admin UI cannot: the browser
+    request returns in milliseconds and the ingest runs for minutes. This workflow is the
+    server-side equivalent of `--wait`, so a dataset created from the web UI is *processed*
+    rather than merely scanned and left sitting there looking finished.
+    """
+
+    @workflow.run
+    async def run(self, params: IngestDiskDatasetParams) -> str:
+        with workflow.unsafe.imports_passed_through():
+            from tasks.P1_compute_plans.workflows import ComputePlans
+            from tasks.P2_execute_plan.workflows import ExecutePlans, ExecutePlansParams
+
+        attributes = dataset_search_attributes(params.collection_dataset)
+
+        await workflow.execute_child_workflow(
+            IngestDiskDataset.run,
+            params,
+            id=f"ingest-disk-{params.collection_dataset}",
+            task_queue="processing-common-queue",
+            search_attributes=attributes,
+        )
+        await workflow.execute_child_workflow(
+            ComputePlans.run,
+            {
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+            },
+            id=f"compute-plans-{params.collection_dataset}",
+            task_queue="processing-common-queue",
+            search_attributes=attributes,
+        )
+        await workflow.execute_child_workflow(
+            ExecutePlans.run,
+            ExecutePlansParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                base_temp_dir="/tmp/hoover4",
+            ),
+            id=f"execute-plans-{params.collection_dataset}",
+            task_queue="processing-common-queue",
+            search_attributes=attributes,
+        )
+        return f"ingested and processed {params.collection_dataset}"

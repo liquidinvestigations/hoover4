@@ -34,7 +34,7 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
 async def run_common_worker():
     # Localized imports for common worker only
     from .P0_scan_disk.activities import list_disk_folder, insert_vfs_directories, ingest_files_batch
-    from .P0_scan_disk.workflows import IngestDiskDataset, HandleFolders, HandleFiles
+    from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders, HandleFiles
     from .P1_compute_plans.activities import count_new_blobs, compute_plans
     from .P1_compute_plans.workflows import ComputePlans
     from .P2_execute_plan.activities import (
@@ -73,7 +73,15 @@ async def run_common_worker():
         recompute_shard_ledger_activity,
         sweep_chat_artifacts,
     )
+    from .P_admin.ocr_languages import (
+        begin_ocr_language_job,
+        delete_orphaned_derived_pdfs,
+        purge_dropped_ocr_variants,
+        reopen_plans_for_ocr_change,
+        report_ocr_language_progress,
+    )
     from .P_admin.workflows import (
+        ChangeOcrLanguages,
         CollectEtaSamples,
         DropCollectionDatabase,
         EnsureCollectionDatabase,
@@ -124,6 +132,7 @@ async def run_common_worker():
           task_queue="processing-common-queue",
           workflows=[
             IngestDiskDataset,
+            IngestAndProcessDataset,
             HandleFolders,
             HandleFiles,
             ComputePlans,
@@ -141,6 +150,7 @@ async def run_common_worker():
             EnsureCollectionDatabase,
             DropCollectionDatabase,
             PurgeDataset,
+            ChangeOcrLanguages,
             CollectEtaSamples,
             SweepChatArtifacts,
             ResearchTask,
@@ -185,6 +195,13 @@ async def run_common_worker():
             recompute_shard_ledger_activity,
             collect_eta_samples,
             sweep_chat_artifacts,
+
+            # P_admin change_ocr_languages apply job
+            begin_ocr_language_job,
+            report_ocr_language_progress,
+            reopen_plans_for_ocr_change,
+            purge_dropped_ocr_variants,
+            delete_orphaned_derived_pdfs,
 
             # P_agent long-running AI research tasks
             run_research_agent,
@@ -231,6 +248,11 @@ async def run_ocr_worker():
     # several engines behind one HTTP contract, and a queue named after one of them
     # would have to be renamed again -- which costs a full reset every time.
     from .P3_parse_files.parse_ocr import run_ocr_and_store
+    # Searchable-PDF assembly shares this queue rather than getting one of its own: it is
+    # one OCR call per page, so it must be bounded by the same tier that bounds image OCR.
+    # A queue of its own would let a 500-page scan and every image in the corpus compete
+    # for the OCR service from two directions at once.
+    from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_and_store
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
@@ -242,7 +264,7 @@ async def run_ocr_worker():
           client,
           task_queue="processing-ocr-queue",
           workflows=[],
-          activities=[run_ocr_and_store],
+          activities=[run_ocr_and_store, run_ocr_pdf_and_store],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,

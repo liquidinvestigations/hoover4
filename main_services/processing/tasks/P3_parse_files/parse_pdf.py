@@ -5,6 +5,7 @@ from temporalio.common import RetryPolicy
 from datetime import timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+import asyncio
 import os
 import json
 import math
@@ -15,7 +16,9 @@ log = logging.getLogger(__name__)
 
 from tasks.P0_scan_disk.workflows import HandleFoldersParams
 from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
+from tasks.P3_parse_files.parse_ocr_pdf import RunOcrPdfParams, run_ocr_pdf_and_store
 from tasks.heartbeat import HEARTBEAT_TIMEOUT, HeartbeatClock, heartbeat_pump, with_heartbeat
+from tasks.text_sources import OCR_ENGINES
 
 
 #: Wall-clock ceiling for one qpdf/pdftotext invocation. These had NO timeout,
@@ -428,6 +431,35 @@ class PdfProcessingAndScan:
         page_count = int(meta.get("page_count") or 0)
         size_bytes = int(meta.get("size_bytes") or 0)
 
+        # 1b) Searchable PDFs, one activity per engine, started now and awaited at the
+        # end. Which engines run — and whether any do — is decided inside the activity
+        # from `pdf_ocr_provider` and `dataset_settings`, not here: a workflow argument
+        # would freeze the value at schedule time, and the whole point of the apply job
+        # is to reach activities that are already in flight.
+        #
+        # On the OCR queue rather than the common one: the work is one OCR call per page,
+        # so it belongs behind the same bounded tier as image OCR. An engine with nothing
+        # configured records a skip and succeeds, so this fan-out costs nothing on a box
+        # with no OCR tier at all.
+        ocr_pdf_futures = [
+            workflow.execute_activity(
+                run_ocr_pdf_and_store,
+                RunOcrPdfParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    pdf_hash=params.pdf_hash,
+                    file_path=params.file_path,
+                    engine=engine,
+                    timeout_seconds=params.timeout_seconds,
+                ),
+                start_to_close_timeout=timedelta(seconds=max(params.timeout_seconds, 3600)),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
+                task_queue="processing-ocr-queue",
+            )
+            for engine in OCR_ENGINES
+        ]
+
         # 2) Branch by size and page count
         SMALL_BYTES = 64 * 1024 * 1024
         SMALL_PAGES = 1000
@@ -510,6 +542,24 @@ class PdfProcessingAndScan:
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+
+        # The searchable PDFs are independent of the text/image path above, so they run
+        # alongside it and are collected here. Errors are recorded rather than raised: a
+        # failure to derive a searchable PDF must not lose the text extraction that
+        # already succeeded for the same document.
+        if ocr_pdf_futures:
+            results = await asyncio.gather(*ocr_pdf_futures, return_exceptions=True)
+            with workflow.unsafe.imports_passed_through():
+                from tasks.P3_parse_files.parse_common import record_errors_from_results
+            await record_errors_from_results(
+                results,
+                task_ids=[f"run_ocr_pdf_and_store[{engine}]" for engine in OCR_ENGINES],
+                starts=[workflow.now()] * len(OCR_ENGINES),
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=[params.pdf_hash] * len(OCR_ENGINES),
+                start_to_close_timeout_seconds=params.timeout_seconds,
             )
 
         return "ok"

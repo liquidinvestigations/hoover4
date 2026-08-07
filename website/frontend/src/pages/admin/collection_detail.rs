@@ -7,8 +7,9 @@ use crate::api::admin_api::{
     admin_revoke_permission, admin_set_collection_public, admin_update_collection,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_DANGER, BTN_SMALL_DANGER, HELP_TEXT,
-    INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
+    AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
+    BTN_SMALL_DANGER, HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT,
+    TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -168,6 +169,10 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                     }
                 }
             }
+        }
+        DatasetCreatePanel {
+            collectionname: collection_id.clone(),
+            on_created: move |_| detail_res.restart(),
         }
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Access mode" }

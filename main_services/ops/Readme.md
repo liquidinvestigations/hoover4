@@ -100,6 +100,16 @@ The docker containers start up the following services:
 - **Minio**: [http://localhost:21905](http://localhost:21905) - Minio S3 Dashboard
   - `hoover4` / `hoover4-secret`
 
+### Processing services (HTTP, published on 127.0.0.1 only)
+
+- **pdf-to-html**: `localhost:21920` - the PDF renderer used by the document viewer
+- **tesseract-cpu**: `localhost:21921` - OCR over HTTP, `/health` lists the languages the
+  image can actually serve
+- **ocr-pdf**: `localhost:21922` - searchable-PDF assembly. Renders pages, calls the OCR
+  tier above, writes the result under MinIO's `derived/` prefix with **no** `blobs` row
+  (see `main_services/ocr_pdf/Readme.md` for why that absence is load-bearing)
+- **ner-spacy**: `localhost:21923` - the CPU NER twin
+
 ### Search Engines
 
 - **Manticore Search**: `localhost:21902` - Primary Manticore instance (SQL port)

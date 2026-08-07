@@ -57,6 +57,14 @@ fn main() {
                     "/_download_document/{collection_dataset}/{file_hash}",
                     axum::routing::get(backend::server_extra::download_document::download_document),
                 )
+                // The derived searchable PDF for one (document, engine, languages). It
+                // has no `blobs` row by design — `pdf_ocr_results` is its only index —
+                // so it cannot go through the document route, but it is ACL'd on the
+                // source document's dataset exactly like one.
+                .route(
+                    "/_download_ocr_pdf/{collection_dataset}/{pdf_hash}/{engine}/{languages}",
+                    axum::routing::get(backend::server_extra::download_ocr_pdf::download_ocr_pdf),
+                )
                 // Chat tool artifacts: thumb.webp, page.html, detail.json. The handler
                 // resolves the id to its owner and enforces owner-or-admin — the id
                 // itself comes from an LLM-driven tool payload and is only a lookup key.

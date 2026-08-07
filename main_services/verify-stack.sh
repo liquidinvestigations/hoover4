@@ -364,6 +364,25 @@ else
     echo "NOTE - no OCR_TESSERACT_URL rendered (tesseract_cpu_enabled = false); skipping OCR check"
 fi
 
+# 7c-bis. The searchable-PDF assembler. It owns no engine — it renders pages and calls the
+#     tier above — so the interesting half of its /health is `engines`, which reports which
+#     engines it has an ENDPOINT for. A dataset configured for an engine with no endpoint
+#     produces no OCR'd PDF at all, and this is where that mismatch is visible.
+ocrpdf_url=$(grep -E '^OCR_PDF_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if [ -n "$ocrpdf_url" ]; then
+    ocrpdf_health=$(docker exec "$WORKER" curl -s --max-time 5 "${ocrpdf_url%/ocr-pdf}/health" 2>/dev/null || true)
+    case "$ocrpdf_health" in
+        *'"status":"healthy"'*)
+            engines=$(printf '%s' "$ocrpdf_health" | grep -oE '"engines":\{[^}]*\}' || true)
+            ok "ocr-pdf /health is healthy (${engines:-no engines reported})"
+            ;;
+        "")  fail "ocr-pdf /health unreachable from the worker ($ocrpdf_url)" ;;
+        *)   fail "ocr-pdf /health is not healthy: $(printf '%s' "$ocrpdf_health" | head -c 200)" ;;
+    esac
+else
+    echo "NOTE - no OCR_PDF_URL rendered (ocr_pdf_enabled = false); skipping ocr-pdf check"
+fi
+
 # 7d. The AI server serves the embedding model the ini asks for, at the ini's
 #     dimension, and the reranker answers when enabled. The probe writes
 #     embeddings_serving_model/_dim into server_settings — P5/P6 build _vectors tables
@@ -426,21 +445,24 @@ ms_health=$(docker exec "$WORKER" curl -s --max-time 10 "http://hoover4-mcp-meta
 ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
 [ -n "$ms_sources" ] && echo "NOTE - metasearch $ms_sources"
 
-# 7e. Chat artifacts (captured pages, search detail) live under `derived/` in MinIO, and
-#     P0_scan_disk must never walk that prefix. If it ever does, each artifact becomes a
-#     vfs_files row, is ingested, is captured again by the next chat that opens it, and
-#     produces another artifact — forever. `chat_artifacts` is the sole index of those
-#     objects, and a `blobs` row pointing into `derived/` is the signature of the loop
-#     having started.
+# 7e. Everything derived lives under `derived/` in MinIO, and P0_scan_disk must never walk
+#     that prefix. Two writers are covered by this one `%derived/%` pattern:
+#       * chat artifacts (captured pages, search detail) under `derived/chat/…`
+#       * OCR'd PDFs under `derived/ocr-pdf/<dataset>/<pdf_hash>/<engine>+<langs>.pdf`
+#     If the walker ever sees either, the object becomes a vfs_files row, is ingested, is
+#     re-derived by the stage that produced it, and produces another object — forever, and
+#     for the OCR'd PDFs that loop bills OCR time on every lap. `chat_artifacts` and
+#     `pdf_ocr_results` are the sole indexes of those objects, and a `blobs` row pointing
+#     into `derived/` is the signature of the loop having started.
 derived_blobs=0
 for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
     count=$(CH "SELECT count() FROM ${db}.blobs WHERE s3_path LIKE '%derived/%'" 2>/dev/null || echo 0)
     derived_blobs=$((derived_blobs + count))
 done
 if [ "$derived_blobs" -eq 0 ]; then
-    ok "no blobs row references derived/ (the ingest walker is not seeing chat artifacts)"
+    ok "no blobs row references derived/ (the walker sees neither chat artifacts nor OCR'd PDFs)"
 else
-    fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the artifact prefix"
+    fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the derived prefix"
 fi
 
 # 8. A search through the site's HTTP API returns >0 hits for a word known to

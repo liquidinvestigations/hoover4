@@ -2,10 +2,14 @@
 
 mod admin_guard;
 mod admin_shell;
+mod dataset_create_panel;
+mod dataset_ocr_panel;
 mod live_chats_panel;
 
 pub use admin_guard::AdminGuard;
 pub use admin_shell::AdminShell;
+pub use dataset_create_panel::DatasetCreatePanel;
+pub use dataset_ocr_panel::{DatasetJobStrip, DatasetOcrSettingsPanel};
 pub use live_chats_panel::LiveChatsPanel;
 
 use dioxus::prelude::*;

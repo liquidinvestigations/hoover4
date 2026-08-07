@@ -165,9 +165,62 @@ pub struct DocumentTextSourceHitCount {
     pub hit_count: u64,
 }
 
+/// One PDF the viewer can show for a document: the original, or a derived searchable one.
+///
+/// `engine` empty means the original file. A non-empty `engine`/`languages` pair names a
+/// row in `pdf_ocr_results`, and those two fields *are* the storage key — the same pair
+/// that keys the MinIO object and the `/_download_ocr_pdf/` route. They are carried here
+/// rather than a ready-made url so the selector can label the source properly and the
+/// viewer can build the url one way, in one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub struct DocumentPdfSourceItem {
     pub page_count: u32,
+    /// `""` for the original document, otherwise `tesseract` | `easyocr`.
+    #[serde(default)]
+    pub engine: String,
+    /// `+`-joined language codes the OCR pass ran with. Empty for the original.
+    #[serde(default)]
+    pub languages: String,
+}
+
+impl DocumentPdfSourceItem {
+    pub fn is_ocr(&self) -> bool {
+        !self.engine.is_empty()
+    }
+
+    /// The label in the source selector: `PDF`, or `PDF · OCR · Tesseract · eng+ron`.
+    ///
+    /// Built from the same formatter the text selector uses, so a document whose text and
+    /// whose PDF both come from one OCR pass say the same thing about it in both places.
+    pub fn label(&self) -> String {
+        if self.is_ocr() {
+            format!(
+                "PDF \u{b7} {}",
+                TextSource::Ocr {
+                    engine: self.engine.clone(),
+                    languages: self.languages.clone(),
+                }
+                .label()
+            )
+        } else {
+            "PDF".to_string()
+        }
+    }
+
+    /// Where the viewer fetches this source from.
+    ///
+    /// The original goes through the document route; a derived PDF has no `blobs` row by
+    /// design and goes through its own, keyed by the same four values as its row.
+    pub fn url(&self, collection_dataset: &str, file_hash: &str) -> String {
+        if self.is_ocr() {
+            format!(
+                "/_download_ocr_pdf/{collection_dataset}/{file_hash}/{}/{}",
+                self.engine, self.languages
+            )
+        } else {
+            format!("/_download_document/{collection_dataset}/{file_hash}")
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]

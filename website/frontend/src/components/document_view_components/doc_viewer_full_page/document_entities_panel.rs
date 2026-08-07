@@ -14,6 +14,7 @@ use crate::components::{
 #[component]
 pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let mut filter_value = use_signal(|| "".to_string());
+    let mut provider_filter = use_signal(|| "".to_string());
 
     let mut entities_res = use_resource(move || {
         let document_identifier = document_identifier.read().clone();
@@ -45,6 +46,27 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
             .collect()
     };
 
+    // Every provider that found anything in this document, for the filter below. The
+    // chips are already one per value — the rows are aggregated server-side — so this is
+    // about answering "which model saw this", not about hiding duplicates.
+    let mut providers: Vec<String> = items
+        .iter()
+        .flat_map(|i| i.providers.iter().cloned())
+        .collect();
+    providers.sort();
+    providers.dedup();
+
+    let selected = provider_filter.read().clone();
+    let items: Vec<DocumentEntityItem> = if selected.is_empty() {
+        items
+    } else {
+        items
+            .into_iter()
+            .filter(|i| i.providers.iter().any(|p| *p == selected))
+            .collect()
+    };
+    let multi_provider = providers.len() > 1;
+
     rsx! {
         div {
             style: "
@@ -72,14 +94,33 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                         filter_value.set(e.value());
                     }
                 }
+                // Only worth showing when there is a choice to make. One provider is the
+                // normal deployment, and a filter with a single option is noise.
+                if multi_provider {
+                    div {
+                        style: "display: flex; align-items: center; gap: 6px; margin-top: 8px; \
+                                font-size: 12px; color: rgba(0,0,0,0.65);",
+                        span { "Found by" }
+                        select {
+                            style: "border: 1px solid rgba(0,0,0,0.35); border-radius: 8px; \
+                                    padding: 4px 6px; font-size: 12px;",
+                            value: "{provider_filter()}",
+                            onchange: move |e| provider_filter.set(e.value()),
+                            option { value: "", "any model" }
+                            for name in providers.iter() {
+                                option { key: "{name}", value: "{name}", "{name}" }
+                            }
+                        }
+                    }
+                }
             }
 
             div {
                 style: "flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 10px 10px 10px;",
-                EntityGroup { title: "People".to_string(), entity_type: DocumentEntityType::Per, items: items.clone() }
-                EntityGroup { title: "Organizations".to_string(), entity_type: DocumentEntityType::Org, items: items.clone() }
-                EntityGroup { title: "Locations".to_string(), entity_type: DocumentEntityType::Loc, items: items.clone() }
-                EntityGroup { title: "Misc".to_string(), entity_type: DocumentEntityType::Misc, items }
+                EntityGroup { title: "People".to_string(), entity_type: DocumentEntityType::Per, items: items.clone(), show_provider: multi_provider }
+                EntityGroup { title: "Organizations".to_string(), entity_type: DocumentEntityType::Org, items: items.clone(), show_provider: multi_provider }
+                EntityGroup { title: "Locations".to_string(), entity_type: DocumentEntityType::Loc, items: items.clone(), show_provider: multi_provider }
+                EntityGroup { title: "Misc".to_string(), entity_type: DocumentEntityType::Misc, items, show_provider: multi_provider }
             }
         }
     }
@@ -90,6 +131,7 @@ fn EntityGroup(
     title: String,
     entity_type: DocumentEntityType,
     items: Vec<DocumentEntityItem>,
+    show_provider: bool,
 ) -> Element {
     let group_items = items
         .into_iter()
@@ -113,7 +155,7 @@ fn EntityGroup(
             div {
                 style: "display: flex; flex-wrap: wrap; gap: 8px;",
                 for item in group_items {
-                    EntityChip { item }
+                    EntityChip { item, show_provider }
                 }
             }
         }
@@ -121,7 +163,8 @@ fn EntityGroup(
 }
 
 #[component]
-fn EntityChip(item: DocumentEntityItem) -> Element {
+fn EntityChip(item: DocumentEntityItem, show_provider: bool) -> Element {
+    let provider_badge = item.providers.join(", ");
     let page_controls = use_context::<ViewerPageControls>();
     let on_find_query_changed = page_controls.on_find_query_changed.clone();
 
@@ -155,6 +198,24 @@ fn EntityChip(item: DocumentEntityItem) -> Element {
                     font-size: 13px;
                 ",
                 "{item.value}"
+            }
+            if show_provider && !provider_badge.is_empty() {
+                div {
+                    title: "{provider_badge}",
+                    style: "
+                        font-size: 11px;
+                        color: rgba(0,0,0,0.55);
+                        background: rgba(0,0,0,0.06);
+                        border-radius: 999px;
+                        padding: 1px 7px;
+                        flex-shrink: 0;
+                        max-width: 140px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    ",
+                    "{provider_badge}"
+                }
             }
             div {
                 style: "

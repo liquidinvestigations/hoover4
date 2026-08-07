@@ -11,8 +11,8 @@ use crate::api::admin_api::{
     admin_list_task_failures, admin_list_workflows, admin_retry_document, admin_retry_failed_task,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK, MODULE, MODULE_BODY,
-    MODULE_CAPTION, TABLE, TD, TH,
+    AdminGuard, AdminShell, DatasetJobStrip, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK,
+    MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -131,6 +131,18 @@ fn ProcessingContent(collection_id: String) -> Element {
                 to: Route::AdminCollectionPage { collection_id: collection_id.clone() },
                 style: LINK,
                 "\u{2190} Back to collection"
+            }
+        }
+
+        // One strip per dataset that has ever had an admin job. This page is where an
+        // admin looks when processing seems stuck, and an apply job running here is the
+        // most likely reason the dataset's own form is locked.
+        if let Some(Ok(status)) = status_res.read().as_ref() {
+            for dataset in status.datasets.iter() {
+                DatasetJobStrip {
+                    key: "{dataset.collection_dataset}",
+                    collection_dataset: dataset.collection_dataset.clone(),
+                }
             }
         }
 

@@ -300,9 +300,9 @@ Everything comes up with the main stack:
 Each MCP image carries its own tests:
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 52 tests
-docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 51 tests
-docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 81 tests
+docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 60 tests
+docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 71 tests
+docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 119 tests
 ```
 
 ## Driving these tools from the host

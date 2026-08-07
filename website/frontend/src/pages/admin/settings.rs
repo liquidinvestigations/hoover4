@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::admin_api::{admin_list_settings, admin_set_setting};
+use crate::api::admin_api::{admin_list_deployment_config, admin_list_settings, admin_set_setting};
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, INPUT, SELECT, TABLE, TD, TH,
 };
@@ -27,6 +27,18 @@ fn setting_description(key: &str) -> &'static str {
     }
 }
 
+/// Deployment keys are rendered read-only, so the page has to say where they are changed.
+fn deployment_description(key: &str) -> &'static str {
+    match key {
+        "datasets_mount_path" => {
+            "Root the dataset-creation form lists subfolders of. Set in hoover4.ini and \
+             mounted into both the worker and the website, so it can only be changed by a \
+             redeploy \u{2014} shown here because it decides what the UI is able to ingest."
+        }
+        _ => "From hoover4.ini. Changing it needs a redeploy.",
+    }
+}
+
 #[component]
 pub fn AdminSettingsPage() -> Element {
     rsx! {
@@ -45,6 +57,7 @@ pub fn AdminSettingsPage() -> Element {
 #[component]
 fn SettingsContent() -> Element {
     let mut settings_res = use_resource(admin_list_settings);
+    let deployment_res = use_resource(admin_list_deployment_config);
     let mut edit_values = use_signal(std::collections::HashMap::<String, String>::new);
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
@@ -143,6 +156,36 @@ fn SettingsContent() -> Element {
             }
         } else {
             "Loading..."
+        }
+
+        if let Some(Ok(deployment)) = deployment_res.read().as_ref() {
+            if !deployment.is_empty() {
+                h2 { style: "margin: 24px 0 8px; color: #666; font-size: 16px; font-weight: 400;",
+                    "Deployment configuration (read-only)"
+                }
+                table { style: TABLE,
+                    thead {
+                        tr {
+                            th { style: TH, "Key" }
+                            th { style: TH, "Value" }
+                            th { style: TH, "Description" }
+                        }
+                    }
+                    tbody {
+                        for item in deployment.iter() {
+                            tr { key: "{item.key}",
+                                td { style: "{TD} font-weight: 600;", "{item.key}" }
+                                td { style: "{TD} font-family: ui-monospace, monospace;",
+                                    if item.value.is_empty() { "(not set)" } else { "{item.value}" }
+                                }
+                                td { style: "{TD} color: #999; font-size: 12px;",
+                                    "{deployment_description(&item.key)}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

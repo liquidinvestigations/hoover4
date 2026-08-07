@@ -1,0 +1,50 @@
+# Overlay: searchable-PDF assembly over HTTP (enabled via [main_services] ocr_pdf_enabled).
+#
+# CPU only and on the MAIN side, like its Tesseract twin: it calls the OCR tier rather
+# than owning an engine, so it inherits whatever that tier can reach and stays useful when
+# the GPU host is not there.
+services:
+  hoover4-ocr-pdf:
+    build:
+      # Narrow context on purpose — never widen to main_services/ or the repo root
+      # (testdata/ and plans/tmp/ would silently bloat every build).
+      context: ${HOOVER4_REPO_ROOT}/main_services/ocr_pdf
+      dockerfile: Dockerfile
+    image: hoover4-ocr-pdf:local
+    container_name: hoover4-ocr-pdf
+    ports:
+      - "127.0.0.1:${OCR_PDF_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # The OCR tier this service renders *for*. Same values the worker gets, rendered by
+      # deploy.py from the same ini keys — an engine with no url here is reported as not
+      # configured rather than retried.
+      - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
+      - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio-s3:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
+      - MINIO_BUCKET=${MINIO_BUCKET:-hoover4-blobs}
+      - OCR_PDF_DPI=${OCR_PDF_DPI:-200}
+      - OCR_PDF_CONCURRENCY=${OCR_PDF_CONCURRENCY:-2}
+      - OCR_PDF_QUEUE_DEPTH=${OCR_PDF_QUEUE_DEPTH:-4}
+      - OCR_PDF_MAX_PAGES=${OCR_PDF_MAX_PAGES:-2000}
+      - OCR_READ_TIMEOUT_SECONDS=${OCR_READ_TIMEOUT_SECONDS:-600}
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # No model to load and no GPU: up in seconds.
+      start_period: 20s
+    networks:
+      - hoover4
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true

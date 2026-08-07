@@ -107,6 +107,10 @@ DEFAULTS = {
         # demo / data
         "demo_mode": "false",
         "testdata_dir": "",
+        # Where the dataset-creation form looks for subfolders. An IN-CONTAINER path:
+        # `testdata_dir` already decides what the host mounts there, and the form walks
+        # one level below this and offers the names -- never a free-text path.
+        "datasets_mount_path": "/testdata",
         # shared bearer token between the research agents and the MCP servers
         "mcp_shared_secret_file": "",
         # ports — main infrastructure
@@ -174,9 +178,9 @@ AI_OVERLAYS = [
 MAIN_OVERLAYS = [
     (None, "compose/agents.yaml", None),          # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
+    ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
     # Overrides hoover4-website's command; adds no service of its own.
     ("website_release_mode", "compose/website-release.yaml", None),
-    # Part 2 adds ocr-pdf.yaml here.
 ]
 
 # Serena is deployed as a SEPARATE compose project (hoover4-devtools), not an overlay
@@ -216,6 +220,7 @@ MAIN_PUBLISHED = [
     ("hoover4-internal-search-agent", "main_services", "internal_search_agent_port"),
     ("hoover4-full-research-agent", "main_services", "full_research_agent_port"),
     ("hoover4-tesseract-cpu", "main_services", "tesseract_cpu_port"),
+    ("hoover4-ocr-pdf", "main_services", "ocr_pdf_port"),
     ("hoover4-ner-spacy", "main_services", "ner_spacy_port"),
 ]
 
@@ -383,6 +388,15 @@ def render_main_env(cfg):
         else ""
     )
 
+    # The searchable-PDF assembler. It has no engine of its own -- it renders pages and
+    # calls the two endpoints above -- so it is enabled independently of them, and empty
+    # here means the pipeline produces no OCR'd-PDF variants at all.
+    env["OCR_PDF_URL"] = (
+        "http://hoover4-ocr-pdf:8000/ocr-pdf"
+        if cfg.get(m, "ocr_pdf_enabled") == "true"
+        else ""
+    )
+
     # The embeddings endpoint (P5 chunk+embed calls it; the same server also serves
     # /v1/rerank, so one base URL covers both). No CPU twin exists yet —
     # embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
@@ -414,6 +428,10 @@ def render_main_env(cfg):
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
     env["HOOVER4_DEMO_MODE"] = cfg.get(m, "demo_mode")
+    # Read by the website (the creation form lists its subfolders) and by the worker
+    # (the ingest walker gets the resulting absolute path). Both containers mount the
+    # same host directory there, so the one value is meaningful on both sides.
+    env["DATASETS_MOUNT_PATH"] = cfg.get(m, "datasets_mount_path")
     if cfg.get(m, "testdata_dir"):
         env["HOOVER4_TESTDATA_DIR"] = cfg.get(m, "testdata_dir")
     if cfg.get(m, "mcp_shared_secret_file"):

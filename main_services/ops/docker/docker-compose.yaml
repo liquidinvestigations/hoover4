@@ -361,6 +361,8 @@ services:
       # writes a dataset_settings row for it, after which that row wins (D6).
       - "TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}"
       - "EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}"
+      # Same root the website's creation form lists, mounted from the same host dir.
+      - "DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}"
       # The OCR tier, one endpoint per engine. Empty means "this engine produces no
       # variants", which is the normal state for EasyOCR on a box with no GPU tier —
       # `tasks/ocr_client.py` records a skip and succeeds rather than consuming retries.
@@ -369,6 +371,10 @@ services:
       # other would file the text under a name that did not produce it.
       - "OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}"
       - "OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}"
+      # The searchable-PDF assembler (compose/ocr-pdf.yaml). Empty means no OCR'd-PDF
+      # variants are produced at all — the activity records a skip and succeeds, exactly
+      # like an OCR engine with no endpoint.
+      - "OCR_PDF_URL=${OCR_PDF_URL:-}"
       - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
@@ -403,6 +409,12 @@ services:
       # is why recreating this container cost a multi-minute cold rebuild, during which
       # every page 500s.
       - hoover4-website-target:/app/target
+      # Read-only, and the same host directory the worker gets: the dataset-creation
+      # form lists the subfolders under DATASETS_MOUNT_PATH and offers their names, so
+      # the website has to be able to see them. Read-only because it never writes there
+      # — a form that could create directories in the ingest root would be a way to
+      # ingest arbitrary host paths.
+      - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     ports:
       - "0.0.0.0:12345:8080"
@@ -427,6 +439,17 @@ services:
       - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:21909}
       # Demo switch: when true, anonymous guest-* sessions are treated as admins.
       - HOOVER4_DEMO_MODE=${HOOVER4_DEMO_MODE:-false}
+      # Root the dataset-creation form lists subfolders of. The form never accepts a
+      # free-text path: an admin picks a name from this listing, and the backend joins it
+      # here, so the ingest root cannot be pointed anywhere else from the browser.
+      - DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}
+      # The OCR tier, read-only from here: the dataset OCR panel lists the languages
+      # Tesseract can actually serve (from its /health, not from configuration) and
+      # renders the EasyOCR half disabled when there is no endpoint for it. Offering a
+      # language whose traineddata is not in the image would fail per file, hours later.
+      - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
+      - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
+      - OCR_PDF_URL=${OCR_PDF_URL:-}
       # Max concurrent Manticore queries during search fan-out (default 8).
       # - HOOVER4_SEARCH_MAX_PARALLELISM=8
       # AI Chat: the research agent from compose/agents.yaml (same stack, same

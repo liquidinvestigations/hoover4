@@ -6,8 +6,8 @@ use crate::api::admin_api::{
     admin_delete_dataset, admin_get_dataset, admin_trigger_workflow, admin_update_dataset,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_DANGER, C_HEADER, HELP_TEXT, INPUT,
-    LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
+    AdminGuard, AdminShell, DatasetOcrSettingsPanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
+    C_HEADER, HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
@@ -151,6 +151,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                 StatCard { label: "Errors", value: detail.stats.error_count }
             }
         }
+        DatasetOcrSettingsPanel { collection_dataset: dataset_id.clone() }
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Processing workflows" }
             div { style: MODULE_BODY,
