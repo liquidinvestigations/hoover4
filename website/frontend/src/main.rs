@@ -67,6 +67,12 @@ fn main() {
                 // we can apply a layer to the entire router using axum's `.layer` method
                 .layer(axum::middleware::from_fn(
                     backend::auth::session_middleware::session_middleware,
+                ))
+                // Outermost, so it runs last on the response path: the framework's own
+                // router answers everything with `access-control-allow-origin: *`, and
+                // the two routes above serve bytes behind an owner-or-admin check.
+                .layer(axum::middleware::from_fn(
+                    backend::server_extra::private_routes::strip_cors_on_private_routes,
                 )))
         });
     }

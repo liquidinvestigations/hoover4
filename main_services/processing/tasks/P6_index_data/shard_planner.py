@@ -44,7 +44,7 @@ import logging
 from temporalio import activity
 
 from database.clickhouse import get_collection_client
-from database.manticore import create_shard_tables
+from database.manticore import create_shard_tables, probed_embedding_dims
 from .params import FinalizeIndexBatchParams, PlanShardsParams, RecordIndexedParams
 from tasks.heartbeat import with_heartbeat
 
@@ -314,12 +314,15 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
         existing_assignments=existing,
     )
 
-    # Create the Manticore tables of every newly-opened shard before any writer can
-    # be scheduled against them.
+    # Create the Manticore tables of every shard before any writer can be scheduled
+    # against it. Idempotent (`create table if not exists`), and deliberately run for
+    # EXISTING shards too, not only newly-opened ones: a shard planned before the
+    # vectors stage existed has no `_vectors` table, and this is the self-heal path
+    # that creates it (from the probed dimension, never the ini) without a reindex.
     old_indexes = {s.shard_index for s in ledger}
+    vector_dims = probed_embedding_dims()
     for state in new_ledger:
-        if state.shard_index not in old_indexes:
-            create_shard_tables(collectionname, state.shard_index)
+        create_shard_tables(collectionname, state.shard_index, vector_dims=vector_dims)
 
     # The read above and the write below are deliberately separate client blocks
     # with the pure packing in between. Correctness relies on the single planner

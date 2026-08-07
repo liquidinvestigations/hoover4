@@ -560,6 +560,12 @@ pub async fn admin_list_workflows(
 // Failures
 // ---------------------------------------------------------------------------
 
+/// NOTE on `last_seen`: `toUnixTimestamp()` returns ClickHouse `UInt32`, and RowBinary is
+/// positional and untyped — a `UInt32` column read into an `i64` field consumes four bytes
+/// too many and desynchronises the whole row, so the server fn 500s. It only ever fails
+/// when there is at least one row to decode, which is why an empty collection looked fine
+/// and this shipped. Every query feeding this struct must therefore say
+/// `toInt64(toUnixTimestamp(...))` explicitly.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
 struct TaskFailureRow {
     collection_dataset: String,
@@ -602,7 +608,8 @@ pub async fn admin_list_task_failures(
     let rows = client
         .query(
             "SELECT collection_dataset, task_name, count() AS error_count, \
-                    uniqExact(hash) AS document_count, toUnixTimestamp(max(timestamp)) AS last_seen, \
+                    uniqExact(hash) AS document_count, \
+                    toInt64(toUnixTimestamp(max(timestamp))) AS last_seen, \
                     argMax(error_logs, timestamp) AS sample_error \
              FROM processing_errors \
              GROUP BY collection_dataset, task_name \
@@ -659,7 +666,8 @@ pub async fn admin_list_document_failures(
     };
     let sql = format!(
         "SELECT collection_dataset, hash, groupUniqArray(task_name) AS task_names, \
-                count() AS error_count, toUnixTimestamp(max(timestamp)) AS last_seen, \
+                count() AS error_count, \
+                toInt64(toUnixTimestamp(max(timestamp))) AS last_seen, \
                 argMax(error_logs, timestamp) AS last_error \
          FROM processing_errors {dataset_filter} \
          GROUP BY collection_dataset, hash \

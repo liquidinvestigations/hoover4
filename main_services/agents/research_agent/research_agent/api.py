@@ -37,6 +37,14 @@ class ChatRequest(BaseModel):
             "anything outside it. An empty list means the agent can search nothing."
         ),
     )
+    llm_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional per-message model id. When set, the agent builds (or reuses) a "
+            "graph keyed by this model. The website enforces the allowlist before "
+            "sending; an empty/None value uses the agent's configured default."
+        ),
+    )
 
 
 class ChatResult(BaseModel):
@@ -209,6 +217,7 @@ async def chat_stream(request: ChatRequest):
                         user_id=request.user_id,
                         username=request.username,
                         allowed_collections=request.allowed_collections,
+                        llm_model=request.llm_model,
                     ):
                         last_chunk = chunk
                         # Format as Server-Sent Events with proper JSON
@@ -256,6 +265,7 @@ async def chat(request: ChatRequest):
             user_id=request.user_id,
             username=request.username,
             allowed_collections=request.allowed_collections,
+            llm_model=request.llm_model,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

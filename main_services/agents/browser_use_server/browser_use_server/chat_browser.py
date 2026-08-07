@@ -27,6 +27,13 @@ possible without asking the model to request it: the sidecar owns the Playwright
 but CDP allows a second client, and `Page.captureScreenshot` / `Page.captureSnapshot` need
 nothing Playwright is holding exclusively.
 
+## What the browser may reach
+
+Chromium is launched with a PAC script (:mod:`.netfilter`) that routes every internal
+host and private address to a proxy that does not exist. That is the only layer that sees
+a redirect: :mod:`.urlcheck` inspects tool arguments, and the sidecar's
+`--blocked-origins` is documented as affecting neither redirects nor security.
+
 ## Extensions
 
 Loaded through nodriver's `Config.add_extension()`, which supplies
@@ -45,6 +52,8 @@ import socket
 import tempfile
 import time
 from dataclasses import dataclass, field
+
+from browser_use_server import netfilter
 
 log = logging.getLogger(__name__)
 
@@ -72,14 +81,12 @@ SIDECAR_START_TIMEOUT = float(os.getenv("BROWSER_SIDECAR_START_TIMEOUT", "45"))
 #: module launch the browser itself.
 CHROMIUM_START_TIMEOUT = float(os.getenv("BROWSER_CHROMIUM_START_TIMEOUT", "45"))
 
-#: Internal origins the sidecar refuses as a *second* line of defence. The router's
-#: urlcheck is the first and the real one — Playwright documents `--blocked-origins` as
-#: not being a security boundary.
-BLOCKED_ORIGINS = os.getenv(
-    "BROWSER_BLOCKED_ORIGINS",
-    "clickhouse;manticore;temporal;temporal-ui;redis;zookeeper;minio-s3;minio;"
-    "hoover4-website;hoover4-worker;hoover4-ai-server;localhost;127.0.0.1",
-)
+#: Internal hosts the sidecar refuses as a *second* line of defence. The router's urlcheck
+#: is the first line for tool arguments and :mod:`.netfilter`'s PAC script is the one that
+#: survives a redirect; Playwright documents `--blocked-origins` as neither a security
+#: boundary nor redirect-aware, so it is exactly a third opinion. Default comes from
+#: urlcheck's own deny-list — a second literal list here is what let the two drift.
+BLOCKED_ORIGIN_HOSTS = os.getenv("BROWSER_BLOCKED_ORIGINS", netfilter.DEFAULT_BLOCKED_HOSTS)
 
 
 class BrowserSpawnFailed(RuntimeError):
@@ -200,6 +207,10 @@ async def start(session_id: str) -> ChatBrowser:
     config.add_argument("--disable-dev-shm-usage")
     config.add_argument("--disable-gpu")
     config.add_argument(f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}")
+    # The line that survives a redirect. Consulted by Chromium for every request in every
+    # tab, before a connection is opened — which is the coverage a tool-argument check
+    # cannot have. See :mod:`.netfilter`.
+    config.add_argument(f"--proxy-pac-url={netfilter.pac_data_url()}")
     extensions = extension_paths()
     for path in extensions:
         # `add_extension` is what supplies the two feature flags MV3 extensions need in
@@ -329,7 +340,10 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
         "--timeout-action", str(ACTION_TIMEOUT_MS),
         # Coordinate-based clicking, for pages whose accessibility tree is useless.
         "--caps", "vision",
-        "--blocked-origins", BLOCKED_ORIGINS,
+        # Expanded to `scheme://host:*` origins: the bare hostnames this used to pass
+        # compiled to `*://host/**`, which matches no URL that carries a port, and every
+        # service on this network has one. See `netfilter.blocked_origins`.
+        "--blocked-origins", netfilter.blocked_origins(BLOCKED_ORIGIN_HOSTS),
     ]
     chat.sidecar = await asyncio.create_subprocess_exec(
         *args,

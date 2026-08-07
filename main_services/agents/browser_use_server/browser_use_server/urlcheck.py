@@ -36,7 +36,10 @@ ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 #: Hostnames on the `hoover4` network that must never be fetched, whatever they resolve
 #: to. Belt to the address check's braces, and the thing that makes the intent readable.
-_DENIED_HOSTS = frozenset(
+#:
+#: Also the source :mod:`.netfilter` builds the sidecar's blocked-origin list from — one
+#: list, so the two lines of defence cannot drift apart.
+DENIED_HOSTS = frozenset(
     {
         "clickhouse", "manticore", "temporal", "temporal-ui", "redis", "zookeeper",
         "minio-s3", "minio", "hoover4-vllm", "hoover4-ai-server", "hoover4-worker",
@@ -84,7 +87,7 @@ def check_url(url: str) -> str:
     if not host:
         raise UrlNotAllowed("URL has no host")
 
-    if host in _DENIED_HOSTS or host.endswith(".internal"):
+    if host in DENIED_HOSTS or host.endswith(".internal"):
         raise UrlNotAllowed(f"{host!r} is an internal service and must not be fetched")
 
     # A literal address skips resolution but not the check.

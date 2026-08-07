@@ -16,6 +16,36 @@ the actual gate.
 - `temporal_trigger.rs` — starts pipeline workflows over the Temporal HTTP API,
   tagging dataset-scoped starts with the `CollectionDataset` search attribute.
 - `metrics.rs` — aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
+- `llm.rs` — the model catalog, the defaults and the allowlist. See below.
+
+## `llm_models` is a ReplacingMergeTree, and both rules that follow from that
+
+The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
+`argMax(col, updated_at)`. Two consequences, each of which has already cost a bug:
+
+1. **A refresh must carry forward everything the provider does not tell it.** `/v1/models`
+   returns ids and nothing else, and `is_allowed` defaults to `1`, so a refresh that simply
+   wrote its rows produced a *fresher* "allowed" version than the admin's disallow — and
+   the allowlist is enforced server-side against forged model ids (§9.3), not a dropdown
+   filter. `refresh_catalog_now` reads the current state first (`prior_catalog`) and
+   preserves `is_allowed` plus the price and capability columns; a model never seen before
+   is allowed. The Python catalog task (`tasks/llm_catalog.py::store_models`) does the same,
+   because whichever writer runs last wins.
+2. **Filter deleted rows in `HAVING`, never in `WHERE`.** Every version of a row is still in
+   the part, so `WHERE is_deleted = 0` drops the *tombstone version* and keeps the live one
+   — a deleted model reads back as present. The only meaningful test is
+   `HAVING argMax(is_deleted, updated_at) = 0`.
+
+Tombstones are written by the refresh: a model the provider has stopped listing gets one
+`is_deleted = 1` version, keeping its admin state so it comes back intact if the provider
+lists it again.
+
+## Failure lists and `toUnixTimestamp`
+
+`toUnixTimestamp()` is ClickHouse `UInt32`. RowBinary is positional and untyped, so
+decoding it into an `i64` field eats four bytes too many and desynchronises the whole row —
+the server fn 500s, but *only* on a collection that actually has rows, which is why it can
+ship. Write `toInt64(toUnixTimestamp(...))` in the SQL whenever the struct field is `i64`.
 
 ## Telemetry (usage_events / api_events)
 

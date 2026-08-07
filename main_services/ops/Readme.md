@@ -51,6 +51,37 @@ by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); t
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
 
+## Manticore `_vectors` shards (HNSW)
+
+Every logical shard has a third table, `<collection>_<n>_vectors`: the disposable HNSW
+copy of ClickHouse `text_chunk_vectors` (the durable store). Two operational facts:
+
+- **HNSW is RAM-resident.** 384 floats × 4 bytes ≈ 1.5 KB per chunk plus the graph
+  overhead — call it ~2 KB per chunk. Budget a ceiling of a few million chunks per
+  Manticore container: ten million chunks is well over 10 GB of Manticore memory, and
+  the OOM killer does not ask which table. When memory gets tight, drop `_vectors`
+  tables and rebuild them later from ClickHouse (`main.py reindex-collection
+  <collection>`; ClickHouse keeps the vectors, so no re-embedding is needed).
+- **`knn_dims` is fixed at table creation and cannot be altered.** Tables are created
+  from the probed serving dimension (`server_settings.embeddings_serving_dim`), never
+  the ini. Changing `embeddings_model` means dropping and rebuilding every `_vectors`
+  shard (same `reindex-collection` path), and the P6 vector indexer refuses loudly —
+  the activity fails and every affected document gets a `processing_errors` row — when
+  the rows' dimension does not match a shard's `knn_dims`.
+
+The shard byte budget (`MAX_SHARD_TEXT_BYTES`, 1 GB) counts **text bytes only**. With
+per-variant fan-out a shard's real footprint is several times its budgeted size: each
+OCR variant adds its own pages rows (Manticore disk), its own chunk rows (~1× the
+corpus text, ClickHouse) and its own vectors (~2 KB per ~1.2 KB chunk, Manticore RAM).
+Expect roughly 3–5× the ledger's `text_bytes` in total storage for a dataset with one
+native and one OCR variant, more with more variants — do not be surprised by the shard
+count.
+
+KNN query shape, verified live against Manticore 14.1.0 (2026-08-07): attribute
+filters in `WHERE` are applied **before** k selection (no over-fetch needed), and
+`knn(embedding, K, (...))` bounds nothing by itself — the working shape is
+`WHERE knn(embedding, K, (...)) ORDER BY <knn_dist alias> ASC LIMIT K`.
+
 ## Navigation
 
 -  [Go Back](../Readme.md)

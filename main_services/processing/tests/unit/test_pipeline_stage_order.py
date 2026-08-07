@@ -49,5 +49,18 @@ def test_extract_entities_runs_before_indexing():
     )
 
 
+def test_chunk_embed_runs_between_nlp_and_indexing():
+    # P6's vector indexer copies the text_chunk_vectors rows P5 writes; an index that
+    # runs before embedding comes up with empty _vectors tables.
+    order = _child_workflow_order()
+    assert "ChunkEmbedForPlan" in order, (
+        f"ChunkEmbedForPlan is not executed by ExecuteSinglePlan: {order}"
+    )
+    assert order.index("ExtractEntitiesForPlan") < order.index("ChunkEmbedForPlan") \
+        < order.index("IndexDatasetPlan"), (
+        f"stage order must be P4 NER -> P5 chunk+embed -> P6 index: {order}"
+    )
+
+
 def test_sanity_order_is_nonempty():
     assert _child_workflow_order()

@@ -54,7 +54,15 @@ A tool that produces something too big for the model's context but worth showing
 
 The model receives only the id, under a reserved `_hoover4_artifacts` key. **It is a
 lookup key, never a capability** — the website resolves it to `session_id`/`username` and
-enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`).
+enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`), and the
+card refuses any id that is not a UUID before it builds that URL.
+
+Because the structured key does not survive LangGraph, the browser router also appends a
+`[hoover4:artifacts] [...]` line to the result text — **always**, even when it captured
+nothing, and always as the last block. That position is what the card authenticates the
+marker by: a browser tool's text is the fetched page, so a hostile page that plants the
+marker in its own body would otherwise get attacker-chosen titles and URLs rendered in the
+trusted "Archived page" chrome.
 
 `P0_scan_disk` must never walk the `derived/` prefix: an artifact the ingest walker can
 see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`

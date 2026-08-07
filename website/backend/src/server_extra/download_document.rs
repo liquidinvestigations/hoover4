@@ -80,7 +80,8 @@ async fn get_document_content_stream(
     let base_url = s3_endpoint
         .parse::<minio::s3::http::BaseUrl>()
         .context("Failed to parse s3 endpoint")?;
-    let static_provider = minio::s3::creds::StaticProvider::new("hoover4", "hoover4-secret", None);
+    let (access, secret) = crate::db_utils::s3_credentials();
+    let static_provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
     let client = minio::s3::Client::new(base_url, Some(Box::new(static_provider)), None, None)
         .context("Failed to create s3 client")?;
     let object = client

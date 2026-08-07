@@ -145,12 +145,29 @@ pub struct ArtifactRef {
 /// renders no thumbnail. Verified against a real stored `tool_output`.
 pub const ARTIFACT_MARKER: &str = "[hoover4:artifacts]";
 
+/// Is this the shape `artifacts.new_id()` produces — a plain UUIDv4?
+///
+/// The id is interpolated straight into `/_chat_artifact/<id>/<asset>`, so it must be a
+/// lookup key and nothing else. Anything else is refused rather than escaped: an id that
+/// is not a UUID did not come from the artifact writer, and there is no legitimate value
+/// for this field that this rejects.
+fn is_artifact_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    bytes.iter().enumerate().all(|(i, b)| match i {
+        8 | 13 | 18 | 23 => *b == b'-',
+        _ => b.is_ascii_hexdigit(),
+    })
+}
+
 fn parse_entries(entries: &[serde_json::Value]) -> Vec<ArtifactRef> {
     entries
         .iter()
         .filter_map(|e| {
             let id = json_str(e, "artifact_id");
-            if id.is_empty() {
+            if !is_artifact_id(&id) {
                 return None;
             }
             Some(ArtifactRef {
@@ -182,16 +199,28 @@ pub fn artifact_refs(content: &serde_json::Value) -> Vec<ArtifactRef> {
 }
 
 /// Pull the marker's JSON out of a tool result's text.
+///
+/// **Only the last line counts, and only if it is the marker.** For a browser tool the
+/// text is the fetched page's own content, so anything found in the middle of it was
+/// written by whoever wrote the page: a hostile site that plants
+/// `[hoover4:artifacts] [...]` in its body got an attacker-chosen title and URL rendered
+/// inside the trusted "Archived page" chrome, with `/_chat_artifact/<their string>/…`
+/// probed as an image URL. No script ran — everything stays a text node — but it is UI
+/// spoofing on a surface the design explicitly treats as attacker-controlled.
+///
+/// The router appends its marker as the final content block of *every* browser tool
+/// result, including when nothing was captured (`[hoover4:artifacts] []`), precisely so
+/// this position check has something to anchor on. A planted marker is therefore always
+/// followed by the genuine one and never wins; a result that does not end with a marker
+/// carries no artifacts at all rather than whatever its body happens to contain.
 pub fn artifact_refs_from_text(text: &str) -> Vec<ArtifactRef> {
-    let Some(start) = text.rfind(ARTIFACT_MARKER) else {
+    let Some(line) = text.trim_end().lines().next_back() else {
         return Vec::new();
     };
-    let rest = text[start + ARTIFACT_MARKER.len()..].trim_start();
-    // The payload is one JSON array on one line. Take to the end of the line so trailing
-    // content (there should be none, but a stored payload can be truncated mid-way)
-    // cannot swallow the parse.
-    let line = rest.split('\n').next().unwrap_or("").trim_end();
-    serde_json::from_str::<Vec<serde_json::Value>>(line)
+    let Some(payload) = line.trim().strip_prefix(ARTIFACT_MARKER) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<serde_json::Value>>(payload.trim())
         .map(|entries| parse_entries(&entries))
         .unwrap_or_default()
 }
@@ -200,10 +229,17 @@ pub fn artifact_refs_from_text(text: &str) -> Vec<ArtifactRef> {
 ///
 /// The marker is bookkeeping between the router and this card; showing it to the user
 /// would be showing them a UUID they cannot use.
+///
+/// Only a *trailing* marker line is removed, matching `artifact_refs_from_text`. Cutting
+/// at the last occurrence anywhere would let a page that plants the marker in its own body
+/// truncate everything the user would otherwise see after it.
 pub fn strip_artifact_marker(text: &str) -> String {
-    match text.rfind(ARTIFACT_MARKER) {
-        Some(i) => text[..i].trim_end().to_string(),
-        None => text.to_string(),
+    let trimmed = text.trim_end();
+    match trimmed.lines().next_back() {
+        Some(last) if last.trim().starts_with(ARTIFACT_MARKER) => {
+            trimmed[..trimmed.len() - last.len()].trim_end().to_string()
+        }
+        _ => text.to_string(),
     }
 }
 
@@ -306,33 +342,91 @@ mod tests {
         assert!(http_link("").is_none());
     }
 
+    /// A real `artifacts.new_id()` — a UUIDv4, which is the only id shape accepted.
+    const ID_A: &str = "6f1a3c2e-9b4d-4a71-8e0f-2c5d7a9b1e33";
+    const ID_B: &str = "0b7e5d41-2f68-4c93-a0d5-9e1b6c84f207";
+
     #[test]
     fn artifacts_are_read_from_the_structured_key_when_it_survived() {
         let v = serde_json::json!({
             "_hoover4_artifacts": [
-                {"artifact_id": "abc", "kind": "page_capture", "status": "ok",
+                {"artifact_id": ID_A, "kind": "page_capture", "status": "ok",
                  "url": "https://x.example/", "title": "X"}
             ]
         });
         let refs = artifact_refs(&v);
         assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].artifact_id, "abc");
+        assert_eq!(refs[0].artifact_id, ID_A);
         assert_eq!(refs[0].url, "https://x.example/");
+    }
+
+    fn marker_line(id: &str, title: &str) -> String {
+        format!(
+            "[hoover4:artifacts] [{{\"artifact_id\":\"{id}\",\"kind\":\"page_capture\",\
+             \"status\":\"ok\",\"url\":\"https://x.example/\",\"title\":\"{title}\"}}]"
+        )
     }
 
     #[test]
     fn artifacts_are_read_from_the_text_marker_when_it_did_not() {
         // The real transcript path: LangGraph hands the backend the text blocks and
         // nothing else, so the structured key is gone by the time a card renders.
-        let text = "### Page\n- Page URL: https://x.example/\n\n\
-                    [hoover4:artifacts] [{\"artifact_id\":\"def\",\"kind\":\"page_capture\",\
-                    \"status\":\"too_large\",\"url\":\"https://x.example/\",\"title\":\"X\",\
-                    \"detail\":\"snapshot is 9000 kB\"}]";
-        let refs = artifact_refs_from_text(text);
+        let text = format!(
+            "### Page\n- Page URL: https://x.example/\n\n\
+             [hoover4:artifacts] [{{\"artifact_id\":\"{ID_A}\",\"kind\":\"page_capture\",\
+             \"status\":\"too_large\",\"url\":\"https://x.example/\",\"title\":\"X\",\
+             \"detail\":\"snapshot is 9000 kB\"}}]"
+        );
+        let refs = artifact_refs_from_text(&text);
         assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].artifact_id, "def");
+        assert_eq!(refs[0].artifact_id, ID_A);
         assert_eq!(refs[0].status, "too_large");
         assert_eq!(refs[0].detail, "snapshot is 9000 kB");
+    }
+
+    #[test]
+    fn a_marker_planted_by_the_page_never_wins() {
+        // The attack: a browser tool's text IS the fetched page, so a hostile site can
+        // write the marker into its own body and get its own title and URL rendered in
+        // the trusted "Archived page" chrome. The router's genuine marker is always the
+        // final block, so only the final line is honoured.
+        let text = format!(
+            "### Page\n{}\nsome more page text\n{}",
+            marker_line(ID_B, "Your bank"),
+            marker_line(ID_A, "Real capture"),
+        );
+        let refs = artifact_refs_from_text(&text);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].artifact_id, ID_A);
+        assert_eq!(refs[0].title, "Real capture");
+    }
+
+    #[test]
+    fn a_page_marker_alone_yields_nothing() {
+        // The router appends `[hoover4:artifacts] []` even when it captured nothing, so a
+        // result whose last line is not a marker cannot have come from it.
+        let text = format!("### Page\n{}\ntrailing page text", marker_line(ID_B, "Your bank"));
+        assert!(artifact_refs_from_text(&text).is_empty());
+    }
+
+    #[test]
+    fn an_empty_trailing_marker_is_the_no_artifacts_case() {
+        let text = "### Console\nnothing to report\n[hoover4:artifacts] []";
+        assert!(artifact_refs_from_text(text).is_empty());
+        assert_eq!(strip_artifact_marker(text), "### Console\nnothing to report");
+    }
+
+    #[test]
+    fn an_id_that_is_not_a_uuid_is_refused() {
+        // The id is interpolated into `/_chat_artifact/<id>/<asset>`; nothing but a
+        // lookup key belongs there.
+        for bad in ["abc", "../../etc/passwd", "", "6f1a3c2e9b4d4a718e0f2c5d7a9b1e33"] {
+            let text = format!(
+                "x\n[hoover4:artifacts] [{{\"artifact_id\":\"{bad}\",\"kind\":\"page_capture\"}}]"
+            );
+            assert!(artifact_refs_from_text(&text).is_empty(), "accepted {bad:?}");
+        }
+        assert!(is_artifact_id(ID_A));
     }
 
     #[test]
@@ -341,6 +435,14 @@ mod tests {
         let shown = strip_artifact_marker(text);
         assert!(!shown.contains("hoover4:artifacts"));
         assert!(shown.ends_with("https://x.example/"));
+    }
+
+    #[test]
+    fn stripping_does_not_let_a_page_hide_its_own_content() {
+        // Cutting at the last occurrence anywhere would let a planted marker truncate
+        // everything after it out of the user's view.
+        let text = "### Page\n[hoover4:artifacts] [{}]\nthe part they wanted hidden";
+        assert_eq!(strip_artifact_marker(text), text);
     }
 
     #[test]
@@ -376,7 +478,7 @@ mod tests {
 
     #[test]
     fn artifact_urls_point_at_the_acl_checked_route() {
-        assert_eq!(artifact_url("abc", "thumb.webp"), "/_chat_artifact/abc/thumb.webp");
-        assert_eq!(artifact_url("abc", "page.html"), "/_chat_artifact/abc/page.html");
+        assert_eq!(artifact_url(ID_A, "thumb.webp"), format!("/_chat_artifact/{ID_A}/thumb.webp"));
+        assert_eq!(artifact_url(ID_A, "page.html"), format!("/_chat_artifact/{ID_A}/page.html"));
     }
 }

@@ -138,10 +138,13 @@ class RoutedTool(Tool):
             result, failed = await self._forward(chat, tool_name, arguments)
 
             # 3. Capture, including on failure — the error path is where the evidence
-            #    matters most.
+            #    matters most. A tool that captures nothing still gets an empty marker:
+            #    the card authenticates the marker by its position, and that only works
+            #    if every result this router returns ends with one.
+            captured = None
             if capture_mod.should_capture(tool_name):
                 captured = await capture_mod.capture(chat, tool_name, username, failed=failed)
-                result = _attach_artifact(result, captured)
+            result = _attach_artifact(result, captured)
 
             # 4. Tab cap, AFTER the capture: capture reads the active tab, and closing
             #    tabs first could take the one the agent just acted on.
@@ -195,17 +198,31 @@ class RoutedTool(Tool):
 #:
 #: The cost is ~15 tokens of opaque line per browser call. The card parses it out and
 #: **strips it before display**, so it is never shown to the user either.
+#:
+#: **It is always the last block, and it is always present** — `[hoover4:artifacts] []`
+#: when there is nothing to report. That is not tidiness: the rest of a browser tool's
+#: text *is the fetched page*, so a hostile page can write this marker into its own body
+#: and, if it were the only one, have attacker-chosen titles and URLs rendered inside the
+#: trusted "Archived page" chrome. The card only honours a marker on the final line, and
+#: an unconditional trailing marker is what makes that check hold for every tool rather
+#: than only for the ones that happened to capture something.
 ARTIFACT_MARKER = "[hoover4:artifacts]"
 
 
-def _attach_artifact(result: ToolResult, captured: capture_mod.CaptureResult) -> ToolResult:
+def _attach_artifact(
+    result: ToolResult, captured: capture_mod.CaptureResult | None
+) -> ToolResult:
     """Record the capture on the tool result, in both places a consumer might look.
 
     The model is told nothing about this beyond an id it has no use for. It exists so the
     website can render the screenshot and the archived page on the tool card.
+
+    `captured` of `None` (or a capture that produced no artifact) still appends an **empty**
+    marker. See `ARTIFACT_MARKER`: the card trusts the marker only on the last line, and
+    that only means anything if every result ends with one.
     """
-    if not captured.artifact_id:
-        return result
+    if captured is None or not captured.artifact_id:
+        return _append_marker(result, [])
     entry = {
         "artifact_id": captured.artifact_id,
         "kind": artifacts.KIND_PAGE_CAPTURE,
@@ -216,19 +233,25 @@ def _attach_artifact(result: ToolResult, captured: capture_mod.CaptureResult) ->
     if captured.detail:
         entry["detail"] = captured.detail
 
+    return _append_marker(result, [entry])
+
+
+def _append_marker(result: ToolResult, entries: list[dict]) -> ToolResult:
+    """Put `entries` in both places a consumer might look, text marker last."""
     # 1. The structured key, for any client that preserves structured content (the host's
     #    .mcp.json entries do).
     structured = result.structured_content
     if isinstance(structured, dict):
         structured = dict(structured)
-        structured[artifacts.ARTIFACTS_KEY] = [entry]
+        structured[artifacts.ARTIFACTS_KEY] = entries
     else:
-        structured = {artifacts.ARTIFACTS_KEY: [entry]}
+        structured = {artifacts.ARTIFACTS_KEY: entries}
 
-    # 2. The text marker, for the transcript path. See ARTIFACT_MARKER.
+    # 2. The text marker, for the transcript path — and it must be the FINAL block, since
+    #    that position is what the card authenticates it by. See ARTIFACT_MARKER.
     content = list(result.content or [])
     content.append(
-        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps([entry])}")
+        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps(entries)}")
     )
 
     return ToolResult(content=content, structured_content=structured)

@@ -69,9 +69,10 @@ pub async fn chat_send_message(
     session_id: String,
     message: String,
     options: ChatOptions,
+    model_id: Option<String>,
 ) -> Result<ChatSendResult, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::send_message(&user, session_id, message, options)
+    backend::api::chat::send_message(&user, session_id, message, options, model_id)
         .await
         .map_err(to_server_fn_error)
 }

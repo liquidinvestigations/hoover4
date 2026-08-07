@@ -1,0 +1,11 @@
+# Build-context root for the metasearch, browser and collection-search images (their
+# Dockerfiles vendor agent_common/, so the context is this directory, not theirs).
+# Keep the context to what those Dockerfiles actually copy.
+.git
+.github
+.context
+.venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/.env

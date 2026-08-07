@@ -11,6 +11,10 @@ dependencies = [
     "pydantic>=2.0",
     "requests>=2.31",
     "python-dotenv>=1.0",
+    # agent_common's own dependencies, declared here as well because the image installs
+    # `./agent_common` before this package (see the Dockerfile) and pip resolves the
+    # two separately.
+    "minio>=7.2",
 ]
 
 [project.optional-dependencies]

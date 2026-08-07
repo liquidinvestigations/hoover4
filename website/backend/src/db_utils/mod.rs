@@ -3,3 +3,18 @@
 pub mod clickhouse_utils;
 pub mod decompose_spans;
 pub mod manticore_utils;
+
+/// The blob store's credentials, from the environment.
+///
+/// They used to be `StaticProvider::new("hoover4", "hoover4-secret", None)` written out in
+/// two source files. A credential compiled into a binary is one that cannot be rotated
+/// without a rebuild, and one that is in the repository for good — plan §7.4 says env,
+/// never literals. The names and the dev defaults match what every other container in the
+/// stack already reads (`compose/agents.yaml`, `agent_common/minio_store.py`), so nothing
+/// needs configuring for a local run and a real deployment sets two variables.
+pub fn s3_credentials() -> (String, String) {
+    (
+        std::env::var("MINIO_ACCESS_KEY").unwrap_or_else(|_| "hoover4".to_string()),
+        std::env::var("MINIO_SECRET_KEY").unwrap_or_else(|_| "hoover4-secret".to_string()),
+    )
+}

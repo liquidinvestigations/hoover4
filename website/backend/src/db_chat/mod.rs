@@ -293,22 +293,88 @@ pub async fn list_messages_after(
 /// ClickHouse has no sequences and no row locks, so this is only safe under
 /// [`turn_lock`]: every caller that allocates seqs for a session holds that session's
 /// lock for the whole turn, which serialises allocation *and* keeps a second turn's
-/// history read from racing the first turn's writes. The per-row `message_uuid` is the
+/// history read from racing the first turn's writes. [`detect_seq_collision`] is the
 /// detector for anything that still slips through (two website processes, say).
+///
+/// **`chat_message_stream` counts too.** Deep research allocates its answer seq up front
+/// and reserves it as a *stream* row — the transcript row only appears when the Temporal
+/// workflow finishes, minutes later. A `next_seq` that looked only at `chat_messages`
+/// therefore handed the reserved seq straight back to the next inline send, and since
+/// `chat_messages` is read `FINAL`, the later write won and one message disappeared from
+/// the conversation with no error anywhere. The turn lock does not cover this: it is
+/// released when `start_research_task` returns, long before the workflow writes.
 pub async fn next_seq(username: &str, session_id: &str) -> anyhow::Result<u32> {
     let client = get_global_client();
     // ClickHouse types `max(seq) + 1` as UInt64; cast so the client can decode it.
     let max: u32 = client
         .query(
-            "SELECT toUInt32(ifNull(max(seq) + 1, 0)) FROM chat_messages FINAL \
-             WHERE username = ? AND session_id = ?",
+            "SELECT toUInt32(ifNull(max(seq) + 1, 0)) FROM ( \
+                 SELECT seq FROM chat_messages FINAL \
+                 WHERE username = ? AND session_id = ? \
+                 UNION ALL \
+                 SELECT seq FROM chat_message_stream \
+                 WHERE username = ? AND session_id = ? \
+                   AND updated_at > now64(3) - INTERVAL 1 DAY \
+             )",
         )
+        .bind(username)
+        .bind(session_id)
         .bind(username)
         .bind(session_id)
         .fetch_one()
         .await?;
     Ok(max)
 }
+
+/// Confirm that `seq` in this session belongs to the turn that just claimed it.
+///
+/// This is what `message_uuid` is *for*. Every row of one turn carries the same uuid, so
+/// two rows at the same seq with different uuids means two writers allocated the same
+/// seq — the exact outcome `next_seq` cannot rule out without a database-side sequence.
+/// Until now the column was written by every path and read by none, which detected
+/// nothing; a write-only detector is worse than no detector, because it reads as covered.
+///
+/// Called after the claiming row is written, so the collision is reported rather than
+/// prevented: `chat_messages` is a ReplacingMergeTree and one of the two rows is already
+/// doomed. The caller's job is to refuse the turn and tell the user to resend, which
+/// loses a keystroke instead of a message.
+///
+/// Reads **without** `FINAL` on purpose: `FINAL` collapses the versions to one and that
+/// is precisely the evidence being looked for.
+pub async fn detect_seq_collision(
+    username: &str,
+    session_id: &str,
+    seq: u32,
+    expected_uuid: &str,
+) -> anyhow::Result<()> {
+    if expected_uuid.is_empty() {
+        return Ok(());
+    }
+    let client = get_global_client();
+    let others: Vec<String> = client
+        .query(
+            "SELECT DISTINCT message_uuid FROM chat_messages \
+             WHERE username = ? AND session_id = ? AND seq = ? AND message_uuid != ? \
+               AND message_uuid != '' LIMIT 5",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(seq)
+        .bind(expected_uuid)
+        .fetch_all::<String>()
+        .await?;
+    if others.is_empty() {
+        return Ok(());
+    }
+    tracing::error!(
+        "seq collision in session {session_id} at seq {seq}: this turn is {expected_uuid}, \
+         but {others:?} already claimed it — a message will be lost to ReplacingMergeTree"
+    );
+    anyhow::bail!(
+        "another message was written to this conversation at the same time; please send it again"
+    )
+}
+
 
 /// Fields written for one trajectory row beyond the required role/content.
 #[derive(Debug, Clone, Default)]
@@ -486,9 +552,19 @@ static TURN_LOCKS: std::sync::LazyLock<
 
 /// The per-session turn lock. Hold the guard for the whole turn (user row through
 /// finalisation). Never await the agent without holding it.
+///
+/// Entries are evicted opportunistically, on the way in. Nothing ever removed them, so a
+/// long-lived process accumulated one `Arc<Mutex>` per conversation it had ever served —
+/// small, but unbounded and proportional to traffic, which is the definition of a leak. An
+/// entry nobody else holds an `Arc` to has no waiter and no holder, so dropping it is
+/// invisible: the next caller for that session simply gets a fresh lock.
 pub fn turn_lock(username: &str, session_id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     let key = format!("{username}:{session_id}");
     let mut locks = TURN_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    // Cheap enough to do on every call at this map's size, and it keeps the eviction next
+    // to the insertion where the invariant is readable. `strong_count == 1` means this map
+    // is the only owner.
+    locks.retain(|k, lock| k == &key || std::sync::Arc::strong_count(lock) > 1);
     std::sync::Arc::clone(
         locks
             .entry(key)

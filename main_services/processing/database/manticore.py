@@ -24,12 +24,14 @@ import re
 
 log = logging.getLogger(__name__)
 
-# <collectionname>_<digits>_pages|_meta — the only table families this module manages.
-_SHARD_TABLE_RE_TEMPLATE = r'^{coll}_[0-9]+_(pages|meta)$'
+# <collectionname>_<digits>_pages|_meta|_vectors — the only table families this
+# module manages.
+_SHARD_TABLE_RE_TEMPLATE = r'^{coll}_[0-9]+_(pages|meta|vectors)$'
 _SHARD_NAME_RE = re.compile(r'^([a-z0-9_]+)_([0-9]+)$')
 
 PAGES_TABLE_SUFFIX = 'pages'
 META_TABLE_SUFFIX = 'meta'
+VECTORS_TABLE_SUFFIX = 'vectors'
 
 
 @contextmanager
@@ -100,6 +102,24 @@ def shard_tables_from_name(shard_name: str) -> tuple[str, str]:
     if f'{collectionname}_{index}' != shard_name:
         raise ValueError(f'{shard_name!r} is not a canonical shard name (<collectionname>_<n>)')
     return shard_table_names(collectionname, index)
+
+
+def vectors_table_name(collectionname: str, shard_index: int) -> str:
+    """The physical vectors table of a logical shard (``testdata_1_vectors``)."""
+    from database.clickhouse import validate_collectionname
+    validate_collectionname(collectionname)
+    if not isinstance(shard_index, int) or isinstance(shard_index, bool) or shard_index < 1:
+        raise ValueError(f'shard_index must be a positive integer, got {shard_index!r}')
+    return f'{collectionname}_{shard_index}_{VECTORS_TABLE_SUFFIX}'
+
+
+def vectors_table_from_name(shard_name: str) -> str:
+    """The vectors table for a logical shard name. Same validation as
+    :func:`shard_tables_from_name`."""
+    collectionname, index = shard_name.rsplit('_', 1)
+    # Reuse the canonical-name validation rather than re-parsing here.
+    shard_tables_from_name(shard_name)
+    return vectors_table_name(collectionname, int(index))
 
 
 #: Infix indexing, so ``MATCH('doc*')`` and ``MATCH('*ocument*')`` work.
@@ -178,11 +198,70 @@ def meta_table_ddl(table_name: str) -> str:
     """
 
 
-def create_shard_tables(collectionname: str, shard_index: int) -> tuple[str, str]:
-    """Create the two tables of a logical shard if they do not exist. Idempotent."""
+def vectors_table_ddl(table_name: str, dims: int) -> str:
+    """CREATE TABLE statement for a shard vectors table (one row per embedded chunk).
+
+    The disposable HNSW copy of ClickHouse ``text_chunk_vectors``. Deliberately NOT
+    ``engine='columnar'`` (the columnar library does not back ``float_vector``) and
+    deliberately lean: the chunk text stays in ClickHouse, so a dropped or
+    wrong-dimensioned table is rebuilt from the durable store, and the RAM-resident
+    HNSW graph carries no text. ``knn_dims`` is fixed at creation and CANNOT be
+    altered — ``dims`` must be the probed serving dimension, and a model change means
+    drop + rebuild (``main.py reindex-collection``).
+
+    ``collection_dataset`` stays on the rows: the dataset purge deletes by it.
+    """
+    if not isinstance(dims, int) or isinstance(dims, bool) or not 1 <= dims <= 65535:
+        raise ValueError(f'knn_dims must be an int in [1, 65535], got {dims!r}')
+    return f"""
+        create table if not exists {table_name}(
+            collection_dataset string,
+            file_hash string,
+            extracted_by string,
+            page_id int,
+            chunk_index int,
+            embedding float_vector knn_type='hnsw' knn_dims='{dims}' hnsw_similarity='COSINE'
+        )
+    """
+
+
+def shard_knn_dims(vectors_table: str) -> int | None:
+    """The ``knn_dims`` of an existing vectors table, or ``None`` if it does not exist.
+
+    Read from Manticore's own ``SHOW CREATE TABLE`` — the only source of truth for a
+    property that cannot be altered after creation. The P6 vector indexer compares
+    this against the probed serving dimension and refuses on mismatch: writing 384-dim
+    vectors into a 1024-dim table is the failure the whole probe mechanism exists to
+    prevent.
+    """
+    with get_manticore_client() as cnx:
+        cur = cnx.cursor()
+        try:
+            cur.execute(f"SHOW CREATE TABLE {vectors_table}")
+        except Exception:
+            return None
+        row = cur.fetchone()
+    if not row or len(row) < 2:
+        return None
+    m = re.search(r"knn_dims='(\d+)'", row[1])
+    return int(m.group(1)) if m else None
+
+
+def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int | None = None) -> tuple[str, str]:
+    """Create the tables of a logical shard if they do not exist. Idempotent.
+
+    ``vector_dims`` is the PROBED serving dimension (``main.py probe-embeddings`` via
+    ``server_settings.embeddings_serving_dim``), never the ini's request: a
+    ``_vectors`` table's ``knn_dims`` is fixed at creation and cannot be altered, so a
+    table built from the wrong dimension is a silent wrong-answer machine until someone
+    drops and rebuilds it. ``None`` creates no vectors table (embeddings not probed
+    yet); the P6 vector indexer refuses loudly if it then finds vectors to write.
+    """
     pages_table, meta_table = shard_table_names(collectionname, shard_index)
     _execute_ddl(pages_table_ddl(pages_table))
     _execute_ddl(meta_table_ddl(meta_table))
+    if vector_dims is not None:
+        _execute_ddl(vectors_table_ddl(vectors_table_name(collectionname, shard_index), vector_dims))
     return (pages_table, meta_table)
 
 
@@ -216,6 +295,25 @@ def drop_collection_tables(collectionname: str) -> list[str]:
     return dropped
 
 
+def probed_embedding_dims() -> int | None:
+    """The probed serving dimension from ``server_settings``, or ``None`` if unprobed.
+
+    Every ``_vectors`` table is created from this value — never from the ini, which is
+    the request rather than the truth. ``None`` means `main.py probe-embeddings` has
+    not run (or embeddings are disabled): no vectors tables get created, and the P6
+    vector indexer refuses loudly if it nevertheless finds vectors to write.
+    """
+    from database.clickhouse import get_server_setting
+    raw = get_server_setting("embeddings_serving_dim")
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        log.warning("embeddings_serving_dim %r is not a number; treating as unprobed", raw)
+        return None
+
+
 def manticore_migrate():
     """Health check, then self-heal shard tables for every collection.
 
@@ -228,13 +326,14 @@ def manticore_migrate():
     check_manticore_health()
     log.info("Starting ManticoreSearch migration....")
     from database.clickhouse import get_collection_client, list_collections
+    vector_dims = probed_embedding_dims()
     for collectionname in list_collections():
         with get_collection_client(collectionname) as client:
             rows = client.query(
                 "SELECT shard_index FROM manticore_shards FINAL ORDER BY shard_index"
             ).result_rows
         for (shard_index,) in rows:
-            create_shard_tables(collectionname, int(shard_index))
+            create_shard_tables(collectionname, int(shard_index), vector_dims=vector_dims)
         if rows:
             log.info(
                 "Collection %s: ensured %d shard table pairs exist",

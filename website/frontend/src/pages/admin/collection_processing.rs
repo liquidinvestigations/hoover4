@@ -21,6 +21,41 @@ use crate::routes::Route;
 /// not an export.
 const LIST_LIMIT: u32 = 50;
 
+/// What one panel's data is actually in — including *failed*, which this page used to
+/// throw away.
+///
+/// Every panel here read its resource as `…and_then(|r| r.as_ref().ok()).cloned()`, which
+/// maps a server fn that returned an error onto the same `None` as a request still in
+/// flight. So a 500 rendered as "Loading…" — forever, with no error anywhere on the page.
+/// Both failure lists 500'd on every collection that actually had failures and the page
+/// said nothing at all about it; that is the bug this type exists to make unrepresentable.
+#[derive(Clone, PartialEq)]
+enum Load<T> {
+    Pending,
+    Failed(String),
+    Ready(T),
+}
+
+fn load_state<T: Clone + 'static>(res: Resource<Result<T, ServerFnError>>) -> Load<T> {
+    match &*res.read() {
+        None => Load::Pending,
+        Some(Ok(value)) => Load::Ready(value.clone()),
+        Some(Err(e)) => Load::Failed(e.to_string()),
+    }
+}
+
+/// The "this panel could not load" line. Inline rather than a page-level `ErrorBar`: the
+/// reader needs to know *which* list is missing, and the rest of the page is still good.
+#[component]
+fn PanelError(message: String) -> Element {
+    rsx! {
+        p {
+            style: "color: #ba2121; font-size: 13px; margin: 0;",
+            "Could not load this panel: {message}"
+        }
+    }
+}
+
 #[component]
 pub fn AdminCollectionProcessingPage(collection_id: String) -> Element {
     let for_content = collection_id.clone();
@@ -100,18 +135,18 @@ fn ProcessingContent(collection_id: String) -> Element {
         }
 
         StagesPanel {
-            status: status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+            status: load_state(status_res),
             eta_samples: eta_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
         }
 
         WorkflowsPanel {
-            workflows: workflows_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+            workflows: load_state(workflows_res),
             filter: filter,
         }
 
         TaskFailuresPanel {
             collection_id: collection_id.clone(),
-            failures: task_failures_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+            failures: load_state(task_failures_res),
             msg: msg,
             error_msg: error_msg,
             on_retry: EventHandler::new(move |_| refresh_all()),
@@ -119,7 +154,7 @@ fn ProcessingContent(collection_id: String) -> Element {
 
         DocumentFailuresPanel {
             collection_id: collection_id.clone(),
-            failures: doc_failures_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned(),
+            failures: load_state(doc_failures_res),
             msg: msg,
             error_msg: error_msg,
             on_retry: EventHandler::new(move |_| refresh_all()),
@@ -128,20 +163,21 @@ fn ProcessingContent(collection_id: String) -> Element {
 }
 
 #[component]
-fn StagesPanel(status: Option<CollectionProcessingStatus>, eta_samples: Option<Vec<EtaSamplePoint>>) -> Element {
+fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec<EtaSamplePoint>>) -> Element {
     rsx! {
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Processing stages" }
             div { style: MODULE_BODY,
                 match status {
-                    None => rsx! { "Loading\u{2026}" },
-                    Some(s) if !s.db_ready => rsx! {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(s) if !s.db_ready => rsx! {
                         p { style: HELP_TEXT, "The collection database is still being provisioned." }
                     },
-                    Some(s) if s.datasets.is_empty() => rsx! {
+                    Load::Ready(s) if s.datasets.is_empty() => rsx! {
                         p { style: HELP_TEXT, "This collection has no datasets yet." }
                     },
-                    Some(s) => rsx! {
+                    Load::Ready(s) => rsx! {
                         for ds in s.datasets {
                             div { key: "{ds.collection_dataset}", style: "margin-bottom: 22px;",
                                 div { style: "font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px;",
@@ -362,7 +398,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
 }
 
 #[component]
-fn WorkflowsPanel(workflows: Option<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
+fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
     rsx! {
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Temporal workflows" }
@@ -385,11 +421,12 @@ fn WorkflowsPanel(workflows: Option<Vec<WorkflowSummary>>, filter: Signal<Workfl
                     "Workflows started for this collection's datasets, child workflows included (matched on the CollectionDataset search attribute; runs from before it existed are matched on their workflow id)."
                 }
                 match workflows {
-                    None => rsx! { "Loading\u{2026}" },
-                    Some(list) if list.is_empty() => rsx! {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(list) if list.is_empty() => rsx! {
                         p { style: HELP_TEXT, "No workflows match this filter." }
                     },
-                    Some(list) => rsx! {
+                    Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
@@ -437,7 +474,7 @@ fn WorkflowsPanel(workflows: Option<Vec<WorkflowSummary>>, filter: Signal<Workfl
 #[component]
 fn TaskFailuresPanel(
     collection_id: String,
-    failures: Option<Vec<TaskFailureGroup>>,
+    failures: Load<Vec<TaskFailureGroup>>,
     msg: Signal<Option<String>>,
     error_msg: Signal<Option<String>>,
     on_retry: EventHandler<()>,
@@ -447,11 +484,12 @@ fn TaskFailuresPanel(
             h2 { style: MODULE_CAPTION, "Failed tasks" }
             div { style: MODULE_BODY,
                 match failures {
-                    None => rsx! { "Loading\u{2026}" },
-                    Some(list) if list.is_empty() => rsx! {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(list) if list.is_empty() => rsx! {
                         p { style: HELP_TEXT, "No task failures recorded." }
                     },
-                    Some(list) => rsx! {
+                    Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
@@ -515,7 +553,7 @@ fn TaskFailuresPanel(
 #[component]
 fn DocumentFailuresPanel(
     collection_id: String,
-    failures: Option<Vec<DocumentFailure>>,
+    failures: Load<Vec<DocumentFailure>>,
     msg: Signal<Option<String>>,
     error_msg: Signal<Option<String>>,
     on_retry: EventHandler<()>,
@@ -525,11 +563,12 @@ fn DocumentFailuresPanel(
             h2 { style: MODULE_CAPTION, "Failures per document" }
             div { style: MODULE_BODY,
                 match failures {
-                    None => rsx! { "Loading\u{2026}" },
-                    Some(list) if list.is_empty() => rsx! {
+                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Failed(e) => rsx! { PanelError { message: e } },
+                    Load::Ready(list) if list.is_empty() => rsx! {
                         p { style: HELP_TEXT, "No document failures recorded." }
                     },
-                    Some(list) => rsx! {
+                    Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {

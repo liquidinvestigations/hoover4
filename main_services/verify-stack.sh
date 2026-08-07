@@ -170,6 +170,39 @@ done
 
 echo "== invariants =="
 
+# The collections the invariants below are checked against. Derived from the ledger, not
+# hardcoded: this script creates `testdata` and `other`, but the stack accumulates others
+# (a `vectortest` shell outlived its experiment), and every check that iterated a literal
+# `for coll in testdata other` silently exempted them — including the Manticore/ledger
+# equality check, which is precisely the one that should have noticed.
+COLLECTIONS=$(CH "SELECT collectionname FROM Hoover4_Processing.collections FINAL
+                  WHERE is_deleted = 0 ORDER BY collectionname")
+if [ -z "$COLLECTIONS" ]; then
+    fail "no collections registered — nothing to verify"
+fi
+with_db=""
+for coll in $COLLECTIONS; do
+    if [ -z "$(CH "SELECT name FROM system.databases WHERE name = 'Hoover4_Collection_$coll'")" ]; then
+        fail "collection '$coll' is registered but has no Hoover4_Collection_$coll database"
+    else
+        with_db="$with_db$coll
+"
+    fi
+done
+COLLECTIONS="$with_db"
+echo "     collections under test: $(echo $COLLECTIONS)"
+
+# Whether a `_vectors` shard table is expected. `create_shard_tables` builds one only
+# when the embedding dimension has been probed (`knn_dims` is fixed at creation and
+# cannot be altered, so it is never guessed) — so the expectation has to follow the same
+# switch rather than assume either answer.
+serving_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings
+                  WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
+case "$serving_dim" in
+    ""|0) EXPECT_VECTOR_SHARDS=0 ;;
+    *)    EXPECT_VECTOR_SHARDS=1 ;;
+esac
+
 # 1. The global database holds only global tables (no per-collection tables).
 #    The expected set is parsed from the migration files (CREATEs minus DROPs,
 #    plus schema_versions) so the check does not drift from the schema.
@@ -193,7 +226,8 @@ fi
 # 2. Every collection DB has the full collection table set (parsed from the
 #    migration files, plus schema_versions, minus tables later migrations drop).
 expected_collection=$(tables_expected processing/database/db_collection_migrations)
-for coll_db in Hoover4_Collection_testdata Hoover4_Collection_other; do
+for coll in $COLLECTIONS; do
+    coll_db="Hoover4_Collection_$coll"
     actual=$(CH "SHOW TABLES FROM $coll_db" | sort | tr '\n' ' ')
     if [ "$actual" = "$expected_collection" ]; then
         ok "$coll_db has the full collection table set"
@@ -215,12 +249,18 @@ fi
 #    Manticore's mysql protocol always emits bordered output (it ignores -N -B),
 #    so the table names are the second |-delimited column. Take ALL of them, not
 #    just *_pages/_meta matches: a leftover non-shard table must fail this check.
+#
+#    Phase 4 added a third table family, `<shard>_vectors`, and this check was not told:
+#    it expected exactly pages+meta, so it has been failing on the live stack ever since
+#    — and because §12 requires it green per phase, that made every later phase's
+#    verification meaningless. Whether `_vectors` is expected follows the probe, above.
 manticore_tables=$(MC "show tables" | awk -F'|' 'NF>2 {gsub(/ /,"",$2); if ($2 != "") print $2}' | sort)
 ledger_tables=""
-for coll in testdata other; do
+for coll in $COLLECTIONS; do
     shards=$(CH "SELECT shard_name FROM Hoover4_Collection_$coll.manticore_shards FINAL ORDER BY shard_index")
     for shard in $shards; do
         ledger_tables="$ledger_tables${shard}_pages\n${shard}_meta\n"
+        [ "$EXPECT_VECTOR_SHARDS" = "1" ] && ledger_tables="$ledger_tables${shard}_vectors\n"
     done
 done
 ledger_tables=$(printf "%b" "$ledger_tables" | sort)
@@ -231,14 +271,15 @@ else
 fi
 
 # 5. No shard over the 1 GB text budget (single-document shards may exceed it).
+shard_union=""
+for coll in $COLLECTIONS; do
+    [ -n "$shard_union" ] && shard_union="$shard_union UNION ALL "
+    shard_union="$shard_union SELECT shard_name, text_bytes, doc_count
+                 FROM Hoover4_Collection_$coll.manticore_shards FINAL"
+done
 over_budget=$(CH "
-    SELECT count() FROM (
-        SELECT shard_name, text_bytes, doc_count
-        FROM Hoover4_Collection_testdata.manticore_shards FINAL
-        UNION ALL
-        SELECT shard_name, text_bytes, doc_count
-        FROM Hoover4_Collection_other.manticore_shards FINAL
-    ) WHERE text_bytes > $MAX_SHARD_TEXT_BYTES AND doc_count > 1")
+    SELECT count() FROM ( $shard_union )
+    WHERE text_bytes > $MAX_SHARD_TEXT_BYTES AND doc_count > 1")
 if [ "$over_budget" = "0" ]; then
     ok "no shard over the 1 GB text budget"
 else
@@ -249,7 +290,7 @@ fi
 #    index_state rows (what the writers actually committed) match the actual
 #    Manticore row counts. Document identity is the PAIR, not file_hash alone: the
 #    same content in two datasets of one collection is indexed twice.
-for coll in testdata other; do
+for coll in $COLLECTIONS; do
     db="Hoover4_Collection_$coll"
     multi=$(CH "SELECT count() FROM (SELECT collection_dataset, file_hash, uniqExact(shard_name) AS n
                 FROM $db.manticore_shard_assignments FINAL
@@ -261,9 +302,13 @@ for coll in testdata other; do
     for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_meta"); do
         # Manticore has no count(distinct concat(...)): GROUP BY the pair and
         # count the bordered result rows (each data line starts with '|').
+        # `|| true`: an empty shard makes `grep -c` exit 1, which under `set -e` killed
+        # the whole run *silently* — no FAIL line, just a script that stopped early and an
+        # exit code nobody read as "checks 7 and 8 never ran". Only visible once the
+        # collection list stopped being hardcoded and an empty collection entered it.
         n=$(MC "SELECT collection_dataset, file_hash FROM $table
                 GROUP BY collection_dataset, file_hash
-                LIMIT 100000 OPTION max_matches=100000" | grep -c '^|')
+                LIMIT 100000 OPTION max_matches=100000" | grep -c '^|' || true)
         indexed=$((indexed + n))
     done
     [ "$recorded" = "$indexed" ] && ok "$coll: $indexed indexed docs == $recorded index_state rows" \

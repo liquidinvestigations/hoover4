@@ -90,6 +90,8 @@ struct AgentChatRequest<'a> {
     chat_history: &'a [AgentChatMessage],
     username: &'a str,
     allowed_collections: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    llm_model: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -292,6 +294,7 @@ pub async fn ask_agent_stream_once(
     history: &[AgentChatMessage],
     allowed_collections: &[String],
     use_internet_tools: bool,
+    llm_model: Option<&str>,
     on_event: &mut (impl FnMut(AgentStreamEvent) + Send),
 ) -> anyhow::Result<()> {
     use futures::StreamExt;
@@ -305,6 +308,7 @@ pub async fn ask_agent_stream_once(
         chat_history: history,
         username,
         allowed_collections,
+        llm_model,
     };
 
     let client = reqwest::Client::builder()
@@ -338,7 +342,12 @@ pub async fn ask_agent_stream_once(
                     continue;
                 };
                 let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
-                    tracing::warn!("unparseable agent stream frame: {}", &payload[..payload.len().min(200)]);
+                    // `.chars()`, not a byte slice: cutting at byte 200 lands inside a
+                    // multi-byte character on any non-ASCII payload and panics — in the
+                    // spawned stream task, where the turn simply stops with no answer.
+                    // The one thing this line exists to do is report a bad frame.
+                    let head: String = payload.chars().take(200).collect();
+                    tracing::warn!("unparseable agent stream frame: {head}");
                     continue;
                 };
                 if let Some(kind) = json.get("type").and_then(|t| t.as_str()) {

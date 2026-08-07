@@ -1,16 +1,18 @@
-"""Indexing activities for text content and metadata.
+"""Indexing activities for text content, metadata and chunk vectors.
 
 Pure I/O against ClickHouse and Manticore: the NER/entity extraction lives in
 the P4_extract_entities stage, which runs strictly before this one. This stage
-reads the ``entity_hit`` rows and ``nlp_processed`` watermarks P4 wrote.
+reads the ``entity_hit`` rows and ``nlp_processed`` watermarks P4 wrote, and the
+``text_chunk_vectors`` rows P5 wrote.
 
-Both writers target the shard tables assigned by the shard planner
+All three writers target the shard tables assigned by the shard planner
 (``shard_planner.plan_shards``) and use ``REPLACE INTO`` with deterministic row
 ids, so re-indexing a document overwrites its rows in place instead of
 duplicating them:
 
 * pages id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}")``
 * metadata id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}")``
+* vectors id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}|{chunk_index}|{embedding_model}")``
 """
 
 from typing import List
@@ -313,3 +315,152 @@ def index_metadata(params: IndexShardParams) -> list[str]:
 
 def repr_manticore_tuple(values: List[int]) -> str:
     return "(" + ",".join(str(v) for v in values) + ")"
+
+
+def repr_manticore_vector(values: List[float]) -> str:
+    """A float_vector literal for interpolation into a REPLACE (it cannot be bound).
+
+    ``repr(float(v))`` is the shortest string that round-trips the value — a trimmed
+    format would quantise the embedding the probe just verified.
+    """
+    return "(" + ",".join(repr(float(v)) for v in values) + ")"
+
+
+def vectors_row_id(collection_dataset: str, file_hash: str, extracted_by: str,
+                   page_id: int, chunk_index: int, embedding_model: str) -> int:
+    """Deterministic Manticore row id for one vectors row. Enables REPLACE INTO.
+
+    The model is part of the id: two models with the same ``knn_dims`` would otherwise
+    overwrite each other's rows under the same key.
+    """
+    return hash_string_to_uint63(
+        f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}|{chunk_index}|{embedding_model}"
+    )
+
+
+@activity.defn
+@with_heartbeat
+def index_vectors(params: IndexShardParams) -> list[str]:
+    """Copy the chunk's embedded vectors into the shard's HNSW ``_vectors`` table.
+
+    ClickHouse ``text_chunk_vectors`` is the durable store; this table is the
+    disposable, RAM-resident query copy. Returns the file_hashes actually written
+    (committed), for ``index_state`` (see ``index_text_pages``).
+
+    Loud refusals (non-retryable — retrying cannot fix a config lie):
+
+    * vectors exist but the probe never ran, or the shard's ``_vectors`` table is
+      missing (a stale deploy: the planner creates it from the probed dimension);
+    * the rows' dimension does not match the table's ``knn_dims``. ``knn_dims`` is
+      fixed at creation; writing 384-dim vectors into a 1024-dim table is the failure
+      this whole mechanism exists to prevent, and it must be visible (the activity
+      fails, the workflow records one processing_errors row per hash) rather than
+      silently degrading retrieval.
+
+    Rows embedded by a model other than the probed serving one are SKIPPED (with a
+    warning): search embeds its queries with the probed model, so another model's
+    vectors would quietly rot retrieval. Re-embed (``main.py backfill-vectors``) after
+    a model change.
+    """
+    from temporalio.exceptions import ApplicationError
+
+    from database.clickhouse import get_server_setting
+    from database.manticore import get_manticore_client, shard_knn_dims, vectors_table_from_name
+
+    collection_dataset: str = params.collection_dataset
+    item_hashes: list[str] = params.hashes
+    plan_hash: str = params.plan_hash
+    vectors_table = vectors_table_from_name(params.shard_name)
+
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query_arrow("""
+            SELECT file_hash, extracted_by, page_id, chunk_index, embedding_model, dims, embedding
+            FROM text_chunk_vectors FINAL
+            WHERE collection_dataset = {collection_dataset:String}
+            AND file_hash IN {item_hashes:Array(String)}
+        """, {
+            "collection_dataset": collection_dataset,
+            "item_hashes": item_hashes,
+        }).to_pylist()
+
+    if not rows:
+        # Embeddings disabled, or P5 found nothing to chunk: both are normal, and
+        # search simply has no vector half for these documents.
+        return []
+
+    serving_model = get_server_setting("embeddings_serving_model")
+    if not serving_model:
+        raise ApplicationError(
+            f"{len(rows)} vectors wait to be indexed but embeddings_serving_model is "
+            "not in server_settings; run `main.py probe-embeddings`",
+            non_retryable=True,
+        )
+
+    table_dims = shard_knn_dims(vectors_table)
+    if table_dims is None:
+        raise ApplicationError(
+            f"{vectors_table} does not exist while {len(rows)} vectors wait to be "
+            "indexed; the shard planner creates it from the probed dimension — "
+            "is this worker running current code?",
+            non_retryable=True,
+        )
+
+    kept = [r for r in rows if r["embedding_model"] == serving_model]
+    skipped = len(rows) - len(kept)
+    if skipped:
+        log.warning(
+            "%s (plan %s): skipping %d vectors embedded by a model other than the "
+            "probed serving model %s; re-embed with `main.py backfill-vectors`",
+            collection_dataset, plan_hash[:8], skipped, serving_model,
+        )
+    if not kept:
+        return []
+
+    dims_found = {int(r["dims"]) for r in kept}
+    if dims_found != {table_dims}:
+        raise ApplicationError(
+            f"refusing to index {len(kept)} vectors of dims {sorted(dims_found)} into "
+            f"{vectors_table} (knn_dims={table_dims}); a table's knn_dims cannot be "
+            "altered — drop and rebuild the _vectors tables "
+            "(`main.py reindex-collection`) after changing the embedding model",
+            non_retryable=True,
+        )
+
+    with get_manticore_client() as client:
+        cursor = client.cursor()
+        for chunk in chunks(kept, INDEX_ROW_CHUNK_SIZE):
+            for row in chunk:
+                cursor.execute(
+                    f"""REPLACE INTO {vectors_table} (
+                        id,
+                        collection_dataset,
+                        file_hash,
+                        extracted_by,
+                        page_id,
+                        chunk_index,
+                        embedding
+                    ) VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        {repr_manticore_vector(row['embedding'])}
+                    )""",
+                    (
+                        vectors_row_id(collection_dataset, row['file_hash'], row['extracted_by'],
+                                       int(row['page_id']), int(row['chunk_index']), row['embedding_model']),
+                        collection_dataset,
+                        row['file_hash'],
+                        row['extracted_by'],
+                        int(row['page_id']),
+                        int(row['chunk_index']),
+                    ),
+                )
+            log.info(
+                f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} vectors into {vectors_table}"
+            )
+            client.commit()
+        client.commit()
+    return sorted({row['file_hash'] for row in kept})

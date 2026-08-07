@@ -34,6 +34,35 @@ pub async fn admin_set_setting(
         "guest_permissions_mode" if value != "all" && value != "none" => {
             anyhow::bail!("guest_permissions_mode must be 'all' or 'none'");
         }
+        "llm_default_chat_model" | "llm_summarization_model" => {
+            if value.trim().is_empty() {
+                anyhow::bail!("{key} must not be empty");
+            }
+            if value.chars().count() > 200 {
+                anyhow::bail!("{key} is too long");
+            }
+        }
+        "embeddings_serving_model" => {
+            if value.trim().is_empty() {
+                anyhow::bail!("embeddings_serving_model must not be empty");
+            }
+        }
+        "embeddings_serving_dim" => {
+            let v: u32 = value
+                .parse()
+                .map_err(|_| anyhow::anyhow!("embeddings_serving_dim must be a positive integer"))?;
+            if v == 0 || v > 8192 {
+                anyhow::bail!("embeddings_serving_dim must be between 1 and 8192");
+            }
+        }
+        "chat_artifact_ttl_days" => {
+            let v: u32 = value
+                .parse()
+                .map_err(|_| anyhow::anyhow!("chat_artifact_ttl_days must be a positive integer"))?;
+            if v == 0 || v > 3650 {
+                anyhow::bail!("chat_artifact_ttl_days must be between 1 and 3650");
+            }
+        }
         _ => {}
     }
     settings::set_setting(&key, &value).await

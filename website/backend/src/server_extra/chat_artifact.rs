@@ -128,7 +128,8 @@ async fn fetch_artifact_object_inner(key: &str) -> anyhow::Result<Vec<u8>> {
     let base_url = endpoint
         .parse::<minio::s3::http::BaseUrl>()
         .map_err(|e| anyhow::anyhow!("bad S3_ENDPOINT: {e}"))?;
-    let provider = minio::s3::creds::StaticProvider::new("hoover4", "hoover4-secret", None);
+    let (access, secret) = crate::db_utils::s3_credentials();
+    let provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
     let client = minio::s3::Client::new(base_url, Some(Box::new(provider)), None, None)?;
     let object = client.get_object("hoover4-blobs", key).send().await?;
     Ok(object.content.to_segmented_bytes().await?.to_bytes().to_vec())

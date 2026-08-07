@@ -1,4 +1,4 @@
-"""HTML-scraping web search engines and Reciprocal Rank Fusion.
+"""HTML-scraping web search engines.
 
 Modelled on `MikeLuu99/metasearch-rust`: several engines scraped in parallel, results
 deduplicated on a normalised URL, then merged with RRF so a result several engines agree
@@ -13,6 +13,11 @@ turned off without a rebuild.
 This module is now the `kind = "web"` half of a wider set. :mod:`.sources` wraps each
 engine here as a *source* alongside the `ddgs`-library and Wikipedia sources that used to
 be their own MCP servers, and :mod:`.pipeline` is what orders the merged set.
+
+The fusion machinery itself (`SearchResult`, `normalise_url`, `dedupe_within_source`,
+`reciprocal_rank_fusion`, `RRF_K`) lives in `agent_common.fusion` since Phase 4 —
+collection search fuses with the same code, and a second copy would drift. The names are
+re-exported here so existing imports keep working.
 """
 
 from __future__ import annotations
@@ -20,83 +25,39 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import dataclass, field
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from selectolax.parser import HTMLParser
 
+from agent_common.fusion import (
+    RRF_K,
+    SearchResult,
+    dedupe_within_source,
+    normalise_url,
+    reciprocal_rank_fusion,
+)
+
+__all__ = [
+    "ENGINES",
+    "RRF_K",
+    "SearchResult",
+    "configured_engines",
+    "dedupe_within_source",
+    "normalise_url",
+    "reciprocal_rank_fusion",
+    "search_all",
+]
+
 log = logging.getLogger(__name__)
 
 ENGINE_TIMEOUT = float(os.getenv("METASEARCH_ENGINE_TIMEOUT", "8"))
-
-#: RRF constant. 60 is the value from the original Cormack et al. paper and what
-#: metasearch-rust uses; it damps the difference between ranks 1 and 2 so agreement
-#: across engines matters more than one engine's confidence.
-RRF_K = int(os.getenv("METASEARCH_RRF_K", "60"))
 
 _USER_AGENT = os.getenv(
     "METASEARCH_USER_AGENT",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36",
 )
-
-#: Tracking parameters stripped before two URLs are compared. Without this the same page
-#: arrives from three engines as three different results and RRF never sees the
-#: agreement it exists to reward.
-_TRACKING_PARAMS = frozenset(
-    {
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "fbclid", "gclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src",
-        "spm", "_ga", "igshid", "si",
-    }
-)
-
-
-@dataclass
-class SearchResult:
-    title: str
-    url: str
-    snippet: str = ""
-    #: Which engines returned this URL, and at what rank. Surfaced to the model so it can
-    #: see corroboration rather than trusting one scraper.
-    engines: list[str] = field(default_factory=list)
-    score: float = 0.0
-    #: `web` | `news` | `reference`, from the source that produced it. Set by
-    #: :mod:`.sources`; the raw scrapers here are all `web`.
-    kind: str = "web"
-    #: Publication date when the source supplies one (the news sources do).
-    published: str = ""
-    #: Rank this URL took in each source's own list, 1-based. Search bookkeeping: it goes
-    #: to the search-detail artifact, never to the model.
-    source_ranks: dict[str, int] = field(default_factory=dict)
-
-
-def normalise_url(url: str) -> str:
-    """A comparison key for deduplication.
-
-    Drops the scheme's variability (http/https), a leading `www.`, tracking parameters,
-    the fragment and a trailing slash. The *original* URL is what gets returned to the
-    caller — this is only the key.
-    """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return url
-
-    host = (parsed.netloc or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-
-    kept = {
-        k: v
-        for k, v in parse_qs(parsed.query, keep_blank_values=True).items()
-        if k.lower() not in _TRACKING_PARAMS
-    }
-    query = "&".join(f"{k}={v[0]}" for k, v in sorted(kept.items()))
-
-    path = (parsed.path or "/").rstrip("/") or "/"
-    return urlunparse(("", host, path, "", query, ""))
 
 
 def _text(node) -> str:
@@ -236,72 +197,6 @@ async def _fetch_engine(client: httpx.AsyncClient, name: str, query: str) -> lis
     if not results:
         log.warning("engine %s returned 0 results — selector may have rotted", name)
     return results
-
-
-def dedupe_within_source(results: list[SearchResult]) -> list[SearchResult]:
-    """Collapse repeats inside **one** source's own list, keeping its first position.
-
-    This runs *before* fusion, and skipping it is the subtle bug the plan calls out: a
-    source that lists the same article at ranks 2, 5 and 9 would otherwise award that URL
-    three separate RRF contributions and beat a page three independent sources agreed on.
-    Cross-source merging is what :func:`reciprocal_rank_fusion` does; this is the other
-    half.
-    """
-    seen: set[str] = set()
-    out: list[SearchResult] = []
-    for result in results:
-        key = normalise_url(result.url)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(result)
-    return out
-
-
-def reciprocal_rank_fusion(
-    per_engine: dict[str, list[SearchResult]], max_results: int
-) -> list[SearchResult]:
-    """Merge per-engine rankings: `score = sum over engines of 1 / (RRF_K + rank)`.
-
-    Rank is 1-based. A URL two engines both put at rank 3 scores higher than one a single
-    engine put at rank 1, which is the property that makes a metasearch worth running.
-
-    Each input list is deduplicated first (see :func:`dedupe_within_source`), so one
-    source can contribute at most one rank per URL.
-    """
-    merged: dict[str, SearchResult] = {}
-    for engine, results in per_engine.items():
-        for rank, result in enumerate(dedupe_within_source(results), start=1):
-            key = normalise_url(result.url)
-            existing = merged.get(key)
-            if existing is None:
-                existing = SearchResult(
-                    title=result.title,
-                    url=result.url,
-                    snippet=result.snippet,
-                    kind=result.kind,
-                    published=result.published,
-                )
-                merged[key] = existing
-            # Keep the longest snippet seen — engines truncate differently and the
-            # fullest one is the most useful to the model.
-            if len(result.snippet) > len(existing.snippet):
-                existing.snippet = result.snippet
-            if not existing.title:
-                existing.title = result.title
-            if not existing.published:
-                existing.published = result.published
-            # A page a reference source *and* a web scraper both returned is a reference:
-            # the more specific kind wins, so the per-kind floor keeps encyclopaedic and
-            # news results visible instead of drowning them in generic web hits.
-            if existing.kind == "web" and result.kind != "web":
-                existing.kind = result.kind
-            existing.engines.append(engine)
-            existing.source_ranks[engine] = rank
-            existing.score += 1.0 / (RRF_K + rank)
-
-    ordered = sorted(merged.values(), key=lambda r: r.score, reverse=True)
-    return ordered[:max_results]
 
 
 async def search_all(query: str, max_results: int, engines: list[str] | None = None):

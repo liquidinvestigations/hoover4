@@ -2,7 +2,7 @@
 
 Tools:
     ``list_collections``      what the calling user may read
-    ``search_collections``    full-text search across the permitted Manticore shards
+    ``search_collections``    hybrid search across the permitted Manticore shards
     ``get_document_text``     the extracted text of one document
     ``list_document_entities`` named entities found in one document
 
@@ -10,10 +10,14 @@ Every tool resolves the caller's ACL from request headers (see :mod:`.acl`) befo
 touches a database, and every collection name reaching SQL has been validated against
 the shared collectionname rule.
 
-Search goes through **Manticore**: the ingestion pipeline writes its search documents to
-Manticore shards and its extracted text to ClickHouse, which is where the data actually
-is. The Milvus tier that once sat alongside this has been removed — it never had vectors
-written to it (Q1/Q3). See `main_services/agents/README.md` for what a vector stage would need.
+Search is **hybrid** when the embeddings stack is probed (`server_settings.
+embeddings_serving_model` + `EMBEDDINGS_URL`): a keyword ranking from the `_pages`
+shards and a vector ranking from the `_vectors` shards are RRF-fused
+(`agent_common.fusion`, the same module metasearch uses), reranked through the same
+cross-encoder client, and put through the min-10/max-20 per-kind floor so keyword-exact
+hits cannot drown semantic ones. With no probe or a dead GPU the tool degrades to the
+keyword-only path and says so in `note` — a GPU outage must degrade search quality,
+not remove search.
 """
 
 from __future__ import annotations
@@ -28,6 +32,9 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
+from agent_common import embeddings as embeddings_client
+from agent_common import fusion, rerank as rerank_client
+from collection_search_server import vectors
 from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
 from collection_search_server.backends import (
     GLOBAL_DB,
@@ -56,6 +63,16 @@ SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
 #: How much text `get_document_text` may return in one call.
 MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "40000"))
 
+#: Candidate pool per shard (keyword) and per `_vectors` shard (KNN) when the fused
+#: pipeline runs, and the cap on the fused pool sent to the reranker.
+FUSION_CANDIDATES = int(os.getenv("COLLECTION_SEARCH_FUSION_CANDIDATES", "60"))
+
+#: The per-kind floor after reranking: each of the `keyword` and `vector` kinds keeps
+#: its best results even when the other kind dominates the fused order (RRF is a
+#: popularity measure; keyword-exact hits would otherwise drown semantic ones).
+MIN_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MIN_PER_KIND", "10"))
+MAX_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MAX_PER_KIND", "20"))
+
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_collection_search"),
     # The canonical text lives in `prompts.py`; the env var is a thin override for
@@ -78,8 +95,39 @@ class SearchHit(BaseModel):
     file_hash: str = Field(description="Document id, pass to get_document_text")
     path: str | None = Field(default=None, description="File path, when known")
     page_id: int = Field(description="Page or segment number within the document")
-    score: float | None = Field(default=None, description="Relevance score (BM25)")
+    score: float | None = Field(
+        default=None,
+        description="BM25 for keyword-only searches, the fused RRF score when the vector pipeline ran",
+    )
     snippet: str = Field(description="Matching text")
+    match_sources: list[str] = Field(
+        default_factory=list,
+        description="Which rankings found this hit: keyword, vector, or both",
+    )
+
+
+class _Candidate:
+    """One search candidate before fusion: a keyword hit, a vector hit, or both.
+
+    Fused at page granularity — a vector hit knows its chunk, but the answer a hit
+    points at is the page, and the chunk text becomes the snippet (the matched
+    passage, more precise than a page excerpt).
+    """
+
+    __slots__ = ("collectionname", "collection_dataset", "file_hash", "page_id",
+                 "keyword_score", "text")
+
+    def __init__(self, collectionname: str, collection_dataset: str, file_hash: str,
+                 page_id: int, keyword_score: float = 0.0, text: str = ""):
+        self.collectionname = collectionname
+        self.collection_dataset = collection_dataset
+        self.file_hash = file_hash
+        self.page_id = page_id
+        self.keyword_score = keyword_score
+        self.text = text
+
+    def key(self) -> tuple[str, str, str, int]:
+        return (self.collectionname, self.collection_dataset, self.file_hash, self.page_id)
 
 
 class SearchResponse(BaseModel):
@@ -266,7 +314,21 @@ def search_collections(
         )
     match_expr = prepared.expr
 
-    hits: list[SearchHit] = []
+    notes = list(prepared.repairs)
+
+    # The vector branch decides the keyword candidate budget: a keyword-only search
+    # fetches `limit` rows per shard as it always did, while a fused search needs a
+    # candidate pool deep enough for RRF and the reranker to be worth running.
+    vector_model = None
+    if embeddings_client.endpoint():
+        try:
+            vector_model = vectors.serving_model()
+        except Exception as exc:  # noqa: BLE001 - degrade to keyword-only, say so
+            log.warning("could not read embeddings_serving_model: %s", exc)
+            notes.append(f"vector search unavailable: could not read the serving model ({exc})")
+    per_shard_limit = FUSION_CANDIDATES if vector_model else limit
+
+    candidates: list[_Candidate] = []
     failed_targets: list[str] = []
     #: Manticore's own words about a bad query. Kept so they can be returned rather than
     #: only logged — a syntax error the model never sees is one it cannot correct.
@@ -286,7 +348,7 @@ def search_collections(
             sql = (
                 f"SELECT collection_dataset, file_hash, page_id, page_text, WEIGHT() AS score "
                 f"FROM {table} WHERE MATCH('{match_expr}') "
-                f"ORDER BY score DESC LIMIT {limit} OPTION max_matches={limit * 10}"
+                f"ORDER BY score DESC LIMIT {per_shard_limit} OPTION max_matches={per_shard_limit * 10}"
             )
             try:
                 rows = manticore_query(sql)
@@ -297,25 +359,54 @@ def search_collections(
                 continue
 
             for row in rows:
-                text = (row.get("page_text") or "")[:SNIPPET_CHARS]
-                hits.append(
-                    SearchHit(
+                candidates.append(
+                    _Candidate(
                         collectionname=collectionname,
                         collection_dataset=row.get("collection_dataset", ""),
                         file_hash=row.get("file_hash", ""),
                         page_id=int(row.get("page_id") or 0),
-                        score=float(row["score"]) if row.get("score") is not None else None,
-                        snippet=text,
+                        keyword_score=float(row["score"]) if row.get("score") is not None else 0.0,
+                        text=(row.get("page_text") or "")[:SNIPPET_CHARS],
                     )
                 )
 
     # BM25 statistics are per-table, so scores from different shards are only roughly
     # comparable — the same caveat the website's search fan-out carries.
-    hits.sort(key=lambda h: h.score or 0.0, reverse=True)
-    hits = hits[:limit]
+    candidates.sort(key=lambda c: c.keyword_score, reverse=True)
+    keyword_list = candidates
+
+    # The vector half: embed the query with the probed serving model's query
+    # convention, KNN every live _vectors shard, nearest first.
+    vector_list: list[vectors.VectorCandidate] = []
+    vector_branch_ran = False
+    if vector_model:
+        try:
+            query_vector = embeddings_client.embed_query(query, vector_model)
+            vector_branch_ran = True
+            vector_list = vectors.search(query_vector, targets)
+        except embeddings_client.EmbeddingUnavailable as exc:
+            notes.append(f"vector search unavailable: {exc}")
+        except Exception as exc:  # noqa: BLE001 - a search must still answer
+            log.exception("vector search failed")
+            notes.append(f"vector search failed: {exc}")
+
+    if vector_branch_ran:
+        hits = _fused_pipeline(query, keyword_list, vector_list, limit, notes)
+    else:
+        hits = [
+            SearchHit(
+                collectionname=c.collectionname,
+                collection_dataset=c.collection_dataset,
+                file_hash=c.file_hash,
+                page_id=c.page_id,
+                score=c.keyword_score,
+                snippet=c.text,
+                match_sources=["keyword"],
+            )
+            for c in keyword_list[:limit]
+        ]
     _attach_paths(hits)
 
-    notes = list(prepared.repairs)
     if failed_targets:
         notes.append(
             f"{len(failed_targets)} shard(s) could not be queried; results are partial"
@@ -336,6 +427,86 @@ def search_collections(
         error=error,
         note="; ".join(notes) or None,
     )
+
+
+def _fused_pipeline(
+    query: str,
+    keyword_list: list[_Candidate],
+    vector_list: "list[vectors.VectorCandidate]",
+    limit: int,
+    notes: list[str],
+) -> list[SearchHit]:
+    """Fuse keyword + vector rankings (RRF), rerank, apply the per-kind floor.
+
+    The order is not interchangeable: rerank the whole fused candidate pool, THEN take
+    the best per kind — flooring first would let the reranker reorder an
+    already-truncated set. A rerank failure keeps the fused order and says so in the
+    notes; a GPU outage must degrade search quality, not remove search.
+    """
+    by_key: dict[tuple, _Candidate] = {}
+    for c in keyword_list:
+        by_key.setdefault(c.key(), c)
+    vector_candidates: list[_Candidate] = []
+    for v in vector_list:
+        key = (v.collectionname, v.collection_dataset, v.file_hash, v.page_id)
+        c = by_key.get(key)
+        if c is None:
+            c = _Candidate(
+                collectionname=v.collectionname,
+                collection_dataset=v.collection_dataset,
+                file_hash=v.file_hash,
+                page_id=v.page_id,
+            )
+            by_key[key] = c
+        if v.text:
+            # The chunk is the matched passage; it makes a better snippet than the
+            # page excerpt the keyword half brought.
+            c.text = v.text[:SNIPPET_CHARS]
+        vector_candidates.append(c)
+
+    fused = fusion.fuse_ranked_lists(
+        {"keyword": keyword_list, "vector": vector_candidates},
+        key_of=lambda c: c.key(),
+        max_results=FUSION_CANDIDATES,
+    )
+
+    ordered = fused
+    rerank_applied = False
+    try:
+        scores, rerank_ms = rerank_client.rerank(query, [f.item.text for f in fused])
+        if scores:
+            ordered = [fused[s.index] for s in scores if 0 <= s.index < len(fused)]
+            rerank_applied = True
+    except rerank_client.RerankUnavailable as exc:
+        notes.append(f"rerank unavailable ({exc}); showing the fused order")
+    except Exception as exc:  # noqa: BLE001 - a search must still answer
+        log.exception("rerank failed unexpectedly")
+        notes.append(f"rerank failed: {exc}; showing the fused order")
+
+    final = fusion.per_kind_floor(
+        ordered,
+        max_results=limit,
+        kind_of=lambda f: "vector" if "vector" in f.source_ranks else "keyword",
+        min_per_kind=MIN_PER_KIND,
+        max_per_kind=MAX_PER_KIND,
+    )
+    notes.append(
+        f"{len(keyword_list)} keyword + {len(vector_list)} vector candidates, "
+        f"{len(fused)} after fusion"
+        + (f", cross-encoder reranked in {rerank_ms:.0f} ms" if rerank_applied else "")
+    )
+    return [
+        SearchHit(
+            collectionname=f.item.collectionname,
+            collection_dataset=f.item.collection_dataset,
+            file_hash=f.item.file_hash,
+            page_id=f.item.page_id,
+            score=round(f.score, 6),
+            snippet=f.item.text,
+            match_sources=sorted(f.source_ranks.keys()),
+        )
+        for f in final
+    ]
 
 
 def _attach_paths(hits: list[SearchHit]) -> None:

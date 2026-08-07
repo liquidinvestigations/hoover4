@@ -40,6 +40,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_video import VideoProcessingAndScan, video_ffprobe_and_store, video_extract_frames_and_subtitles
     from .plan_utils import fetch_plan_hashes
     from .P4_extract_entities.workflows import ExtractEntitiesForPlan
+    from .P5_chunk_embed.workflows import ChunkEmbedForPlan
     from .P6_index_data.workflows import IndexDatasetPlan
     from .P_admin.activities import (
         collect_eta_samples,
@@ -113,6 +114,7 @@ async def run_common_worker():
             PdfProcessingAndScan,
             VideoProcessingAndScan,
             ExtractEntitiesForPlan,
+            ChunkEmbedForPlan,
             IndexDatasetPlan,
             EnsureCollectionDatabase,
             DropCollectionDatabase,
@@ -251,8 +253,29 @@ async def run_nlp_worker():
     await worker.run()
 
 
+async def run_embed_worker():
+  # Localized import for the embed-only worker. The embeddings endpoint is remote
+  # (the GPU tier); concurrency here pipelines HTTP, not local CPU.
+  from .P5_chunk_embed.activities import chunk_embed_for_hashes
+  from .visibility import ensure_search_attributes
+  log.info("Starting Embed worker...")
+  client = await Client.connect("temporal:7233")
+  await ensure_search_attributes(client)
+  CONCURRENCY = 2
+  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+    worker = Worker(
+      client,
+      task_queue="processing-embed-queue",
+      workflows=[],
+      activities=[chunk_embed_for_hashes],
+      activity_executor=activity_executor,
+      max_concurrent_activities=CONCURRENCY,
+    )
+    await worker.run()
+
+
 async def run_indexing_worker():
-  from .P6_index_data.activities import index_metadata, index_text_pages
+  from .P6_index_data.activities import index_metadata, index_text_pages, index_vectors
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
@@ -263,7 +286,7 @@ async def run_indexing_worker():
       client,
       task_queue="processing-indexing-queue",
       workflows=[],
-      activities=[index_text_pages, index_metadata],
+      activities=[index_text_pages, index_metadata, index_vectors],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

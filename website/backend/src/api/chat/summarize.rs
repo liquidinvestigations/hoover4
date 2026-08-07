@@ -27,8 +27,12 @@ fn llm_api_key() -> String {
     "hoover4-local-key".into()
 }
 
-fn llm_model() -> Option<String> {
-    // Never hardcode a model name — Plan 1 changes LLM_MODEL (e.g. qwen3-4b → qwen3.5-2b).
+async fn llm_model() -> Option<String> {
+    // Prefer the admin-configured summarisation model; fall back to LLM_MODEL env.
+    let from_settings = crate::api::admin::llm::summarization_model().await;
+    if !from_settings.trim().is_empty() {
+        return Some(from_settings);
+    }
     std::env::var("LLM_MODEL").ok().filter(|s| !s.trim().is_empty())
 }
 
@@ -82,6 +86,17 @@ pub async fn generate_title_and_summary(
     user_message: &str,
     assistant_answer: &str,
 ) -> Option<SessionTitleSummary> {
+    generate_title_and_summary_for(user_message, assistant_answer, "", "").await
+}
+
+/// Same as [`generate_title_and_summary`], with telemetry attribution.
+pub async fn generate_title_and_summary_for(
+    user_message: &str,
+    assistant_answer: &str,
+    username: &str,
+    session_id: &str,
+) -> Option<SessionTitleSummary> {
+    let started = std::time::Instant::now();
     let prompt = format!(
         "Given this chat turn, reply with exactly two lines:\n\
          Line 1: a short title (max 8 words, no quotes).\n\
@@ -89,15 +104,12 @@ pub async fn generate_title_and_summary(
          User: {user_message}\n\nAssistant: {assistant_answer}"
     );
 
-    // Unset `LLM_MODEL` disables the summariser entirely, and used to do so in complete
-    // silence — every conversation kept its truncated first message as a title, no
-    // summary ever appeared on the homepage cards, and nothing anywhere said why. Say
-    // it once per turn rather than making the next person bisect the chat page.
-    let Some(model) = llm_model() else {
+    // Prefer admin-configured summarisation model; unset disables the summariser.
+    let Some(model) = llm_model().await else {
         tracing::warn!(
-            "chat summariser disabled: LLM_MODEL is unset, so titles stay as the \
-             truncated first message and summaries stay empty. Set LLM_MODEL / \
-             LLM_BASE_URL on the website service."
+            "chat summariser disabled: no summarisation model configured \
+             (llm_summarization_model / LLM_MODEL), so titles stay as the \
+             truncated first message and summaries stay empty."
         );
         return None;
     };
@@ -145,6 +157,17 @@ pub async fn generate_title_and_summary(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("chat summariser: request failed: {e}");
+            crate::api::chat::llm_events::record_llm_call(
+                username,
+                session_id,
+                "title",
+                &model,
+                started.elapsed().as_millis() as u32,
+                0,
+                false,
+                &e.to_string(),
+            )
+            .await;
             return None;
         }
     };
@@ -153,6 +176,17 @@ pub async fn generate_title_and_summary(
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         tracing::warn!("chat summariser: {status}: {}", text.chars().take(200).collect::<String>());
+        crate::api::chat::llm_events::record_llm_call(
+            username,
+            session_id,
+            "title",
+            &model,
+            started.elapsed().as_millis() as u32,
+            0,
+            false,
+            &format!("{status}"),
+        )
+        .await;
         return None;
     }
 
@@ -199,14 +233,26 @@ pub async fn generate_title_and_summary(
     if title.is_empty() {
         return None;
     }
-    Some(SessionTitleSummary {
+    let result = SessionTitleSummary {
         title: title.clone(),
         summary: if summary.is_empty() {
-            title
+            title.clone()
         } else {
             summary.chars().take(400).collect()
         },
-    })
+    };
+    crate::api::chat::llm_events::record_llm_call(
+        username,
+        session_id,
+        "title",
+        &model,
+        started.elapsed().as_millis() as u32,
+        result.title.len() as u32 + result.summary.len() as u32,
+        true,
+        "",
+    )
+    .await;
+    Some(result)
 }
 
 /// Drop a `Title:` / `**Summary:**` style label the model prefixed to a line.

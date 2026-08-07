@@ -2,7 +2,42 @@
 
 import pytest
 
-from database.manticore import shard_table_names, shard_tables_from_name
+from database.manticore import (
+    shard_table_names,
+    shard_tables_from_name,
+    vectors_table_from_name,
+    vectors_table_name,
+)
+
+
+def test_vectors_table_naming_roundtrip():
+    assert vectors_table_name("testdata", 1) == "testdata_1_vectors"
+    assert vectors_table_from_name("testdata_1") == "testdata_1_vectors"
+    assert vectors_table_from_name("mycollection_12") == "mycollection_12_vectors"
+
+
+def test_vectors_table_naming_rejects_invalid():
+    for bad in ("", "Testdata", "x_1", "x_pages", "x_meta", "x_vectors", "processing"):
+        with pytest.raises(ValueError):
+            vectors_table_name(bad, 1)
+    for bad in ("", "testdata", "testdata_0", "testdata_01", "bad name_1"):
+        with pytest.raises(ValueError):
+            vectors_table_from_name(bad)
+
+
+def test_list_shard_tables_regex_covers_vectors():
+    # list_shard_tables gates drop_collection_tables and purge_dataset_from_manticore:
+    # a suffix missing from this pattern survives a dataset purge. The function itself
+    # needs a live Manticore, so pin the pattern it is built from instead.
+    from database.manticore import _SHARD_TABLE_RE_TEMPLATE
+    import re
+
+    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll="testdata"))
+    assert pattern.match("testdata_1_pages")
+    assert pattern.match("testdata_1_meta")
+    assert pattern.match("testdata_12_vectors")
+    assert not pattern.match("testdata_1_blobs")
+    assert not pattern.match("testdata_x_1_pages")  # a different collection's shard
 
 
 def test_shard_table_names_canonical():

@@ -208,11 +208,23 @@ now. **Revisit whether guests should have LLM access at all.**
 
 ### `chat_messages.seq` race — closed
 
-`seq` is still `max(seq)+1`, but every caller that allocates one now holds the session's
-`db_chat::turn_lock` for the whole turn, which serialises allocation *and* stops a second
-turn reading a history the first has not finished writing. Every row also carries a
-per-turn `message_uuid` (migration `00021`), so a collision that still got through — two
-website processes, say — is detectable rather than silent.
+`seq` is still `max(seq)+1`, and three things stand behind it:
+
+* **the session's `db_chat::turn_lock`**, held for the whole turn, which serialises
+  allocation and stops a second turn reading a history the first has not finished writing.
+  It is an in-process lock and it is released when the request handler returns;
+* **`next_seq` counts `chat_message_stream` too**, not only `chat_messages`. Deep research
+  allocates its answer seq up front and reserves it as a *stream* row — the transcript row
+  appears minutes later, when the Temporal workflow finishes. The lock cannot cover that
+  gap (it went with the handler), so a `next_seq` reading only `chat_messages` handed the
+  reserved seq to the next inline send and ReplacingMergeTree silently kept one of the two
+  messages. Both entry points also refuse outright while `stream_state(...).active` — the
+  same question the poller asks;
+* **`message_uuid`** (migration `00021`), shared by every row of a turn and now actually
+  *read*: `db_chat::detect_seq_collision` looks for a second uuid at the seq just claimed
+  and refuses the turn if it finds one, so the user resends instead of losing a message. It
+  reads without `FINAL` on purpose — `FINAL` collapses away the evidence. A write-only
+  detector, which is what this was, is worse than none: it reads as covered.
 
 ### Tool-event payload shapes
 

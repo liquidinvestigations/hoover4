@@ -406,6 +406,12 @@ services:
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
       - S3_ENDPOINT=http://minio-s3:9000
+      # Blob-store credentials. Passed in rather than compiled in: the backend used to
+      # carry the literals in two source files, which is exactly how a credential
+      # survives the day it is rotated. Same defaults and same names the agent
+      # containers use (compose/agents.yaml).
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
       # Temporal's HTTP API, used to start workflows from the admin UI. The code
       # defaults to localhost:7243 for running the website outside Docker; inside the
       # container localhost is the container itself, so it must be set explicitly.
@@ -445,6 +451,19 @@ services:
       # provider key configured the mount source is /dev/null and the code falls
       # back to its local default.
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
+      # Phase 5 `/admin/ai_status` probes. Same URLs the worker uses; without them the
+      # page falls back to compose DNS names that are not on this container's network
+      # (the GPU tier publishes via host.containers.internal).
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-}
+      - EMBEDDINGS_URL=${EMBEDDINGS_URL:-}
+      - RERANK_URL=${RERANK_URL:-}
+      - NER_PROVIDER=${NER_PROVIDER:-}
+      - NER_URL=${NER_URL:-}
+      - NER_URL_FALLBACK=${NER_URL_FALLBACK:-}
+      - PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}
+      - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
+      - HOOVER4_BROWSER_MCP_URL=${HOOVER4_BROWSER_MCP_URL:-http://hoover4-mcp-browser:8087}
     networks:
       - hoover4
     depends_on:

@@ -9,6 +9,7 @@
 
 pub mod agent_client;
 pub mod live_runs;
+pub mod llm_events;
 pub mod summarize;
 
 use std::time::{Duration, Instant};
@@ -202,6 +203,7 @@ pub async fn send_message(
     session_id: String,
     message: String,
     requested_options: ChatOptions,
+    requested_model: Option<String>,
 ) -> anyhow::Result<ChatSendResult> {
     let username = require_named_user(user)?;
 
@@ -220,6 +222,14 @@ pub async fn send_message(
         anyhow::bail!("message is too long (max {MAX_MESSAGE_CHARS} characters)");
     }
 
+    // Resolve the model before allocating a seq: a forged id must be refused, not merely
+    // absent from the dropdown (plan 2 §9.3).
+    let llm_model = crate::api::admin::llm::resolve_chat_model(
+        requested_model.as_deref(),
+        user.is_guest,
+    )
+    .await?;
+
     let session = db_chat::get_session(username, &session_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
@@ -235,6 +245,16 @@ pub async fn send_message(
     let guard = db_chat::turn_lock(username, &session_id)
         .try_lock_owned()
         .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
+
+    // The lock above only covers turns this process is running. A deep-research turn is
+    // run by a Temporal worker and its lock was released the moment `start_research_task`
+    // returned — minutes before the workflow writes its answer at the seq it reserved. So
+    // ask the same question the poller asks: is a turn still being produced? Without
+    // this, an inline send during a research turn took the reserved seq and one of the
+    // two messages was silently dropped by ReplacingMergeTree.
+    if stream_state(username, &session_id).await?.active {
+        anyhow::bail!("a turn is already running in this conversation");
+    }
 
     // Everything that decides seqs happens before the spawn, so the transcript this
     // returns is the one the poller continues from.
@@ -254,6 +274,9 @@ pub async fn send_message(
         },
     )
     .await?;
+    // Reported, not prevented — see `detect_seq_collision`. Refusing here costs the user
+    // a resend; not checking costs them the message.
+    db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
 
     // Provisional title from the first user turn; LLM title/summary replaces it at the
     // end of the turn.
@@ -281,6 +304,7 @@ pub async fn send_message(
         message,
         allowed,
         options,
+        llm_model,
         history,
         is_first_turn,
         turn_uuid,
@@ -623,6 +647,8 @@ struct TurnContext {
     message: String,
     allowed: Vec<String>,
     options: ChatOptions,
+    /// Resolved, allowlist-checked model id for this turn (plan 2 §9.3).
+    llm_model: String,
     /// The transcript as it stood *before* the user row — what the agent is told.
     history: Vec<common::chat_types::ChatMessageItem>,
     is_first_turn: bool,
@@ -635,21 +661,37 @@ struct TurnContext {
 async fn run_turn(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::Result<()> {
     let username = ctx.username.clone();
     let session_id = ctx.session_id.clone();
+    let turn_uuid = ctx.turn_uuid.clone();
     if let Err(e) = run_turn_inner(ctx, run).await {
         // A turn that dies outside its own error handling still owes the transcript an
         // ending — an orphaned stream row would otherwise render "interrupted" for an
         // hour. Still under the turn lock, so the error row's seq allocation is safe.
         tracing::error!("chat turn for {session_id} failed outside the agent call: {e:#}");
-        let seq = db_chat::next_seq(&username, &session_id).await.unwrap_or(0);
-        let _ = db_chat::append_message(
-            &username,
-            &session_id,
-            seq,
-            ChatRole::Error,
-            &format!("The assistant could not answer: {e}"),
-            AppendMessageExtras::default(),
-        )
-        .await;
+        // If even the seq allocation fails, the write is dropped. `unwrap_or(0)` wrote the
+        // row at seq 0 instead, which is a real seq in every session and therefore an
+        // error message landing on top of whatever is already there. Losing the error row
+        // when the database is unreachable is the lesser outcome — and `mark_stream_final`
+        // below still ends the turn, so the page stops spinning either way.
+        match db_chat::next_seq(&username, &session_id).await {
+            Ok(seq) => {
+                let _ = db_chat::append_message(
+                    &username,
+                    &session_id,
+                    seq,
+                    ChatRole::Error,
+                    &format!("The assistant could not answer: {e}"),
+                    AppendMessageExtras {
+                        message_uuid: turn_uuid,
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
+            Err(seq_err) => tracing::error!(
+                "could not allocate a seq for the error row in {session_id}: {seq_err:#} \
+                 — dropping it rather than colliding at seq 0"
+            ),
+        }
         let _ = db_chat::mark_stream_final(&username, &session_id).await;
     }
     Ok(())
@@ -663,6 +705,7 @@ async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::R
         message,
         allowed,
         options,
+        llm_model,
         history,
         is_first_turn,
         turn_uuid,
@@ -725,6 +768,7 @@ async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::R
             &agent_history,
             allowed,
             options.internet_tools,
+            Some(llm_model.as_str()),
             &turn_uuid,
             &mut state,
             &mut saw_event,
@@ -891,7 +935,14 @@ async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
             let session_owned = session_id.to_string();
             let user_msg = message.to_string();
             tokio::spawn(async move {
-                if let Some(ts) = summarize::generate_title_and_summary(&user_msg, &answer).await {
+                if let Some(ts) = summarize::generate_title_and_summary_for(
+                    &user_msg,
+                    &answer,
+                    &username_owned,
+                    &session_owned,
+                )
+                .await
+                {
                     let _ = db_chat::set_session_title_summary(
                         &username_owned,
                         &session_owned,
@@ -922,6 +973,7 @@ async fn stream_agent_attempt(
     agent_history: &[agent_client::AgentChatMessage],
     allowed: &[String],
     internet_tools: bool,
+    llm_model: Option<&str>,
     turn_uuid: &str,
     state: &mut TurnState,
     saw_event: &mut bool,
@@ -935,6 +987,7 @@ async fn stream_agent_attempt(
         let message = message.to_string();
         let history = agent_history.to_vec();
         let allowed = allowed.to_vec();
+        let llm_model = llm_model.map(str::to_string);
         tokio::spawn(async move {
             agent_client::ask_agent_stream_once(
                 &username,
@@ -944,6 +997,7 @@ async fn stream_agent_attempt(
                 &history,
                 &allowed,
                 internet_tools,
+                llm_model.as_deref(),
                 &mut |event| {
                     let _ = tx.send(event);
                 },
@@ -1218,6 +1272,13 @@ pub async fn start_research_task(
         .try_lock_owned()
         .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
 
+    // ...and the same cross-process check `send_message` makes, for the same reason: this
+    // guard is dropped when the function returns, so it cannot keep a *second* research
+    // task (or an inline send) off the seq this one is about to reserve.
+    if stream_state(username, &session_id).await?.active {
+        anyhow::bail!("a turn is already running in this conversation");
+    }
+
     // Deep research is one of the two frozen switches; a thread that started as a
     // research thread stays one.
     db_chat::lock_session_options(
@@ -1232,15 +1293,27 @@ pub async fn start_research_task(
 
     let history = db_chat::list_messages(username, &session_id).await?;
     let mut seq = db_chat::next_seq(username, &session_id).await?;
+    // The turn uuid every row of this research turn carries, transcript and stream alike.
+    // The *stream* writer in the Temporal worker derives the identical string from
+    // `(session_id, start_seq)` (`P_agent/stream_writer.py`) — it is a coordination key
+    // between two processes that cannot pass one to each other, so the format is load
+    // bearing on both sides. The user row was written without it, which left the turn's
+    // first row unattributable and made the collision detector blind to exactly the
+    // collision this path causes.
+    let turn_uuid = format!("research-{session_id}-{}", seq + 1);
     db_chat::append_message(
         username,
         &session_id,
         seq,
         ChatRole::User,
         &message,
-        AppendMessageExtras::default(),
+        AppendMessageExtras {
+            message_uuid: turn_uuid.clone(),
+            ..Default::default()
+        },
     )
     .await?;
+    db_chat::detect_seq_collision(username, &session_id, seq, &turn_uuid).await?;
     seq += 1;
 
     if history.is_empty() {
@@ -1271,7 +1344,7 @@ pub async fn start_research_task(
         "",
         0,
         false,
-        &format!("research-{session_id}-{seq}"),
+        &turn_uuid,
     )
     .await?;
 

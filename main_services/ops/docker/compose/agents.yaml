@@ -10,8 +10,10 @@ services:
   # collections the calling user may read (see main_services/agents/collection_search_server).
   hoover4-mcp-collections:
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/collection_search_server
-      dockerfile: Dockerfile
+      # Context is the agents directory, not this server's: agent_common/ is vendored in
+      # (the rerank client, the RRF/floor fusion and the query-side embedding client).
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: collection_search_server/Dockerfile
     image: hoover4-mcp-collections:local
     container_name: hoover4-mcp-collections
     ports:
@@ -28,6 +30,12 @@ services:
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-8}
       - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
+      # The hybrid half: query embeddings + the cross-encoder reranker (one server
+      # serves both). Empty disables the vector branch and the search is keyword-only.
+      - EMBEDDINGS_URL=${EMBEDDINGS_URL:-}
+      - RERANK_URL=${RERANK_URL:-}
+      - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
+      - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
@@ -230,6 +238,12 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      # llm_call_events / ai_service_telemetry writers (plan 2 phase 5). Best-effort;
+      # chat still works if ClickHouse is unreachable.
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-Hoover4_Processing}
     volumes:
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
@@ -288,6 +302,10 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-Hoover4_Processing}
     volumes:
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro

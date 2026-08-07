@@ -26,7 +26,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from agent_common import rerank as rerank_client
+from agent_common import fusion, rerank as rerank_client
 from metasearch_server import sources as sources_mod
 from metasearch_server.engines import SearchResult, reciprocal_rank_fusion
 
@@ -109,43 +109,23 @@ def apply_per_kind_floor(
 ) -> list[Ranked]:
     """Guarantee each kind a share of the answer, then fill the rest by score.
 
-    Two passes, and the first is the whole point:
-
-    1. **Reserve.** Each kind keeps its own best `min_per_kind` results (or all of them,
-       if it has fewer) whatever the overall cap says. Without this a query with an
-       obvious encyclopaedia answer returns twenty blogs about it, because four web
-       scrapers agreeing always outscores one reference source.
-    2. **Fill.** Everything else in score order, up to `max_per_kind` per kind and
-       `max_results` overall — but never evicting a reserved slot.
+    The implementation is `agent_common.fusion.per_kind_floor` — collection search
+    applies the same rule to its keyword/vector kinds, and a second copy would drift.
+    Two passes: each kind first reserves its own best `min_per_kind` results whatever
+    the overall cap says (without this, four web scrapers agreeing always outscores one
+    encyclopaedia entry), then everything else fills in rank order up to `max_per_kind`
+    per kind and `max_results` overall, never evicting a reserved slot.
 
     The returned list keeps the input's order, so the reranked ordering the model sees is
     still the reranked ordering.
     """
-    if max_per_kind < min_per_kind:
-        raise ValueError("MAX_PER_KIND must not be below MIN_PER_KIND")
-
-    reserved: set[int] = set()
-    per_kind: dict[str, int] = {}
-    for index, item in enumerate(ranked):
-        kind = item.result.kind or "web"
-        if per_kind.get(kind, 0) < min_per_kind:
-            per_kind[kind] = per_kind.get(kind, 0) + 1
-            reserved.add(index)
-
-    chosen = set(reserved)
-    budget = max(max_results, len(reserved))
-    for index, item in enumerate(ranked):
-        if len(chosen) >= budget:
-            break
-        if index in chosen:
-            continue
-        kind = item.result.kind or "web"
-        if per_kind.get(kind, 0) >= max_per_kind:
-            continue
-        per_kind[kind] = per_kind.get(kind, 0) + 1
-        chosen.add(index)
-
-    return [item for index, item in enumerate(ranked) if index in chosen]
+    return fusion.per_kind_floor(
+        ranked,
+        max_results,
+        kind_of=lambda item: item.result.kind or "web",
+        min_per_kind=min_per_kind,
+        max_per_kind=max_per_kind,
+    )
 
 
 async def run_search(

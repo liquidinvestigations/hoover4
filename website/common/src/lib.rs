@@ -8,6 +8,7 @@ pub mod current_user;
 pub mod document_entities;
 pub mod document_metadata;
 pub mod document_sources;
+pub mod llm_types;
 pub mod metrics_types;
 pub mod pdf_search_results;
 pub mod processing_types;

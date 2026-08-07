@@ -160,12 +160,38 @@ http://127.0.0.1:8087/   -> refused: '127.0.0.1' resolves to the non-public addr
 Refusals are **returned** as a tool result, not raised, so the model learns it cannot reach
 internal hosts and moves on. No browser is spawned for a refused call.
 
-`--blocked-origins` on the sidecar is a **second** line only. Playwright documents it as not
-being a security boundary; the check above is the first line and the real one.
+### The line that survives a redirect
 
-What none of this closes is a DNS-rebinding race between the check and Chromium's own
-resolution. The deny-list and the network's lack of anything routable behind it are what
-stand there.
+`check_tool_arguments` only ever sees **tool arguments**. Everything Chromium does after a
+navigation starts — an HTTP 302, a `<meta refresh>`, `location =`, an `<img src>` — passes
+through no tool call and so through no check. Measured: a public page redirecting to
+`http://manticore:9308/sql?query=…` was fetched and its data returned to the model.
+
+So Chromium is launched with a **PAC script** ([`netfilter.py`](browser_use_server/netfilter.py))
+handed to `--proxy-pac-url` as a `data:` URL. PAC is consulted for every request the network
+stack makes, each hop of a redirect chain included, before a connection is opened, in every
+tab. Anything internal is routed to a proxy that does not exist and fails at once with
+`ERR_PROXY_CONNECTION_FAILED`:
+
+* a **single-label** host (`isPlainHostName`) — every container here answers to a bare name,
+  so this covers services added after the file was written, with no list to maintain;
+* `.internal` and `.localhost` suffixes (cloud metadata lives in the first);
+* any address, **after resolution**, in a private, loopback, link-local, CGNAT or reserved
+  range — the same rule urlcheck applies, applied to what the browser actually connects to;
+* a name that does not resolve: fail closed.
+
+`--blocked-origins` on the sidecar is a **third** opinion, nothing more. Playwright's own
+documentation says it is not a security boundary *and does not affect redirects* — and until
+this sweep it did nothing at all: a bare hostname compiles to the glob `*://host/**`, a
+single `*` does not cross `/`, and every service here listens on a port, so it matched
+nothing. It is now passed as `http://host:*` / `https://host:*`, the one form
+`originOrHostGlob` turns into a port-tolerant glob.
+
+What none of this closes is a DNS-rebinding race between urlcheck and Chromium's own
+resolution — though the PAC script resolves independently at connect time, which narrows it
+considerably. PAC's `dnsResolve` is IPv4-only (`dnsResolveEx` is a Microsoft extension
+Chromium does not implement); this network is IPv4 and the name rules catch every internal
+host regardless.
 
 ## Capture
 
@@ -268,10 +294,10 @@ failure rather than a visible one.
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 81 tests
+docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 101 tests
 ```
 
-Three groups, none of which need Chromium or Node:
+Four groups, none of which need Chromium or Node:
 
 * **`test_urlcheck.py`** — the security boundary, tested hardest: schemes, every non-public
   address range in v4 and v6, the named services on this network, the
@@ -283,3 +309,9 @@ Three groups, none of which need Chromium or Node:
   byte cap.
 * **`test_router.py`** — lifetime: per-chat isolation, the LRU cap, the idle reaper,
   idempotent close, and sidecar restart, with `chat_browser.start`/`stop` stubbed.
+* **`test_netfilter.py`** — the redirect boundary: that every blocked origin is emitted in
+  the one form playwright-mcp compiles into a port-tolerant glob (with that compiler
+  reimplemented in the test, so a sidecar upgrade that changes it fails here rather than
+  silently), and that the PAC script refuses every shape of internal target and falls
+  closed. The end-to-end proof needs a real Chromium and the network and is recorded in
+  `netfilter.py`'s docstring.

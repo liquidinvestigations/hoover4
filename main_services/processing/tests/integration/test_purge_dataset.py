@@ -28,7 +28,17 @@ from .helpers import ingest_dataset, wait_for_plans_finished
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 # Collection-DB tables the assertions care about (all keyed on collection_dataset).
-PURGED_TABLES = ["vfs_files", "text_content", "manticore_shard_assignments", "index_state"]
+# text_chunks / text_chunk_vectors are Phase 4's durable vector store — purge must
+# clear them the same way it clears text_content, or a re-ingest of the same hashes
+# would skip embedding via the left-anti join and leave the corpus unsearchable.
+PURGED_TABLES = [
+    "vfs_files",
+    "text_content",
+    "text_chunks",
+    "text_chunk_vectors",
+    "manticore_shard_assignments",
+    "index_state",
+]
 
 
 def _cd_count(client, table: str, collection_dataset: str) -> int:

@@ -77,6 +77,8 @@ pub fn AdminShell(
                     SidebarLink { to: Route::AdminUsersPage {}, label: "Users", selected: active == "users" }
                     SidebarLink { to: Route::AdminGroupsPage {}, label: "Groups", selected: active == "groups" }
                     SidebarLink { to: Route::AdminSettingsPage {}, label: "Settings", selected: active == "settings" }
+                    SidebarLink { to: Route::AdminLlmPage {}, label: "LLM", selected: active == "llm" }
+                    SidebarLink { to: Route::AdminAiStatusPage {}, label: "AI status", selected: active == "ai_status" }
                     SidebarLink { to: Route::AdminMetricsPage {}, label: "Metrics", selected: active == "metrics" }
                 }
                 main {

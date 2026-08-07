@@ -10,11 +10,12 @@ use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::admin::{
-    collection_detail::AdminCollectionPage, collection_processing::AdminCollectionProcessingPage,
-    collections_list::AdminCollectionsPage, dashboard::AdminDashboardPage,
-    dataset_detail::AdminDatasetPage, group_detail::AdminGroupPage, groups_list::AdminGroupsPage,
-    metrics::AdminMetricsPage, settings::AdminSettingsPage, user_detail::AdminUserPage,
-    user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
+    ai_status::AdminAiStatusPage, collection_detail::AdminCollectionPage,
+    collection_processing::AdminCollectionProcessingPage, collections_list::AdminCollectionsPage,
+    dashboard::AdminDashboardPage, dataset_detail::AdminDatasetPage, group_detail::AdminGroupPage,
+    groups_list::AdminGroupsPage, llm_config::AdminLlmPage, metrics::AdminMetricsPage,
+    settings::AdminSettingsPage, user_detail::AdminUserPage, user_llm::AdminUserLlmPage,
+    users_list::AdminUsersPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::file_browser_page::{FileBrowserCollectionsPage, FileBrowserPage};
@@ -110,6 +111,12 @@ pub enum Route {
 
     #[route("/admin/settings")]
     AdminSettingsPage {},
+
+    #[route("/admin/llm")]
+    AdminLlmPage {},
+
+    #[route("/admin/ai_status")]
+    AdminAiStatusPage {},
 
     #[route("/admin/metrics")]
     AdminMetricsPage {},

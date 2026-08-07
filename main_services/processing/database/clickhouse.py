@@ -43,11 +43,11 @@ CLIENT_SETTINGS = {
 # Mirrors website/backend/src/api/admin/collections.rs::collectionname_valid.
 # Duplicated deliberately: the two runtimes must independently refuse a bad name.
 MAX_COLLECTIONNAME_LENGTH = 48
-# No '-': every Manticore identifier (<name>_<n>_pages|_meta) is interpolated
+# No '-': every Manticore identifier (<name>_<n>_pages|_meta|_vectors) is interpolated
 # UNQUOTED into SQL in both runtimes, and a dashed table name does not parse.
 _COLLECTIONNAME_RE = re.compile(r'^[a-z0-9_]+$')
 _SHARD_SUFFIX_RE = re.compile(r'_[0-9]+$')
-RESERVED_COLLECTIONNAME_SUFFIXES = ('_pages', '_meta')
+RESERVED_COLLECTIONNAME_SUFFIXES = ('_pages', '_meta', '_vectors')
 RESERVED_COLLECTIONNAMES = ('processing',)
 
 # collection_dataset -> collectionname. Immutable by decision D1, so cached forever.
@@ -180,6 +180,24 @@ def list_collections() -> list[str]:
             'WHERE is_deleted = 0 ORDER BY collectionname'
         ).result_rows
     return [r[0] for r in rows]
+
+
+def get_server_setting(key: str) -> str | None:
+    """The current value of a ``server_settings`` key, or ``None`` when never written.
+
+    ``server_settings`` is a ReplacingMergeTree versioned by ``updated_at``, so the
+    current value is the argMax. Readers of the embeddings probe
+    (``embeddings_serving_model`` / ``embeddings_serving_dim``) go through here — the
+    probed value is the truth about what the GPU tier serves, and the ini is only the
+    request.
+    """
+    with get_global_client() as client:
+        rows = client.query(
+            'SELECT argMax(value, updated_at) FROM server_settings WHERE key = {k:String}',
+            parameters={'k': key},
+        ).result_rows
+    value = rows[0][0] if rows else None
+    return value or None
 
 
 def _cluster():

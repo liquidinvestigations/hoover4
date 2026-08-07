@@ -23,7 +23,7 @@ with workflow.unsafe.imports_passed_through():
         PlanShardsParams,
         RecordIndexedParams,
     )
-    from .activities import index_metadata, index_text_pages
+    from .activities import index_metadata, index_text_pages, index_vectors
     from .shard_planner import finalize_index_batch, plan_shards, record_indexed
 
 # plan_shards mutates the shard ledger and must never run concurrently for the
@@ -35,8 +35,8 @@ INDEXING_TASK_QUEUE = "processing-indexing-queue"
 
 @dataclass
 class ScheduledChunk:
-    """One writer chunk scheduled against one shard: both writer activities for the
-    same hashes, kept together so results never rely on positional alignment across
+    """One writer chunk scheduled against one shard: all three writer activities for
+    the same hashes, kept together so results never rely on positional alignment across
     parallel lists."""
 
     shard_name: str
@@ -44,6 +44,7 @@ class ScheduledChunk:
     started: datetime
     pages_future: Any
     metadata_future: Any
+    vectors_future: Any
 
 
 @workflow.defn
@@ -102,9 +103,18 @@ class IndexDatasetPlan:
                         retry_policy=RetryPolicy(maximum_attempts=2),
                         task_queue=INDEXING_TASK_QUEUE,
                     ),
+                    vectors_future=workflow.execute_activity(
+                        index_vectors,
+                        shard_params,
+                        start_to_close_timeout=INDEXING_TIMEOUT,
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=2),
+                        task_queue=INDEXING_TASK_QUEUE,
+                    ),
                 ))
         pages_results = await gather(*[c.pages_future for c in chunks], return_exceptions=True)
         metadata_results = await gather(*[c.metadata_future for c in chunks], return_exceptions=True)
+        vectors_results = await gather(*[c.vectors_future for c in chunks], return_exceptions=True)
 
         # A failed writer chunk (retries already exhausted) becomes one
         # processing_errors row per hash in the chunk, so every document that
@@ -118,8 +128,8 @@ class IndexDatasetPlan:
         # metadata writer committed DID reach the shard (its meta row), so it
         # counts; a permanently failed writer chunk contributes nothing.
         indexed_entries: set[tuple[str, str]] = set()
-        for chunk, pages_res, metadata_res in zip(chunks, pages_results, metadata_results):
-            for res, task_id in ((pages_res, "P6_IndexTextPages"), (metadata_res, "P6_IndexMetadata")):
+        for chunk, pages_res, metadata_res, vectors_res in zip(chunks, pages_results, metadata_results, vectors_results):
+            for res, task_id in ((pages_res, "P6_IndexTextPages"), (metadata_res, "P6_IndexMetadata"), (vectors_res, "P6_IndexVectors")):
                 if isinstance(res, Exception):
                     for item_hash in chunk.hashes:
                         failed_results.append(res)

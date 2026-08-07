@@ -225,6 +225,77 @@ def reindex_collection(collectionname: str):
     print(f"reindex of {collectionname}: {len(plans)} plan(s) queued")
 
 
+@cli.command(name="backfill-vectors")
+@click.argument("collectionname", type=str)
+def backfill_vectors(collectionname: str):
+    """Run chunk+embed (P5) and re-index (P6) every finished plan of a collection.
+
+    The backfill path for data ingested before P5 existed: the normal pipeline runs
+    ChunkEmbedForPlan inside ExecuteSinglePlan, but a plan that finished earlier has
+    no chunks or vectors. Both stages are idempotent (left-anti join on the vector
+    key; REPLACE INTO with deterministic row ids), so re-running over already-embedded
+    plans costs a scan, not a re-embed.
+
+    Blocks until every plan's two workflows have completed. ClickHouse keeps the
+    vectors, so this never drops anything; use `reindex-collection` instead when the
+    Manticore tables themselves must be rebuilt (lost volume, knn_dims change).
+    """
+    from database.clickhouse import get_collection_client, validate_collectionname
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    with get_collection_client(collectionname) as client:
+        plans = client.query(
+            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+            "ORDER BY collection_dataset, plan_hash"
+        ).result_rows
+
+    if not plans:
+        log.warning("No finished plans found for %s - nothing to backfill", collectionname)
+        return
+
+    async def _run():
+        from temporalio.client import Client as TemporalClient
+        import temporalio.common
+        from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan
+        from tasks.P5_chunk_embed.params import ChunkEmbedForPlanParams
+        from tasks.P6_index_data.workflows import IndexDatasetPlan
+        from tasks.P6_index_data.params import IndexDatasetPlanParams
+        from tasks.visibility import dataset_search_attributes
+
+        client = await TemporalClient.connect("temporal:7233")
+        for collection_dataset, plan_hash in plans:
+            # P5 before P6: the vector indexer copies the rows P5 writes.
+            handle = await client.start_workflow(
+                ChunkEmbedForPlan.run,
+                ChunkEmbedForPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
+                id=f"backfill-embed-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            log.info("chunk+embed running: %s plan %s", collection_dataset, plan_hash[:8])
+            await handle.result()
+            handle = await client.start_workflow(
+                IndexDatasetPlan.run,
+                IndexDatasetPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
+                id=f"backfill-index-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            log.info("re-index running: %s plan %s", collection_dataset, plan_hash[:8])
+            await handle.result()
+
+    asyncio.run(_run())
+    print(f"backfill-vectors of {collectionname}: {len(plans)} plan(s) done")
+
+
 @cli.command(name="list-collections")
 def list_collections_cmd():
     """Print each collection's name, ClickHouse database and dataset count."""
@@ -244,7 +315,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "indexing", "index-planner"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all."""
     import sys
@@ -265,6 +336,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "nlp":
             from tasks.run_worker import run_nlp_worker
             asyncio.run(run_nlp_worker())
+        elif worker_type == "embed":
+            from tasks.run_worker import run_embed_worker
+            asyncio.run(run_embed_worker())
         elif worker_type == "indexing":
             from tasks.run_worker import run_indexing_worker
             asyncio.run(run_indexing_worker())
@@ -283,7 +357,7 @@ def worker(worker_type: str | None = None):
 
     # Initial spawn set. "index-planner" MUST stay at exactly one process:
     # a second planner worker would corrupt the Manticore shard ledger.
-    for wt in ["tika", "ocr", "nlp", "indexing", "index-planner"] + ["common"] * 2:
+    for wt in ["tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * 2:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

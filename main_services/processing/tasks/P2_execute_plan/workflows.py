@@ -37,6 +37,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.workflows import ParseSingleFile
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
+    from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan, ChunkEmbedForPlanParams
     from tasks.P6_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
     from tasks.visibility import dataset_search_attributes
 
@@ -279,7 +280,18 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 6) Indexing stage
+        # 6) Chunk+embed stage: writes text_chunks and text_chunk_vectors (the durable
+        # vector store). Must complete before indexing starts - the P6 vector indexer
+        # copies these rows into the shard's HNSW table.
+        await workflow.execute_child_workflow(
+            ChunkEmbedForPlan.run,
+            ChunkEmbedForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            id=f"chunk-embed-{params.collection_dataset}-{params.plan_hash}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        )
+
+        # 7) Indexing stage
         await workflow.execute_child_workflow(
             IndexDatasetPlan.run,
             IndexDatasetPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
@@ -288,7 +300,7 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
-        # 7) Mark finished
+        # 8) Mark finished
         await workflow.execute_activity(
             mark_plan_finished,
             MarkPlanFinishedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),

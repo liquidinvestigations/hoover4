@@ -161,6 +161,26 @@ def _is_reasoning(model_id: str) -> bool:
     return bool(re.search(r"nemotron|reason|thinking|deepseek-r", model_id, re.IGNORECASE))
 
 
+def _prior_allowed(client, provider: str) -> Dict[str, int]:
+    """`{model_id: is_allowed}` as the table stands now, for one provider.
+
+    `llm_models` is a ReplacingMergeTree read through `argMax(..., updated_at)`, and
+    `is_allowed` defaults to 1. So an insert that simply omits the column writes a fresher
+    "allowed" version and **undoes an admin's disallow** — silently, on a schedule. The
+    allowlist is enforced server-side against forged model ids, so that is a security
+    control being reset by a background task, not a cosmetic dropdown.
+
+    The website's own refresh (`api/admin/llm.rs`) carries the same state forward for the
+    same reason. Both writers must, or whichever runs last wins.
+    """
+    rows = client.query(
+        "SELECT model_id, argMax(is_allowed, updated_at) AS is_allowed "
+        "FROM llm_models WHERE provider = %(provider)s GROUP BY model_id LIMIT 5000",
+        parameters={"provider": provider},
+    ).result_rows
+    return {row[0]: int(row[1]) for row in rows}
+
+
 def store_models(result: RefreshResult, base_url: str) -> int:
     """Upsert one provider's models into `llm_models`. Returns rows written."""
     from datetime import datetime, timezone
@@ -175,12 +195,15 @@ def store_models(result: RefreshResult, base_url: str) -> int:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     count = len(result.models)
     with get_global_client() as client:
+        prior = _prior_allowed(client, result.provider)
         client.insert_arrow("llm_models", pa.table({
             "provider": pa.array([result.provider] * count, type=pa.string()),
             "model_id": pa.array(result.models, type=pa.string()),
             "display_name": pa.array([m.split("/")[-1] for m in result.models], type=pa.string()),
             "is_reasoning": pa.array([1 if _is_reasoning(m) else 0 for m in result.models],
                                      type=pa.uint8()),
+            # Carried forward, never re-defaulted. A model nobody has ruled on is allowed.
+            "is_allowed": pa.array([prior.get(m, 1) for m in result.models], type=pa.uint8()),
             "fetched_at": pa.array([now] * count, type=pa.timestamp("s")),
             "updated_at": pa.array([now] * count, type=pa.timestamp("s")),
         }))

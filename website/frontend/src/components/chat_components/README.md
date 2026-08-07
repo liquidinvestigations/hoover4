@@ -141,4 +141,14 @@ of `{artifact_id, kind, status, url, title, detail}`. The model is told nothing 
 it is how the cards find the screenshot and the archived page. Assets are fetched from
 `/_chat_artifact/{id}/{thumb.webp|page.html|detail.json}`, which resolves the id to its
 owner and enforces owner-or-admin — the id comes from an LLM-driven tool payload and is a
-lookup key, not a capability.
+lookup key, not a capability. `artifact_id` is validated as a UUID before it is put in a
+URL: nothing else has any business in that path segment.
+
+The structured key does not survive LangGraph, so the browser router repeats it as a
+`[hoover4:artifacts] [...]` line in the tool's **text** — and for a browser tool that text
+*is the fetched page*. A hostile page can therefore write the marker into its own body. Two
+things stop it: the router appends its marker as the final block of **every** result,
+`[hoover4:artifacts] []` included, and `artifact_refs_from_text` honours a marker only on
+the last line. A planted one is always followed by the genuine one, and a result that does
+not end in a marker carries no artifacts at all. `strip_artifact_marker` matches the same
+rule, so a page cannot hide its own content behind a marker either.

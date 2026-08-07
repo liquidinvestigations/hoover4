@@ -1,8 +1,15 @@
 # Hoover4 collection search MCP server.
 #
-# Deliberately a plain slim image with pip: this server talks to ClickHouse and
-# Manticore over HTTP and needs no database drivers, no CUDA and no build toolchain, so
-# it builds in seconds and can be rebuilt freely while iterating on the tools.
+# Deliberately a plain slim image with pip: this server talks to ClickHouse, Manticore
+# and the GPU tier over HTTP and needs no database drivers, no CUDA and no build
+# toolchain, so it builds in seconds and can be rebuilt freely while iterating on the
+# tools.
+#
+# BUILD CONTEXT IS `main_services/agents`, NOT THIS DIRECTORY. `agent_common/` is
+# vendored into the image (the rerank client, the RRF/floor fusion and the query-side
+# embedding client are shared with metasearch), and a Docker build cannot reach outside
+# its context. If you move this file, move `context:` in ops/docker/compose/agents.yaml
+# with it.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -14,9 +21,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY ./pyproject.toml ./
-COPY ./collection_search_server/ ./collection_search_server/
-COPY ./tests/ ./tests/
+COPY ./agent_common/ ./agent_common/
+RUN pip install --no-cache-dir ./agent_common
+
+COPY ./collection_search_server/pyproject.toml ./
+COPY ./collection_search_server/collection_search_server/ ./collection_search_server/
+COPY ./collection_search_server/tests/ ./tests/
 
 RUN pip install --no-cache-dir . && pip install --no-cache-dir pytest
 

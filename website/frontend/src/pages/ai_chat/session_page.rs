@@ -5,12 +5,14 @@ use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
+use crate::api::admin_api::{chat_list_models, chat_llm_configured};
+use crate::api::auth_api::whoami;
 use crate::api::chat_api::{
     chat_get_session, chat_poll, chat_send_message, chat_start_research, chat_stop,
     chat_dismiss_interrupted,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar,
+    ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -56,7 +58,16 @@ fn AiChatSessionRoot(
     selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
     doc_viewer_state: ReadSignal<Option<DocViewerState>>,
 ) -> Element {
-    let sid = session_id.read().clone();
+    // NOTE: nothing below may capture a `String` copy of the session id.
+    //
+    // The router **reuses this component** when it navigates between two chat URLs — the
+    // props change, the component does not remount. Every handler here used to close over
+    // a `String` cloned on first render, so after a back/forward between two
+    // conversations the page fetched, polled, sent, stopped and dismissed against the
+    // conversation the user had *left*: the resource never refetched, and session A's
+    // poll loop kept writing its stream into signals now rendering session B. Read the
+    // signal at the point of use instead; `use_resource` also subscribes to it, which is
+    // what makes the refetch happen at all.
 
     use_context_provider(move || DocViewerStateControl {
         doc_viewer_state: doc_viewer_state.into(),
@@ -95,11 +106,11 @@ fn AiChatSessionRoot(
         }),
     });
 
-    let load_id = sid.clone();
-    let detail_res = use_resource(move || chat_get_session(load_id.clone()));
+    let detail_res = use_resource(move || chat_get_session(session_id.read().clone()));
 
     let mut draft = use_signal(String::new);
     let mut options = use_signal(ChatOptions::default);
+    let mut selected_model = use_signal(String::new);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
@@ -113,10 +124,43 @@ fn AiChatSessionRoot(
     // Incremented to retire a running poll loop (a second send, leaving the page).
     let mut poll_gen = use_signal(|| 0_u64);
 
+    let models_res = use_resource(chat_list_models);
+    let configured_res = use_resource(chat_llm_configured);
+    let whoami_res = use_resource(whoami);
+    let configured = configured_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .copied()
+        .unwrap_or(true);
+    let is_guest = whoami_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|u| u.is_guest)
+        .unwrap_or(false);
+    let choices = models_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
+    if selected_model.read().is_empty() {
+        if let Some(def) = choices.iter().find(|c| c.is_default) {
+            selected_model.set(def.model_id.clone());
+        } else if let Some(first) = choices.first() {
+            selected_model.set(first.model_id.clone());
+        }
+    }
+
+    // Filtered on the session on screen: while the resource refetches it still holds the
+    // *previous* conversation's detail, and using that would re-seed the transcript the
+    // switch below just cleared and put the old conversation's title in the header.
     let detail = detail_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
+        .filter(|d| d.session.session_id == *session_id.read())
         .cloned();
 
     if let Some(ref d) = detail {
@@ -143,11 +187,12 @@ fn AiChatSessionRoot(
     // only here, when the turn has actually ended (or read as interrupted).
     // A Callback rather than a plain closure so the submit handler can call it without
     // moving it.
-    let poll_sid = sid.clone();
     let start_polling: Callback<()> = Callback::new(move |_: ()| {
         *poll_gen.write() += 1;
         let generation = *poll_gen.read();
-        let poll_sid = poll_sid.clone();
+        // Bound to the conversation on screen *when polling starts*. A later switch bumps
+        // `poll_gen`, which retires this loop on its next iteration.
+        let poll_sid = session_id.read().clone();
         spawn(async move {
             let mut sig = String::new();
             let mut failures = 0_u32;
@@ -205,6 +250,37 @@ fn AiChatSessionRoot(
         start_polling.call(());
     }
 
+    // Switching conversations without remounting: retire the previous conversation's poll
+    // loop and drop every signal that describes *a* conversation rather than the page.
+    // Without this, session A's transcript, draft, error, banner and model choice all
+    // survived into session B, and its poll loop went on appending A's stream rows to B's
+    // message list. An effect rather than render-time work: it must run once per switch,
+    // after the render that observed it.
+    let mut wired_for = use_signal(String::new);
+    use_effect(move || {
+        let id = session_id.read().clone();
+        if *wired_for.peek() == id {
+            return;
+        }
+        wired_for.set(id);
+        *poll_gen.write() += 1;
+        loaded_for.set(String::new());
+        messages.set(Vec::new());
+        stream_turn.set(None);
+        sending.set(false);
+        interrupted.set(false);
+        poll_resumed.set(false);
+        draft.set(String::new());
+        error.set(None);
+        retry_after.set(None);
+        // Cleared rather than kept: it re-seeds from the model list on the next render,
+        // and the model in force is a property of the conversation being read.
+        selected_model.set(String::new());
+        find_query.set(String::new());
+        match_index.set(0);
+        match_count.set(0);
+    });
+
     let preview_query = use_memo(move || {
         // Prefer the most recent search_collections query for in-document highlighting.
         for m in messages.read().iter().rev() {
@@ -222,14 +298,14 @@ fn AiChatSessionRoot(
         SearchQuery::default()
     });
 
-    let send_id = sid.clone();
     let on_submit = move |_| {
         let text = draft.read().trim().to_string();
         if text.is_empty() || *sending.read() {
             return;
         }
         let opts = *options.read();
-        let id = send_id.clone();
+        let model = selected_model.read().clone();
+        let id = session_id.read().clone();
         draft.set(String::new());
         sending.set(true);
         error.set(None);
@@ -259,7 +335,8 @@ fn AiChatSessionRoot(
                     }
                 }
             } else {
-                match chat_send_message(id, text, opts).await {
+                let model_id = if model.is_empty() { None } else { Some(model) };
+                match chat_send_message(id, text, opts, model_id).await {
                     Ok(result) => {
                         if let Some(secs) = result.retry_after_seconds {
                             retry_after.set(Some(secs));
@@ -283,9 +360,8 @@ fn AiChatSessionRoot(
         });
     };
 
-    let stop_id = sid.clone();
     let on_stop = move |_| {
-        let id = stop_id.clone();
+        let id = session_id.read().clone();
         spawn(async move {
             // The turn finalises its partial with a marker; the poll loop sees the
             // finished row and clears `sending`.
@@ -293,9 +369,8 @@ fn AiChatSessionRoot(
         });
     };
 
-    let dismiss_id = sid.clone();
     let on_dismiss_interrupted = move |_| {
-        let id = dismiss_id.clone();
+        let id = session_id.read().clone();
         spawn(async move {
             if chat_dismiss_interrupted(id).await.is_ok() {
                 interrupted.set(false);
@@ -393,13 +468,36 @@ fn AiChatSessionRoot(
                     div { style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;", "{e}" }
                 }
                 div { style: "padding: 12px 14px; flex-shrink: 0;",
-                    ChatComposer {
-                        draft,
-                        options,
-                        sending,
-                        retry_after_seconds: retry_after,
-                        on_submit,
-                        on_stop,
+                    if !configured {
+                        div {
+                            style: "background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; \
+                                    padding: 14px 16px; color: #92400E; font-size: 14px; line-height: 1.5;",
+                            "No LLM provider is configured. An administrator can add one under "
+                            Link {
+                                to: Route::AdminLlmPage {},
+                                style: "color: #92400E; font-weight: 600;",
+                                "/admin/llm"
+                            }
+                            "."
+                        }
+                    } else {
+                        if !is_guest && !choices.is_empty() {
+                            div { style: "margin-bottom: 8px;",
+                                ModelSelector {
+                                    choices: choices.clone(),
+                                    selected: selected_model,
+                                    disabled: *sending.read(),
+                                }
+                            }
+                        }
+                        ChatComposer {
+                            draft,
+                            options,
+                            sending,
+                            retry_after_seconds: retry_after,
+                            on_submit,
+                            on_stop,
+                        }
                     }
                 }
             }

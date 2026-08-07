@@ -71,6 +71,40 @@ admin_server_fn!(admin_get_user_llm, backend::api::admin::metrics::admin_get_use
 admin_server_fn!(admin_list_settings, backend::api::admin::settings::admin_list_settings, () -> Vec<ServerSettingItem>);
 admin_server_fn!(admin_set_setting, backend::api::admin::settings::admin_set_setting, (key: String, value: String));
 
+admin_server_fn!(admin_get_llm, backend::api::admin::llm::admin_get_llm, () -> common::llm_types::AdminLlmPage);
+admin_server_fn!(admin_set_default_chat_model, backend::api::admin::llm::admin_set_default_chat_model, (model_id: String));
+admin_server_fn!(admin_set_summarization_model, backend::api::admin::llm::admin_set_summarization_model, (model_id: String));
+admin_server_fn!(admin_set_model_allowed, backend::api::admin::llm::admin_set_model_allowed, (model_id: String, allowed: bool));
+admin_server_fn!(admin_refresh_catalog, backend::api::admin::llm::admin_refresh_catalog, () -> bool);
+admin_server_fn!(admin_get_ai_status, backend::api::admin::ai_status::admin_get_ai_status, () -> common::llm_types::AdminAiStatus);
+
+#[server]
+pub async fn chat_list_models() -> Result<Vec<common::llm_types::ChatModelChoice>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::admin::llm::list_chat_model_choices(&user)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
+pub async fn chat_llm_configured() -> Result<bool, ServerFnError> {
+    let _user = crate::api::server_auth::extract_user().await?;
+    let base_ok = std::env::var("LLM_BASE_URL")
+        .ok()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if !base_ok {
+        return Ok(false);
+    }
+    let env_model = std::env::var("LLM_MODEL")
+        .ok()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if env_model {
+        return Ok(true);
+    }
+    Ok(!backend::api::admin::llm::default_chat_model().await.trim().is_empty())
+}
 #[server]
 pub async fn admin_dashboard_counts() -> Result<(u32, u32, u32, u32), ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;

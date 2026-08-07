@@ -9,6 +9,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from research_agent.chat_model import ThinkingChatOpenAI
+from research_agent import llm_events
 from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
 from pydantic import TypeAdapter
 import json
@@ -156,6 +157,7 @@ class MCPGatewayAgent:
         username: Optional[str],
         allowed_collections: Optional[List[str]],
         session_id: Optional[str] = None,
+        llm_model: Optional[str] = None,
     ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached graph.
         #
@@ -163,21 +165,37 @@ class MCPGatewayAgent:
         # and those headers are baked into the graph at construction time. Two chats by
         # the same user with the same ACL therefore get two graphs — which is the point:
         # it is what gives each conversation its own browser cookie jar.
+        #
+        # `llm_model` is part of the key for the same reason the model is: the ChatOpenAI
+        # instance is constructed with a fixed model id, so reusing a graph across model
+        # choices would silently answer every later turn with the first model that was
+        # cached (plan 2 §9.3).
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
-        return f"{acl}|{session_id or ''}"
+        return f"{acl}|{session_id or ''}|{llm_model or ''}"
+
+    def _resolve_model(self, llm_model: Optional[str] = None) -> str:
+        return (
+            (llm_model or "").strip()
+            or (self.llm_model or "").strip()
+            or os.getenv("LLM_MODEL", "gpt-4o-mini")
+        )
 
     async def _graph_for(
         self,
         username: Optional[str],
         allowed_collections: Optional[List[str]],
         session_id: Optional[str] = None,
+        llm_model: Optional[str] = None,
     ):
-        key = self._acl_key(username, allowed_collections, session_id)
+        model = self._resolve_model(llm_model)
+        key = self._acl_key(username, allowed_collections, session_id, model)
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key]
 
-        self._graphs[key] = await self._create_graph(username, allowed_collections, session_id)
+        self._graphs[key] = await self._create_graph(
+            username, allowed_collections, session_id, model
+        )
         while len(self._graphs) > MAX_CACHED_GRAPHS:
             evicted, _ = self._graphs.popitem(last=False)
             log.info("evicting cached graph %s (cap %d)", evicted, MAX_CACHED_GRAPHS)
@@ -188,6 +206,7 @@ class MCPGatewayAgent:
         username: Optional[str] = None,
         allowed_collections: Optional[List[str]] = None,
         session_id: Optional[str] = None,
+        llm_model: Optional[str] = None,
     ):
         """Create the agent graph with MCP tools, scoped to one caller's ACL."""
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
@@ -210,7 +229,7 @@ class MCPGatewayAgent:
         # Get LLM configuration from environment variables
         llm_api_key = _read_secret("LLM_API_KEY")
         llm_base_url = os.getenv("LLM_BASE_URL")
-        llm_model_env = self.llm_model or os.getenv("LLM_MODEL", "gpt-4o-mini")
+        llm_model_env = self._resolve_model(llm_model)
         llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.0"))
         
         if not llm_api_key:
@@ -356,10 +375,15 @@ class MCPGatewayAgent:
         user_id: str = None,
         username: str = None,
         allowed_collections: List[str] = None,
+        llm_model: str = None,
     ) -> AsyncIterable[dict[str, Any]]:
         # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
-        # chat session.
-        graph = await self._graph_for(username or user_id, allowed_collections, session_id)
+        # chat session, keyed also by the model that will answer.
+        model_id = self._resolve_model(llm_model)
+        provider = llm_events.provider_from_base_url()
+        graph = await self._graph_for(
+            username or user_id, allowed_collections, session_id, model_id
+        )
 
         # Build messages from chat history and current query
         messages = []
@@ -393,6 +417,7 @@ class MCPGatewayAgent:
         llm_started = False
         is_reasoning = False
         is_response = False
+        call_timer: Optional[llm_events.CallTimer] = None
 
         all_content = ""
 
@@ -412,6 +437,7 @@ class MCPGatewayAgent:
                         "content": "",
                     }
                     llm_started = True
+                    call_timer = llm_events.CallTimer()
                 if kind == "on_chat_model_stream":
                     chunk = event["data"]["chunk"]
                     if isinstance(chunk, AIMessageChunk):
@@ -456,25 +482,42 @@ class MCPGatewayAgent:
                 # per-token events, only this one at the end of each turn. Emitting the
                 # whole message here is what makes the non-streaming path produce an
                 # answer instead of silence.
-                if kind == "on_chat_model_end" and not llm_streaming_enabled():
+                if kind == "on_chat_model_end":
                     message = event["data"].get("output")
-                    content = getattr(message, "content", "") or ""
-                    if isinstance(content, list):
-                        content = "".join(
-                            x["text"] for x in content if isinstance(x, dict) and x.get("type") == "text"
+                    latency_ms = call_timer.elapsed_ms() if call_timer else 0
+                    call_timer = None
+                    try:
+                        llm_events.record_llm_call(
+                            llm_events.stats_from_message(
+                                message,
+                                model_id=model_id,
+                                provider=provider,
+                                latency_ms=latency_ms,
+                                kind="chat",
+                            ),
+                            username=username or user_id,
+                            session_id=session_id,
                         )
-                    if content:
-                        yield {
-                            "is_task_complete": False,
-                            "type": "start_response",
-                            "content": "",
-                        }
-                        yield {
-                            "is_task_complete": False,
-                            "type": "response",
-                            "content": content,
-                        }
-                        all_content += content
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("failed to record llm_call_events: %s", exc)
+                    if not llm_streaming_enabled():
+                        content = getattr(message, "content", "") or ""
+                        if isinstance(content, list):
+                            content = "".join(
+                                x["text"] for x in content if isinstance(x, dict) and x.get("type") == "text"
+                            )
+                        if content:
+                            yield {
+                                "is_task_complete": False,
+                                "type": "start_response",
+                                "content": "",
+                            }
+                            yield {
+                                "is_task_complete": False,
+                                "type": "response",
+                                "content": content,
+                            }
+                            all_content += content
 
             if node == "tools":
                 llm_started = False
@@ -505,6 +548,7 @@ class MCPGatewayAgent:
             "is_task_complete": True,
             "type": "end",
             "content": all_content,
+            "model": model_id,
         }
 
 
@@ -516,6 +560,7 @@ class MCPGatewayAgent:
         user_id: str = None,
         username: str = None,
         allowed_collections: List[str] = None,
+        llm_model: str = None,
     ) -> Dict[str, Any]:
         """Run to completion and return the whole trajectory in one object.
 
@@ -540,6 +585,7 @@ class MCPGatewayAgent:
         preamble_parts: List[str] = []
         reasoning_parts: List[str] = []
         tool_calls: List[Dict[str, Any]] = []
+        resolved_model = self._resolve_model(llm_model)
 
         async for chunk in self.stream(
             query=query,
@@ -548,6 +594,7 @@ class MCPGatewayAgent:
             user_id=user_id,
             username=username,
             allowed_collections=allowed_collections,
+            llm_model=llm_model,
         ):
             kind = chunk.get("type")
             if kind == "response":
@@ -565,6 +612,8 @@ class MCPGatewayAgent:
                 tool_calls.append({"phase": "end", "content": chunk.get("content")})
             elif kind == "error":
                 raise RuntimeError(chunk.get("content"))
+            elif kind == "end" and chunk.get("model"):
+                resolved_model = chunk["model"]
 
         answer = "".join(answer_parts).strip()
         preamble = "".join(preamble_parts).strip()
@@ -588,7 +637,7 @@ class MCPGatewayAgent:
             # Reported by the agent rather than assumed by the caller: the website and
             # the Temporal research path reach different agents, and a per-message model
             # is only meaningful if it names what really ran.
-            "model": self.llm_model or os.getenv("LLM_MODEL", ""),
+            "model": resolved_model,
         }
 
 
