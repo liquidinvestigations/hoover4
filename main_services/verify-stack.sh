@@ -319,6 +319,58 @@ else
     echo "NOTE - no OCR_TESSERACT_URL rendered (tesseract_cpu_enabled = false); skipping OCR check"
 fi
 
+# 7d. The AI server serves the embedding model the ini asks for, at the ini's
+#     dimension, and the reranker answers when enabled. The probe writes
+#     embeddings_serving_model/_dim into server_settings — P5/P6 build _vectors tables
+#     from that probed dimension, never from the ini, because a Manticore knn_dims
+#     cannot be altered after creation.
+emb_url=$(grep -E '^EMBEDDINGS_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+rerank_url=$(grep -E '^RERANK_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if [ -n "$emb_url" ]; then
+    if run_step probe-embeddings; then
+        ok "embeddings probe wrote server_settings"
+    else
+        fail "embeddings probe failed"
+    fi
+    expected_dim=$(grep -E '^EMBEDDINGS_DIM=' "$SCRIPT_DIR/../ai_services/.env" 2>/dev/null | cut -d= -f2 || true)
+    served_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
+    if [ -n "$expected_dim" ] && [ "$served_dim" = "$expected_dim" ]; then
+        ok "serving embedding dim ($served_dim) matches the ini"
+    elif [ -n "$expected_dim" ]; then
+        fail "serving embedding dim ($served_dim) != ini embeddings_dim ($expected_dim)"
+    fi
+else
+    echo "NOTE - no EMBEDDINGS_URL rendered (embeddings_provider = none); skipping embeddings probe"
+fi
+if [ -n "$rerank_url" ]; then
+    rerank_out=$(docker exec "$WORKER" curl -s --max-time 60 -X POST "$rerank_url/rerank" \
+        -H 'Content-Type: application/json' \
+        -d '{"query":"water","documents":["the danube water level","unrelated text"]}' 2>/dev/null || true)
+    case "$rerank_out" in
+        *'"relevance_score"'*) ok "reranker answers /v1/rerank" ;;
+        *) fail "reranker /v1/rerank did not answer: $(printf '%s' "$rerank_out" | head -c 200)" ;;
+    esac
+else
+    echo "NOTE - no RERANK_URL rendered (reranker_enabled = false); skipping rerank probe"
+fi
+
+# 7e. Chat artifacts (captured pages, search detail) live under `derived/` in MinIO, and
+#     P0_scan_disk must never walk that prefix. If it ever does, each artifact becomes a
+#     vfs_files row, is ingested, is captured again by the next chat that opens it, and
+#     produces another artifact — forever. `chat_artifacts` is the sole index of those
+#     objects, and a `blobs` row pointing into `derived/` is the signature of the loop
+#     having started.
+derived_blobs=0
+for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
+    count=$(CH "SELECT count() FROM ${db}.blobs WHERE s3_path LIKE '%derived/%'" 2>/dev/null || echo 0)
+    derived_blobs=$((derived_blobs + count))
+done
+if [ "$derived_blobs" -eq 0 ]; then
+    ok "no blobs row references derived/ (the ingest walker is not seeing chat artifacts)"
+else
+    fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the artifact prefix"
+fi
+
 # 8. A search through the site's HTTP API returns >0 hits for a word known to
 #    be in the fixture data. The server-function URL contains a build hash, so
 #    it is discovered from the served WASM bundle.

@@ -212,3 +212,22 @@ def post_json(
     raise RemoteUnavailable(
         "every endpoint for this call failed:\n  " + "\n  ".join(attempts)
     )
+
+
+def probe_embeddings(base_url: str) -> tuple[str, int]:
+    """One trivial ``POST {base_url}/embeddings``; returns ``(serving_model, dims)``.
+
+    The ini's ``embeddings_model`` / ``embeddings_dim`` are the *request*; this probe is
+    the *truth*. Phase 4 builds Manticore ``_vectors`` tables from the probed value and
+    refuses to index when it stops matching a shard's ``knn_dims`` — a table's knn_dims
+    is fixed at creation, so writing 384-dim vectors into a 1024-dim table is the
+    failure this exists to catch early.
+    """
+    result = post_json(
+        [("embeddings", f"{base_url.rstrip('/')}/embeddings")],
+        {"input": "dimension probe"},
+        read_timeout=30.0,
+    )
+    data = result.data
+    embedding = data["data"][0]["embedding"]
+    return data.get("model", ""), len(embedding)

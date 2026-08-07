@@ -9,6 +9,10 @@ selectors will break within months**. Two things make that failure visible inste
 silent: an engine returning zero results is reported in the response's `degraded` list
 rather than swallowed, and the engine set is env-configurable so a rotted scraper can be
 turned off without a rebuild.
+
+This module is now the `kind = "web"` half of a wider set. :mod:`.sources` wraps each
+engine here as a *source* alongside the `ddgs`-library and Wikipedia sources that used to
+be their own MCP servers, and :mod:`.pipeline` is what orders the merged set.
 """
 
 from __future__ import annotations
@@ -58,6 +62,14 @@ class SearchResult:
     #: see corroboration rather than trusting one scraper.
     engines: list[str] = field(default_factory=list)
     score: float = 0.0
+    #: `web` | `news` | `reference`, from the source that produced it. Set by
+    #: :mod:`.sources`; the raw scrapers here are all `web`.
+    kind: str = "web"
+    #: Publication date when the source supplies one (the news sources do).
+    published: str = ""
+    #: Rank this URL took in each source's own list, 1-based. Search bookkeeping: it goes
+    #: to the search-detail artifact, never to the model.
+    source_ranks: dict[str, int] = field(default_factory=dict)
 
 
 def normalise_url(url: str) -> str:
@@ -226,6 +238,26 @@ async def _fetch_engine(client: httpx.AsyncClient, name: str, query: str) -> lis
     return results
 
 
+def dedupe_within_source(results: list[SearchResult]) -> list[SearchResult]:
+    """Collapse repeats inside **one** source's own list, keeping its first position.
+
+    This runs *before* fusion, and skipping it is the subtle bug the plan calls out: a
+    source that lists the same article at ranks 2, 5 and 9 would otherwise award that URL
+    three separate RRF contributions and beat a page three independent sources agreed on.
+    Cross-source merging is what :func:`reciprocal_rank_fusion` does; this is the other
+    half.
+    """
+    seen: set[str] = set()
+    out: list[SearchResult] = []
+    for result in results:
+        key = normalise_url(result.url)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(result)
+    return out
+
+
 def reciprocal_rank_fusion(
     per_engine: dict[str, list[SearchResult]], max_results: int
 ) -> list[SearchResult]:
@@ -233,14 +265,23 @@ def reciprocal_rank_fusion(
 
     Rank is 1-based. A URL two engines both put at rank 3 scores higher than one a single
     engine put at rank 1, which is the property that makes a metasearch worth running.
+
+    Each input list is deduplicated first (see :func:`dedupe_within_source`), so one
+    source can contribute at most one rank per URL.
     """
     merged: dict[str, SearchResult] = {}
     for engine, results in per_engine.items():
-        for rank, result in enumerate(results, start=1):
+        for rank, result in enumerate(dedupe_within_source(results), start=1):
             key = normalise_url(result.url)
             existing = merged.get(key)
             if existing is None:
-                existing = SearchResult(title=result.title, url=result.url, snippet=result.snippet)
+                existing = SearchResult(
+                    title=result.title,
+                    url=result.url,
+                    snippet=result.snippet,
+                    kind=result.kind,
+                    published=result.published,
+                )
                 merged[key] = existing
             # Keep the longest snippet seen — engines truncate differently and the
             # fullest one is the most useful to the model.
@@ -248,7 +289,15 @@ def reciprocal_rank_fusion(
                 existing.snippet = result.snippet
             if not existing.title:
                 existing.title = result.title
+            if not existing.published:
+                existing.published = result.published
+            # A page a reference source *and* a web scraper both returned is a reference:
+            # the more specific kind wins, so the per-kind floor keeps encyclopaedic and
+            # news results visible instead of drowning them in generic web hits.
+            if existing.kind == "web" and result.kind != "web":
+                existing.kind = result.kind
             existing.engines.append(engine)
+            existing.source_ranks[engine] = rank
             existing.score += 1.0 / (RRF_K + rank)
 
     ordered = sorted(merged.values(), key=lambda r: r.score, reverse=True)

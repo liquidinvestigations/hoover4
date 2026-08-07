@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 #: Mirrors TOOL_PAYLOAD_CHARS in website/common/src/chat_types.rs.
-TOOL_PAYLOAD_CHARS = 12_000
+TOOL_PAYLOAD_CHARS = 24_000
 
 #: Mirrors TOOL_SUMMARY_CHARS in website/backend/src/api/chat/mod.rs.
 TOOL_SUMMARY_CHARS = 400

@@ -46,7 +46,7 @@ fn agent_timeout() -> Duration {
 /// because from the user's seat they are one thing ("it did not answer") and the local
 /// GPU stack fails transiently in all four ways: vLLM still loading, an MCP server
 /// restarting, a browser session that died.
-fn agent_attempts() -> u32 {
+pub fn agent_attempts() -> u32 {
     std::env::var("HOOVER4_AGENT_ATTEMPTS")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
@@ -55,7 +55,7 @@ fn agent_attempts() -> u32 {
 }
 
 /// Delay before the first retry. Doubles each time: 2s, 4s, 8s by default.
-fn agent_retry_base() -> Duration {
+pub fn agent_retry_base() -> Duration {
     let ms = std::env::var("HOOVER4_AGENT_RETRY_BASE_MS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -72,15 +72,6 @@ pub fn backoff_for_attempt(attempt: u32, base: Duration) -> Duration {
     // overflow into a nonsense delay.
     let factor = 1u64 << (attempt - 2).min(20);
     base.saturating_mul(factor.min(u32::MAX as u64) as u32)
-}
-
-/// Outcome of a retried agent call: the result, plus what the failed attempts said.
-///
-/// The errors are kept even on success — a turn that needed three tries is healthy
-/// output but unhealthy infrastructure, and the transcript is where that shows up.
-pub struct RetriedAgentCall {
-    pub result: anyhow::Result<AgentChatResult>,
-    pub attempt_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -245,21 +236,55 @@ pub fn pair_tool_calls(calls: &[AgentToolCall], summary_chars: usize) -> Vec<Pai
     paired
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct AgentChatResult {
-    #[serde(default)]
-    pub answer: String,
-    #[serde(default)]
-    pub reasoning: String,
-    #[serde(default)]
-    pub tool_calls: Vec<AgentToolCall>,
+// ---------------------------------------------------------------------------
+// Streaming: consume the agent's `/chat/stream` event feed.
+// ---------------------------------------------------------------------------
+
+/// One chunk from the agent's event stream (the `type` field of each SSE payload).
+#[derive(Debug, Clone)]
+pub enum AgentStreamEvent {
+    Start,
+    /// Model reasoning (never part of the answer body).
+    Reasoning(String),
+    /// Visible answer text. With `LLM_STREAMING` on this is per-token; off, one chunk
+    /// per turn.
+    Response(String),
+    /// A tool call started. Payload is the LangGraph start event.
+    StartTool(serde_json::Value),
+    /// A tool call finished. Payload is the LangGraph end event.
+    EndTool(serde_json::Value),
+    /// The turn is over. Payload is the accumulated content, which the caller has
+    /// already seen chunk by chunk — carried here only as a cross-check.
+    End,
 }
 
-/// Ask the agent a question on behalf of `username`, bounded by `allowed_collections`.
+fn parse_stream_event(chunk: &serde_json::Value) -> Option<AgentStreamEvent> {
+    let kind = chunk.get("type")?.as_str()?;
+    let content = chunk.get("content").cloned().unwrap_or(serde_json::Value::Null);
+    match kind {
+        "start" | "start_reasoning" | "start_response" => Some(AgentStreamEvent::Start),
+        "reasoning" => Some(AgentStreamEvent::Reasoning(
+            content.as_str().unwrap_or_default().to_string(),
+        )),
+        "response" => Some(AgentStreamEvent::Response(
+            content.as_str().unwrap_or_default().to_string(),
+        )),
+        "start_tool" => Some(AgentStreamEvent::StartTool(content)),
+        "end_tool" => Some(AgentStreamEvent::EndTool(content)),
+        "end" => Some(AgentStreamEvent::End),
+        // `error` chunks are turned into `Err` by the caller before this is invoked.
+        _ => None,
+    }
+}
+
+/// Stream one agent attempt, invoking `on_event` per chunk. Returns once the stream
+/// ends. Cancellation is the caller aborting the task this runs in, which also drops
+/// the in-flight HTTP request.
 ///
-/// `use_internet_tools` selects the full research agent (`HOOVER4_FULL_AGENT_URL`)
-/// instead of the internal search agent (`HOOVER4_AGENT_URL`).
-pub async fn ask_agent(
+/// An `error` chunk is delivered as `Err` from this function; transport errors mid-
+/// stream likewise. A caller that has already received events must NOT retry — the
+/// model may have produced visible content and a retry would duplicate it.
+pub async fn ask_agent_stream_once(
     username: &str,
     session_id: &str,
     message_id: &str,
@@ -267,12 +292,13 @@ pub async fn ask_agent(
     history: &[AgentChatMessage],
     allowed_collections: &[String],
     use_internet_tools: bool,
-) -> anyhow::Result<AgentChatResult> {
+    on_event: &mut (impl FnMut(AgentStreamEvent) + Send),
+) -> anyhow::Result<()> {
+    use futures::StreamExt;
+
     let base = agent_base_url(use_internet_tools);
     let body = AgentChatRequest {
         session_id,
-        // The agent's `user_id` is only a tracing correlation key; the ACL that matters
-        // travels in `allowed_collections`.
         user_id: username,
         message_id,
         query,
@@ -281,95 +307,56 @@ pub async fn ask_agent(
         allowed_collections,
     };
 
-    let client = reqwest::Client::builder().timeout(agent_timeout()).build()?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(agent_timeout())
+        .build()?;
     let response = client
-        .post(format!("{base}/chat"))
+        .post(format!("{base}/chat/stream"))
         .json(&body)
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("AI agent unreachable at {base}: {e}"))?;
-
     let status = response.status();
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
         anyhow::bail!("AI agent returned {status}: {}", text.chars().take(500).collect::<String>());
     }
 
-    Ok(response.json::<AgentChatResult>().await?)
-}
-
-/// [`ask_agent`] with exponential backoff.
-///
-/// `should_stop` is polled between attempts so an admin killing the run from the live
-/// chats panel does not have to wait out the remaining backoff. It cannot interrupt an
-/// attempt already in flight — see `live_runs`.
-#[allow(clippy::too_many_arguments)]
-pub async fn ask_agent_with_retries(
-    username: &str,
-    session_id: &str,
-    message_id: &str,
-    query: &str,
-    history: &[AgentChatMessage],
-    allowed_collections: &[String],
-    use_internet_tools: bool,
-    mut on_attempt: impl FnMut(u32),
-    should_stop: impl Fn() -> bool,
-) -> RetriedAgentCall {
-    let attempts = agent_attempts();
-    let base = agent_retry_base();
-    let mut attempt_errors: Vec<String> = Vec::new();
-
-    for attempt in 1..=attempts {
-        if attempt > 1 {
-            if should_stop() {
-                break;
-            }
-            tokio::time::sleep(backoff_for_attempt(attempt, base)).await;
-            if should_stop() {
-                break;
-            }
-        }
-        on_attempt(attempt);
-
-        match ask_agent(
-            username,
-            session_id,
-            message_id,
-            query,
-            history,
-            allowed_collections,
-            use_internet_tools,
-        )
-        .await
-        {
-            Ok(result) => {
-                return RetriedAgentCall {
-                    result: Ok(result),
-                    attempt_errors,
+    // The feed is SSE-shaped (`data: {json}\n\n`) over text/plain. Buffer and split on
+    // the blank line; a chunk boundary can fall anywhere.
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    while let Some(item) = stream.next().await {
+        let bytes = item.map_err(|e| anyhow::anyhow!("agent stream broke: {e}"))?;
+        buffer.push_str(&String::from_utf8_lossy(&bytes));
+        while let Some(pos) = buffer.find("\n\n") {
+            let frame = buffer[..pos].to_string();
+            buffer = buffer[pos + 2..].to_string();
+            for line in frame.lines() {
+                let Some(payload) = line.strip_prefix("data: ") else {
+                    continue;
+                };
+                let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
+                    tracing::warn!("unparseable agent stream frame: {}", &payload[..payload.len().min(200)]);
+                    continue;
+                };
+                if let Some(kind) = json.get("type").and_then(|t| t.as_str()) {
+                    if kind == "error" {
+                        let msg = json
+                            .get("content")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("unknown agent error");
+                        anyhow::bail!("{msg}");
+                    }
+                }
+                if let Some(event) = parse_stream_event(&json) {
+                    on_event(event);
                 }
             }
-            Err(e) => {
-                attempt_errors.push(format!("attempt {attempt}/{attempts}: {e}"));
-            }
         }
     }
-
-    // Every attempt failed (or a cancel cut the sequence short). The last message is
-    // the most recent failure; the earlier ones travel separately so the UI can show
-    // the sequence rather than only its least informative member.
-    let last = attempt_errors
-        .last()
-        .cloned()
-        .unwrap_or_else(|| "the agent call was cancelled before it ran".to_string());
-    let earlier = attempt_errors
-        .len()
-        .checked_sub(1)
-        .map(|n| attempt_errors[..n].to_vec())
-        .unwrap_or_default();
-    RetriedAgentCall {
-        result: Err(anyhow::anyhow!("{last}")),
-        attempt_errors: earlier,
-    }
+    Ok(())
 }
 
 #[cfg(test)]

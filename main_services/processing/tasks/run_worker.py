@@ -48,8 +48,15 @@ async def run_common_worker():
         purge_dataset_from_clickhouse,
         purge_dataset_from_manticore,
         recompute_shard_ledger_activity,
+        sweep_chat_artifacts,
     )
-    from .P_admin.workflows import CollectEtaSamples, DropCollectionDatabase, EnsureCollectionDatabase, PurgeDataset
+    from .P_admin.workflows import (
+        CollectEtaSamples,
+        DropCollectionDatabase,
+        EnsureCollectionDatabase,
+        PurgeDataset,
+        SweepChatArtifacts,
+    )
     from .P_agent.activities import run_research_agent, write_chat_message
     from .P_agent.workflows import ResearchTask
     from .visibility import ensure_search_attributes
@@ -73,6 +80,20 @@ async def run_common_worker():
         )
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
+
+    # Daily chat-artifact retention. Same singleton pattern, same reason: two common
+    # workers race to assert it and the loser's error is the normal outcome.
+    try:
+        await client.start_workflow(
+            SweepChatArtifacts.run,
+            id="sweep-chat-artifacts",
+            task_queue="processing-common-queue",
+            id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+        )
+    except temporalio.exceptions.WorkflowAlreadyStartedError:
+        pass
+
     CONCURRENCY = 8
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
@@ -97,6 +118,7 @@ async def run_common_worker():
             DropCollectionDatabase,
             PurgeDataset,
             CollectEtaSamples,
+            SweepChatArtifacts,
             ResearchTask,
           ],
           activities=[
@@ -138,6 +160,7 @@ async def run_common_worker():
             purge_dataset_from_clickhouse,
             recompute_shard_ledger_activity,
             collect_eta_samples,
+            sweep_chat_artifacts,
 
             # P_agent long-running AI research tasks
             run_research_agent,

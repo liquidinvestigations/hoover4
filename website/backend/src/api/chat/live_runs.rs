@@ -153,6 +153,34 @@ pub fn request_cancel(run_id: u64) -> bool {
     }
 }
 
+/// Whether this process holds a run for one user's session right now. The interrupted-
+/// turn detector asks exactly this: a stream row that has stopped advancing with no
+/// live run behind it belongs to a process that died mid-turn.
+pub fn has_run_for(username: &str, session_id: &str) -> bool {
+    let Ok(runs) = RUNS.lock() else {
+        return false;
+    };
+    runs.values()
+        .any(|s| s.username == username && s.session_id == session_id)
+}
+
+/// The stop button's cancel: by owner + session rather than by run id, because the
+/// composer knows the conversation it is showing, not the registry's internal id.
+/// Returns false when nothing is in flight for the session (already finished).
+pub fn request_cancel_for(username: &str, session_id: &str) -> bool {
+    let Ok(runs) = RUNS.lock() else {
+        return false;
+    };
+    let mut found = false;
+    for state in runs.values() {
+        if state.username == username && state.session_id == session_id {
+            state.cancel.store(true, Ordering::Relaxed);
+            found = true;
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,7 +8,10 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, and the retry-attempt disclosure. |
-| `tool_disclosure.rs` | Tool card: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
+| `tool_cards/mod.rs` | The card **registry**: dispatches on tool name, plus the shared card chrome, the elapsed-seconds counter, and the JSON/link helpers every card uses. |
+| `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
+| `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
+| `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. |
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
@@ -39,18 +42,71 @@ The heading scale tops out at **body + 3px** (18px against 15px). Chat headings 
 inside a message, not page titles — a browser-default `h1` at 2em towers over the
 conversation. Weight and colour carry the hierarchy instead. A test pins this.
 
-## Tool cards have three levels
+## Tool cards: a registry, not a growing `match`
 
-1. **Collapsed** — a type chip (`search_collections`, `web_search`, …) plus a one-line
-   prose summary. Never raw JSON.
+`tool_disclosure.rs` used to be one `match` with a branch per tool, and that shape has a
+specific failure: the generic branch got the *newest* tools, which are the ones whose
+output is least readable as flat key/value rows. Dispatch now lives in `tool_cards/mod.rs`
+and the generic card is the deliberate fallback — an MCP server that adds a tool tomorrow
+still renders, just plainly.
+
+`browser_*` is matched on the **prefix**, not by listing thirty names, so a
+playwright-mcp upgrade that adds a tool does not silently drop it into the generic card.
+
+### The generic card still has three levels
+
+1. **Collapsed** — a type chip plus a one-line prose summary. Never raw JSON.
 2. **Expand** — arguments and result as labelled key/value rows, nested data summarised
    ("8 items").
 3. **Show raw JSON** — a second toggle inside the expansion, pretty-printed, for debugging.
 
-The previous version put level 3 where level 2 belongs, so a card was either a wall of
-JSON or — when the writer had not populated the payload columns — empty. Rows written
-before those columns existed now show the stored summary with a note, instead of a blank
-panel.
+An earlier version put level 3 where level 2 belongs, so a card was either a wall of JSON
+or — when the writer had not populated the payload columns — empty. Rows written before
+those columns existed show the stored summary with a note, instead of a blank panel.
+
+### `web_search`
+
+* **Pending** (streaming, `start_tool` seen, no `end_tool`): the query in quotes, the
+  sources it is waiting on, and a seconds counter. A pending search with no counter is
+  indistinguishable from a wedged one.
+* **Collapsed:** `web_search · "danube water level" · 30 results · 7 sources`, plus a
+  warning pip when a source came back empty and a "not reranked" pip when the
+  cross-encoder did not run.
+* **Expanded:** the summary strip (sources, degraded list, dedupe counts, timings) and the
+  result list — rank badge, title as a real link, the **full** snippet, the source chips,
+  and an `RRF #7 → #2` badge where reranking moved it.
+* **Popup:** both orderings side by side, fetched lazily from the `search_detail` artifact
+  through the `chat_artifact_detail` server function. The tool payload cannot carry two
+  orderings of forty candidates, which is why that artifact exists.
+
+### `browser_*`
+
+`browser_navigate` gets the full treatment; every other action gets a compact row — what
+was done, to which element, and the resulting thumbnail. Read as a sequence those rows are
+a filmstrip of the navigation, which is what makes a multi-step browse legible.
+
+`status = 'too_large'` or `'failed'` renders as an **explicit line**, never as an absent
+element: a capture that silently is not there looks identical to a tool that was never
+called.
+
+The popup frames the archived page as `<iframe sandbox="">` — the **empty** value, which is
+the strict one; an omitted attribute means no sandbox at all. The response additionally
+carries `default-src 'none'`. Both are required: the CSP alone still allows scripts, and
+the sandbox alone still lets a stylesheet fetch leak that the capture was viewed.
+
+### The rule every card follows
+
+**Tool payloads are never rendered as HTML.** Titles, snippets and page text come from the
+open web and are attacker-controlled; every one is a Dioxus text node, and a URL becomes an
+`href` only after `http_link` has confirmed it is plainly `http`/`https`.
+
+### Pending cards read their arguments from the stream row's summary
+
+A `chat_message_stream` row has no payload columns — the arguments and result are written
+only when the call finalises into `chat_messages`. Its `summary` **is** the arguments JSON
+while the call runs (`AgentToolCall::summary` takes `input` first), which is what lets the
+pending `web_search` card show the query. It is truncated at 400 chars, so the cards parse
+it best-effort and fall back to a bare label.
 
 ## Reuse of search / document preview
 
@@ -75,5 +131,14 @@ end    {"output": {"content": …, "type": "tool", "name": "list_collections"|"s
 `DocumentIdentifier` key). `get_document_text` currently returns `collectionname` +
 `file_hash` without `collection_dataset` — those cards render as a non-clickable stub.
 
-Note there is **no tool name on a start event** — it appears only at `output.name` on the
-end event, so the events must be paired before a call can be labelled.
+There is **no tool name on a raw start event** — it appears only at `output.name` on the
+end event. `research_agent/agent.py` therefore copies it onto the start chunk, because a
+card rendered *while the call runs* has no end event yet and would otherwise be labelled
+"tool".
+
+Web and browser tool results additionally carry a reserved `_hoover4_artifacts` key: a list
+of `{artifact_id, kind, status, url, title, detail}`. The model is told nothing about it;
+it is how the cards find the screenshot and the archived page. Assets are fetched from
+`/_chat_artifact/{id}/{thumb.webp|page.html|detail.json}`, which resolves the id to its
+owner and enforces owner-or-admin — the id comes from an LLM-driven tool payload and is a
+lookup key, not a capability.

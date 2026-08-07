@@ -124,6 +124,57 @@ the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
 internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
 agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
 
+### Streaming a turn (Plan 2 Phase 1)
+
+`send_message` no longer holds the request open for the whole agent run. It takes the
+session's **turn lock**, writes the user row, registers the run and spawns the turn, then
+returns the transcript *including* the message just sent. The turn consumes the agent's
+`/chat/stream` SSE feed and mirrors it into `chat_message_stream`; the page follows it
+with `chat_poll`.
+
+The lock is `try_lock`: one turn at a time per session, and a second send is refused with
+a message rather than blocking a request for the length of an agent run.
+
+| Piece | Where |
+|---|---|
+| stream consumer | `api::chat::agent_client::ask_agent_stream_once` |
+| fold into rows | `api::chat::handle_stream_event` + `TurnState` |
+| stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
+| long-poll | `api::chat::poll_chat`, `RateLimitKind::ChatPoll` |
+| Temporal twin | `main_services/processing/tasks/P_agent/stream_writer.py` |
+
+Three rules that are easy to break and hard to notice:
+
+- **`read_stream_rows` aggregates in a subquery.** `max(updated_at) AS updated_at`
+  shadows the column, so sibling `argMax(…, updated_at)` calls become aggregates inside
+  aggregates (`Code: 184`); but `clickhouse::Row` also matches columns **by name**, so
+  the aliases cannot simply be renamed. Aggregate as `last_*` inside, rename outside.
+- **Liveness comes from the transcript, not from an open stream row.** `ChatPollResult`
+  carries `active`, computed from `db_chat::turn_boundaries` — a turn is open while the
+  last user row has no assistant/error row after it. The writer finalises one row and
+  opens the next as two separate inserts, and a poll landing in that gap used to report
+  the turn as finished. Inline turns hid this behind their `live_runs` entry; Temporal
+  research turns, which have none here, dropped the page out of its poll loop seconds in.
+- **A turn always keeps exactly one non-final stream row open**, from before the agent
+  call until finalisation. That is what the interrupted detector points at: a process
+  killed with nothing open leaves a transcript that just stops, with no marker.
+
+Poll cadence: holds up to 15 s when nothing changes, and every poll after the first takes
+at least 500 ms — with content flowing each poll returns immediately, so without that
+floor the client spins as fast as the network allows. Concurrently-held polls are capped
+per user (`MAX_HELD_POLLS_PER_USER`).
+
+Stop and interruption: the composer's stop button calls `live_runs::request_cancel_for`;
+the turn notices within 200 ms and finalises whatever partial exists with an explicit
+marker. A turn whose rows stop advancing for `CHAT_STREAM_STALL_SECONDS` (default 60)
+with no live run behind it renders as **interrupted** with a Dismiss button — never a
+spinner, and never promoted into `chat_messages`.
+
+Deep research streams through the same table. `start_research_task` writes an empty
+stream row when it accepts the task (the only thing that tells the poller a turn exists
+before the worker picks the activity up) and the activity rewrites that seq, keepalive
+included.
+
 ### Retries
 
 Each turn gets `HOOVER4_AGENT_ATTEMPTS` attempts (default 4) with exponential backoff from
@@ -155,20 +206,26 @@ the same persistence as any other user. A demo visitor driving a local GPU is a
 (`backend::api::rate_limit::check_and_record`, Plan 2) is the mitigation for
 now. **Revisit whether guests should have LLM access at all.**
 
-### Q6 — `chat_messages.seq` race
+### `chat_messages.seq` race — closed
 
-`seq` is assigned by reading `max(seq)+1`. ClickHouse has no sequences or row locks, so
-two messages sent from two tabs in the same instant can collide and the
-`ReplacingMergeTree` keeps one. Accepted. A real fix needs a per-session lock (Redis is
-already in the stack) or a client-supplied monotonic id.
+`seq` is still `max(seq)+1`, but every caller that allocates one now holds the session's
+`db_chat::turn_lock` for the whole turn, which serialises allocation *and* stops a second
+turn reading a history the first has not finished writing. Every row also carries a
+per-turn `message_uuid` (migration `00021`), so a collision that still got through — two
+website processes, say — is detectable rather than silent.
 
 ### Tool-event payload shapes
 
 ```
-start  {"input": {}}
-start  {"input": {"query": "…", "collections": ["…"]}}
+start  {"input": {}, "name": "list_collections"}
+start  {"input": {"query": "…", "collections": ["…"]}, "name": "search_collections"}
 end    {"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}
 ```
+
+`name` on the **start** event is added by the agent (`research_agent/agent.py`);
+LangGraph's raw `on_tool_start` data carries only `input`, and the tool's name first
+appears under `output.name` on the end event. Without it every card rendered while a call
+was still running was labelled "tool".
 
 `search_collections` hits carry `collection_dataset` + `file_hash` (the
 `DocumentIdentifier` key used by the document-preview stack).

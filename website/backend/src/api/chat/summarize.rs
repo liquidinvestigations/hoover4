@@ -54,11 +54,19 @@ struct ChatCompletionResponse {
 #[derive(Debug, Deserialize)]
 struct Choice {
     message: ChoiceMessage,
+    /// `stop` when the model finished, `length` when it hit `max_tokens`. A truncated
+    /// completion is not a title — see [`generate_title_and_summary`].
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChoiceMessage {
     content: Option<String>,
+    /// Reasoning models return their scratchpad on this separate channel. It is never
+    /// the answer, and a model cut off mid-thought echoes it into `content` as well.
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +114,13 @@ pub async fn generate_title_and_summary(
             },
         ],
         temperature: 0.2,
-        max_tokens: 120,
+        // Budget for a *reasoning* model, not for two lines of output. At 120 the
+        // configured provider (nemotron-3-super) spent the entire allowance thinking,
+        // came back `finish_reason: "length"` with its scratchpad mirrored into
+        // `content`, and the sidebar filled up with titles reading "We need to output
+        // exactly two lines: line1 short title max 8 words…". The reply is still two
+        // lines; the thinking in front of it is what needs the room.
+        max_tokens: 512,
     };
 
     let url = format!("{}/chat/completions", llm_base_url().trim_end_matches('/'));
@@ -150,12 +164,29 @@ pub async fn generate_title_and_summary(
         }
     };
 
-    let raw = parsed
-        .choices
-        .first()
-        .and_then(|c| c.message.content.as_ref())
+    let choice = parsed.choices.first()?;
+    // A completion cut off at `max_tokens` is not a title. Falling back to
+    // `title_from_message` shows the user's own words, which is always better than half
+    // a sentence — or, when the model was still thinking, than its scratchpad.
+    if choice.finish_reason.as_deref() == Some("length") {
+        tracing::warn!("chat summariser: model hit max_tokens; keeping the fallback title");
+        return None;
+    }
+    let raw = choice
+        .message
+        .content
+        .as_ref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())?;
+
+    // Reasoning is never the answer. A model that mirrors its scratchpad into `content`
+    // has told us nothing usable, and the fallback title is the honest outcome.
+    if let Some(reasoning) = choice.message.reasoning_content.as_deref() {
+        if !reasoning.trim().is_empty() && raw == reasoning.trim() {
+            tracing::warn!("chat summariser: model returned only its reasoning; keeping the fallback title");
+            return None;
+        }
+    }
 
     // Strip optional <think>…</think> blocks some local models emit.
     let cleaned = strip_think_blocks(&raw);

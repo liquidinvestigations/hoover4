@@ -18,8 +18,12 @@ pub fn ChatComposer(
     sending: Signal<bool>,
     retry_after_seconds: Signal<Option<u64>>,
     on_submit: EventHandler<()>,
+    /// The stop button, shown in place of send while a turn is in flight.
+    on_stop: Option<EventHandler<()>>,
 ) -> Element {
-    let disabled = *sending.read() || retry_after_seconds.read().is_some();
+    // Only a rate-limit lockout disables typing: while a turn streams the user can
+    // already draft the next message (the server serialises turns per session).
+    let disabled = retry_after_seconds.read().is_some();
     let locked = options.read().locked;
 
     rsx! {
@@ -40,7 +44,11 @@ pub fn ChatComposer(
                 onkeypress: move |e| {
                     if e.key() == Key::Enter && !e.modifiers().shift() {
                         e.prevent_default();
-                        if !disabled {
+                        // `sending` too, not just `disabled`: typing stays enabled while
+                        // a turn streams so the next message can be drafted, and without
+                        // this an Enter on that draft would be a second send the server
+                        // then refuses.
+                        if !disabled && !*sending.read() {
                             on_submit.call(());
                         }
                     }
@@ -87,22 +95,37 @@ pub fn ChatComposer(
                         "Try again in {secs} s"
                     }
                 }
-                button {
-                    style: {
-                        let ready = !draft.read().trim().is_empty() && !disabled;
-                        let bg = if ready { "#4F46E5" } else { "#E2E8F0" };
-                        let color = if ready { "white" } else { "#94A3B8" };
-                        format!(
-                            "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                             background: {bg}; color: {color}; cursor: {}; font-size: 18px; \
-                             display: flex; align-items: center; justify-content: center;",
-                            if ready { "pointer" } else { "default" }
-                        )
-                    },
-                    disabled: disabled || draft.read().trim().is_empty(),
-                    title: "Send",
-                    onclick: move |_| on_submit.call(()),
-                    "\u{2191}"
+                if *sending.read() {
+                    button {
+                        style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
+                                background: #DC2626; color: white; cursor: pointer; font-size: 14px; \
+                                display: flex; align-items: center; justify-content: center;",
+                        title: "Stop the answer (the partial is kept)",
+                        onclick: move |_| {
+                            if let Some(on_stop) = on_stop.as_ref() {
+                                on_stop.call(());
+                            }
+                        },
+                        "\u{25A0}"
+                    }
+                } else {
+                    button {
+                        style: {
+                            let ready = !draft.read().trim().is_empty() && !disabled;
+                            let bg = if ready { "#4F46E5" } else { "#E2E8F0" };
+                            let color = if ready { "white" } else { "#94A3B8" };
+                            format!(
+                                "width: 40px; height: 40px; border-radius: 999px; border: none; \
+                                 background: {bg}; color: {color}; cursor: {}; font-size: 18px; \
+                                 display: flex; align-items: center; justify-content: center;",
+                                if ready { "pointer" } else { "default" }
+                            )
+                        },
+                        disabled: disabled || draft.read().trim().is_empty(),
+                        title: "Send",
+                        onclick: move |_| on_submit.call(()),
+                        "\u{2191}"
+                    }
                 }
             }
         }

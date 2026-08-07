@@ -32,6 +32,7 @@ COLLAPSED_BASELINE = {
 
 EXPECTED_GLOBAL_TABLES = {
     "api_events",
+    "chat_artifacts",
     "chat_message_stream",
     "chat_messages",
     "chat_sessions",

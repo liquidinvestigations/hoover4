@@ -11,6 +11,7 @@ pub mod doc_ref_card;
 pub mod locked_options;
 pub mod markdown_text;
 pub mod session_card;
+pub mod tool_cards;
 pub mod tool_disclosure;
 pub mod transcript;
 
@@ -19,5 +20,6 @@ pub use conversation_find::ConversationFindBar;
 pub use doc_ref_card::ChatDocRefCard;
 pub use locked_options::LockedOptionsBar;
 pub use session_card::ChatSessionCard;
+pub use tool_cards::ToolCard;
 pub use tool_disclosure::ToolCallDisclosure;
 pub use transcript::ChatTranscript;

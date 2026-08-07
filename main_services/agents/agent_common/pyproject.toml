@@ -1,0 +1,25 @@
+[project]
+name = "hoover4-agent-common"
+version = "0.1.0"
+description = "Shared helpers for the Hoover4 MCP servers: chat artifacts, MinIO, reranking"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    # Plain HTTP to ClickHouse and to the rerank endpoint, matching
+    # collection_search_server/backends.py — no driver whose major version has to be
+    # tracked in three images.
+    "requests>=2.31",
+    "minio>=7.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent_common*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

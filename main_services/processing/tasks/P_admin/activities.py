@@ -133,3 +133,17 @@ def collect_eta_samples(params: "CollectEtaSamplesParams") -> "CollectEtaSamples
     from tasks.P_admin.eta_collector import run_collection_pass
 
     return run_collection_pass(params)
+
+
+@activity.defn
+@with_heartbeat
+def sweep_chat_artifacts() -> str:
+    """One chat-artifact retention pass: objects first, then rows.
+
+    See ``tasks/P_admin/artifact_sweeper`` for why the order is not interchangeable — a
+    ClickHouse TTL cannot delete MinIO objects, so dropping the rows first would leak the
+    bytes permanently.
+    """
+    from tasks.P_admin.artifact_sweeper import sweep_json
+
+    return sweep_json()

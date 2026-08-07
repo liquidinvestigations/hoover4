@@ -1,9 +1,18 @@
-"""FastMCP server: web search across several engines, merged with RRF.
+"""FastMCP server: **the** web search tool.
 
-Supersedes `hoover4-mcp-ddg` in the full research agent's tool list — one engine's view
-of the web is one engine's opinion, and the `engines` list on each result lets the model
-see how many independent scrapers agreed. Both servers are cheap, so the DDG one is kept
-running; see `main_services/agents/README.md` for which agent uses which.
+One tool searches the open web. Before Phase 2 the full research agent carried three
+overlapping ones — `web_search` here, `ddg_text_search`/`ddg_news_search` on
+`hoover4-mcp-ddg`, and `wikipedia_search` on `hoover4-mcp-wikipedia` — and a small model
+faced with three near-identical descriptions picks badly and inconsistently. Those two
+servers are retired; their sources live in :mod:`.sources` as `ddg_api`, `ddg_news` and
+`wikipedia`, selectable through the `sources` argument.
+
+What the model gets back is deliberately richer than before (the old payload was a title,
+a URL and 400 characters, which is not enough to decide what to read): full snippets,
+which sources corroborated each result, both rankings, and the timing table. What it does
+*not* get is the pre-rerank ordering of every candidate — that is bookkeeping, it would
+roughly double the token cost, and it goes to the search-detail artifact instead. The tool
+result carries only that artifact's UUID.
 """
 
 from __future__ import annotations
@@ -13,9 +22,12 @@ import os
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
-from metasearch_server.engines import ENGINES, configured_engines, search_all
+from agent_common import artifacts, rerank as rerank_client
+from metasearch_server import pipeline
+from metasearch_server.sources import ALL_KINDS, configured_sources, describe_sources
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -23,47 +35,83 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DEFAULT_MAX_RESULTS = int(os.getenv("MAX_RESULTS", "8"))
-MAX_ALLOWED_RESULTS = int(os.getenv("METASEARCH_MAX_ALLOWED_RESULTS", "25"))
+DEFAULT_MAX_RESULTS = int(os.getenv("MAX_RESULTS", "15"))
+MAX_ALLOWED_RESULTS = int(os.getenv("METASEARCH_MAX_ALLOWED_RESULTS", "40"))
 
-#: Snippets are what land in the agent's context, so they are capped for the same reason
-#: the collection server caps its own.
-SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "400"))
+#: Same headers the collection server reads. The session id scopes the search-detail
+#: artifact to one conversation; the username is the ACL the website enforces on read.
+SESSION_HEADER = "x-hoover4-chat-session"
+USER_HEADER = "x-hoover4-user"
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_metasearch"),
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
-        "Search the public web across several independent engines at once "
-        "(DuckDuckGo, Brave, Startpage, Yahoo). Results are merged with reciprocal rank "
-        "fusion, so a page several engines agree on ranks highest; each result lists "
-        "which engines returned it, and a page found by three engines is better "
-        "corroborated than one found by one. Use `browse_page` from the browser tool to "
-        "read a promising result in full — the snippets here are short by design. "
-        "This searches the OPEN WEB, not the user's own documents.",
+        "Search the OPEN WEB — not the user's own documents. One tool covers several "
+        "independent engines (DuckDuckGo, Brave, Startpage, Yahoo), DuckDuckGo News and "
+        "Wikipedia at once. Results are merged with reciprocal rank fusion and then "
+        "reordered by a cross-encoder, so the top results are the ones most relevant to "
+        "the exact question rather than the ones most engines happened to agree on. Each "
+        "result names the sources that returned it: a page three sources found is better "
+        "corroborated than one found by one. Snippets are short by design — use the "
+        "browser tools to open a promising result and read it in full.",
     ),
 )
+
+
+def _header(name: str) -> str:
+    try:
+        headers = get_http_headers()
+    except Exception:  # noqa: BLE001 - called outside a request in tests
+        return ""
+    for key, value in dict(headers).items():
+        if key.lower() == name:
+            return (value or "").strip()
+    return ""
 
 
 class WebResult(BaseModel):
     title: str
     url: str
+    display_url: str = ""
     snippet: str = ""
-    engines: list[str] = Field(
-        default_factory=list, description="Engines that returned this URL — corroboration"
+    sources: list[str] = Field(
+        default_factory=list, description="Sources that returned this URL — corroboration"
     )
-    score: float = Field(default=0.0, description="Reciprocal-rank-fusion score")
+    kind: str = Field(default="web", description="web | news | reference")
+    rrf_rank: int = 0
+    rrf_score: float = 0.0
+    rerank_rank: int | None = None
+    rerank_score: float | None = None
+    published: str = ""
 
 
 class WebSearchResponse(BaseModel):
     success: bool
     query: str
     results: list[WebResult] = Field(default_factory=list)
-    engines_used: list[str] = Field(default_factory=list)
+    sources_used: list[str] = Field(default_factory=list)
     degraded: list[str] = Field(
         default_factory=list,
-        description="Engines that returned nothing — likely a broken scraper, "
-        "so these results are from fewer sources than intended",
+        description="Sources that returned nothing — likely broken, so these results "
+        "come from fewer sources than intended",
+    )
+    unknown_sources: list[str] = Field(
+        default_factory=list, description="Names in `sources` that do not exist and were ignored"
+    )
+    total_before_dedupe: int = 0
+    total_after_dedupe: int = 0
+    rerank_applied: bool = False
+    rerank_ms: float = 0.0
+    rerank_error: str = ""
+    source_latency_ms: dict[str, float] = Field(default_factory=dict)
+    source_counts: dict[str, int] = Field(default_factory=dict)
+    fetch_ms: float = 0.0
+    total_ms: float = 0.0
+    artifact_id: str | None = Field(
+        default=None,
+        description="Handle for the full before/after ranking detail. Shown to the user; "
+        "there is nothing for you to do with it.",
     )
     error: str | None = None
 
@@ -71,54 +119,80 @@ class WebSearchResponse(BaseModel):
 @mcp.tool(
     name="web_search",
     description=(
-        "Search the public web across several engines at once and return results merged "
-        "by reciprocal rank fusion. Each result says which engines returned it. Use for "
-        "anything outside the user's own document collections."
+        "Search the open web. Covers several independent engines, news and Wikipedia in "
+        "one call; results are fused across sources and reordered by a cross-encoder. "
+        "Use for anything outside the user's own document collections. Optional "
+        "`sources` narrows where to look (e.g. ['ddg_news'] for recent news, "
+        "['wikipedia'] for background); omit it to search everything. `timelimit` "
+        "accepts 'd', 'w', 'm' or 'y' and only affects the news and ddg_api sources."
     ),
 )
 async def web_search(
     query: str,
+    sources: list[str] | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
-    engines: list[str] | None = None,
+    timelimit: str | None = None,
 ) -> WebSearchResponse:
     if not query or not query.strip():
         return WebSearchResponse(success=False, query=query, error="query cannot be empty")
 
     limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS))
+    if timelimit and timelimit not in ("d", "w", "m", "y"):
+        # Refused rather than silently ignored: a model that thinks it filtered to the
+        # last day and did not will present stale results as fresh.
+        return WebSearchResponse(
+            success=False, query=query, error="timelimit must be one of 'd', 'w', 'm', 'y'"
+        )
+
     try:
-        results, degraded = await search_all(query.strip(), limit, engines)
+        outcome = await pipeline.run_search(
+            query.strip(), requested_sources=sources, max_results=limit, timelimit=timelimit
+        )
     except Exception as exc:  # noqa: BLE001 - surfaced to the model, not raised at it
         log.exception("metasearch failed")
         return WebSearchResponse(success=False, query=query, error=str(exc))
 
-    used = [e for e in (engines or configured_engines()) if e in ENGINES] or configured_engines()
+    artifact_id = artifacts.write_json_detail(
+        session_id=_header(SESSION_HEADER),
+        username=_header(USER_HEADER),
+        tool_name="web_search",
+        detail=pipeline.detail_document(outcome),
+        title=query.strip()[:200],
+    )
+
     return WebSearchResponse(
         success=True,
         query=query,
-        results=[
-            WebResult(
-                title=r.title,
-                url=r.url,
-                snippet=r.snippet[:SNIPPET_CHARS],
-                engines=sorted(set(r.engines)),
-                score=round(r.score, 6),
-            )
-            for r in results
-        ],
-        engines_used=used,
-        degraded=degraded,
+        results=[WebResult(**pipeline.result_payload(item)) for item in outcome.ranked],
+        sources_used=outcome.sources_used,
+        degraded=outcome.degraded,
+        unknown_sources=outcome.unknown_sources,
+        total_before_dedupe=outcome.total_before_dedupe,
+        total_after_dedupe=outcome.total_after_dedupe,
+        rerank_applied=outcome.rerank_applied,
+        rerank_ms=outcome.rerank_ms,
+        rerank_error=outcome.rerank_error,
+        source_latency_ms=outcome.source_latency_ms,
+        source_counts=outcome.source_counts,
+        fetch_ms=outcome.fetch_ms,
+        total_ms=outcome.total_ms,
+        artifact_id=artifact_id,
     )
 
 
 @mcp.tool(
-    name="list_search_engines",
-    description="The web search engines this server is configured to use.",
+    name="list_search_sources",
+    description=(
+        "The sources web_search can use, with their kind (web, news or reference). Call "
+        "this only if you need to narrow a search to particular sources."
+    ),
 )
-def list_search_engines() -> dict[str, Any]:
+def list_search_sources() -> dict[str, Any]:
     return {
-        "configured": configured_engines(),
-        "available": sorted(ENGINES),
-        "note": "Set METASEARCH_ENGINES to change the set without a rebuild.",
+        "sources": describe_sources(),
+        "kinds": list(ALL_KINDS),
+        "configured": configured_sources(),
+        "note": "Set METASEARCH_SOURCES to change the default set without a rebuild.",
     }
 
 
@@ -126,11 +200,25 @@ def list_search_engines() -> dict[str, Any]:
 async def health(_request: Any):
     from starlette.responses import JSONResponse
 
-    return JSONResponse({"status": "ok", "service": "hoover4-metasearch"})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "hoover4-metasearch",
+            "sources": configured_sources(),
+            "rerank_endpoint": rerank_client.endpoint(),
+            "rerank_available": rerank_client.available(),
+            "rerank_circuits": rerank_client.breaker_state(),
+            "artifacts_enabled": artifacts.enabled(),
+        }
+    )
 
 
 def main() -> None:
-    log.info("Starting Hoover4 metasearch MCP server (engines: %s)", configured_engines())
+    log.info(
+        "Starting Hoover4 metasearch MCP server (sources: %s, rerank: %s)",
+        configured_sources(),
+        rerank_client.endpoint() or "disabled",
+    )
     mcp.run(
         transport="http",
         host=os.getenv("HOST", "0.0.0.0"),

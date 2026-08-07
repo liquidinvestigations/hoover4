@@ -12,6 +12,15 @@ dependencies = [
     # four result pages are parsed per query.
     "httpx>=0.27",
     "selectolax>=0.3.21",
+    # The `ddgs` library, inherited from the retired hoover4-mcp-ddg. It backs the
+    # `ddg_api` and `ddg_news` sources, which are kept alongside the `ddg` HTML scraper
+    # because the two rot independently.
+    "ddgs>=9.0",
+    # agent_common's own dependencies. Declared here as well because the image installs
+    # `./agent_common` before this package (see the Dockerfile) and pip resolves the two
+    # separately.
+    "requests>=2.31",
+    "minio>=7.2",
 ]
 
 [project.optional-dependencies]

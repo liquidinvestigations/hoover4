@@ -55,23 +55,21 @@ def run_research_agent(params: ResearchTaskParams) -> str:
 
     Raises on any failure so Temporal retries. Writing the answer into the chat is a
     separate activity: a retried research run must not append a second transcript.
+
+    The agent is consumed through its streaming endpoint, and the events are mirrored
+    into `chat_message_stream` as they arrive (Q11): a research run shows the same
+    pending tool cards and growing answer as an inline chat turn instead of a static
+    "Research task started" placeholder for the whole run. The returned payload is the
+    same shape `/chat` produced, so the workflow's finalisation is unchanged.
     """
     activity.heartbeat("calling research agent")
-    response = requests.post(
-        f"{AGENT_URL}/chat",
-        json={
-            "session_id": params.session_id,
-            "user_id": params.username,
-            "message_id": f"{params.session_id}-{params.start_seq}",
-            "query": params.query,
-            "chat_history": [],
-            "username": params.username,
-            "allowed_collections": params.allowed_collections,
-        },
-        timeout=AGENT_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    from tasks.P_agent.stream_writer import ResearchStreamWriter
+
+    writer = ResearchStreamWriter(params)
+    try:
+        payload = writer.run()
+    finally:
+        writer.close()
     log.info(
         "[P_agent] research run finished for %s: %d chars, %d tool events",
         params.username,

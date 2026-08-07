@@ -6,7 +6,8 @@ use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchRes
 use dioxus::prelude::*;
 
 use crate::api::chat_api::{
-    chat_get_session, chat_send_message, chat_start_research,
+    chat_get_session, chat_poll, chat_send_message, chat_start_research, chat_stop,
+    chat_dismiss_interrupted,
 };
 use crate::components::chat_components::{
     ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar,
@@ -17,6 +18,21 @@ use crate::components::suspend_boundary::SuspendWrapper;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
 use crate::data_definitions::url_param::UrlParam;
 use crate::routes::Route;
+
+/// What of an in-flight turn is still worth rendering.
+///
+/// While the turn is live, everything. Once it reads as interrupted, only a partial the
+/// model actually produced — an empty stream turn renders as "The assistant is
+/// working…", which is the one thing an interrupted turn must not claim.
+fn keep_stream(
+    stream: Option<common::chat_types::StreamTurn>,
+    interrupted: bool,
+) -> Option<common::chat_types::StreamTurn> {
+    match stream {
+        Some(turn) if !interrupted || !turn.content.trim().is_empty() => Some(turn),
+        _ => None,
+    }
+}
 
 #[component]
 pub fn AiChatSessionPage(
@@ -88,10 +104,14 @@ fn AiChatSessionRoot(
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
     let mut messages = use_signal(Vec::<ChatMessageItem>::new);
+    let mut stream_turn = use_signal(|| None::<common::chat_types::StreamTurn>);
+    let mut interrupted = use_signal(|| false);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
     let mut match_index = use_signal(|| 0_usize);
     let mut match_count = use_signal(|| 0_usize);
+    // Incremented to retire a running poll loop (a second send, leaving the page).
+    let mut poll_gen = use_signal(|| 0_u64);
 
     let detail = detail_res
         .read()
@@ -107,8 +127,82 @@ fn AiChatSessionRoot(
             // the composer defaults instead is what made a chat started with internet
             // tools quietly continue without them.
             options.set(d.session.options);
+            interrupted.set(d.interrupted);
             loaded_for.set(d.session.session_id.clone());
+            // A refresh mid-answer picks the turn up exactly where a poller left it.
+            if d.active && !d.interrupted {
+                stream_turn.set(d.stream.clone());
+                sending.set(true);
+            } else if d.interrupted {
+                stream_turn.set(keep_stream(d.stream.clone(), true));
+            }
         }
+    }
+
+    // Long-poll the turn to completion. One loop per generation; sending flips false
+    // only here, when the turn has actually ended (or read as interrupted).
+    // A Callback rather than a plain closure so the submit handler can call it without
+    // moving it.
+    let poll_sid = sid.clone();
+    let start_polling: Callback<()> = Callback::new(move |_: ()| {
+        *poll_gen.write() += 1;
+        let generation = *poll_gen.read();
+        let poll_sid = poll_sid.clone();
+        spawn(async move {
+            let mut sig = String::new();
+            let mut failures = 0_u32;
+            loop {
+                if *poll_gen.read() != generation {
+                    return;
+                }
+                let after_seq = messages.read().last().map(|m| m.seq);
+                match chat_poll(poll_sid.clone(), after_seq, sig.clone()).await {
+                    Ok(result) => {
+                        failures = 0;
+                        sig = result.sig;
+                        if !result.messages.is_empty() {
+                            let mut current = messages.read().clone();
+                            current.extend(result.messages);
+                            messages.set(current);
+                        }
+                        interrupted.set(result.interrupted);
+                        // An interrupted turn keeps whatever partial text it produced —
+                        // under the banner, which is its marker — but never the
+                        // "working…" placeholder: the banner already says it stopped,
+                        // and a spinner beside it says the opposite.
+                        stream_turn.set(keep_stream(result.stream, result.interrupted));
+                        // `active`, not the presence of a stream row, decides whether to
+                        // keep going: a turn is registered before the agent is called and
+                        // its first stream row only lands with the first event, so
+                        // stopping on an absent stream would abandon every turn during
+                        // the model's first few seconds.
+                        if result.interrupted || !result.active {
+                            sending.set(false);
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        failures += 1;
+                        if failures >= 3 {
+                            error.set(Some(format!("lost contact with the chat: {e}")));
+                            sending.set(false);
+                            return;
+                        }
+                        // `n0_future::time::sleep` rather than `gloo_timers`: this file
+                        // is compiled into the server-side render build too, where
+                        // gloo's futures module does not exist.
+                        n0_future::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                }
+            }
+        });
+    });
+
+    // Resume polling after a refresh that found a turn in flight.
+    let mut poll_resumed = use_signal(|| false);
+    if *sending.read() && !*poll_resumed.read() && !loaded_for.read().is_empty() {
+        poll_resumed.set(true);
+        start_polling.call(());
     }
 
     let preview_query = use_memo(move || {
@@ -140,13 +234,19 @@ fn AiChatSessionRoot(
         sending.set(true);
         error.set(None);
         retry_after.set(None);
+        interrupted.set(false);
+        stream_turn.set(None);
         spawn(async move {
             if opts.deep_research {
                 match chat_start_research(id.clone(), text, opts).await {
-                    Ok(_) => match chat_get_session(id).await {
-                        Ok(d) => messages.set(d.messages),
-                        Err(e) => error.set(Some(e.to_string())),
-                    },
+                    Ok(_) => {
+                        // The Temporal task streams into the same table the poll loop
+                        // reads, so a research turn renders live like an inline one.
+                        let mut o = *options.peek();
+                        o.locked = true;
+                        options.set(o);
+                        start_polling.call(());
+                    }
                     Err(e) => {
                         let msg = e.to_string();
                         if let Some(secs) = msg.strip_prefix("rate_limited:").and_then(|s| s.parse().ok())
@@ -155,6 +255,7 @@ fn AiChatSessionRoot(
                         } else {
                             error.set(Some(msg));
                         }
+                        sending.set(false);
                     }
                 }
             } else {
@@ -162,19 +263,44 @@ fn AiChatSessionRoot(
                     Ok(result) => {
                         if let Some(secs) = result.retry_after_seconds {
                             retry_after.set(Some(secs));
+                            sending.set(false);
                         } else {
+                            // The turn runs server-side; the poll loop follows it and
+                            // clears `sending` when it ends.
                             messages.set(result.messages);
-                            // The first turn freezes the switches; reflect that in the
-                            // composer without waiting for a reload.
                             let mut o = *options.peek();
                             o.locked = true;
                             options.set(o);
+                            start_polling.call(());
                         }
                     }
-                    Err(e) => error.set(Some(e.to_string())),
+                    Err(e) => {
+                        error.set(Some(e.to_string()));
+                        sending.set(false);
+                    }
                 }
             }
-            sending.set(false);
+        });
+    };
+
+    let stop_id = sid.clone();
+    let on_stop = move |_| {
+        let id = stop_id.clone();
+        spawn(async move {
+            // The turn finalises its partial with a marker; the poll loop sees the
+            // finished row and clears `sending`.
+            let _ = chat_stop(id).await;
+        });
+    };
+
+    let dismiss_id = sid.clone();
+    let on_dismiss_interrupted = move |_| {
+        let id = dismiss_id.clone();
+        spawn(async move {
+            if chat_dismiss_interrupted(id).await.is_ok() {
+                interrupted.set(false);
+                stream_turn.set(None);
+            }
         });
     };
 
@@ -237,8 +363,27 @@ fn AiChatSessionRoot(
                     find_query,
                     match_index,
                     match_count,
+                    stream: stream_turn.read().clone(),
+                    stream_live: !*interrupted.read(),
                 }
-                if *sending.read() {
+                if *interrupted.read() {
+                    div {
+                        style: "margin: 0 18px 8px; padding: 8px 12px; background: #FEF3C7; \
+                                border: 1px solid #FDE68A; border-radius: 8px; font-size: 13px; \
+                                color: #92400E; display: flex; align-items: center; gap: 10px;",
+                        span { style: "flex: 1;",
+                            "This answer was interrupted before it finished — the page or the \
+                             server stopped mid-turn. Ask again to retry."
+                        }
+                        button {
+                            style: "background: none; border: 1px solid #D97706; border-radius: 6px; \
+                                    color: #92400E; cursor: pointer; font-size: 12px; padding: 2px 8px;",
+                            onclick: on_dismiss_interrupted,
+                            "Dismiss"
+                        }
+                    }
+                }
+                if *sending.read() && stream_turn.read().is_none() {
                     div {
                         style: "padding: 0 18px 8px; color: #64748B; font-size: 13px; font-style: italic;",
                         "The assistant is searching your collections\u{2026}"
@@ -254,6 +399,7 @@ fn AiChatSessionRoot(
                         sending,
                         retry_after_seconds: retry_after,
                         on_submit,
+                        on_stop,
                     }
                 }
             }

@@ -26,9 +26,13 @@ pub fn ToolCallDisclosure(
     tool_input: String,
     tool_output: String,
     content_summary: String,
+    /// True for a call the stream has reported started but not finished. There is no
+    /// output to expand yet, so the card shows a running state instead.
+    running: Option<bool>,
 ) -> Element {
     let mut expanded = use_signal(|| false);
     let mut show_raw = use_signal(|| false);
+    let running = running.unwrap_or(false);
 
     let label = collapsed_label(&tool_name, &tool_input, &content_summary);
     let chip = tool_chip(&tool_name);
@@ -55,6 +59,12 @@ pub fn ToolCallDisclosure(
                     "{chip}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
+                if running {
+                    span {
+                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #B45309;",
+                        "running\u{2026}"
+                    }
+                }
                 if let Some(route) = search_route {
                     Link {
                         to: route,
@@ -63,17 +73,19 @@ pub fn ToolCallDisclosure(
                         "Search this"
                     }
                 }
-                button {
-                    style: "background: none; border: none; color: #92400E; cursor: pointer; \
-                            font-size: 12px; padding: 0; white-space: nowrap;",
-                    onclick: move |_| {
-                        let next = !*expanded.peek();
-                        expanded.set(next);
-                        if !next {
-                            show_raw.set(false);
-                        }
-                    },
-                    if *expanded.read() { "Hide" } else { "Expand" }
+                if !running {
+                    button {
+                        style: "background: none; border: none; color: #92400E; cursor: pointer; \
+                                font-size: 12px; padding: 0; white-space: nowrap;",
+                        onclick: move |_| {
+                            let next = !*expanded.peek();
+                            expanded.set(next);
+                            if !next {
+                                show_raw.set(false);
+                            }
+                        },
+                        if *expanded.read() { "Hide" } else { "Expand" }
+                    }
                 }
             }
 

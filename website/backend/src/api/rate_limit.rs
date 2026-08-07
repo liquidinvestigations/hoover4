@@ -48,6 +48,9 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimitKind {
     ChatMessage,
+    /// Long-poll reads of an in-flight chat turn. Cheap queries, but each request can
+    /// be HELD for up to 15 s, so the budget is about concurrency as much as rate.
+    ChatPoll,
     ApiCall,
 }
 
@@ -112,6 +115,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 fn load_config(kind: RateLimitKind) -> LimiterConfig {
     let (base, default_x) = match kind {
         RateLimitKind::ChatMessage => ("HOOVER4_RATE_CHAT", 40),
+        RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 240),
         RateLimitKind::ApiCall => ("HOOVER4_RATE_API", 1000),
     };
     LimiterConfig {
@@ -130,9 +134,12 @@ fn load_config(kind: RateLimitKind) -> LimiterConfig {
 }
 
 static CHAT_CONFIG: LazyLock<LimiterConfig> = LazyLock::new(|| load_config(RateLimitKind::ChatMessage));
+static CHAT_POLL_CONFIG: LazyLock<LimiterConfig> = LazyLock::new(|| load_config(RateLimitKind::ChatPoll));
 static API_CONFIG: LazyLock<LimiterConfig> = LazyLock::new(|| load_config(RateLimitKind::ApiCall));
 
 static CHAT_COUNTERS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static CHAT_POLL_COUNTERS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static API_COUNTERS: LazyLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -147,6 +154,7 @@ const MAX_WINDOW: Duration = Duration::from_secs(24 * 3600);
 fn config_for(kind: RateLimitKind) -> &'static LimiterConfig {
     match kind {
         RateLimitKind::ChatMessage => &CHAT_CONFIG,
+        RateLimitKind::ChatPoll => &CHAT_POLL_CONFIG,
         RateLimitKind::ApiCall => &API_CONFIG,
     }
 }
@@ -154,6 +162,7 @@ fn config_for(kind: RateLimitKind) -> &'static LimiterConfig {
 fn counters_for(kind: RateLimitKind) -> &'static Mutex<HashMap<String, VecDeque<Instant>>> {
     match kind {
         RateLimitKind::ChatMessage => &CHAT_COUNTERS,
+        RateLimitKind::ChatPoll => &CHAT_POLL_COUNTERS,
         RateLimitKind::ApiCall => &API_COUNTERS,
     }
 }

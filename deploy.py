@@ -72,7 +72,10 @@ DEFAULTS = {
         "embeddings_enabled": "true",
         "embeddings_model": "intfloat/multilingual-e5-small",
         "embeddings_dim": "384",
-        "reranker_enabled": "false",
+        "reranker_enabled": "true",
+        # Multilingual MS-Marco MiniLM cross-encoder: same calibre as the English-only
+        # ms-marco-MiniLM-L-6-v2, but this corpus is not English-only.
+        "reranker_model": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
         "half_precision": "true",
         "torch_compile": "false",
         "hf_token_file": "",
@@ -125,9 +128,7 @@ DEFAULTS = {
         "mcp_collections_port": "21930",
         "mcp_metasearch_port": "21931",
         "mcp_browser_port": "21932",
-        "mcp_ddg_port": "21933",
         "mcp_whois_port": "21934",
-        "mcp_wikipedia_port": "21935",
         "internal_search_agent_port": "21936",
         "full_research_agent_port": "21937",
         # image pins (were env.example)
@@ -204,9 +205,7 @@ MAIN_PUBLISHED = [
     ("hoover4-mcp-collections", "main_services", "mcp_collections_port"),
     ("hoover4-mcp-metasearch", "main_services", "mcp_metasearch_port"),
     ("hoover4-mcp-browser", "main_services", "mcp_browser_port"),
-    ("hoover4-mcp-ddg", "main_services", "mcp_ddg_port"),
     ("hoover4-mcp-whois", "main_services", "mcp_whois_port"),
-    ("hoover4-mcp-wikipedia", "main_services", "mcp_wikipedia_port"),
     ("hoover4-internal-search-agent", "main_services", "internal_search_agent_port"),
     ("hoover4-full-research-agent", "main_services", "full_research_agent_port"),
     ("hoover4-tesseract-cpu", "main_services", "tesseract_cpu_port"),
@@ -377,6 +376,22 @@ def render_main_env(cfg):
         else ""
     )
 
+    # The embeddings endpoint (P5 chunk+embed calls it; the same server also serves
+    # /v1/rerank, so one base URL covers both). No CPU twin exists yet —
+    # embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
+    # the embed activity will fail fast naming the setting rather than hang.
+    emb_provider = cfg.get(m, "embeddings_provider")
+    if emb_provider == "gpu":
+        env["EMBEDDINGS_URL"] = "http://%s:%s/v1" % (
+            ai_host, cfg.get("ai_services", "ai_server_port"))
+    else:
+        env["EMBEDDINGS_URL"] = ""
+    env["RERANK_URL"] = (
+        env["EMBEDDINGS_URL"]
+        if env["EMBEDDINGS_URL"] and cfg.get("ai_services", "reranker_enabled") == "true"
+        else ""
+    )
+
     provider = cfg.active_llm_provider()
     if provider is not None:
         env["LLM_BASE_URL"] = cfg.llm_base_url(provider)
@@ -443,6 +458,7 @@ def render_ai_env(cfg):
     env["AI_SERVER_ENABLE_RERANKER"] = cfg.get(a, "reranker_enabled")
     env["EMBEDDINGS_MODEL"] = cfg.get(a, "embeddings_model")
     env["EMBEDDINGS_DIM"] = cfg.get(a, "embeddings_dim")
+    env["RERANKER_MODEL"] = cfg.get(a, "reranker_model")
     env["EASYOCR_LANGUAGES"] = cfg.get(a, "easyocr_languages")
     return env
 

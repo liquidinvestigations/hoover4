@@ -351,6 +351,11 @@ services:
       # deploy.py. Consumed by the pipeline starting in Part 2.
       - "NER_PROVIDER=${NER_PROVIDER:-gpu}"
       - "EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-gpu}"
+      # Embeddings + reranker base URL (one server serves both /v1/embeddings and
+      # /v1/rerank). Empty when embeddings_provider = none: the embed activity fails
+      # fast naming the setting rather than hanging on a dead host.
+      - "EMBEDDINGS_URL=${EMBEDDINGS_URL:-}"
+      - "RERANK_URL=${RERANK_URL:-}"
       - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
       # Stack-wide language DEFAULTS. A dataset inherits these until the admin page
       # writes a dataset_settings row for it, after which that row wins (D6).

@@ -9,6 +9,14 @@ dependencies = [
     # nodriver is the successor to undetected-chromedriver: talks CDP directly, needs no
     # chromedriver binary to keep in step with the browser version, and is async.
     "nodriver>=0.38",
+    # Screenshot downscaling to a 1280x720 WebP thumbnail. Without it capture.py falls
+    # back to storing the raw PNG, which works but is ~10x the bytes.
+    "pillow>=10.0",
+    # agent_common's own dependencies. Declared here as well because the image installs
+    # `./agent_common` before this package (see the Dockerfile) and pip resolves the two
+    # separately.
+    "requests>=2.31",
+    "minio>=7.2",
 ]
 
 [project.optional-dependencies]

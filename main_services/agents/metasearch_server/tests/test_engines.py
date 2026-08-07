@@ -84,6 +84,49 @@ class TestReciprocalRankFusion:
         many = {"a": [SearchResult(f"t{i}", f"https://e{i}.example") for i in range(20)]}
         assert len(reciprocal_rank_fusion(many, max_results=5)) == 5
 
+    def test_one_source_repeating_a_url_does_not_win_three_times(self):
+        """The per-source dedupe. Without it, `solo` contributes three RRF terms and
+        beats a page two independent sources agreed on."""
+        merged = reciprocal_rank_fusion(
+            {
+                "a": [
+                    SearchResult("solo", "https://solo.example"),
+                    SearchResult("solo", "https://www.solo.example/?utm_source=x"),
+                    SearchResult("solo", "https://solo.example#top"),
+                    SearchResult("agreed", "https://agreed.example"),
+                ],
+                "b": [SearchResult("agreed", "https://agreed.example")],
+            },
+            max_results=10,
+        )
+        assert merged[0].url == "https://agreed.example"
+        assert len([r for r in merged if "solo" in r.url]) == 1
+
+    def test_source_ranks_are_recorded_for_the_detail_artifact(self):
+        merged = reciprocal_rank_fusion(
+            {
+                "a": [SearchResult("x", "https://x.example"), SearchResult("y", "https://y.example")],
+                "b": [SearchResult("y", "https://y.example")],
+            },
+            max_results=10,
+        )
+        y = next(r for r in merged if r.url == "https://y.example")
+        assert y.source_ranks == {"a": 2, "b": 1}
+
+    def test_a_more_specific_kind_survives_the_merge(self):
+        """A page both Wikipedia and a scraper returned is a reference result — otherwise
+        the per-kind floor cannot see it and reference results get crowded out."""
+        merged = reciprocal_rank_fusion(
+            {
+                "ddg": [SearchResult("Danube", "https://en.wikipedia.org/wiki/Danube", kind="web")],
+                "wikipedia": [
+                    SearchResult("Danube", "https://en.wikipedia.org/wiki/Danube", kind="reference")
+                ],
+            },
+            max_results=10,
+        )
+        assert merged[0].kind == "reference"
+
 
 class TestEngineConfiguration:
     def test_unknown_engine_names_are_dropped_not_fatal(self, monkeypatch):

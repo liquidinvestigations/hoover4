@@ -1,11 +1,10 @@
 //! Transcript of a chat session: user bubbles, assistant markdown, tools, doc cards.
 
-use common::chat_types::{ChatMessageItem, ChatRole};
+use common::chat_types::{ChatMessageItem, ChatRole, StreamTurn};
 use dioxus::prelude::*;
 
 use crate::components::chat_components::{
-    doc_ref_card::ChatDocRefCard, markdown_text::MarkdownishText,
-    tool_disclosure::ToolCallDisclosure,
+    doc_ref_card::ChatDocRefCard, markdown_text::MarkdownishText, tool_cards::ToolCard,
 };
 
 #[component]
@@ -14,7 +13,13 @@ pub fn ChatTranscript(
     find_query: Signal<String>,
     match_index: Signal<usize>,
     match_count: Signal<usize>,
+    /// The in-flight turn, rendered as pending entries after the finished rows.
+    stream: Option<StreamTurn>,
+    /// False when `stream` is the leftovers of an interrupted turn rather than one that
+    /// is still being produced. The content is the same; the promise it makes is not.
+    stream_live: Option<bool>,
 ) -> Element {
+    let stream_live = stream_live.unwrap_or(true);
     let q = find_query.read().clone().to_lowercase();
     let matches: Vec<usize> = if q.is_empty() {
         Vec::new()
@@ -53,6 +58,45 @@ pub fn ChatTranscript(
                     }
                 }
             }
+            if let Some(turn) = stream {
+                for tool in turn.tool_rows.clone() {
+                    div {
+                        key: "stream-tool-{tool.seq}",
+                        style: "display: flex; flex-direction: column; gap: 8px;",
+                        ToolCard {
+                            tool_name: tool.tool_name.clone(),
+                            // A stream row has no payload columns — the arguments and
+                            // result are written only when the call finalises into
+                            // chat_messages. Its `summary` *is* the arguments JSON while
+                            // the call runs (`AgentToolCall::summary` takes `input`
+                            // first), which is what lets the pending web_search card show
+                            // the query. Truncated past 400 chars, so the cards parse it
+                            // best-effort and fall back to a bare label.
+                            tool_input: tool.summary.clone(),
+                            tool_output: String::new(),
+                            content_summary: tool.summary.clone(),
+                            running: !tool.done,
+                        }
+                    }
+                }
+                if !turn.content.is_empty() {
+                    div {
+                        key: "stream-answer-{turn.answer_seq}",
+                        style: "align-self: stretch; max-width: 96%; padding: 4px 2px;",
+                        MarkdownishText { text: turn.content.clone() }
+                        // The cursor marks this as the live tail rather than a finished
+                        // answer — identical content, different promise.
+                        if stream_live {
+                            span { style: "color: #4F46E5;", "\u{258D}" }
+                        }
+                    }
+                } else if turn.tool_rows.is_empty() && stream_live {
+                    div {
+                        style: "color: #64748B; font-size: 13px; font-style: italic;",
+                        "The assistant is working\u{2026}"
+                    }
+                }
+            }
         }
     }
 }
@@ -79,6 +123,9 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
+                    if !message.reasoning.is_empty() {
+                        ReasoningDisclosure { reasoning: message.reasoning.clone() }
+                    }
                     MarkdownishText { text: message.content.clone() }
                     // A turn that only succeeded on retry is a healthy answer over an
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
@@ -100,7 +147,7 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
             let refs = message.parsed_doc_refs();
             rsx! {
                 div { style: "display: flex; flex-direction: column; gap: 8px; {ring}",
-                    ToolCallDisclosure {
+                    ToolCard {
                         tool_name: message.tool_name.clone(),
                         tool_input: message.tool_input.clone(),
                         tool_output: message.tool_output.clone(),
@@ -133,6 +180,35 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                             tone_color: "#991B1B",
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The model's reasoning trace, collapsed by default — it narrates how the answer was
+/// produced and is never part of the answer body.
+#[component]
+fn ReasoningDisclosure(reasoning: String) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        div { style: "margin-bottom: 6px;",
+            button {
+                style: "background: none; border: none; padding: 0; cursor: pointer; \
+                        font-size: 12px; color: #64748B; text-decoration: underline;",
+                onclick: move |_| {
+                    let next = !*open.peek();
+                    open.set(next);
+                },
+                if *open.read() { "Hide reasoning" } else { "Show reasoning" }
+            }
+            if *open.read() {
+                pre {
+                    style: "margin: 6px 0 0 0; white-space: pre-wrap; word-break: break-word; \
+                            font-size: 12px; line-height: 1.5; color: #475569; \
+                            background: #F1F5F9; padding: 8px 10px; border-radius: 8px; \
+                            max-height: 260px; overflow: auto;",
+                    "{reasoning}"
                 }
             }
         }

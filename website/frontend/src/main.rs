@@ -20,6 +20,10 @@ fn main() {
                 tokio::runtime::RuntimeFlavor::MultiThread,
                 rt_handle.runtime_flavor()
             );
+            // Server functions do NOT run on this runtime, and a library that blocks
+            // internally panics when they call it. Anything in that position hands its
+            // work back here through `startup::on_multi_thread_runtime`.
+            backend::startup::set_multi_thread_runtime(rt_handle.clone());
 
             // Fail loudly if the database is unreachable rather than serving a
             // site where every DB-backed route silently fails.
@@ -52,6 +56,13 @@ fn main() {
                 .route(
                     "/_download_document/{collection_dataset}/{file_hash}",
                     axum::routing::get(backend::server_extra::download_document::download_document),
+                )
+                // Chat tool artifacts: thumb.webp, page.html, detail.json. The handler
+                // resolves the id to its owner and enforces owner-or-admin — the id
+                // itself comes from an LLM-driven tool payload and is only a lookup key.
+                .route(
+                    "/_chat_artifact/{artifact_id}/{asset}",
+                    axum::routing::get(backend::server_extra::chat_artifact::chat_artifact),
                 )
                 // we can apply a layer to the entire router using axum's `.layer` method
                 .layer(axum::middleware::from_fn(

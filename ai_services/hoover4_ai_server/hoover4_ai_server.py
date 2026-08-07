@@ -59,9 +59,26 @@ app.add_middleware(
 model = None
 reranker = None
 ner_model = None
-model_name = "intfloat/multilingual-e5-large-instruct"
-reranker_model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-ner_model_name = "FacebookAI/xlm-roberta-large-finetuned-conll03-english"
+
+# Model ids come from the environment, rendered by deploy.py from hoover4.ini
+# ([ai_services] embeddings_model / reranker_model). The constants that used to live
+# here are why the running container served e5-large-instruct while the ini said
+# e5-small for weeks: the ini was rendered into the .env and nothing read it.
+model_name = os.getenv("EMBEDDINGS_MODEL", "intfloat/multilingual-e5-small")
+reranker_model_name = os.getenv("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
+ner_model_name = os.getenv("NER_MODEL", "FacebookAI/xlm-roberta-large-finetuned-conll03-english")
+
+#: Expected embedding dimensionality, from hoover4.ini's embeddings_dim. Checked against
+#: a real probe embedding at startup: a model that does not match its declared dims is a
+#: config error, and finding out at index-build time is too late.
+EXPECTED_EMBEDDINGS_DIM = int(os.getenv("EMBEDDINGS_DIM", "384"))
+
+# Capability switches (hoover4.ini ner_enabled / embeddings_enabled / reranker_enabled).
+# A disabled capability is not loaded, and /health reports it as "disabled" rather than
+# "unhealthy" — off on purpose is not a failure.
+ENABLE_NER = os.getenv("AI_SERVER_ENABLE_NER", "true").lower() == "true"
+ENABLE_EMBEDDINGS = os.getenv("AI_SERVER_ENABLE_EMBEDDINGS", "true").lower() == "true"
+ENABLE_RERANKER = os.getenv("AI_SERVER_ENABLE_RERANKER", "true").lower() == "true"
 
 # Performance optimization settings
 OPTIMAL_BATCH_SIZE = int(os.getenv("OPTIMAL_BATCH_SIZE", "32"))  # Configurable batch size
@@ -74,7 +91,13 @@ class EmbeddingRequest(BaseModel):
     model: Optional[str] = Field(default=model_name, description="Model to use for embeddings")
     encoding_format: Optional[str] = Field(default="float", description="Encoding format for embeddings")
     user: Optional[str] = Field(default=None, description="User identifier")
-    task_description: Optional[str] = Field(default="Given a web search query, retrieve relevant passages that answer the query", description="Task description for the embedding model")
+    # Prefix convention is owned by the CALLER, not the server. e5-small wants
+    # "query: "/"passage: ", e5-large-instruct wants "Instruct: {task}\nQuery: {q}" for
+    # queries and bare text for passages — one server flag cannot express both, and a
+    # server that silently wraps every input in the instruct template embeds passages
+    # wrong. Pass task_description only when the serving model is an instruct model and
+    # the input is a query; otherwise the text is embedded exactly as sent.
+    task_description: Optional[str] = Field(default=None, description="Instruct-models only: task description wrapped around a QUERY input")
 
 class EmbeddingData(BaseModel):
     object: str = "embedding"
@@ -182,63 +205,89 @@ def is_token_array(input_item) -> bool:
 
 @app.on_event("startup")
 async def load_models():
-    """Load the embedding, reranking, and NER models on startup"""
+    """Load the enabled models on startup; a disabled capability stays unloaded."""
     global model, reranker, ner_model
-    logger.info("Loading models...")
-    
+    logger.info(
+        "Loading models (embeddings=%s ner=%s reranker=%s)...",
+        ENABLE_EMBEDDINGS, ENABLE_NER, ENABLE_RERANKER,
+    )
+
     try:
         # Check if CUDA is available
         device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {device}")
-        
+
         # Load the embedding model
-        logger.info(f"Loading embedding model: {model_name}")
-        model = SentenceTransformer(model_name, device=device)
-        
-        # Apply inference optimizations
-        model = optimize_model_for_inference(model)
-        
-        # Set optimal batch size for embeddings
-        if hasattr(model, 'encode'):
-            # Configure for optimal batch processing
-            model.max_seq_length = MAX_SEQUENCE_LENGTH
-        
-        logger.info(f"Embedding model loaded and optimized (batch_size: {OPTIMAL_BATCH_SIZE})")
-        
-        # Load the reranking model
-        logger.info(f"Loading reranking model: {reranker_model_name}")
-        reranker = CrossEncoder(reranker_model_name, device=device)
-        reranker = optimize_model_for_inference(reranker)
-        logger.info("Reranking model loaded and optimized successfully!")
-        
-        # Load the NER model
-        if TRANSFORMERS_AVAILABLE:
-            logger.info(f"Loading NER model: {ner_model_name}")
-            try:
-                ner_model = pipeline(
-                    "ner", 
-                    model=ner_model_name,
-                    tokenizer=ner_model_name,
-                    aggregation_strategy="simple",
-                    device=0 if device == "cuda" else -1,
-                    # Optimization: process multiple texts efficiently
-                    batch_size=OPTIMAL_BATCH_SIZE,
-                    # Enable model optimizations
-                    torch_dtype=torch.float16 if ENABLE_HALF_PRECISION and device == "cuda" else torch.float32
+        if ENABLE_EMBEDDINGS:
+            logger.info(f"Loading embedding model: {model_name}")
+            model = SentenceTransformer(model_name, device=device)
+
+            # Apply inference optimizations
+            model = optimize_model_for_inference(model)
+
+            # Set optimal batch size for embeddings
+            if hasattr(model, 'encode'):
+                # Configure for optimal batch processing
+                model.max_seq_length = MAX_SEQUENCE_LENGTH
+
+            logger.info(f"Embedding model loaded and optimized (batch_size: {OPTIMAL_BATCH_SIZE})")
+
+            # Assert the dimension rather than trusting the ini: a model that does not
+            # match embeddings_dim would only be discovered at index-build time, when
+            # Manticore refuses the vectors. Fail loudly here instead.
+            probe = model.encode(["dimension probe"], convert_to_tensor=False,
+                                 normalize_embeddings=True, show_progress_bar=False)
+            actual_dim = len(probe[0])
+            if actual_dim != EXPECTED_EMBEDDINGS_DIM:
+                raise RuntimeError(
+                    f"embedding model {model_name} produces {actual_dim}-dim vectors but "
+                    f"EMBEDDINGS_DIM says {EXPECTED_EMBEDDINGS_DIM} — fix hoover4.ini, and "
+                    f"remember a Manticore _vectors table's knn_dims cannot be altered"
                 )
-                logger.info("Hugging Face NER model loaded successfully!")
-            except Exception as e:
-                logger.error(f"Could not load {ner_model_name}: {e}")
-                raise e
+            logger.info(f"Embedding dimension probe OK: {actual_dim}")
         else:
-            logger.error("transformers not available. NER functionality requires transformers library.")
-            raise ImportError("transformers library is required for NER functionality")
-        
+            logger.info("Embeddings disabled (AI_SERVER_ENABLE_EMBEDDINGS=false)")
+
+        # Load the reranking model
+        if ENABLE_RERANKER:
+            logger.info(f"Loading reranking model: {reranker_model_name}")
+            reranker = CrossEncoder(reranker_model_name, device=device)
+            reranker = optimize_model_for_inference(reranker)
+            logger.info("Reranking model loaded and optimized successfully!")
+        else:
+            logger.info("Reranker disabled (AI_SERVER_ENABLE_RERANKER=false)")
+
+        # Load the NER model
+        if ENABLE_NER:
+            if TRANSFORMERS_AVAILABLE:
+                logger.info(f"Loading NER model: {ner_model_name}")
+                try:
+                    ner_model = pipeline(
+                        "ner",
+                        model=ner_model_name,
+                        tokenizer=ner_model_name,
+                        aggregation_strategy="simple",
+                        device=0 if device == "cuda" else -1,
+                        # Optimization: process multiple texts efficiently
+                        batch_size=OPTIMAL_BATCH_SIZE,
+                        # Enable model optimizations
+                        torch_dtype=torch.float16 if ENABLE_HALF_PRECISION and device == "cuda" else torch.float32
+                    )
+                    logger.info("Hugging Face NER model loaded successfully!")
+                except Exception as e:
+                    logger.error(f"Could not load {ner_model_name}: {e}")
+                    raise e
+            else:
+                logger.error("transformers not available. NER functionality requires transformers library.")
+                raise ImportError("transformers library is required for NER functionality")
+        else:
+            logger.info("NER disabled (AI_SERVER_ENABLE_NER=false)")
+
         # Print GPU memory info if available
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
             logger.info(f"GPU Memory: {gpu_memory:.1f} GB")
-            
+
     except Exception as e:
         logger.error(f"Error loading models: {e}")
         raise e
@@ -317,13 +366,12 @@ async def create_embeddings(request: EmbeddingRequest):
         
         logger.info(f"Processing {len(texts)} text(s) for embeddings")
         
-        # Use the task description from the request
+        # Wrap only when the caller explicitly asked for the instruct template (see
+        # EmbeddingRequest.task_description). The default is the raw text.
         task_description = request.task_description
-        
-        # Process texts - add instruction for queries if needed
         processed_texts = []
         for text in texts:
-            if len(text.strip()) > 0:
+            if task_description and len(text.strip()) > 0:
                 processed_texts.append(get_detailed_instruct(task_description, text))
             else:
                 processed_texts.append(text)
@@ -567,7 +615,12 @@ async def extract_entities(request: NERRequest):
 async def health_check():
     """Health check endpoint"""
     global model, reranker, ner_model
-    core_models_loaded = model is not None and reranker is not None
+    # An enabled-but-unloaded capability is unhealthy; a disabled one is simply off.
+    core_models_loaded = (
+        (model is not None or not ENABLE_EMBEDDINGS)
+        and (reranker is not None or not ENABLE_RERANKER)
+        and (ner_model is not None or not ENABLE_NER)
+    )
     
     gpu_info = {}
     if torch.cuda.is_available():
@@ -586,9 +639,10 @@ async def health_check():
         "embedding_model_loaded": model is not None,
         "reranker_model_loaded": reranker is not None,
         "ner_model_loaded": ner_model is not None,
-        "embedding_model": model_name,
-        "reranker_model": reranker_model_name,
-        "ner_model": ner_model_name if ner_model is not None else "disabled",
+        "embedding_model": model_name if ENABLE_EMBEDDINGS else "disabled",
+        "embedding_dim": EXPECTED_EMBEDDINGS_DIM,
+        "reranker_model": reranker_model_name if ENABLE_RERANKER else "disabled",
+        "ner_model": ner_model_name if ENABLE_NER else "disabled",
         "transformers_available": TRANSFORMERS_AVAILABLE,
         "cuda_available": torch.cuda.is_available(),
         "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,

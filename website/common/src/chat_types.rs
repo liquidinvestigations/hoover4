@@ -162,6 +162,15 @@ pub struct ChatMessageItem {
     /// JSON array of the errors from earlier attempts (role = error).
     #[serde(default)]
     pub retry_errors: String,
+    /// Reasoning trace + pre-tool narration (role = assistant). Rendered behind a
+    /// disclosure, never in the answer body.
+    #[serde(default)]
+    pub reasoning: String,
+    /// Transient, never stored: true on entries synthesised from the in-flight stream
+    /// (`chat_message_stream`) rather than read from `chat_messages`. The transcript
+    /// renders these with a pending/running treatment instead of the finished one.
+    #[serde(default)]
+    pub streaming: bool,
 }
 
 impl ChatMessageItem {
@@ -207,10 +216,75 @@ pub struct LiveChatRun {
     pub cancel_requested: bool,
 }
 
-/// Result of [`send_message`](crate) / the matching server function.
+/// One in-flight tool call, as far as the stream has reported it.
+///
+/// `seq` is the position the finished row will take in `chat_messages` — the streaming
+/// writer assigns it when the tool starts, so a poll and a refresh order identically.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StreamToolRow {
+    pub seq: u32,
+    /// 0-based order of this call within its turn.
+    pub tool_call_index: u32,
+    pub tool_name: String,
+    /// Input summary while running, output summary once `done`.
+    pub summary: String,
+    /// False between start_tool and end_tool — the card renders a running state.
+    pub done: bool,
+}
+
+/// The turn currently being produced, reconstructed from `chat_message_stream`.
+///
+/// Read-path rules (both load-bearing): the stream table is read with `argMax`, never a
+/// bare SELECT, or the visible text can shrink mid-stream; and a finished
+/// `chat_messages` row always wins over a stream row at the same `seq`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StreamTurn {
+    /// `seq` the assistant row will take once finalised.
+    pub answer_seq: u32,
+    /// Answer text so far (content after the last tool call; earlier narration is
+    /// moved to `reasoning` as each tool starts, mirroring the agent's own rule).
+    pub content: String,
+    #[serde(default)]
+    pub reasoning: String,
+    #[serde(default)]
+    pub tool_rows: Vec<StreamToolRow>,
+    /// Version stamp: milliseconds of the newest stream row. The poll loop's change
+    /// detection is built on it.
+    pub updated_ms: i64,
+}
+
+/// One poll of the tail of a transcript.
+///
+/// `messages` are finished rows with `seq > after_seq`. `stream` is the in-flight
+/// turn, if any. `interrupted` means a stream row has stopped advancing with no live
+/// run owning it (the website restarted mid-turn): render a marker, never a spinner.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChatPollResult {
+    pub messages: Vec<ChatMessageItem>,
+    #[serde(default)]
+    pub stream: Option<StreamTurn>,
+    /// A turn is still being produced for this session. **This, not `stream`, is what
+    /// says "keep polling".** A turn is registered before the agent is called and the
+    /// first stream row only appears with the first event, so there is a window —
+    /// often several seconds of model latency — where the turn is alive and `stream`
+    /// is still `None`. A poller that stopped on `stream.is_none()` would abandon
+    /// every turn in exactly that window.
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub interrupted: bool,
+    /// Opaque change-detection token: the client echoes it back on the next poll, and
+    /// the server returns early when the current state produces a different one.
+    pub sig: String,
+}
+
+/// Result of [`send_message`](crate::api::chat) / the matching server function.
 ///
 /// When `retry_after_seconds` is `Some`, the rate limiter refused the turn and
 /// `messages` is unchanged (nothing was written). The composer shows "try again in N s".
+///
+/// With streaming chat, `messages` is the trajectory *so far* — the turn itself runs in
+/// a spawned task and the client follows it through `chat_poll`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatSendResult {
     pub messages: Vec<ChatMessageItem>,
@@ -227,6 +301,17 @@ pub struct ChatSessionDetail {
     /// Resolved fresh on every load, so a revoked permission disappears from the picker
     /// even in an old conversation.
     pub available_collections: Vec<String>,
+    /// The in-flight turn, when the page is (re)loaded mid-answer — a refresh shows
+    /// exactly what a poller sees.
+    #[serde(default)]
+    pub stream: Option<StreamTurn>,
+    /// A turn is in flight for this session: the page resumes polling on load. See
+    /// [`ChatPollResult::active`] for why this is separate from `stream`.
+    #[serde(default)]
+    pub active: bool,
+    /// A stale stream row with no live run behind it (the website restarted mid-turn).
+    #[serde(default)]
+    pub interrupted: bool,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a
@@ -238,8 +323,9 @@ pub const TITLE_CHARS: usize = 60;
 
 /// Cap on `tool_output` (and a soft cap on `tool_input`) stored in `chat_messages`.
 /// A `search_collections` result set with long snippets is large; this table is read on
-/// every page load.
-pub const TOOL_PAYLOAD_CHARS: usize = 12_000;
+/// every page load. Doubled from 12k when the richer web_search payload landed (plan 2,
+/// Q14) — the search-detail artifact absorbs anything bigger.
+pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
 
 /// Derive a session title from its first user message.
 pub fn title_from_message(message: &str) -> String {

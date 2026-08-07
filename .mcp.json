@@ -3,6 +3,22 @@
     "serena": {
       "type": "sse",
       "url": "http://127.0.0.1:21940/sse"
+    },
+    "hoover4-web-search": {
+      "type": "http",
+      "url": "http://127.0.0.1:21931/mcp"
+    },
+    "hoover4-browser": {
+      "type": "http",
+      "url": "http://127.0.0.1:21932/mcp",
+      "headers": {
+        "x-hoover4-chat-session": "host-mcp-client",
+        "x-hoover4-user": "host"
+      }
+    },
+    "hoover4-whois": {
+      "type": "http",
+      "url": "http://127.0.0.1:21934/mcp"
     }
   }
 }

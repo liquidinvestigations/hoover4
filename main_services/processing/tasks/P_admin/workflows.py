@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
         purge_dataset_from_clickhouse,
         purge_dataset_from_manticore,
         recompute_shard_ledger_activity,
+        sweep_chat_artifacts,
     )
     from tasks.P_admin.eta_collector import (
         CONTINUE_AS_NEW_PASSES,
@@ -139,3 +140,31 @@ class CollectEtaSamples:
                 workflow.continue_as_new(state)
 
             await asyncio.sleep(next_interval_seconds(state.recent_durations_ms))
+
+
+@workflow.defn
+class SweepChatArtifacts:
+    """Daily retention pass over `chat_artifacts`.
+
+    A singleton like ``CollectEtaSamples``, started once at worker bootstrap with
+    ``USE_EXISTING`` so worker restarts never duplicate it. It sleeps rather than using a
+    Temporal cron schedule for the same reason that one does: the state and the cadence
+    stay in one place, and a missed day is caught by the next pass rather than piling up
+    as overlapping cron executions.
+    """
+
+    @workflow.run
+    async def run(self) -> str:
+        last = ""
+        # 24 passes, then continue_as_new: bounded history, one month of it.
+        for _ in range(24):
+            await workflow.sleep(timedelta(hours=24))
+            last = await workflow.execute_activity(
+                sweep_chat_artifacts,
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
+            workflow.logger.info("chat artifact sweep: %s", last)
+        workflow.continue_as_new()
+        return last

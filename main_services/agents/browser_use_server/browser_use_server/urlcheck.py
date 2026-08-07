@@ -112,3 +112,48 @@ def check_url(url: str) -> str:
             )
 
     return url
+
+
+#: Tool arguments that carry a URL. Every one of them is checked before the call reaches
+#: the sidecar — `browse_page` was the only navigating tool when this module was written,
+#: and the Playwright surface added two dozen more. A new navigating tool with an argument
+#: name that is not in this set would slip past the boundary, so keep it wide: an argument
+#: that merely *looks* like a URL and is checked costs nothing.
+URL_ARGUMENT_NAMES = frozenset({"url", "urls", "href", "src", "link", "target_url"})
+
+
+def check_tool_arguments(tool_name: str, arguments: dict) -> None:
+    """Raise :class:`UrlNotAllowed` if any argument carries a URL that must not be fetched.
+
+    This is the boundary for the whole Playwright surface. It runs in the **router**,
+    before the call reaches the sidecar, because the sidecar's own `--blocked-origins` is
+    documented as not being a security boundary — it is the second line, this is the
+    first.
+
+    Values that are not http/https-shaped are left alone rather than refused: Playwright's
+    `browser_navigate` legitimately takes `about:blank`, and a `browser_type` whose text
+    happens to contain a word ending in `.url` is not a navigation.
+    """
+    for name, value in (arguments or {}).items():
+        if name.lower() not in URL_ARGUMENT_NAMES:
+            continue
+        for candidate in value if isinstance(value, (list, tuple)) else [value]:
+            if not isinstance(candidate, str):
+                continue
+            stripped = candidate.strip()
+            if not stripped:
+                continue
+            lowered = stripped.lower()
+            if lowered in ("about:blank", "about:srcdoc"):
+                continue
+            if not lowered.startswith(("http://", "https://")):
+                # Anything else with a scheme is refused outright: file:, chrome:, data:
+                # and friends are exactly what this module exists to keep out, and a
+                # scheme-less string is not a navigation target Chromium will follow from
+                # a tool argument.
+                if "://" in stripped or lowered.startswith(("file:", "data:", "javascript:", "chrome:")):
+                    raise UrlNotAllowed(
+                        f"{tool_name}: {stripped[:120]!r} is not an http or https URL"
+                    )
+                continue
+            check_url(stripped)

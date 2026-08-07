@@ -1,13 +1,28 @@
-"""FastMCP server driving a real browser, for pages the HTML scrapers cannot read.
+"""FastMCP router in front of one playwright-mcp sidecar per chat.
 
-The metasearch server finds pages; this one reads them. It exists because a growing
-share of the web renders its body with JavaScript, and `httpx` + a CSS selector gets an
-empty shell. nodriver talks CDP directly — no chromedriver binary, no Selenium — and is
-async, which fits FastMCP.
+This server used to expose a single `browse_page` tool over a shared Chromium. It now
+exposes **Playwright's whole browser surface** — navigate, click, type, fill forms, read
+the accessibility snapshot, list network requests and console messages, take screenshots,
+manage tabs — routed to a browser that belongs to the calling conversation and nobody
+else. `browse_page` does not survive: reading a page is `browser_navigate` followed by
+`browser_snapshot`, and keeping a fifth way to do it would only give a small model another
+thing to pick wrongly.
 
-Every URL goes through :mod:`.urlcheck` before Chromium sees it. Read that module's
-docstring before changing anything here: this server is reachable by an LLM from inside
-the network where ClickHouse and Temporal answer unauthenticated requests.
+How a call flows:
+
+1. the tool name and arguments arrive here, with `x-hoover4-chat-session` naming the chat;
+2. :mod:`.urlcheck` inspects every URL-shaped argument **before** anything is dispatched —
+   this server sits inside a network where ClickHouse and Temporal answer unauthenticated,
+   so the check is the boundary and refusals are *returned* to the model, not raised;
+3. :mod:`.router` hands back that chat's :class:`ChatBrowser`, starting one if needed;
+4. the call is forwarded to that chat's sidecar over MCP;
+5. if the tool could have changed what is on screen, :mod:`.capture` screenshots and
+   snapshots the page — **including when the call failed** — and appends the artifact id
+   to the result under `_hoover4_artifacts`.
+
+Tool *listing* never spawns a browser: it is answered from a warm template session started
+on first ask. `list_tools` runs during graph construction for every chat, including the
+ones that will never browse.
 """
 
 from __future__ import annotations
@@ -19,11 +34,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field
+from fastmcp.tools.tool import Tool, ToolResult
+from mcp.types import TextContent
 
-from browser_use_server.browser import NAV_TIMEOUT, close_session, start_reaper, with_page
-from browser_use_server.sessions import registry
-from browser_use_server.urlcheck import UrlNotAllowed, check_url
+from agent_common import artifacts
+
+from browser_use_server import capture as capture_mod
+from browser_use_server import chat_browser
+from browser_use_server import router as router_mod
+from browser_use_server.router import router
+from browser_use_server.urlcheck import UrlNotAllowed, check_tool_arguments
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -31,164 +51,205 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-#: The page text cap. Same reasoning as the collection server's MAX_DOCUMENT_CHARS: one
-#: long article must not consume the agent's whole context window.
-MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "20000"))
-
-#: How many links to return. A navigation-heavy page has hundreds and they are mostly
-#: chrome; the model needs enough to pick a next hop, not a sitemap.
-MAX_LINKS = int(os.getenv("BROWSER_MAX_LINKS", "50"))
-
-#: Header carrying the chat session id, so each conversation browses in its own cookie
-#: jar. Set by the research agent from the id the website passes it. Absent means the
-#: shared anonymous session — see browser_use_server.sessions.
+#: Header carrying the chat session id, so each conversation browses in its own browser.
+#: Set by the research agent from the id the website passes it. Absent means the shared
+#: anonymous session — see `router.ANONYMOUS`.
 SESSION_HEADER = "x-hoover4-chat-session"
+USER_HEADER = "x-hoover4-user"
 
-
-#: The idle-session reaper, started on the first tool call rather than at import.
-#: FastMCP owns the event loop, so there is no loop to attach a task to until a request
-#: is being served — and a server that is never called needs no reaper.
-_reaper_task: Any = None
-
-
-async def _ensure_reaper() -> None:
-    global _reaper_task
-    if _reaper_task is None or _reaper_task.done():
-        _reaper_task = await start_reaper()
-        log.info("browser session reaper started")
-
-
-def _session_id() -> str | None:
-    """Chat session id for this call, or None outside an HTTP request."""
-    try:
-        headers = get_http_headers()
-    except Exception:  # noqa: BLE001 - called outside a request in tests
-        return None
-    # Starlette lower-cases header names, but a direct dict does not.
-    for key, value in dict(headers).items():
-        if key.lower() == SESSION_HEADER and value.strip():
-            return value.strip()
-    return None
+#: One retry on a dead sidecar. A node process that died between calls should cost the
+#: user a restart, not a failed answer; a *second* failure is real and is surfaced.
+SIDECAR_RETRIES = 1
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_browser"),
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
-        "Open a web page in a real browser and read it. Use this when a search result "
-        "looks promising and you need the full text, or when a page renders its content "
-        "with JavaScript and a plain fetch would return nothing. Text is truncated, so "
-        "prefer a specific page over a site's front door. Only public http/https URLs "
-        "are fetchable. This is slower than search — one page at a time — so pick the "
-        "page you actually need rather than opening every result.",
+        "Drive a real browser. Use this when a page renders its content with JavaScript, "
+        "when a search result needs reading in full, or when the task requires "
+        "interacting with a page rather than just reading it — clicking, filling a form, "
+        "paging through results. Start with `browser_navigate`, then `browser_snapshot` "
+        "to see the page as an accessibility tree with a `ref` for every element you can "
+        "act on. Each conversation has its own browser: cookies and logged-in state "
+        "persist between your calls within one chat and are invisible to every other "
+        "chat. Only public http/https URLs are reachable.",
     ),
 )
 
 
-class PageContent(BaseModel):
-    success: bool
-    url: str
-    title: str = ""
-    text: str = ""
-    links: list[str] = Field(default_factory=list)
-    truncated: bool = False
-    error: str | None = None
-
-
-#: Pulled out of the page in one CDP round trip. Strips the parts of the DOM that are
-#: never content, then takes innerText, which is what a reader sees rather than raw
-#: markup.
-#:
-#: **Returns a JSON string, not an object.** nodriver's `evaluate(return_by_value=True)`
-#: hands back a plain Python value only for scalars; for an object it returns a raw
-#: `cdp.runtime.RemoteObject` whose payload is buried in `deep_serialized_value`. Reading
-#: that structure would couple this code to a CDP wire format, and the first version of
-#: this file simply mis-detected it and reported `success=True` with empty text — a
-#: silently blank page is the worst outcome for a tool an LLM relies on. A JSON string
-#: crosses the boundary as a scalar and is parsed here.
-#:
-#: `innerText` is taken from a *clone* with the non-content elements removed, so nav and
-#: footer boilerplate does not land in the agent's context; links come from the live
-#: document because the clone is detached and its `a.href` would not be absolute.
-_EXTRACT_JS = """
-(() => {
-  const drop = ['script','style','noscript','svg','nav','footer','header','aside','form'];
-  const doc = document.cloneNode(true);
-  drop.forEach(t => doc.querySelectorAll(t).forEach(n => n.remove()));
-  const main = doc.querySelector('main,article,[role=main]') || doc.body;
-  const text = (main ? main.innerText || main.textContent : '') || '';
-  const links = Array.from(document.querySelectorAll('a[href]'))
-    .map(a => a.href)
-    .filter(h => h.startsWith('http'));
-  return JSON.stringify({
-    title: document.title || '',
-    text: text,
-    links: Array.from(new Set(links))
-  });
-})()
-"""
-
-
-@mcp.tool(
-    name="browse_page",
-    description=(
-        "Open a public web page in a real browser and return its title, readable text "
-        "and outgoing links. Use for pages that need JavaScript, or to read a search "
-        "result in full. Text is capped, so pick a specific page."
-    ),
-)
-async def browse_page(url: str, timeout_seconds: float = NAV_TIMEOUT) -> PageContent:
-    await _ensure_reaper()
+def _header(name: str) -> str:
     try:
-        checked = check_url(url)
-    except UrlNotAllowed as exc:
-        # Refusals are returned, not raised: the model should learn it cannot reach
-        # internal hosts and move on, rather than see an opaque tool crash.
-        return PageContent(success=False, url=url, error=f"refused: {exc}")
+        headers = get_http_headers()
+    except Exception:  # noqa: BLE001 - called outside a request in tests
+        return ""
+    # Starlette lower-cases header names, but a direct dict does not.
+    for key, value in dict(headers).items():
+        if key.lower() == name:
+            return (value or "").strip()
+    return ""
 
-    async def extract(tab):
-        return await tab.evaluate(_EXTRACT_JS, await_promise=False, return_by_value=True)
 
-    try:
-        payload = await with_page(
-            checked, extract, timeout=timeout_seconds, session_id=_session_id()
-        )
-    except TimeoutError as exc:
-        return PageContent(success=False, url=url, error=str(exc))
-    except Exception as exc:  # noqa: BLE001 - surfaced to the model
-        log.exception("browse_page failed for %s", url)
-        return PageContent(success=False, url=url, error=f"could not load page: {exc}")
+def _refusal(message: str) -> ToolResult:
+    """A refusal the model can read and act on.
 
-    # Anything that is not the JSON string the script promises means the extraction
-    # did not run — report that rather than a cheerful empty page.
-    if not isinstance(payload, str):
-        log.error("unexpected evaluate() return for %s: %r", url, type(payload))
-        return PageContent(
-            success=False, url=url, error="page extraction returned no usable content"
-        )
-    try:
-        data = json.loads(payload)
-    except ValueError as exc:
-        return PageContent(success=False, url=url, error=f"could not parse page content: {exc}")
-
-    text = (data.get("text") or "").strip()
-    links = [l for l in (data.get("links") or []) if isinstance(l, str)][:MAX_LINKS]
-    title = (data.get("title") or "").strip()
-
-    if not text and not title:
-        return PageContent(
-            success=False,
-            url=url,
-            error="page loaded but contained no readable text (JS-gated, blocked, or empty)",
-        )
-
-    return PageContent(
-        success=True,
-        url=url,
-        title=title,
-        text=text[:MAX_DOCUMENT_CHARS],
-        links=links,
-        truncated=len(text) > MAX_DOCUMENT_CHARS,
+    Returned, never raised: an opaque tool crash teaches the model nothing, and it will
+    try the same internal host again. This says what was refused and why.
+    """
+    payload = {"success": False, "error": f"refused: {message}"}
+    return ToolResult(
+        content=[{"type": "text", "text": json.dumps(payload)}],
+        structured_content=payload,
     )
+
+
+class RoutedTool(Tool):
+    """One of the sidecar's tools, re-exposed here with routing, checks and capture.
+
+    The schema is copied verbatim from the template session, so the model sees exactly
+    playwright-mcp's own contract. What this class adds is everything in the module
+    docstring — and it adds it in the router rather than in the sidecar, because there is
+    one sidecar per chat and the boundary has to hold for all of them.
+    """
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        tool_name = self.name
+
+        # 1. The security boundary, before anything is dispatched.
+        try:
+            check_tool_arguments(tool_name, arguments)
+        except UrlNotAllowed as exc:
+            log.info("refused %s: %s", tool_name, exc)
+            return _refusal(str(exc))
+
+        await router.ensure_reaper()
+        session_id = _header(SESSION_HEADER)
+        username = _header(USER_HEADER)
+
+        try:
+            chat = await router.get(session_id)
+        except chat_browser.BrowserSpawnFailed as exc:
+            log.error("could not start a browser for chat %r: %s", session_id, exc)
+            return _refusal(f"no browser could be started: {exc}")
+
+        # 2. Forward, serialised per chat. One conversation's calls must not interleave in
+        #    its own browser; different conversations run in parallel, which is the whole
+        #    reason the old global lock is gone.
+        async with chat.lock:
+            result, failed = await self._forward(chat, tool_name, arguments)
+
+            # 3. Capture, including on failure — the error path is where the evidence
+            #    matters most.
+            if capture_mod.should_capture(tool_name):
+                captured = await capture_mod.capture(chat, tool_name, username, failed=failed)
+                result = _attach_artifact(result, captured)
+
+            # 4. Tab cap, AFTER the capture: capture reads the active tab, and closing
+            #    tabs first could take the one the agent just acted on.
+            await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
+
+        return result
+
+    async def _forward(
+        self, chat, tool_name: str, arguments: dict[str, Any]
+    ) -> tuple[ToolResult, bool]:
+        """Call the sidecar, restarting it once if it has died."""
+        last_error: Exception | None = None
+        for attempt in range(SIDECAR_RETRIES + 1):
+            if chat.client is None or not chat_browser.sidecar_alive(chat):
+                await chat_browser.restart_sidecar(chat)
+            try:
+                call = await chat.client.call_tool(
+                    tool_name, arguments, raise_on_error=False
+                )
+            except Exception as exc:  # noqa: BLE001 - a dead sidecar looks like this
+                last_error = exc
+                log.warning(
+                    "sidecar call %s failed (attempt %d): %s", tool_name, attempt + 1, exc
+                )
+                await chat_browser.restart_sidecar(chat)
+                continue
+            failed = bool(getattr(call, "is_error", False))
+            return (
+                ToolResult(
+                    content=list(getattr(call, "content", []) or []),
+                    structured_content=getattr(call, "structured_content", None),
+                ),
+                failed,
+            )
+
+        # Both attempts failed. This is returned as a tool error rather than raised so the
+        # model sees a retryable failure instead of the connection wedging.
+        return (
+            _refusal(f"the browser sidecar is not responding: {last_error}"),
+            True,
+        )
+
+
+#: Marker line carrying the capture ids in the tool result's **text**.
+#:
+#: `structured_content` is the right place for this and is where it also goes — but it
+#: does not survive the path to the transcript. LangGraph's `on_tool_end` hands the
+#: website a ToolMessage whose `content` is the text blocks and nothing else, so a card
+#: reading only the structured key finds nothing and renders no thumbnail. Verified
+#: against a real stored `tool_output`, which was the text and only the text.
+#:
+#: The cost is ~15 tokens of opaque line per browser call. The card parses it out and
+#: **strips it before display**, so it is never shown to the user either.
+ARTIFACT_MARKER = "[hoover4:artifacts]"
+
+
+def _attach_artifact(result: ToolResult, captured: capture_mod.CaptureResult) -> ToolResult:
+    """Record the capture on the tool result, in both places a consumer might look.
+
+    The model is told nothing about this beyond an id it has no use for. It exists so the
+    website can render the screenshot and the archived page on the tool card.
+    """
+    if not captured.artifact_id:
+        return result
+    entry = {
+        "artifact_id": captured.artifact_id,
+        "kind": artifacts.KIND_PAGE_CAPTURE,
+        "status": captured.status,
+        "url": captured.url,
+        "title": captured.title,
+    }
+    if captured.detail:
+        entry["detail"] = captured.detail
+
+    # 1. The structured key, for any client that preserves structured content (the host's
+    #    .mcp.json entries do).
+    structured = result.structured_content
+    if isinstance(structured, dict):
+        structured = dict(structured)
+        structured[artifacts.ARTIFACTS_KEY] = [entry]
+    else:
+        structured = {artifacts.ARTIFACTS_KEY: [entry]}
+
+    # 2. The text marker, for the transcript path. See ARTIFACT_MARKER.
+    content = list(result.content or [])
+    content.append(
+        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps([entry])}")
+    )
+
+    return ToolResult(content=content, structured_content=structured)
+
+
+async def _register_tools() -> int:
+    """Copy the sidecar's tool list onto this server, once, from the template session."""
+    template = await router.template()
+    tools = await template.client.list_tools()
+    for spec in tools:
+        mcp.add_tool(
+            RoutedTool(
+                name=spec.name,
+                title=getattr(spec, "title", None),
+                description=spec.description or "",
+                parameters=spec.inputSchema or {"type": "object", "properties": {}},
+                output_schema=getattr(spec, "outputSchema", None),
+            )
+        )
+    log.info("registered %d browser tools from the template session", len(tools))
+    return len(tools)
 
 
 @mcp.custom_route("/health", methods=["GET"])
@@ -199,41 +260,67 @@ async def health(_request: Any):
         {
             "status": "ok",
             "service": "hoover4-browser",
-            "sessions": registry.describe(),
+            "tools": len(await mcp.get_tools()),
+            "sessions": router.describe(),
+            **router.health(),
+            "artifacts_enabled": artifacts.enabled(),
         }
     )
-
-
-@mcp.custom_route("/sessions/{session_id}/close", methods=["POST", "DELETE"])
-async def close_browser_session(request: Any):
-    """Drop one chat's browser context.
-
-    Called by the website when a conversation ends, so a chat's cookies go when the
-    chat does rather than an hour later. Idempotent: closing an unknown or
-    already-closed session is a 200 with `closed: false`, because the caller's goal
-    ("this session must not be open") is satisfied either way.
-    """
-    from starlette.responses import JSONResponse
-
-    session_id = request.path_params["session_id"]
-    closed = await close_session(session_id)
-    return JSONResponse({"session_id": session_id, "closed": closed})
 
 
 @mcp.custom_route("/sessions", methods=["GET"])
 async def list_browser_sessions(_request: Any):
     from starlette.responses import JSONResponse
 
-    return JSONResponse({"sessions": registry.describe()})
+    return JSONResponse({"sessions": router.describe(), **router.health()})
+
+
+@mcp.custom_route("/sessions/{session_id}/close", methods=["POST", "DELETE"])
+async def close_browser_session(request: Any):
+    """Drop one chat's browser.
+
+    Called by the website when a conversation ends, so a chat's cookies and its two
+    processes go with the chat rather than fifteen minutes later. Idempotent: closing an
+    unknown or already-closed session is a 200 with `closed: false`, because the caller's
+    goal ("this session must not be open") is satisfied either way.
+    """
+    from starlette.responses import JSONResponse
+
+    session_id = request.path_params["session_id"]
+    closed = await router.close(session_id)
+    return JSONResponse({"session_id": session_id, "closed": closed})
 
 
 def main() -> None:
-    log.info("Starting Hoover4 browser MCP server")
-    mcp.run(
-        transport="http",
-        host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", "8087")),
-    )
+    """Register the tools and serve, **on one event loop**.
+
+    `mcp.run()` creates its own loop. Doing the registration on a separate loop first
+    would leave the template browser's MCP client bound to a loop that no longer runs, and
+    every later use of it would fail with a cross-loop error that names nothing useful. So
+    `run_async` is awaited from the same `asyncio.run` that did the setup.
+    """
+    import asyncio
+
+    log.info("Starting Hoover4 browser MCP router")
+
+    async def serve():
+        # The template browser starts here rather than lazily, so a broken image fails at
+        # boot with a log line instead of on the first user's first tool call.
+        try:
+            count = await _register_tools()
+            log.info("browser router ready with %d tools", count)
+        except Exception:  # noqa: BLE001 - /health must still answer and say why
+            log.exception("could not register browser tools from the template session")
+        try:
+            await mcp.run_async(
+                transport="http",
+                host=os.getenv("HOST", "0.0.0.0"),
+                port=int(os.getenv("PORT", "8087")),
+            )
+        finally:
+            await router.shutdown()
+
+    asyncio.run(serve())
 
 
 if __name__ == "__main__":

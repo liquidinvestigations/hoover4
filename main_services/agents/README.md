@@ -15,11 +15,52 @@ from the repo root, no separate tier to start.
 | Server | Directory | Port | Used by | What it does |
 |---|---|---|---|---|
 | Collection search | [`collection_search_server/`](collection_search_server/README.md) | 21930 | both agents | ACL-bounded full-text search of the user's own documents (Manticore + ClickHouse) |
-| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | Web search over four engines, merged with reciprocal rank fusion |
-| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | Reads a page with a real headless Chromium, one isolated browser context per chat |
-| DuckDuckGo | [`ddg_search_server/`](ddg_search_server/) | 21933 | full research | Single-engine web/news search. Superseded by metasearch but cheap to keep |
-| Wikipedia | [`wikipedia_search_server/`](wikipedia_search_server/) | 21935 | full research | Article and summary lookup |
+| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: four HTML scrapers + DuckDuckGo text/news + Wikipedia, fused with RRF and reranked by the GPU cross-encoder |
+| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | Playwright's whole browser surface, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | Domain registration lookup |
+
+**`hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` were retired in plan 2 phase 2.** Three
+overlapping "search the web" tools is a choice a small model makes badly and
+inconsistently; their sources now live in
+[`metasearch_server/metasearch_server/sources.py`](metasearch_server/metasearch_server/sources.py)
+as `ddg_api`, `ddg_news` and `wikipedia`, selectable through `web_search(sources=[…])`.
+The two directories stay in git as history — nothing builds or deploys them, and their
+port keys (`mcp_ddg_port`, `mcp_wikipedia_port`) are gone from `hoover4.ini`.
+
+### Shared code: `agent_common/`
+
+[`agent_common/`](agent_common/) holds what more than one server needs and neither should
+own: the chat-artifact writer, the MinIO helper both artifact writers sit on, and the
+rerank client with its circuit breaker.
+
+**It is vendored, not installed from an index.** The metasearch and browser Dockerfiles
+build with `main_services/agents` as their **build context** and `COPY ./agent_common/`.
+If you move either Dockerfile, move its `context:` in
+[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml) with it — a
+Docker build cannot reach outside its context, and the failure is a missing-module
+traceback at container start, not at build time.
+
+### Chat artifacts
+
+A tool that produces something too big for the model's context but worth showing the
+*user* writes a **chat artifact**: bytes to MinIO under
+`derived/chat-artifacts/<session>/<id>/`, one index row in `Hoover4_Processing.chat_artifacts`.
+
+* `web_search` writes a `search_detail` — every candidate in both orderings, with
+  per-source ranks and the timing table. The tool result carries only the UUID.
+* The browser router writes a `page_capture` after every action that can change the
+  screen, **including when the call failed**: a 1280x720 WebP screenshot plus the page
+  archived as self-contained HTML.
+
+The model receives only the id, under a reserved `_hoover4_artifacts` key. **It is a
+lookup key, never a capability** — the website resolves it to `session_id`/`username` and
+enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`).
+
+`P0_scan_disk` must never walk the `derived/` prefix: an artifact the ingest walker can
+see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`
+asserts that no `blobs` row references it. Retention is a daily Temporal singleton
+(`sweep-chat-artifacts`, in `tasks/P_admin/artifact_sweeper.py`) that deletes the objects
+**before** the rows, because a ClickHouse TTL cannot touch MinIO.
 
 The two research agents share one image built from [`research_agent/`](research_agent/README.md):
 
@@ -209,8 +250,9 @@ New servers follow **`collection_search_server`**: a plain `python:3.12-slim` im
 `pip install .`, a `@mcp.custom_route("/health")` endpoint and `mcp.run(transport="http")`.
 It builds in seconds and has no build toolchain.
 
-`ddg_search_server`, `wikipedia_search_server` and `whois_search_server` are older and use
-a Poetry multi-stage build. They work; do not copy them for anything new.
+`whois_search_server` is older and uses a Poetry multi-stage build. It works; do not copy
+it for anything new. The retired `ddg_search_server` and `wikipedia_search_server` are the
+same shape and are no longer built at all.
 
 ## Running and testing
 
@@ -228,6 +270,26 @@ Each MCP image carries its own tests:
 
 ```bash
 docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 52 tests
-docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 20 tests
-docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 40 tests
+docker exec hoover4-mcp-metasearch  python -m pytest tests/ -q   # 51 tests
+docker exec hoover4-mcp-browser     python -m pytest tests/ -q   # 81 tests
 ```
+
+## Driving these tools from the host
+
+[`.mcp.json`](../../.mcp.json) at the repo root exposes the stateless servers to any MCP
+client on this machine (Claude Code reads it automatically):
+
+| Entry | URL | Tools |
+|---|---|---|
+| `hoover4-web-search` | `http://127.0.0.1:21931/mcp` | `web_search`, `list_search_sources` |
+| `hoover4-browser` | `http://127.0.0.1:21932/mcp` | the 30 Playwright tools |
+| `hoover4-whois` | `http://127.0.0.1:21934/mcp` | `whois_lookup` |
+
+The browser entry sends a fixed `x-hoover4-chat-session: host-mcp-client`, so a host client
+gets a browser of its own rather than sharing the anonymous one. Artifacts it produces are
+filed under that session id and are not reachable through the website (no chat owns them);
+the sweeper's prefix scan collects them.
+
+**`hoover4-mcp-collections` is deliberately absent.** Its every tool requires
+`X-Hoover4-Collections` naming the caller's permitted collections, and only the website
+backend can resolve that — an entry here would be a server whose tools always deny.

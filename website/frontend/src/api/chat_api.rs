@@ -4,7 +4,7 @@
 //! browser never supplies an identity, and never supplies a permission list.
 
 use common::chat_types::{
-    ChatOptions, ChatSendResult, ChatSessionDetail, ChatSessionItem, LiveChatRun,
+    ChatOptions, ChatPollResult, ChatSendResult, ChatSessionDetail, ChatSessionItem, LiveChatRun,
 };
 use dioxus::prelude::*;
 
@@ -113,4 +113,50 @@ pub async fn chat_admin_live_runs() -> Result<Vec<LiveChatRun>, ServerFnError> {
 pub async fn chat_admin_cancel_run(run_id: u64) -> Result<bool, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::admin_cancel_live_run(&user, run_id).map_err(to_server_fn_error)
+}
+
+/// Long-poll the tail of a conversation: finished rows after `after_seq` (the last seq
+/// the client already has; `None` means "send everything"), plus the in-flight turn.
+/// Holds up to ~15 s when nothing changes; `sig` is the opaque change token from the
+/// previous poll (empty on the first call).
+#[server]
+pub async fn chat_poll(
+    session_id: String,
+    after_seq: Option<u32>,
+    sig: String,
+) -> Result<ChatPollResult, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::poll_chat(&user, session_id, after_seq, sig)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The composer's stop button: finalise the running turn's partial answer with a
+/// truncation marker. `false` means the turn had already finished.
+#[server]
+pub async fn chat_stop(session_id: String) -> Result<bool, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::stop_chat_turn(&user, session_id).map_err(to_server_fn_error)
+}
+
+/// Clear an interrupted turn's leftover stream rows once the user has seen the marker.
+#[server]
+pub async fn chat_dismiss_interrupted(session_id: String) -> Result<(), ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::dismiss_interrupted_turn(&user, session_id)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The search-detail JSON behind a `web_search` card's popup.
+///
+/// Fetched lazily on first open — it holds both orderings of every candidate, which is
+/// far more than the card needs collapsed and more than `TOOL_PAYLOAD_CHARS` could carry
+/// in the tool result at all.
+#[server]
+pub async fn chat_artifact_detail(artifact_id: String) -> Result<String, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::get_chat_artifact_detail(&user, artifact_id)
+        .await
+        .map_err(to_server_fn_error)
 }

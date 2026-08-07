@@ -5,6 +5,8 @@
 //! restricted collections, so the owner is part of the primary key of every query. A
 //! session id alone is never sufficient to read a conversation.
 
+pub mod artifacts;
+
 use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem};
 use time::format_description::well_known::Rfc3339;
 
@@ -81,6 +83,33 @@ pub struct ChatMessageRow {
     /// the two apart here is what stops the scratchpad reaching the transcript.
     #[serde(default)]
     pub reasoning: String,
+    /// Per-turn uuid, shared by every row a turn writes. `next_seq` is max(seq)+1 with
+    /// no database-side sequence, so two senders can pick the same seq; the uuid makes
+    /// that collision detectable instead of silently keeping one message.
+    #[serde(default)]
+    pub message_uuid: String,
+}
+
+/// One version of an in-flight row in `chat_message_stream`.
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+pub struct ChatStreamRow {
+    pub session_id: String,
+    pub username: String,
+    pub seq: u32,
+    pub role: String,
+    pub content: String,
+    #[serde(default)]
+    pub reasoning: String,
+    #[serde(default)]
+    pub tool_name: String,
+    pub is_final: u8,
+    /// Milliseconds since Unix epoch — matches `DateTime64(3)` on the wire, same as
+    /// `ChatMessageRow::created_ms`.
+    pub updated_at: i64,
+    #[serde(default)]
+    pub message_uuid: String,
+    #[serde(default)]
+    pub tool_call_index: u32,
 }
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
@@ -89,7 +118,7 @@ const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, colle
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
-     retry_errors, model, reasoning FROM chat_messages FINAL";
+     retry_errors, model, reasoning, message_uuid FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -215,16 +244,57 @@ pub async fn list_messages(
             created_ms: fmt_ms(r.created_ms),
             agent_duration_ms: r.agent_duration_ms,
             retry_errors: r.retry_errors,
+            reasoning: r.reasoning,
+            streaming: false,
+        })
+        .collect())
+}
+
+/// Finished rows with `seq > after_seq` — the poll endpoint's incremental read.
+/// `after_seq` of -1 returns the whole transcript (a client that has nothing yet).
+pub async fn list_messages_after(
+    username: &str,
+    session_id: &str,
+    after_seq: i64,
+) -> anyhow::Result<Vec<ChatMessageItem>> {
+    let client = get_global_client();
+    let rows = client
+        .query(&format!(
+            "{MESSAGE_SELECT} WHERE username = ? AND session_id = ? AND seq > ? ORDER BY seq"
+        ))
+        .bind(username)
+        .bind(session_id)
+        .bind(after_seq)
+        .fetch_all::<ChatMessageRow>()
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ChatMessageItem {
+            seq: r.seq,
+            role: ChatRole::from_str(&r.role),
+            content: r.content,
+            tool_name: r.tool_name,
+            tool_input: r.tool_input,
+            tool_output: r.tool_output,
+            doc_refs: r.doc_refs,
+            created_at: fmt(r.created_at),
+            created_ms: fmt_ms(r.created_ms),
+            agent_duration_ms: r.agent_duration_ms,
+            retry_errors: r.retry_errors,
+            reasoning: r.reasoning,
+            streaming: false,
         })
         .collect())
 }
 
 /// The next free `seq` in a session.
 ///
-/// Not transactional — ClickHouse has no sequences and no row locks. Two messages sent
-/// from two tabs at the same instant can collide on a `seq` and the ReplacingMergeTree
-/// will keep one of them. Acceptable for a single-user chat UI; noted in the plan's
-/// open questions rather than papered over with a lock this database cannot provide.
+/// ClickHouse has no sequences and no row locks, so this is only safe under
+/// [`turn_lock`]: every caller that allocates seqs for a session holds that session's
+/// lock for the whole turn, which serialises allocation *and* keeps a second turn's
+/// history read from racing the first turn's writes. The per-row `message_uuid` is the
+/// detector for anything that still slips through (two website processes, say).
 pub async fn next_seq(username: &str, session_id: &str) -> anyhow::Result<u32> {
     let client = get_global_client();
     // ClickHouse types `max(seq) + 1` as UInt64; cast so the client can decode it.
@@ -254,6 +324,8 @@ pub struct AppendMessageExtras {
     pub model: String,
     /// Reasoning kept out of the answer body.
     pub reasoning: String,
+    /// Per-turn uuid — see `ChatMessageRow::message_uuid`.
+    pub message_uuid: String,
 }
 
 pub async fn append_message(
@@ -282,6 +354,7 @@ pub async fn append_message(
         retry_errors: extras.retry_errors,
         model: extras.model,
         reasoning: extras.reasoning,
+        message_uuid: extras.message_uuid,
     };
     insert_row("chat_messages", &row).await
 }
@@ -385,7 +458,212 @@ pub async fn delete_session(username: &str, session_id: &str) -> anyhow::Result<
     let Some(mut row) = get_session(username, session_id).await? else {
         return Ok(());
     };
+    // Artifacts go with the conversation, in the same operation. A tombstone rather than
+    // a delete: the sweeper needs the row to know which MinIO objects to remove, and a
+    // ClickHouse delete would leave those bytes with nothing pointing at them.
+    //
+    // Failure here is logged and does not block the session delete: the user asked for
+    // the chat to go, and the sweeper's prefix scan collects orphaned objects anyway.
+    if let Err(e) = artifacts::soft_delete_session_artifacts(username, session_id).await {
+        tracing::error!("could not soft-delete artifacts for session {session_id}: {e}");
+    }
     row.is_deleted = 1;
     row.updated_at = now();
     insert_row("chat_sessions", &row).await
+}
+
+// ---------------------------------------------------------------------------
+// Streaming: chat_message_stream holds the in-flight turn, one row per partial
+// write, so chat_messages keeps its write-once-per-completed-row discipline.
+// ---------------------------------------------------------------------------
+
+/// One turn runs at a time per session. The lock is what makes `next_seq` safe and
+/// what keeps a fast second send from reading a history the first turn has not
+/// finished writing. Same `Mutex<HashMap>` idiom as `api/chat/live_runs.rs`.
+static TURN_LOCKS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// The per-session turn lock. Hold the guard for the whole turn (user row through
+/// finalisation). Never await the agent without holding it.
+pub fn turn_lock(username: &str, session_id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    let key = format!("{username}:{session_id}");
+    let mut locks = TURN_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    std::sync::Arc::clone(
+        locks
+            .entry(key)
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(()))),
+    )
+}
+
+/// Write (or rewrite) one in-flight row. Same (username, session_id, seq) replaces by
+/// `updated_at`, so a growing assistant partial is one logical row rewritten as tokens
+/// arrive. `tool_call_index` orders a turn's tool rows; the assistant row keeps 0.
+#[allow(clippy::too_many_arguments)]
+pub async fn append_stream_row(
+    username: &str,
+    session_id: &str,
+    seq: u32,
+    role: ChatRole,
+    content: &str,
+    reasoning: &str,
+    tool_name: &str,
+    tool_call_index: u32,
+    is_final: bool,
+    message_uuid: &str,
+) -> anyhow::Result<()> {
+    let row = ChatStreamRow {
+        session_id: session_id.to_string(),
+        username: username.to_string(),
+        seq,
+        role: role.as_str().to_string(),
+        content: content.to_string(),
+        reasoning: reasoning.to_string(),
+        tool_name: tool_name.to_string(),
+        is_final: u8::from(is_final),
+        updated_at: now().unix_timestamp_nanos() as i64 / 1_000_000,
+        message_uuid: message_uuid.to_string(),
+        tool_call_index,
+    };
+    insert_row("chat_message_stream", &row).await
+}
+
+/// The live state of every non-final stream row in a session.
+///
+/// `argMax` per `seq`, never a bare SELECT: a ReplacingMergeTree read without an
+/// aggregate can return an older part and the visible text would shrink mid-stream.
+/// The TTL is applied lazily at merge time, so the freshness filter is part of the
+/// query, not something to trust the table with.
+///
+/// Two rules collide here, and the nesting is what satisfies both.
+///
+/// * ClickHouse resolves identifiers against SELECT aliases first, so
+///   `max(updated_at) AS updated_at` makes every sibling `argMax(…, updated_at)` read as
+///   an aggregate inside an aggregate: `Code: 184, ILLEGAL_AGGREGATION`, whole query
+///   dead. The aggregates therefore land on `last_*` aliases.
+/// * `clickhouse::Row` matches columns **by name**, not by position — a `last_role`
+///   column with a `role` field is `schema mismatch: … column last_role … not found in
+///   the struct definition`, which fails just as hard.
+///
+/// So: aggregate under `last_*` in the inner query, rename back to the struct's names in
+/// the outer one.
+pub async fn read_stream_rows(
+    username: &str,
+    session_id: &str,
+) -> anyhow::Result<Vec<ChatStreamRow>> {
+    let client = get_global_client();
+    let rows = client
+        .query(
+            "SELECT session_id, username, seq, \
+                    last_role AS role, \
+                    last_content AS content, \
+                    last_reasoning AS reasoning, \
+                    last_tool_name AS tool_name, \
+                    last_is_final AS is_final, \
+                    last_updated_at AS updated_at, \
+                    last_message_uuid AS message_uuid, \
+                    last_tool_call_index AS tool_call_index \
+             FROM ( \
+                 SELECT session_id, username, seq, \
+                        argMax(role, updated_at) AS last_role, \
+                        argMax(content, updated_at) AS last_content, \
+                        argMax(reasoning, updated_at) AS last_reasoning, \
+                        argMax(tool_name, updated_at) AS last_tool_name, \
+                        argMax(is_final, updated_at) AS last_is_final, \
+                        max(updated_at) AS last_updated_at, \
+                        argMax(message_uuid, updated_at) AS last_message_uuid, \
+                        argMax(tool_call_index, updated_at) AS last_tool_call_index \
+                 FROM chat_message_stream \
+                 WHERE username = ? AND session_id = ? \
+                   AND updated_at > now64(3) - INTERVAL 1 HOUR \
+                 GROUP BY session_id, username, seq \
+             ) \
+             ORDER BY seq",
+        )
+        .bind(username)
+        .bind(session_id)
+        .fetch_all::<ChatStreamRow>()
+        .await?;
+    Ok(rows)
+}
+
+/// `(last user seq, last assistant-or-error seq)` in a session, `None` for absent.
+///
+/// This is how "is a turn still being produced" is answered: a turn is open when the
+/// last user row has no assistant or error row after it. Deriving that from the
+/// *transcript* rather than from an open stream row is what makes it reliable — the
+/// stream writer finalises one row and opens the next as two separate inserts, and a
+/// poll landing between them would otherwise see a turn that had vanished.
+///
+/// `seq` starts at 1 (`next_seq` on an empty session returns 1), so 0 safely means
+/// "no such row".
+pub async fn turn_boundaries(
+    username: &str,
+    session_id: &str,
+) -> anyhow::Result<(Option<u32>, Option<u32>)> {
+    let client = get_global_client();
+    let (user_seq, answer_seq) = client
+        .query(
+            "SELECT maxIf(seq, role = 'user') AS last_user, \
+                    maxIf(seq, role IN ('assistant', 'error')) AS last_answer \
+             FROM chat_messages FINAL \
+             WHERE username = ? AND session_id = ?",
+        )
+        .bind(username)
+        .bind(session_id)
+        .fetch_one::<(u32, u32)>()
+        .await?;
+    Ok((
+        (user_seq > 0).then_some(user_seq),
+        (answer_seq > 0).then_some(answer_seq),
+    ))
+}
+
+/// Mark one stream row final (a finalised tool row, or an assistant partial whose seq
+/// a starting tool is taking over). Re-inserts the newest version with `is_final = 1`.
+pub async fn mark_stream_row_final(
+    username: &str,
+    session_id: &str,
+    seq: u32,
+) -> anyhow::Result<()> {
+    let rows = read_stream_rows(username, session_id).await?;
+    for row in rows.into_iter().filter(|r| r.seq == seq && r.is_final == 0) {
+        append_stream_row(
+            username,
+            session_id,
+            row.seq,
+            ChatRole::from_str(&row.role),
+            &row.content,
+            &row.reasoning,
+            &row.tool_name,
+            row.tool_call_index,
+            true,
+            &row.message_uuid,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Mark every stream row of a session final — the turn is over (one way or another)
+/// and the rows are only kept around for the TTL to collect. Reads filter on
+/// `is_final = 0`, so this is also how an interrupted turn is dismissed.
+pub async fn mark_stream_final(username: &str, session_id: &str) -> anyhow::Result<()> {
+    let rows = read_stream_rows(username, session_id).await?;
+    for row in rows.into_iter().filter(|r| r.is_final == 0) {
+        append_stream_row(
+            username,
+            session_id,
+            row.seq,
+            ChatRole::from_str(&row.role),
+            &row.content,
+            &row.reasoning,
+            &row.tool_name,
+            row.tool_call_index,
+            true,
+            &row.message_uuid,
+        )
+        .await?;
+    }
+    Ok(())
 }

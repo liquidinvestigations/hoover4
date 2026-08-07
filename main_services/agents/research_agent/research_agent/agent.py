@@ -479,10 +479,20 @@ class MCPGatewayAgent:
             if node == "tools":
                 llm_started = False
                 if kind == "on_tool_start":
+                    # `event["data"]` on a start is only `{"input": {...}}` — the tool's
+                    # name lives on the event, not in its data, and until the matching
+                    # end event arrives there is nowhere else to get it. A consumer
+                    # rendering the call *while it runs* (the website's streaming chat)
+                    # would otherwise have to label every in-flight card "tool".
+                    start_data = recurse_json_decode(
+                        self.tools_type_adapter.dump_python(event["data"])
+                    )
+                    if isinstance(start_data, dict) and not start_data.get("name"):
+                        start_data["name"] = event.get("name") or ""
                     yield {
                         "is_task_complete": False,
                         "type": "start_tool",
-                        "content": recurse_json_decode(self.tools_type_adapter.dump_python(event["data"])),
+                        "content": start_data,
                     }
                 elif kind == "on_tool_end":
                     yield {

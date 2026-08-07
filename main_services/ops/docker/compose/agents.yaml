@@ -41,54 +41,7 @@ services:
     networks:
       - hoover4
 
-  # --------------------------------------------------------------- MCP: open web
-  hoover4-mcp-ddg:
-    build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/ddg_search_server
-      dockerfile: Dockerfile
-    image: hoover4-mcp-ddg:local
-    container_name: hoover4-mcp-ddg
-    ports:
-      - "127.0.0.1:${MCP_DDG_PORT}:8080"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8080
-      - SERVER_NAME=${DDG_SERVER_NAME:-ddgs}
-      - SERVER_INSTRUCTIONS=${DDG_SERVER_INSTRUCTIONS:-Web and news search using DuckDuckGo.}
-      - DDG_DEFAULT_REGION=${DDG_DEFAULT_REGION:-wt-wt}
-      - DDG_DEFAULT_MAX_RESULTS=${DDG_DEFAULT_MAX_RESULTS:-3}
-      - DDG_DEFAULT_SAFESEARCH=${DDG_DEFAULT_SAFESEARCH:-off}
-      - DDG_DEFAULT_TIMELIMIT=${DDG_DEFAULT_TIMELIMIT:-}
-      - DDG_PROXY_URL=${DDG_PROXY_URL:-}
-      - DDG_TIMEOUT=${DDG_TIMEOUT:-30}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    restart: unless-stopped
-    networks:
-      - hoover4
-
-  hoover4-mcp-wikipedia:
-    build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/wikipedia_search_server
-      dockerfile: Dockerfile
-    image: hoover4-mcp-wikipedia:local
-    container_name: hoover4-mcp-wikipedia
-    ports:
-      - "127.0.0.1:${MCP_WIKIPEDIA_PORT}:8083"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8083
-      - SERVER_NAME=${WIKIPEDIA_SERVER_NAME:-hoover4_wikipedia_search}
-      - SERVER_INSTRUCTIONS=${WIKIPEDIA_SERVER_INSTRUCTIONS:-Wikipedia article and summary search.}
-      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
-      - WIKIPEDIA_MAX_RESULTS=${WIKIPEDIA_MAX_RESULTS:-3}
-      - WIKIPEDIA_MAX_ALLOWED_RESULTS=${WIKIPEDIA_MAX_ALLOWED_RESULTS:-50}
-      - WIKIPEDIA_SUMMARY_SENTENCES=${WIKIPEDIA_SUMMARY_SENTENCES:-5}
-      - WIKIPEDIA_MAX_SUMMARY_SENTENCES=${WIKIPEDIA_MAX_SUMMARY_SENTENCES:-10}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    restart: unless-stopped
-    networks:
-      - hoover4
-
+  # --------------------------------------------------------------- MCP: whois
   hoover4-mcp-whois:
     build:
       context: ${HOOVER4_REPO_ROOT}/main_services/agents/whois_search_server
@@ -111,16 +64,23 @@ services:
     networks:
       - hoover4
 
-  # Metasearch: the same query put to several engines and merged with reciprocal rank
-  # fusion, so the model can see which results more than one engine agreed on. Supersedes
-  # hoover4-mcp-ddg in the full research agent's tool list; both are cheap, so the DDG
-  # one stays running. All engines are HTML scrapers with no API keys, so expect one to
-  # rot — METASEARCH_ENGINES turns a broken one off without a rebuild, and the response's
-  # `degraded` list is how you notice.
+  # Metasearch: THE web search server. One `web_search` tool covering four HTML scrapers,
+  # the ddgs library (text and news) and Wikipedia, merged with reciprocal rank fusion and
+  # then reordered by the GPU tier's cross-encoder. hoover4-mcp-ddg and
+  # hoover4-mcp-wikipedia were retired into it in plan 2 phase 2 — three overlapping
+  # "search the web" tools is a choice a small model makes badly.
+  #
+  # The scrapers have no API keys, so expect one to rot — METASEARCH_SOURCES turns a
+  # broken one off without a rebuild, and the response's `degraded` list is how you notice.
+  #
+  # RERANK_URL is the GPU tier's /v1 base (deploy.py renders it from the same setting as
+  # EMBEDDINGS_URL). Empty means no reranking: search still works, the results come back
+  # in RRF order, and `rerank_applied: false` says so on the card.
   hoover4-mcp-metasearch:
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/metasearch_server
-      dockerfile: Dockerfile
+      # Context is the agents directory, not this server's: agent_common/ is vendored in.
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: metasearch_server/Dockerfile
     image: hoover4-mcp-metasearch:local
     container_name: hoover4-mcp-metasearch
     ports:
@@ -129,11 +89,29 @@ services:
       - HOST=0.0.0.0
       - PORT=8086
       - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
-      - METASEARCH_ENGINES=${METASEARCH_ENGINES:-ddg,brave,startpage,yahoo}
+      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-ddg,brave,startpage,yahoo,ddg_api,ddg_news,wikipedia}
+      - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
+      - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
-      - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-8}
+      - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-10}
+      - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-20}
+      - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-15}
       - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
+      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
+      # Reranking, and the breaker in front of it.
+      - RERANK_URL=${RERANK_URL:-}
+      - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-25}
+      - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
+      - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
+      # Search-detail artifacts: bytes to MinIO, one index row in ClickHouse.
+      - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio-s3:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
@@ -145,17 +123,25 @@ services:
     networks:
       - hoover4
 
-  # Browser: a real headless Chromium for pages the scrapers cannot read. The image is
-  # ~1 GB (Chromium plus fonts) and that is expected.
+  # Browser: a router in front of one Chromium + one playwright-mcp sidecar PER CHAT.
+  # The image is ~1.5 GB (Chromium, fonts, Node, two extensions) and that is expected.
+  #
+  # Memory is the reason BROWSER_MAX_CONTEXTS is 8 and not 32: this is a whole browser
+  # per conversation, not a browser context. It has to be a whole browser — playwright-mcp
+  # attached with --cdp-endpoint shares one context across every client on that endpoint,
+  # measured, so the isolation boundary had to move down a level (plan §3.2).
   #
   # SECURITY: this server is driven by an LLM and sits on the same network as
-  # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL is checked
-  # against browser_use_server/urlcheck.py first — public http/https only, and the host
-  # must resolve exclusively to public addresses. Do not weaken that.
+  # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL-shaped
+  # argument of every forwarded tool is checked against browser_use_server/urlcheck.py
+  # first — public http/https only, and the host must resolve exclusively to public
+  # addresses. The sidecar's own --blocked-origins is the second line, not the first.
+  # Do not weaken either.
   hoover4-mcp-browser:
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/browser_use_server
-      dockerfile: Dockerfile
+      # Context is the agents directory, not this server's: agent_common/ is vendored in.
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: browser_use_server/Dockerfile
     image: hoover4-mcp-browser:local
     container_name: hoover4-mcp-browser
     ports:
@@ -165,19 +151,36 @@ services:
       - PORT=8087
       - SERVER_NAME=${BROWSER_SERVER_NAME:-hoover4_browser}
       - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
-      - BROWSER_SETTLE_SECONDS=${BROWSER_SETTLE_SECONDS:-1.5}
-      - BROWSER_MAX_LINKS=${BROWSER_MAX_LINKS:-50}
-      - MAX_DOCUMENT_CHARS=${BROWSER_MAX_DOCUMENT_CHARS:-20000}
+      - BROWSER_ACTION_TIMEOUT=${BROWSER_ACTION_TIMEOUT:-15}
+      - BROWSER_MAX_CONTEXTS=${BROWSER_MAX_CONTEXTS:-8}
+      - BROWSER_IDLE_SECONDS=${BROWSER_IDLE_SECONDS:-900}
+      - BROWSER_MAX_TABS_PER_CHAT=${BROWSER_MAX_TABS_PER_CHAT:-6}
+      - BROWSER_WINDOW_WIDTH=${BROWSER_WINDOW_WIDTH:-1280}
+      - BROWSER_WINDOW_HEIGHT=${BROWSER_WINDOW_HEIGHT:-720}
+      # Page captures: screenshot always, MHTML under the cap.
+      - CAPTURE_MAX_SNAPSHOT_BYTES=${CAPTURE_MAX_SNAPSHOT_BYTES:-8388608}
+      - CAPTURE_TIMEOUT_SECONDS=${CAPTURE_TIMEOUT_SECONDS:-20}
+      - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio-s3:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
-    shm_size: 1gb
+    # With up to eight browsers live at once this is the difference between "slow" and
+    # "the container dies mid-answer".
+    shm_size: 2gb
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      # The template browser and its sidecar start at boot, which is a Chromium launch
+      # plus a node process. 40s was not enough once Node was in the picture.
+      start_period: 90s
     networks:
       - hoover4
 
@@ -276,7 +279,9 @@ services:
       # collection MCP server contributes the MATCH syntax through its own instructions,
       # so it does not need repeating here.
       - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
-      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-ddg:8080/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-wikipedia:8083/mcp
+      # One search server, one browser router, one whois. hoover4-mcp-ddg and
+      # hoover4-mcp-wikipedia were folded into metasearch in plan 2 phase 2.
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -290,9 +295,7 @@ services:
       - hoover4-mcp-collections
       - hoover4-mcp-metasearch
       - hoover4-mcp-browser
-      - hoover4-mcp-ddg
       - hoover4-mcp-whois
-      - hoover4-mcp-wikipedia
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]

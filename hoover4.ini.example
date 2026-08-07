@@ -64,8 +64,13 @@ ai_server_port     = 21961
 ner_enabled        = true
 embeddings_enabled = true
 embeddings_model   = intfloat/multilingual-e5-small
+; knn_dims on a Manticore _vectors table is fixed at creation and cannot be altered:
+; changing this model means dropping and rebuilding every _vectors shard.
 embeddings_dim     = 384
-reranker_enabled   = false
+reranker_enabled   = true
+; Multilingual cross-encoder (the corpus is not English-only). Same calibre as the
+; English-only cross-encoder/ms-marco-MiniLM-L-6-v2.
+reranker_model     = cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
 half_precision     = true
 ; torch.compile costs minutes of startup for a modest gain and has been the most
 ; common cause of "the AI server never becomes healthy" — keep false.
@@ -134,9 +139,7 @@ embeddings_cpu_port       = 21924   ; Part 2
 mcp_collections_port      = 21930
 mcp_metasearch_port       = 21931
 mcp_browser_port          = 21932
-mcp_ddg_port              = 21933
 mcp_whois_port            = 21934
-mcp_wikipedia_port        = 21935
 internal_search_agent_port = 21936
 full_research_agent_port  = 21937
 

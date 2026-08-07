@@ -9,8 +9,12 @@ services:
   # main side for the services that used to live next to it.
   hoover4-ai-server:
     build:
-      context: ${HOOVER4_REPO_ROOT}/ai_services/hoover4_ai_server
-      dockerfile: Dockerfile
+      # Context is ai_services/, NOT this folder: the Dockerfile's COPY paths are
+      # ./hoover4_ai_server/... (it predates the overlay split). Pointing the context
+      # at the subdirectory builds nothing — and `up -d` would never tell you, because
+      # it reuses the stale image.
+      context: ${HOOVER4_REPO_ROOT}/ai_services
+      dockerfile: hoover4_ai_server/Dockerfile
     image: hoover4-ai-server:local
     container_name: hoover4-ai-server
     ports:
@@ -21,6 +25,15 @@ services:
       - OPTIMAL_BATCH_SIZE=${AI_SERVER_OPTIMAL_BATCH_SIZE:-32}
       - MAX_SEQUENCE_LENGTH=${AI_SERVER_MAX_SEQUENCE_LENGTH:-512}
       - ENABLE_HALF_PRECISION=${AI_SERVER_ENABLE_HALF_PRECISION:-true}
+      # Model ids and capability switches from hoover4.ini (deploy.py renders them).
+      # The server used to hardcode its model ids, which is how the ini and the running
+      # process drifted apart without anyone noticing.
+      - EMBEDDINGS_MODEL=${EMBEDDINGS_MODEL:-intfloat/multilingual-e5-small}
+      - EMBEDDINGS_DIM=${EMBEDDINGS_DIM:-384}
+      - RERANKER_MODEL=${RERANKER_MODEL:-cross-encoder/mmarco-mMiniLMv2-L12-H384-v1}
+      - AI_SERVER_ENABLE_NER=${AI_SERVER_ENABLE_NER:-true}
+      - AI_SERVER_ENABLE_EMBEDDINGS=${AI_SERVER_ENABLE_EMBEDDINGS:-true}
+      - AI_SERVER_ENABLE_RERANKER=${AI_SERVER_ENABLE_RERANKER:-true}
       # torch.compile costs several minutes of startup for a modest throughput gain and
       # has been the most common cause of "the AI server never becomes healthy".
       - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE:-false}

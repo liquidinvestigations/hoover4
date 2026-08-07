@@ -8,7 +8,7 @@ cases that would need DNS use literal addresses or the documented escape hatch.
 
 import pytest
 
-from browser_use_server.urlcheck import UrlNotAllowed, check_url
+from browser_use_server.urlcheck import UrlNotAllowed, check_tool_arguments, check_url
 
 
 class TestSchemes:
@@ -109,3 +109,51 @@ class TestMalformed:
     def test_junk_is_refused(self, url):
         with pytest.raises(UrlNotAllowed):
             check_url(url)
+
+
+class TestToolArgumentGuard:
+    """The boundary in front of the whole Playwright surface.
+
+    `browse_page` was the only navigating tool when this module was written; the router
+    now forwards two dozen, and every one of them is checked here *before* the call
+    reaches the sidecar. The sidecar's own `--blocked-origins` is the second line —
+    Playwright documents it as not being a security boundary.
+    """
+
+    def test_an_internal_host_is_refused_for_browser_navigate(self):
+        with pytest.raises(UrlNotAllowed, match="internal service"):
+            check_tool_arguments("browser_navigate", {"url": "http://clickhouse:8123/"})
+
+    def test_a_file_scheme_is_refused(self):
+        with pytest.raises(UrlNotAllowed):
+            check_tool_arguments("browser_navigate", {"url": "file:///etc/passwd"})
+
+    @pytest.mark.parametrize(
+        "url", ["data:text/html,<script>x</script>", "chrome://settings", "javascript:alert(1)"]
+    )
+    def test_non_http_schemes_are_refused(self, url):
+        with pytest.raises(UrlNotAllowed):
+            check_tool_arguments("browser_navigate", {"url": url})
+
+    def test_about_blank_is_allowed_because_playwright_uses_it(self):
+        check_tool_arguments("browser_navigate", {"url": "about:blank"})
+
+    def test_a_url_in_a_list_argument_is_checked(self):
+        with pytest.raises(UrlNotAllowed):
+            check_tool_arguments("browser_tabs", {"urls": ["https://example.com", "http://redis:6379"]})
+
+    def test_typed_text_that_looks_like_a_url_is_not_a_navigation(self):
+        """`browser_type` puts text in a field. Refusing it would break filling in a
+        form that legitimately mentions an internal hostname."""
+        check_tool_arguments("browser_type", {"text": "http://clickhouse:8123", "ref": "e1"})
+
+    def test_a_tool_with_no_url_argument_passes_through(self):
+        check_tool_arguments("browser_snapshot", {})
+        check_tool_arguments("browser_click", {"ref": "e12", "element": "Submit button"})
+
+    def test_a_public_url_passes(self, monkeypatch):
+        monkeypatch.setenv("BROWSER_SKIP_DNS_CHECK", "1")
+        check_tool_arguments("browser_navigate", {"url": "https://example.com/page"})
+
+    def test_an_empty_url_is_ignored_rather_than_refused(self):
+        check_tool_arguments("browser_navigate", {"url": ""})

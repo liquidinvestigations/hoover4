@@ -7,6 +7,7 @@ event.
 """
 
 from tasks.P_agent.trajectory import (
+    TOOL_PAYLOAD_CHARS,
     TOOL_SUMMARY_CHARS,
     extract_doc_refs,
     pair_tool_calls,
@@ -145,9 +146,13 @@ def test_a_result_with_no_documents_yields_nothing():
 
 
 def test_payloads_are_truncated_rather_than_stored_whole():
-    long_result = {"text": "z" * 40_000}
+    # Against the constant, not a literal: it mirrors TOOL_PAYLOAD_CHARS in
+    # website/common/src/chat_types.rs and the two move together. A hardcoded 12_000
+    # here is what made the doubling for the richer search payload look like a
+    # regression.
+    long_result = {"text": "z" * (TOOL_PAYLOAD_CHARS * 4)}
     paired = pair_tool_calls([_start(q="x"), _end("get_document_text", long_result)])
-    assert len(paired[0].tool_output) <= 12_001
+    assert len(paired[0].tool_output) <= TOOL_PAYLOAD_CHARS + 1
     assert paired[0].tool_output.endswith("…")
 
 
