@@ -60,9 +60,13 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     heartbeat.beat("querying text_content")
 
     with get_collection_client(params.collectionname) as client:
+        # FINAL for the same reason P5 and P6 need it: a re-parse leaves a second
+        # ReplacingMergeTree row for the segment until the background merge collapses it,
+        # and the anti-join cannot tell the copies apart — so the page is sent to the NER
+        # model twice and writes two sets of `entity_hit` rows.
         text_content = client.query_arrow("""
             SELECT t.collection_dataset, t.file_hash, t.extracted_by, t.page_id, t.text
-            FROM text_content AS t
+            FROM text_content AS t FINAL
             LEFT ANTI JOIN nlp_processed AS n
                 ON n.collection_dataset = t.collection_dataset
                 AND n.file_hash = t.file_hash

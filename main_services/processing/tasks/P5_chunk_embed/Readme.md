@@ -10,12 +10,21 @@ of the AI stack.
 
 ## Key Responsibilities
 
-- Read `text_content` for a plan's hashes and chunk each segment with
+- Read `text_content` **with `FINAL`** for a plan's hashes and chunk each segment with
   `chunking.chunk_page_text`: word-boundary chunks of at most `CHUNK_MAX_BYTES = 1200`
   bytes with ~`CHUNK_OVERLAP_BYTES = 200` overlap, addressed by **byte offsets into
   the UTF-8 encoding** (never character offsets — Python slices by character and
   ClickHouse counts bytes, and mixing them corrupts multibyte text silently).
-  Chunking is deterministic, which is what makes the re-run key below correct.
+  Chunking is deterministic, which is what makes the re-run key below correct. `FINAL`
+  is load-bearing: `text_content` is a `ReplacingMergeTree`, a re-parse leaves two rows
+  for the same segment until a merge collapses them, and the two copies chunk to
+  *identical* keys — so neither is excluded by the anti-join and the page is embedded
+  twice at full GPU cost.
+- Hold back chunks that are not language (`tasks/text_quality.py`): base64 attachment
+  bodies, XPM colour tables, XBM byte dumps. Extraction is greedy on purpose, so it
+  produces these; embedding them buys a vector that then wins searches it has no business
+  winning, because noise is close to everything. Counted as
+  `chunks_skipped_non_linguistic`, never silently. `text_content` still holds every byte.
 - Embed with the e5 prefix from `embedding_prefix.embedding_input` — the ONE function
   that owns the convention, keyed off the **probed** serving model id
   (`server_settings.embeddings_serving_model`, written by `main.py
@@ -30,7 +39,10 @@ of the AI stack.
 ## Loud refusals (non-retryable)
 
 - `embeddings_serving_model`/`_dim` missing from `server_settings` → run
-  `main.py probe-embeddings`.
+  `main.py probe-embeddings`. The embed and indexing workers run that probe at their own
+  startup now, and `./deploy --ai-services` re-runs it, so this should only be reachable
+  when the endpoint was down at both moments — the refusal used to be permanent until a
+  human remembered a command nothing pointed them at.
 - The endpoint serves a different model id or dimension than the probe recorded → the
   probe is stale; proceeding would write vectors under a convention the search side
   does not share, and the anti-join would never match them (re-embedding forever).

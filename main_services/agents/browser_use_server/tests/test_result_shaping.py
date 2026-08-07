@@ -121,3 +121,52 @@ def test_non_text_blocks_pass_through_untouched():
     image = ImageContent(type="image", data="AAAA", mimeType="image/png")
     out = _drop_dead_links(ToolResult(content=[image]))
     assert out.content == [image]
+
+
+class TestCaptureIsExplicit:
+    """D6: captures happen only when the model asked to look.
+
+    Q4/Q5 answered "no implicit captures" and the router captured after seventeen tools
+    anyway — a screenshot plus a multi-megabyte MHTML serialisation after almost every
+    click. This is the kind of decision that gets quietly reverted by someone adding "just
+    one more" tool to the set, so the *shape* of the rule is pinned here, not only its
+    current membership.
+    """
+
+    def test_only_the_two_looking_tools_capture(self):
+        from browser_use_server import capture as capture_mod
+
+        assert capture_mod.CAPTURING_TOOLS == {"browser_take_screenshot", "browser_snapshot"}
+
+    def test_navigation_and_interaction_do_not_capture(self):
+        from browser_use_server.capture import should_capture
+
+        for tool in [
+            "browser_navigate",
+            "browser_navigate_back",
+            "browser_click",
+            "browser_type",
+            "browser_fill_form",
+            "browser_press_key",
+            "browser_hover",
+            "browser_wait_for",
+            "browser_tabs",
+            "browser_evaluate",
+            "browser_console_messages",
+        ]:
+            assert not should_capture(tool), f"{tool} must not capture implicitly"
+
+    def test_the_two_looking_tools_do_capture(self):
+        from browser_use_server.capture import should_capture
+
+        assert should_capture("browser_take_screenshot")
+        assert should_capture("browser_snapshot")
+
+    def test_the_change_detection_reuse_machinery_is_gone(self):
+        """Two artifacts pointing at one MinIO object is a retention hazard, and it only
+        ever existed to make implicit captures affordable."""
+        from browser_use_server.chat_browser import ChatBrowser
+
+        chat = ChatBrowser(session_id="s", sidecar_port=1)
+        for attr in ("last_capture_key", "last_body_key", "last_body_bytes"):
+            assert not hasattr(chat, attr), f"{attr} outlived the implicit captures"

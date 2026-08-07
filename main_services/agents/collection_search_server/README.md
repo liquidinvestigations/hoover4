@@ -82,6 +82,26 @@ leaves the old index in place, so `SHOW TABLE ... SETTINGS` will report the new 
 while queries keep returning the old answers. See
 [`../../../main_services/processing/database/Readme.md`](../../../main_services/processing/database/Readme.md).
 
+## The per-kind floor must stay under `max_results`
+
+After RRF and reranking, `per_kind_floor` reserves each of the `keyword` and `vector`
+rankings its own best results so an exact-term match cannot drown a semantic one. **A
+reserved slot is never evicted by the overall cap**, so the floor has to be well under it:
+at `10` per kind, two kinds reserved twenty results and a caller asking for `max_results=8`
+got twenty back — at 1200 snippet characters each, into an agent's context window. It is
+`3` now.
+
+Two more rules the fused path follows, both of which read identically to their wrong
+versions:
+
+* **The snippet of a multi-chunk page is its *nearest* chunk.** KNN returns nearest first,
+  so assigning unconditionally left the farthest chunk in place. That text is also the
+  document string handed to the cross-encoder, so a page was scored on its least relevant
+  passage and then shown to the user with it.
+* **A partial rerank response does not delete the candidates it skipped.** They keep their
+  fused position behind the scored ones; dropping them would turn a partial rerank into a
+  partial search.
+
 ## Configuration
 
 | Variable | Default |
@@ -90,13 +110,15 @@ while queries keep returning the old answers. See
 | `MANTICORE_URL` | `http://manticore:9308` |
 | `SEARCH_MAX_RESULTS` | `8` |
 | `SEARCH_SNIPPET_CHARS` | `1200` |
+| `COLLECTION_SEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` |
+| `COLLECTION_SEARCH_FUSION_CANDIDATES` | `60` |
 | `MAX_DOCUMENT_CHARS` | `40000` |
 | `SERVER_INSTRUCTIONS` | overrides the canonical prompt; empty means use `prompts.py` |
 
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 46 tests
+docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 60 tests
 ```
 
 Everything in `tests/test_acl.py` is pure — no database — because the ACL and the query

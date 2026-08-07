@@ -25,10 +25,13 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
     }
 
     let title = doc.display_title();
+    // Clamped, not raw: a search hit's snippet is up to 1200 characters of page text and a
+    // turn can surface a dozen of them, so one result could bury the conversation it is
+    // meant to support. `display_snippet` says what the clamp is for.
     let snippet = if doc.snippet.is_empty() {
         title.clone()
     } else {
-        doc.snippet.clone()
+        doc.display_snippet()
     };
     let result = SearchResultDocumentItem {
         title: title.clone(),

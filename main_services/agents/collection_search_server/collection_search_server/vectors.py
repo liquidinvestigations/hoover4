@@ -44,6 +44,16 @@ VECTOR_PER_SHARD = int(os.getenv("COLLECTION_SEARCH_VECTOR_PER_SHARD", "60"))
 #: The serving model changes only when an admin re-probes; a search need not re-read
 #: server_settings on every call.
 _MODEL_CACHE_SECONDS = 300.0
+
+#: **A miss is cached for seconds, not minutes.** "No serving model" is the state right
+#: after a model change or a cold stack, and it ends the moment the probe lands — so
+#: caching it for five minutes meant every search stayed keyword-only for five minutes
+#: after the thing that would have fixed it already happened, with nothing in the logs to
+#: connect the two. A hit is stable and worth caching; a miss is a transient this must not
+#: extend. Short rather than zero so a stack with embeddings genuinely disabled does not
+#: query `server_settings` on every search.
+_MISS_CACHE_SECONDS = 10.0
+
 _model_cache: tuple[float, str | None] = (0.0, None)
 
 _VECTORS_TABLE_RE = re.compile(r"^[a-z0-9_]+_[0-9]+_vectors$")
@@ -67,11 +77,15 @@ class VectorCandidate:
 
 
 def serving_model() -> str | None:
-    """The probed serving model from `server_settings`, briefly cached."""
+    """The probed serving model from `server_settings`, briefly cached.
+
+    A hit is cached for `_MODEL_CACHE_SECONDS`, a miss only for `_MISS_CACHE_SECONDS`.
+    """
     global _model_cache
     fetched_at, model = _model_cache
     now = time.monotonic()
-    if now - fetched_at < _MODEL_CACHE_SECONDS:
+    ttl = _MODEL_CACHE_SECONDS if model else _MISS_CACHE_SECONDS
+    if fetched_at and now - fetched_at < ttl:
         return model
     rows = clickhouse_query(
         "SELECT argMax(value, updated_at) AS v FROM server_settings WHERE key = {k:String}",

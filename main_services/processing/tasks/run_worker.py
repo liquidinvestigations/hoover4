@@ -9,6 +9,28 @@ from temporalio.worker import Worker
 log = logging.getLogger(__name__)
 
 
+async def _probe_embeddings_at_startup(worker_name: str) -> None:
+    """Record what the embeddings endpoint actually serves, before taking any work.
+
+    The probe used to run only when a human or `verify-stack.sh` invoked
+    `main.py probe-embeddings`. That made a model change a two-step operation where the
+    second step was undocumented and easy to forget: every consumer correctly refuses
+    while `embeddings_serving_model` is stale or missing (P5, P6's vector indexer,
+    collection search), so the stack sat there refusing until someone remembered — the
+    refusal being *correct* is exactly what made it hard to diagnose.
+
+    Off the event loop because the probe is synchronous `requests`, and non-fatal because
+    a worker that will not boot without the GPU tier is worse than one that boots and
+    refuses one stage. Only the two workers that consume the value probe; the others have
+    no business talking to the GPU tier at startup.
+    """
+    from .remote import record_embeddings_probe
+
+    probed = await asyncio.to_thread(record_embeddings_probe)
+    if probed is None:
+        log.info("%s: no embeddings probe recorded at startup", worker_name)
+
+
 async def run_common_worker():
     # Localized imports for common worker only
     from .P0_scan_disk.activities import list_disk_folder, insert_vfs_directories, ingest_files_batch
@@ -261,6 +283,7 @@ async def run_embed_worker():
   log.info("Starting Embed worker...")
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
+  await _probe_embeddings_at_startup("embed worker")
   CONCURRENCY = 2
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
@@ -280,6 +303,9 @@ async def run_indexing_worker():
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
+  # `index_vectors` builds Manticore `_vectors` tables from the probed dimension, and a
+  # table's knn_dims is fixed at creation — this worker needs the probe as much as P5.
+  await _probe_embeddings_at_startup("indexing worker")
   CONCURRENCY = 1
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(

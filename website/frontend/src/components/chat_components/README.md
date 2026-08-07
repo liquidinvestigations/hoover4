@@ -12,7 +12,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
-| `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. |
+| `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet — see below. |
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
@@ -78,6 +78,21 @@ those columns existed show the stored summary with a note, instead of a blank pa
 * **Popup:** both orderings side by side, fetched lazily from the `search_detail` artifact
   through the `chat_artifact_detail` server function. The tool payload cannot carry two
   orderings of forty candidates, which is why that artifact exists.
+
+### Document cards
+
+A `search_collections` hit carries up to `SEARCH_SNIPPET_CHARS` (1200) characters of page
+text and one turn can surface a dozen, so `ChatDocRefCard` renders
+`ChatDocRef::display_snippet()`, clamped to 400 characters. This is a *display* clamp: the
+full text stays in the payload and the card links to the document, which is where reading
+it belongs.
+
+The clamp counts **characters, never bytes** — the text is arbitrary extracted content
+(Romanian diacritics, CJK, an attachment's base64) and slicing a `&str` mid-codepoint
+panics. The worst offenders were exactly the hits least worth reading: extraction indexes
+an email attachment's base64 and an image's pixel rows as page text. `tasks/text_quality.py`
+now keeps those out of the vector index, but a keyword hit can still surface one, and a card
+must not depend on the pipeline having been perfect.
 
 ### `browser_*`
 

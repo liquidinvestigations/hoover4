@@ -25,6 +25,8 @@ import threading
 import time
 from dataclasses import dataclass
 
+from agent_common import telemetry
+
 log = logging.getLogger(__name__)
 
 #: Dead-host detection, in seconds. Never inherit the read timeout here — see AGENTS.md
@@ -157,21 +159,34 @@ def rerank(query: str, documents: list[str], model: str | None = None) -> tuple[
         if _BREAKER.record_failure(url):
             log.warning("rerank circuit opened for %s for %.0fs", url, CIRCUIT_BREAK_SECONDS)
         log.warning("rerank connect failed after %.0fms: %s", elapsed, exc)
+        telemetry.record_async("rerank", provider=url, latency_ms=elapsed, ok=False,
+                               detail="connect timeout")
         raise RerankUnavailable(f"rerank endpoint {url} unreachable: {exc}") from exc
     except requests.exceptions.ConnectionError as exc:
         elapsed = (time.monotonic() - started) * 1000.0
         if _BREAKER.record_failure(url):
             log.warning("rerank circuit opened for %s for %.0fs", url, CIRCUIT_BREAK_SECONDS)
         log.warning("rerank connection error after %.0fms: %s", elapsed, exc)
+        telemetry.record_async("rerank", provider=url, latency_ms=elapsed, ok=False,
+                               detail="connection error")
         raise RerankUnavailable(f"rerank endpoint {url} unreachable: {exc}") from exc
     except requests.exceptions.ReadTimeout as exc:
         elapsed = (time.monotonic() - started) * 1000.0
         # Deliberately NOT a breaker failure: the host answered, it was just slow, and
         # skipping it for a minute would hide a model that needs replacing.
         log.warning("rerank timed out after %.0fms (cap %.0fs)", elapsed, READ_TIMEOUT)
+        telemetry.record_async("rerank", provider=url, latency_ms=elapsed, ok=False,
+                               detail=f"read timeout ({READ_TIMEOUT:g}s)")
         raise RerankUnavailable(f"rerank timed out after {READ_TIMEOUT:g}s") from exc
 
     elapsed_ms = (time.monotonic() - started) * 1000.0
+    # Every outcome, not just the good one — see `telemetry`. A capability that only
+    # writes rows when it works reads as idle exactly while it is broken.
+    telemetry.record_async(
+        "rerank", provider=url, latency_ms=elapsed_ms, ok=response.status_code == 200,
+        detail=(model or f"{len(documents)} documents")
+        if response.status_code == 200 else f"HTTP {response.status_code}",
+    )
     if response.status_code != 200:
         log.warning(
             "rerank returned %s in %.0fms: %s",

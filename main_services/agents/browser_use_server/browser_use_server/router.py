@@ -52,7 +52,16 @@ class Router:
         # Guards the map, not the browsers. Per-chat serialisation is each ChatBrowser's
         # own lock; a global lock here would make eight chats queue behind each other,
         # which is exactly what Phase 3 removed.
+        #
+        # **Never hold this across a spawn, a stop or a sidecar restart.** It was held
+        # across `chat_browser.start()`, which is a cold Chromium launch plus a Node
+        # sidecar — 45 to 90 seconds — so one chat's first browse blocked every other
+        # chat's map lookup for that whole time. The cap says eight contexts; the lock
+        # made it behave like one.
         self._lock = asyncio.Lock()
+        # In-flight spawns, by chat key. This is what lets the lock be released during a
+        # spawn without two callers racing to start two browsers for the same chat.
+        self._spawning: dict[str, "asyncio.Future[ChatBrowser]"] = {}
         self._template: ChatBrowser | None = None
         self._reaper: asyncio.Task | None = None
         self.spawn_failures = 0
@@ -68,39 +77,115 @@ class Router:
             log.info("browser reaper started (idle %.0fs, cap %d)", IDLE_SECONDS, MAX_CONTEXTS)
 
     async def template(self) -> ChatBrowser:
-        """The warm session `list_tools` is answered from. Started on first ask."""
+        """The warm session `list_tools` is answered from. Started on first ask.
+
+        Serialised through the same spawn-future machinery as :meth:`get`, so a cold
+        template launch does not hold the map lock either — `list_tools` runs during graph
+        construction for every chat on the site, and blocking all of them behind the first
+        one's Chromium boot is the worst possible place to do it.
+        """
+        while True:
+            template = self._template
+            if template is not None and chat_browser.sidecar_alive(template):
+                return template
+            # `None` means we waited on someone else's spawn; re-read `_template`, which
+            # their `_install_template` has now set.
+            spawned = await self._spawn_once(TEMPLATE_SESSION, self._install_template)
+            if spawned is not None:
+                return spawned
+
+    async def _install_template(self, chat: ChatBrowser) -> None:
         async with self._lock:
-            if self._template is not None and chat_browser.sidecar_alive(self._template):
-                return self._template
-            if self._template is not None:
-                await chat_browser.stop(self._template)
-            self._template = await chat_browser.start(TEMPLATE_SESSION)
-            return self._template
+            stale, self._template = self._template, chat
+        if stale is not None:
+            await chat_browser.stop(stale)
 
     async def get(self, session_id: str | None) -> ChatBrowser:
-        """This chat's browser, starting it if needed and evicting to stay under the cap."""
-        key = (session_id or "").strip() or ANONYMOUS
-        async with self._lock:
-            chat = self._chats.get(key)
-            if chat is not None:
-                self._chats.move_to_end(key)
-                chat.touch()
-                if not chat_browser.sidecar_alive(chat):
-                    # The sidecar died between calls. Restarting it here means the tool
-                    # call the user is waiting on succeeds rather than failing once to
-                    # teach us the process was gone.
-                    await chat_browser.restart_sidecar(chat)
-                return chat
+        """This chat's browser, starting it if needed and evicting to stay under the cap.
 
-            await self._evict_over_limit_locked(making_room_for=1)
-            try:
-                chat = await chat_browser.start(key)
-            except BrowserSpawnFailed:
+        The map lock is held only for map operations — never across a spawn, an eviction
+        stop, or a sidecar restart. Callers racing for the *same* chat still share one
+        spawn (see `_spawning`); callers for different chats no longer wait on each other
+        at all, which is what the eight-context cap was always supposed to mean.
+        """
+        key = (session_id or "").strip() or ANONYMOUS
+
+        while True:
+            async with self._lock:
+                chat = self._chats.get(key)
+                if chat is not None:
+                    self._chats.move_to_end(key)
+                    chat.touch()
+                    break
+            spawned = await self._spawn_once(key, self._install_chat)
+            if spawned is not None:
+                chat = spawned
+                break
+            # The spawn we waited on was installed and then reaped before we looked. Rare,
+            # and a re-loop is the whole handling: the next pass either finds a browser or
+            # starts one.
+
+        if not chat_browser.sidecar_alive(chat):
+            # The sidecar died between calls. Restarting it here means the tool call the
+            # user is waiting on succeeds rather than failing once to teach us the process
+            # was gone. Under the chat's OWN lock — `server.py` takes it after this
+            # returns, so there is no nesting, and two calls for one chat must not both
+            # restart the sidecar.
+            async with chat.lock:
+                if not chat_browser.sidecar_alive(chat):
+                    await chat_browser.restart_sidecar(chat)
+        return chat
+
+    async def _install_chat(self, chat: ChatBrowser) -> None:
+        chat.touch()
+        async with self._lock:
+            self._chats[chat.session_id] = chat
+
+    async def _spawn_once(self, key: str, install) -> ChatBrowser | None:
+        """Start the browser for `key`, or wait for whoever already is.
+
+        Returns the browser, or `None` when this caller waited on someone else's spawn and
+        should re-check the map. `install` runs after a successful start and is what
+        publishes the browser; it takes the map lock itself.
+        """
+        async with self._lock:
+            pending = self._spawning.get(key)
+            if pending is not None:
+                owner = False
+            else:
+                pending = asyncio.get_running_loop().create_future()
+                # An exception nobody awaits is an "exception was never retrieved"
+                # warning at GC time; retrieving it in a callback keeps the log honest.
+                pending.add_done_callback(lambda f: f.cancelled() or f.exception())
+                self._spawning[key] = pending
+                owner = True
+                doomed = self._take_over_limit_locked(making_room_for=1)
+
+        if not owner:
+            # `shield`: awaiting a future propagates the waiter's cancellation *into* it,
+            # which would abort the owner's spawn for everyone.
+            await asyncio.shield(pending)
+            return None
+
+        try:
+            for victim in doomed:
+                await chat_browser.stop(victim)
+            chat = await chat_browser.start(key)
+        except BaseException as exc:
+            if isinstance(exc, BrowserSpawnFailed):
                 self.spawn_failures += 1
-                raise
-            chat.touch()
-            self._chats[key] = chat
-            return chat
+            async with self._lock:
+                self._spawning.pop(key, None)
+            if not pending.done():
+                pending.set_exception(exc) if isinstance(exc, Exception) else pending.cancel()
+            raise
+
+        await install(chat)
+        async with self._lock:
+            self._spawning.pop(key, None)
+        if not pending.done():
+            pending.set_result(chat)
+        return chat
 
     async def close(self, session_id: str) -> bool:
         """Drop one chat's browser. Idempotent — an unknown session is a `False`, not an
@@ -126,14 +211,21 @@ class Router:
 
     # ------------------------------------------------------------------- reaping
 
-    async def _evict_over_limit_locked(self, making_room_for: int = 0) -> None:
+    def _take_over_limit_locked(self, making_room_for: int = 0) -> list[ChatBrowser]:
+        """Remove the least recently used chats from the map and hand them back to be
+        stopped. Caller holds the lock; stopping happens **outside** it, the same split
+        :meth:`sweep` has always used — killing two processes and deleting a profile
+        directory is not a map operation.
+        """
+        doomed: list[ChatBrowser] = []
         while len(self._chats) + making_room_for > MAX_CONTEXTS:
             key, chat = self._chats.popitem(last=False)
             log.info(
                 "browser cap %d reached; evicting least recently used chat %s (idle %.0fs)",
                 MAX_CONTEXTS, key, chat.idle_seconds(),
             )
-            await chat_browser.stop(chat)
+            doomed.append(chat)
+        return doomed
 
     async def _reap_forever(self) -> None:
         """Dispose idle chats forever. Exceptions are logged and swallowed: a reaper that

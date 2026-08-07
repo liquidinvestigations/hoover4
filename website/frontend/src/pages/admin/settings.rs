@@ -12,6 +12,17 @@ fn setting_description(key: &str) -> &'static str {
     match key {
         "session_expiration_seconds" => "Web session lifetime in seconds (default: 604800 = 1 week)",
         "guest_permissions_mode" => "Guest access: 'all' (dev) or 'none'",
+        "chat_artifact_ttl_days" => {
+            "How long a chat's captured pages and search details are kept, in days \
+             (default: 30). The nightly sweeper deletes the MinIO objects first, then the \
+             rows."
+        }
+        "llm_default_chat_model" => "Model new chats start on",
+        "llm_summarization_model" => "Model that writes chat titles and summaries",
+        "embeddings_serving_model" | "embeddings_serving_dim" => {
+            "Written by `main.py probe-embeddings` — what the endpoint ACTUALLY serves. \
+             Editing this by hand does not change the server."
+        }
         _ => "",
     }
 }

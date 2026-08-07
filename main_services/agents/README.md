@@ -57,6 +57,13 @@ lookup key, never a capability** — the website resolves it to `session_id`/`us
 enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`), and the
 card refuses any id that is not a UUID before it builds that URL.
 
+That rule is **not currently demonstrable**: this stack runs `guest_permissions_mode = all`,
+which makes every visitor an admin, so any guest cookie gets 200 on any artifact. The code
+is right and was reviewed; the *test* is deferred until someone runs it with two real users.
+Written down in
+[`website/backend/src/api/admin/Readme.md`](../../website/backend/src/api/admin/Readme.md)
+so it is a known gap rather than an assumption.
+
 Because the structured key does not survive LangGraph, the browser router also appends a
 `[hoover4:artifacts] {"artifacts": [...]}` line to the result text — **always**, even when
 it captured nothing, and always as the last block. That position is what the card
@@ -271,8 +278,12 @@ New servers follow **`collection_search_server`**: a plain `python:3.12-slim` im
 It builds in seconds and has no build toolchain.
 
 `whois_search_server` is older and uses a Poetry multi-stage build. It works; do not copy
-it for anything new. The retired `ddg_search_server` and `wikipedia_search_server` are the
-same shape and are no longer built at all.
+it for anything new.
+
+`ddg_search_server/` and `wikipedia_search_server/` are **gone**, not disabled. Their
+sources live in `metasearch_server` as `ddg_api`, `ddg_news` and `wikipedia`; the
+directories sat unbuilt and unreferenced for two phases, which is long enough for someone
+to read one and believe it describes something that runs.
 
 ## Running and testing
 

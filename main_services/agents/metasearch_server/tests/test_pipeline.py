@@ -15,11 +15,12 @@ from metasearch_server.engines import SearchResult
 from metasearch_server.pipeline import Ranked, apply_per_kind_floor
 
 
-def _ranked(kind: str, index: int) -> Ranked:
+def _ranked(kind: str, index: int, rerank_score: float | None = None) -> Ranked:
     return Ranked(
         result=SearchResult(f"t{index}", f"https://e{index}.example", kind=kind),
         rrf_rank=index,
         rrf_score=1.0 / index,
+        rerank_score=rerank_score,
     )
 
 
@@ -62,6 +63,66 @@ class TestPerKindFloor:
         with pytest.raises(ValueError):
             apply_per_kind_floor([], max_results=10, min_per_kind=20, max_per_kind=10)
 
+    def test_the_default_floor_leaves_the_cap_meaningful(self, monkeypatch):
+        """C4/Q14: 15 results, always reranked. A floor of 10 across three kinds reserves
+        30 slots and `max_results` stops meaning anything — the defect this pins.
+
+        Reloaded with the env cleared because the *code* default is what is under test;
+        a deployment is free to set the knob higher and live with the consequence.
+        """
+        import importlib
+
+        for key in ("METASEARCH_MIN_PER_KIND", "METASEARCH_MAX_PER_KIND"):
+            monkeypatch.delenv(key, raising=False)
+        fresh = importlib.reload(pipeline)
+        try:
+            assert fresh.MIN_PER_KIND * len(("web", "news", "reference")) <= 15
+            ranked = (
+                [_ranked("web", i, 5.0) for i in range(1, 41)]
+                + [_ranked("news", i, 5.0) for i in range(41, 61)]
+                + [_ranked("reference", i, 5.0) for i in range(61, 81)]
+            )
+            assert len(fresh.apply_per_kind_floor(ranked, max_results=15)) == 15
+        finally:
+            importlib.reload(pipeline)
+
+
+class TestReserveScoreGate:
+    """C4: a floor guarantees representation, and representation of nothing is padding.
+
+    Live, an Eiffel Tower query returned "Yanam district" and "Aasta Hansteen spar" as
+    reference results — reserved by the floor, scored around -5 by the cross-encoder,
+    and indistinguishable to the model from a result that earned its place.
+    """
+
+    def test_a_kind_whose_best_result_scores_below_zero_is_not_padded_in(self):
+        ranked = [_ranked("web", i, 6.0) for i in range(1, 11)]
+        ranked += [_ranked("reference", i, -5.0) for i in range(11, 16)]
+        kept = apply_per_kind_floor(ranked, max_results=5, min_per_kind=3, max_per_kind=15)
+        assert [r.result.kind for r in kept] == ["web"] * 5
+
+    def test_a_kind_that_scores_well_still_gets_its_floor(self):
+        ranked = [_ranked("web", i, 8.0) for i in range(1, 21)]
+        ranked += [_ranked("reference", 21, 4.0), _ranked("reference", 22, -6.0)]
+        kept = apply_per_kind_floor(ranked, max_results=5, min_per_kind=3, max_per_kind=15)
+        kinds = [r.result.kind for r in kept]
+        # One reference result earned a slot; the irrelevant one did not get reserved.
+        assert kinds.count("reference") == 1
+
+    def test_a_low_scoring_result_can_still_be_filled_in_on_merit(self):
+        """The gate blocks the reservation, not the result. With budget to spare it comes
+        back in rank order like anything else."""
+        ranked = [_ranked("web", 1, 8.0), _ranked("reference", 2, -5.0)]
+        kept = apply_per_kind_floor(ranked, max_results=10, min_per_kind=3, max_per_kind=15)
+        assert len(kept) == 2
+
+    def test_with_no_rerank_score_the_floor_is_unconditional(self):
+        """The GPU is down: no score is not a low score, and the floor is then the only
+        protection a minority kind has."""
+        ranked = [_ranked("web", i) for i in range(1, 21)] + [_ranked("reference", 21)]
+        kept = apply_per_kind_floor(ranked, max_results=3, min_per_kind=3, max_per_kind=15)
+        assert "reference" in [r.result.kind for r in kept]
+
 
 class TestRunSearch:
     """`run_search` end to end with stubbed sources."""
@@ -71,7 +132,8 @@ class TestRunSearch:
         async def fetch_all(query, names, per_source_results=15, timelimit=None):
             latency = {n: 1.0 for n in names}
             degraded = [n for n in names if not per_source.get(n)]
-            return {n: list(per_source.get(n, [])) for n in names}, latency, degraded
+            reasons = {n: "answered with no results (selector rot?)" for n in degraded}
+            return {n: list(per_source.get(n, [])) for n in names}, latency, degraded, reasons
 
         monkeypatch.setattr(sources_mod, "fetch_all", fetch_all)
         monkeypatch.setattr(
@@ -134,7 +196,55 @@ class TestRunSearch:
         )
         outcome = asyncio.run(pipeline.run_search("q"))
         assert outcome.degraded == ["brave"]
+        # "brave returned nothing" reads the same for rot, an HTTP 429 and a dead host.
+        assert outcome.degraded_reasons["brave"]
         assert len(outcome.ranked) == 1
+
+    def test_a_partial_rerank_response_does_not_delete_the_rest(self, monkeypatch):
+        """C7: the reranker scored one of three candidates (a `top_k`, a truncated body).
+        The two it skipped are real results with a real RRF position; dropping them turns
+        a partial rerank into a partial search."""
+        self._stub_sources(
+            monkeypatch,
+            {"ddg": [SearchResult(f"t{i}", f"https://{i}.example") for i in range(3)]},
+        )
+        monkeypatch.setattr(
+            rerank_client,
+            "rerank",
+            lambda q, d, model=None: ([rerank_client.RerankScore(index=2, score=9.0)], 3.0),
+        )
+        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        assert outcome.rerank_applied is True
+        assert [r.result.url for r in outcome.ranked] == [
+            "https://2.example",
+            "https://0.example",
+            "https://1.example",
+        ]
+        # The unscored two say so rather than claiming a rank they never got.
+        assert outcome.ranked[0].rerank_rank == 1
+        assert [r.rerank_rank for r in outcome.ranked[1:]] == [None, None]
+
+    def test_a_repeated_index_in_a_rerank_response_is_not_duplicated(self, monkeypatch):
+        self._stub_sources(
+            monkeypatch,
+            {"ddg": [SearchResult(f"t{i}", f"https://{i}.example") for i in range(2)]},
+        )
+        monkeypatch.setattr(
+            rerank_client,
+            "rerank",
+            lambda q, d, model=None: (
+                [
+                    rerank_client.RerankScore(index=1, score=9.0),
+                    rerank_client.RerankScore(index=1, score=8.0),
+                ],
+                3.0,
+            ),
+        )
+        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        assert [r.result.url for r in outcome.ranked] == [
+            "https://1.example",
+            "https://0.example",
+        ]
 
 
 class TestPayloadSplit:

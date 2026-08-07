@@ -135,11 +135,6 @@ class ChatBrowser:
     last_used: float = field(default_factory=time.monotonic)
     calls: int = 0
     sidecar_restarts: int = 0
-    #: URL and `document.lastModified` of the previous capture, so an action that did not
-    #: change the page can reuse its snapshot instead of serialising 3 MB again.
-    last_capture_key: tuple[str, str] | None = None
-    last_body_key: str = ""
-    last_body_bytes: int = 0
     #: One chat's calls are serialised. The old global lock is gone — with one browser per
     #: chat, a global lock would make eight conversations queue behind each other for no
     #: safety benefit.

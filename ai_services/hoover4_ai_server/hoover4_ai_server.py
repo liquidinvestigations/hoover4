@@ -359,11 +359,29 @@ async def create_embeddings(request: EmbeddingRequest):
         # Validate final texts
         if not texts or len(texts) == 0:
             raise HTTPException(status_code=400, detail="Input cannot be empty")
-        
+
         # Check for empty strings
         if any(not str(text).strip() for text in texts):
             raise HTTPException(status_code=400, detail="Input texts cannot be empty")
-        
+
+        # A `model` the server does not serve is REFUSED, never honoured by echo.
+        #
+        # This endpoint serves exactly one loaded model. Echoing the caller's name back
+        # over vectors this model produced makes the response lie about its own contents,
+        # and the whole pipeline is built on that field being the truth: the worker
+        # compares `data.model` against the probed serving model and refuses a mismatch
+        # (P5), because vectors written under the wrong name are re-embedded forever and
+        # may carry the wrong e5 prefix convention. An echo defeats that check silently —
+        # it can only ever agree.
+        if request.model and request.model != model_name:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"this server serves {model_name!r}, not {request.model!r}; "
+                    "re-probe (`main.py probe-embeddings`) rather than requesting a model"
+                ),
+            )
+
         logger.info(f"Processing {len(texts)} text(s) for embeddings")
         
         # Wrap only when the caller explicitly asked for the instruct template (see
@@ -404,7 +422,8 @@ async def create_embeddings(request: EmbeddingRequest):
         
         response = EmbeddingResponse(
             data=data,
-            model=request.model or model_name,
+            # Always the model that produced these vectors. See the refusal above.
+            model=model_name,
             usage={
                 "prompt_tokens": total_tokens,
                 "total_tokens": total_tokens

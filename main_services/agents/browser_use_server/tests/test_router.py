@@ -178,6 +178,105 @@ class TestSidecarRecovery:
         assert restarts == ["a"]
 
 
+class TestSpawnDoesNotBlockOtherChats:
+    """D3: the map lock must not be held across a spawn.
+
+    A cold Chromium plus its Node sidecar takes 45–90 seconds. Holding the router's single
+    lock for that long made every other chat's tool call queue behind one chat's first
+    browse — an eight-context router behaving like a one-context one, and the symptom is
+    "the site is slow", never "the browser router is serialising".
+    """
+
+    def test_a_second_chat_is_served_while_the_first_is_still_spawning(
+        self, fake_browsers, monkeypatch
+    ):
+        router, started, _ = fake_browsers
+        release_slow = asyncio.Event()
+
+        async def slow_for_a(session_id):
+            started.append(session_id)
+            if session_id == "slow":
+                await release_slow.wait()
+            return ChatBrowser(session_id=session_id, sidecar_port=1234)
+
+        monkeypatch.setattr(router_mod.chat_browser, "start", slow_for_a)
+
+        async def run():
+            slow = asyncio.create_task(router.get("slow"))
+            await asyncio.sleep(0)  # let it reach the spawn
+            # The whole point: this must complete while `slow` is still in `start`.
+            fast = await asyncio.wait_for(router.get("fast"), timeout=1.0)
+            release_slow.set()
+            return await slow, fast
+
+        slow_chat, fast_chat = asyncio.run(run())
+        assert slow_chat.session_id == "slow"
+        assert fast_chat.session_id == "fast"
+
+    def test_two_callers_for_one_chat_share_a_single_spawn(self, fake_browsers, monkeypatch):
+        """Releasing the lock must not cost the thing the lock was there for: two browsers
+        for one chat would double the memory and split the cookies."""
+        router, started, _ = fake_browsers
+        release = asyncio.Event()
+
+        async def slow_start(session_id):
+            started.append(session_id)
+            await release.wait()
+            return ChatBrowser(session_id=session_id, sidecar_port=1234)
+
+        monkeypatch.setattr(router_mod.chat_browser, "start", slow_start)
+
+        async def run():
+            first = asyncio.create_task(router.get("a"))
+            second = asyncio.create_task(router.get("a"))
+            await asyncio.sleep(0)
+            release.set()
+            return await first, await second
+
+        one, two = asyncio.run(run())
+        assert one is two
+        assert started == ["a"], "the second caller started a second browser"
+
+    def test_a_failed_shared_spawn_does_not_wedge_the_chat_forever(
+        self, fake_browsers, monkeypatch
+    ):
+        """The pending entry has to be cleared on failure, or the chat can never start."""
+        router, started, _ = fake_browsers
+        fail = {"value": True}
+
+        async def maybe_failing(session_id):
+            started.append(session_id)
+            if fail["value"]:
+                raise chat_browser.BrowserSpawnFailed("no chromium")
+            return ChatBrowser(session_id=session_id, sidecar_port=1234)
+
+        monkeypatch.setattr(router_mod.chat_browser, "start", maybe_failing)
+
+        async def run():
+            with pytest.raises(chat_browser.BrowserSpawnFailed):
+                await router.get("a")
+            fail["value"] = False
+            return await router.get("a")
+
+        assert asyncio.run(run()).session_id == "a"
+
+    def test_eviction_still_happens_and_still_stops_the_browser(
+        self, fake_browsers, monkeypatch
+    ):
+        """Eviction moved outside the lock; it must not have moved out of existence."""
+        router, _, stopped = fake_browsers
+        monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 2)
+
+        async def run():
+            await router.get("a")
+            await router.get("b")
+            await router.get("c")
+
+        asyncio.run(run())
+        assert stopped == ["a"]
+        assert len(router.describe()) == 2
+
+
 class TestHealth:
     def test_spawn_failures_are_counted(self, fake_browsers, monkeypatch):
         router, _, _ = fake_browsers

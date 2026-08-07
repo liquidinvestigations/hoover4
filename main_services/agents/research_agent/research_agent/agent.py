@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from collections import OrderedDict
@@ -487,7 +488,14 @@ class MCPGatewayAgent:
                     latency_ms = call_timer.elapsed_ms() if call_timer else 0
                     call_timer = None
                     try:
-                        llm_events.record_llm_call(
+                        # `to_thread`, because this is two synchronous POSTs to ClickHouse
+                        # inside the stream loop. On the event loop they stall every other
+                        # chat's tokens for as long as ClickHouse takes to answer — and
+                        # this fires once per model turn, so a busy stack pays it
+                        # constantly. Telemetry must never be in the way of the answer it
+                        # is describing.
+                        await asyncio.to_thread(
+                            llm_events.record_llm_call,
                             llm_events.stats_from_message(
                                 message,
                                 model_id=model_id,

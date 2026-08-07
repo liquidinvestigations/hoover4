@@ -30,6 +30,11 @@ services:
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-8}
       - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
+      # Per-kind floor over the keyword/vector rankings. Kept well below SEARCH_MAX_RESULTS
+      # on purpose: a floor of 10 per kind reserves 20 slots and max_results stops meaning
+      # anything, which is how an 8-result search returned 20.
+      - COLLECTION_SEARCH_MIN_PER_KIND=${COLLECTION_SEARCH_MIN_PER_KIND:-3}
+      - COLLECTION_SEARCH_MAX_PER_KIND=${COLLECTION_SEARCH_MAX_PER_KIND:-15}
       # The hybrid half: query embeddings + the cross-encoder reranker (one server
       # serves both). Empty disables the vector branch and the search is keyword-only.
       - EMBEDDINGS_URL=${EMBEDDINGS_URL:-}
@@ -97,13 +102,18 @@ services:
       - HOST=0.0.0.0
       - PORT=8086
       - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
-      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-ddg,brave,startpage,yahoo,ddg_api,ddg_news,wikipedia}
+      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-ddg,brave,yahoo,ddg_api,ddg_news,wikipedia}
       - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
       - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
-      - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-10}
-      - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-20}
+      # Q14's policy: 15 results, always reranked. The floor is per kind and must stay well
+      # under the cap — 10 across three kinds reserves 30 and overrides the cap entirely.
+      - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
+      - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
+      # Rerank logit below which a result no longer earns a reserved floor slot. 0 is the
+      # cross-encoder's own decision boundary; it is model-specific, so it is a knob.
+      - METASEARCH_RESERVE_MIN_SCORE=${METASEARCH_RESERVE_MIN_SCORE:-0}
       - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-15}
       - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
       - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
@@ -180,6 +190,14 @@ services:
     # With up to eight browsers live at once this is the difference between "slow" and
     # "the container dies mid-answer".
     shm_size: 2gb
+    # A real init as PID 1, because Chromium is a process TREE. PID 1 here is the Python
+    # server, which never calls wait() on grandchildren, so every renderer and crashpad
+    # handler a closed browser leaves behind stays a zombie forever — 104 of them were
+    # counted on a stack that had been up for hours. Zombies hold a PID each and the
+    # container's PID space is not large; the failure mode at the end of that road is
+    # "cannot fork", which surfaces as an unrelated browser launch failing. `init: true`
+    # gives the container a subreaper whose whole job is reaping them.
+    init: true
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]

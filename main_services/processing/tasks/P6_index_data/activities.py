@@ -152,9 +152,14 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     pages_table, _ = shard_tables_from_name(params.shard_name)
     from database.manticore import get_manticore_client
     with get_collection_client(params.collectionname) as client:
+        # FINAL: `text_content` is a ReplacingMergeTree, so a re-parse leaves two rows for
+        # the same segment until the background merge runs. The Manticore row id is
+        # deterministic, so the duplicate REPLACEs into the same row rather than corrupting
+        # the index — but it doubles the work of the whole activity, and the page text is
+        # then non-deterministically whichever copy came back last.
         text_content = client.query_arrow("""
             SELECT collection_dataset, file_hash, extracted_by, page_id, text
-            FROM text_content
+            FROM text_content FINAL
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
         """, {

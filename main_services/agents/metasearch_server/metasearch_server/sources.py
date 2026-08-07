@@ -16,7 +16,6 @@ name             kind         what it is
 ===============  ===========  =========================================================
 ``ddg``          web          the HTML scraper in :mod:`.engines`
 ``brave``        web          "
-``startpage``    web          "
 ``yahoo``        web          "
 ``ddg_api``      web          the ``ddgs`` library's ``text()``, from `ddg_search_server`
 ``ddg_news``     news         the ``ddgs`` library's ``news()``, same origin
@@ -26,9 +25,14 @@ name             kind         what it is
 `ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
 independently — a selector change breaks one and a library bump breaks the other — and
 the whole point of the `degraded` list is that rot is visible rather than silent.
+`startpage` was removed for the opposite reason: it never worked at all (see
+:data:`.engines.ENGINES`), and a permanently-degraded source is a facade, not a metasearch.
 
 **A source that fails or times out must never fail the tool.** Every fetch here returns a
-list, empty on any failure, and names itself in `degraded`.
+list, empty on any failure, and names itself in `degraded`. A fetch that knows *why* it
+came back empty may raise :class:`SourceUnavailable` instead; :func:`fetch_all` catches it
+and puts the reason next to the name, because "brave returned nothing" reads the same for
+selector rot, an HTTP 429 and an unreachable host, and those want three different fixes.
 """
 
 from __future__ import annotations
@@ -45,9 +49,14 @@ from metasearch_server.engines import (
     ENGINES,
     SearchResult,
     _fetch_engine,
+    unwrap_tracking_url,
 )
 
 log = logging.getLogger(__name__)
+
+
+class SourceUnavailable(RuntimeError):
+    """A source came back empty and knows why. Caught by :func:`fetch_all`."""
 
 KIND_WEB = "web"
 KIND_NEWS = "news"
@@ -98,7 +107,9 @@ def _html_engine_source(name: str) -> Source:
             "Accept-Language": "en-US,en;q=0.9",
         }
         async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-            results = await _fetch_engine(client, name, query)
+            results, reason = await _fetch_engine(client, name, query)
+        if reason:
+            raise SourceUnavailable(reason)
         for r in results:
             r.kind = KIND_WEB
         return results[:max_results]
@@ -134,7 +145,9 @@ async def _fetch_ddg_api(query: str, max_results: int, timelimit: str | None) ->
     return [
         SearchResult(
             title=row.get("title", "") or "",
-            url=row.get("href", "") or row.get("url", "") or "",
+            # The `ddgs` library fans out over several back ends of its own, so a row can
+            # arrive carrying another engine's click-tracker. See :func:`unwrap_tracking_url`.
+            url=unwrap_tracking_url(row.get("href", "") or row.get("url", "") or ""),
             snippet=row.get("body", "") or "",
             kind=KIND_WEB,
             published=str(row.get("date") or ""),
@@ -152,7 +165,11 @@ async def _fetch_ddg_news(query: str, max_results: int, timelimit: str | None) -
         return []
     out = []
     for row in rows:
-        url = row.get("url") or row.get("href") or ""
+        # News rows are the worst offenders: `ddgs` routes several of its news back ends
+        # through `r.search.yahoo.com/_ylt=…`, and an un-unwrapped wrapper normalises to a
+        # different key from the direct URL, so dedupe cannot merge the two and the model
+        # ends up citing a tracking link to the user.
+        url = unwrap_tracking_url(row.get("url") or row.get("href") or "")
         if not url:
             continue
         source_name = row.get("source") or ""
@@ -263,8 +280,9 @@ SOURCES: dict[str, Source] = {
 }
 
 #: Default set. Everything registered — a metasearch that leaves a source out by default
-#: is a metasearch nobody benefits from.
-DEFAULT_SOURCES = "ddg,brave,startpage,yahoo,ddg_api,ddg_news,wikipedia"
+#: is a metasearch nobody benefits from. Derived from the registry rather than written out,
+#: so retiring a source cannot leave a default naming one that no longer exists.
+DEFAULT_SOURCES = ",".join(SOURCES)
 
 
 def configured_sources() -> list[str]:
@@ -325,32 +343,37 @@ async def fetch_all(
     names: list[str],
     per_source_results: int = PER_SOURCE_RESULTS,
     timelimit: str | None = None,
-) -> tuple[dict[str, list[SearchResult]], dict[str, float], list[str]]:
+) -> tuple[dict[str, list[SearchResult]], dict[str, float], list[str], dict[str, str]]:
     """Query every named source in parallel.
 
-    Returns `(results per source, latency_ms per source, degraded names)`. A source that
-    raised, timed out, or came back empty is degraded — from the caller's point of view
-    those are the same failure, and the log distinguishes them.
+    Returns `(results per source, latency_ms per source, degraded names, reason per
+    degraded name)`. A source that raised, timed out, or came back empty is degraded —
+    from the *ordering's* point of view those are the same failure, but from a maintainer's
+    they are not, so the reason travels with the name instead of only reaching the log.
     """
     import time
 
-    async def run(name: str) -> tuple[str, list[SearchResult], float]:
+    async def run(name: str) -> tuple[str, list[SearchResult], float, str]:
         source = SOURCES[name]
         started = time.monotonic()
+        reason = ""
         try:
             results = await asyncio.wait_for(
                 source.fetch(query, per_source_results, timelimit), timeout=SOURCE_TIMEOUT
             )
         except asyncio.TimeoutError:
             log.warning("source %s exceeded its %.0fs deadline", name, SOURCE_TIMEOUT)
-            results = []
+            results, reason = [], f"timed out after {SOURCE_TIMEOUT:g}s"
+        except SourceUnavailable as exc:
+            log.warning("source %s unavailable: %s", name, exc)
+            results, reason = [], str(exc)
         except Exception as exc:  # noqa: BLE001 - degradation, never a tool failure
             log.warning("source %s raised: %s", name, exc)
-            results = []
+            results, reason = [], f"{type(exc).__name__}: {exc}"
         elapsed = (time.monotonic() - started) * 1000.0
         for r in results:
             r.kind = r.kind or source.kind
-        return name, results, elapsed
+        return name, results, elapsed, reason
 
     try:
         gathered = await asyncio.wait_for(
@@ -362,12 +385,14 @@ async def fetch_all(
 
     per_source = {name: [] for name in names}
     latency = {name: 0.0 for name in names}
-    for name, results, elapsed in gathered:
+    reasons = {name: f"cancelled by the {OVERALL_TIMEOUT:g}s overall deadline" for name in names}
+    for name, results, elapsed, reason in gathered:
         per_source[name] = results
         latency[name] = round(elapsed, 1)
+        reasons[name] = reason
 
     degraded = [name for name in names if not per_source[name]]
-    return per_source, latency, degraded
+    return per_source, latency, degraded, {n: reasons[n] for n in degraded if reasons[n]}
 
 
 def describe_sources() -> list[dict]:

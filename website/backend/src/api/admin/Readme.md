@@ -47,6 +47,41 @@ decoding it into an `i64` field eats four bytes too many and desynchronises the 
 the server fn 500s, but *only* on a collection that actually has rows, which is why it can
 ship. Write `toInt64(toUnixTimestamp(...))` in the SQL whenever the struct field is `i64`.
 
+## AI service telemetry (`ai_service_telemetry`)
+
+A separate table from the two below, and a separate purpose: one row per **outbound** call
+to an AI capability, feeding the use% strip and the recent-traffic table on
+`/admin/ai_status`. Writers, all best-effort and all fire-and-forget:
+
+| service | written by |
+|---|---|
+| `llm` | the research agent (`llm_events.py`) and this crate's summariser |
+| `embeddings`, `rerank` | `agent_common/{embeddings,rerank}.py` — the MCP servers' clients |
+| `ner`, `ocr`, `embeddings` | the worker, through `post_json(..., service=…)` |
+| `browser` | the browser router, per forwarded tool call |
+
+**Every outcome is recorded, not only the successes.** A capability that writes a row only
+when it works renders as "no traffic", which reads as *idle* and is indistinguishable from
+*broken* — precisely at the moment someone is looking at the panel to find out which. Until
+this sweep only the LLM path wrote at all, so five of the six columns were permanently
+empty.
+
+Two things the panels deliberately do **not** do:
+
+* **Synthetic rows are excluded, not deleted.** `phase5-smoke` and `test-model` are written
+  by smoke tests and by `verify-stack.sh`; the rows are evidence the check ran, so they
+  stay, but a single 12 ms synthetic call dominated the p50 of a panel whose job is showing
+  how slow real turns are. `SYNTHETIC_MODEL_IDS` in `ai_status.rs` filters them out.
+* **`circuit_open_remaining_s` is always 0 and means "n/a", not "closed".** The breakers
+  live in the worker and inside each MCP server's process; the website has no channel to
+  any of them. It is not rendered for that reason.
+
+Reachability is probed **per capability**. The NER row used to fall back to `|| ai_ok` —
+"the main AI server answered `/health`" — which is a different question: that server hosts
+three capabilities behind independent model loads, so `ner_model_loaded` can be false while
+the process is perfectly healthy, and the panel reported NER up in exactly the case it
+exists to report it down.
+
 ## Telemetry (usage_events / api_events)
 
 Two rolling 24h tables in the global database (migrations `00014`/`00015`), written by
@@ -118,6 +153,28 @@ see `processing.rs::reopen_plans_for_hashes` and `tasks/P_admin/Readme.md`, whic
 documents why a bare `ExecutePlans` restart is a no-op. The accompanying
 `ALTER TABLE processing_errors DELETE` is an asynchronous ClickHouse mutation, so a
 row can briefly still appear in the failure list after a retry. Accepted, not a bug.
+
+## TODO — deferred, with the reason
+
+### Verify the artifact ACL with two real users, outside demo mode
+
+**Deferred deliberately: this stack stays in demo mode for now.**
+
+`guest_permissions_mode = all` makes every visitor an admin, so an unauthenticated request
+with a fresh guest cookie gets `200` on **any** chat artifact. The code-level rule is
+correct and was reviewed — `/_chat_artifact/{id}/{asset}` resolves the id to its
+`session_id`/`username` and enforces owner-or-admin, returning **403 for someone else's
+artifact and 404 only for one that does not exist** (collapsing those two would hide a real
+permission failure behind an apparent missing row). What cannot be demonstrated in this
+configuration is the *outcome*: plan 2 §12 acceptance item 5/10, "a second user gets 403",
+passes vacuously because there is no second user — everyone is the admin.
+
+So the acceptance run must record it as **not verifiable in demo mode**, never as passing.
+To close it: set `guest_permissions_mode = none` on the settings page, create two real
+users, have each open a chat that produces an artifact, and fetch the other's artifact id.
+Expected: 403, and `api_events.is_error = 0` for it (a 403 is the system working).
+
+Until that is done, treat "the ACL is fine" as a code review result, not a test result.
 
 ## Navigation
 

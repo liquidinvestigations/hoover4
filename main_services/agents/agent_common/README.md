@@ -70,6 +70,25 @@ Two rules that read identically to their wrong versions:
 Latency is logged on every call, successful or not. `breaker_state()` is exposed on the
 consuming servers' `/health` so an open circuit is visible without reading logs.
 
+## `telemetry` — one `ai_service_telemetry` row per outbound call
+
+`/admin/ai_status` builds its use% strip and traffic table from that table alone, and until
+this sweep only the LLM path wrote to it: embeddings, rerank, NER, OCR and the browser all
+rendered as "no traffic", which reads as *idle* and is indistinguishable from *broken*.
+
+`record_async` writes on a daemon thread, because the clients here are synchronous
+`requests` inside async servers and `asyncio.to_thread` is not available at the call site.
+A dropped row at shutdown is the right trade for never delaying an answer.
+
+**Every outcome is recorded, not only the successes** — a capability that writes rows only
+when it works shows as idle exactly while it is failing.
+
+The worker keeps its own copy at `main_services/processing/tasks/ai_telemetry.py`: different
+image, and it already holds a ClickHouse client. Same table, same column meanings; the two
+are duplicated on purpose and must agree. Their one deliberate difference is the default
+`username` — `guest` for a request with no user, `pipeline` for work that is on nobody's
+behalf.
+
 ## Tests
 
 The behaviour lives in the consumers' suites, where it can be exercised against real call

@@ -90,19 +90,21 @@ def probe_embeddings_cmd():
     ``server_settings``. Phase 4's index builder reads those — never the ini — because
     the ini is the request and this probe is the truth, and a Manticore ``_vectors``
     table's ``knn_dims`` cannot be altered after creation.
+
+    The embed and indexing workers now run the same probe at startup, so this command is
+    for re-probing after a model change without a restart, and for `verify-stack.sh`.
     """
     import os
 
-    from tasks.llm_catalog import set_server_setting
-    from tasks.remote import probe_embeddings
+    from tasks.remote import record_embeddings_probe
 
-    base_url = (os.getenv("EMBEDDINGS_URL") or "").strip()
-    if not base_url:
+    if not (os.getenv("EMBEDDINGS_URL") or "").strip():
         print("EMBEDDINGS_URL is empty (embeddings_provider = none); nothing to probe")
         return
-    model, dims = probe_embeddings(base_url)
-    set_server_setting("embeddings_serving_model", model)
-    set_server_setting("embeddings_serving_dim", str(dims))
+    probed = record_embeddings_probe()
+    if not probed:
+        raise SystemExit("embeddings probe failed; server_settings unchanged (see the log)")
+    model, dims = probed
     print(f"embeddings_serving_model = {model}")
     print(f"embeddings_serving_dim = {dims}")
 
@@ -223,6 +225,125 @@ def reindex_collection(collectionname: str):
 
     asyncio.run(_start_workflows())
     print(f"reindex of {collectionname}: {len(plans)} plan(s) queued")
+
+
+@cli.command(name="purge-unattributed-entities")
+@click.argument("collectionname", type=str)
+@click.option("--apply/--dry-run", default=False, show_default=True,
+              help="--dry-run (the default) only reports what would change.")
+def purge_unattributed_entities(collectionname: str, apply: bool):
+    """Clear `entity_hit` rows with an empty `nlp_model`, re-running NER for their pages.
+
+    These are rows written before `nlp_model` existed. `nlp_model` is part of the table's
+    ORDER BY — deliberately, so two NER providers can coexist — which means a later run
+    under a real provider name **adds** rows rather than replacing them: the unattributed
+    set is immortal, and the admin UI renders it as a phantom third provider whose entities
+    nothing can be filtered by.
+
+    Deleting them alone is not safe in general, and the live stack proved it: one
+    collection's entire entity set was unattributed, so a bare DELETE would have removed
+    every entity it had. So this also clears the `nlp_processed` watermark for the affected
+    pages, which is what makes P4 extract them again — the watermark is the only reason it
+    would skip a page it has already seen.
+
+    Order matters: watermarks first, then the rows, then the re-run. A crash between the
+    two deletes leaves pages that will simply be re-extracted, which is the harmless
+    direction.
+    """
+    from database.clickhouse import get_collection_client, validate_collectionname
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    with get_collection_client(collectionname) as client:
+        rows = client.query(
+            "SELECT count() FROM entity_hit FINAL WHERE nlp_model = ''"
+        ).result_rows
+        orphan_rows = int(rows[0][0]) if rows else 0
+        pages = client.query(
+            "SELECT uniqExact((file_hash, extracted_by, page_id)) FROM entity_hit FINAL "
+            "WHERE nlp_model = ''"
+        ).result_rows
+        orphan_pages = int(pages[0][0]) if pages else 0
+
+    if not orphan_rows:
+        print(f"{collectionname}: no unattributed entity_hit rows")
+        return
+
+    print(f"{collectionname}: {orphan_rows} unattributed entity_hit row(s) "
+          f"over {orphan_pages} page(s)")
+    if not apply:
+        print("dry run; pass --apply to delete them and re-run NER for those pages")
+        return
+
+    with get_collection_client(collectionname) as client:
+        # `ALTER TABLE ... DELETE` is a mutation: asynchronous by default, and the next
+        # step depends on it having landed. `mutations_sync=2` waits for every replica.
+        settings = {"mutations_sync": 2}
+        client.command("""
+            ALTER TABLE nlp_processed DELETE WHERE (file_hash, extracted_by, page_id) IN (
+                SELECT file_hash, extracted_by, page_id FROM entity_hit FINAL
+                WHERE nlp_model = ''
+            )
+        """, settings=settings)
+        client.command(
+            "ALTER TABLE entity_hit DELETE WHERE nlp_model = ''", settings=settings
+        )
+        plans = client.query(
+            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+            "ORDER BY collection_dataset, plan_hash"
+        ).result_rows
+
+    print(f"deleted; re-running NER + index for {len(plans)} finished plan(s)")
+
+    async def _run():
+        from temporalio.client import Client as TemporalClient
+        import temporalio.common
+        from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan
+        from tasks.P4_extract_entities.params import ExtractEntitiesForPlanParams
+        from tasks.P6_index_data.workflows import IndexDatasetPlan
+        from tasks.P6_index_data.params import IndexDatasetPlanParams
+        from tasks.visibility import dataset_search_attributes
+
+        client = await TemporalClient.connect("temporal:7233")
+        for collection_dataset, plan_hash in plans:
+            # P4 then P6: the index copies the entity rows P4 writes, and the Manticore
+            # `ner` term dictionary is built from them.
+            handle = await client.start_workflow(
+                ExtractEntitiesForPlan.run,
+                ExtractEntitiesForPlanParams(
+                    collectionname=collectionname,
+                    collection_dataset=collection_dataset,
+                    plan_hash=plan_hash,
+                ),
+                id=f"reattribute-ner-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            log.info("NER re-run: %s plan %s", collection_dataset, plan_hash[:8])
+            await handle.result()
+            handle = await client.start_workflow(
+                IndexDatasetPlan.run,
+                IndexDatasetPlanParams(
+                    collectionname=collectionname,
+                    collection_dataset=collection_dataset,
+                    plan_hash=plan_hash,
+                ),
+                id=f"reattribute-index-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            log.info("re-index: %s plan %s", collection_dataset, plan_hash[:8])
+            await handle.result()
+
+    asyncio.run(_run())
+    print(f"purge-unattributed-entities of {collectionname}: done")
 
 
 @cli.command(name="backfill-vectors")

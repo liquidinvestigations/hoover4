@@ -1,8 +1,21 @@
-"""Capture what the agent saw, after every action that could change it.
+"""Capture what the agent saw, on the two tools whose whole purpose is to look.
 
-**Capture is never a tool argument.** The completeness of the transcript must not depend
-on the model's judgement about what is worth keeping — a model that forgets to screenshot
-the CAPTCHA it hit produces a transcript where the failure is invisible.
+**Captures are explicit.** `browser_take_screenshot` and `browser_snapshot` produce one;
+nothing else does. The earlier rule captured after every action that could change the
+screen, which meant a screenshot plus an MHTML serialisation after almost every click —
+23 rows and 12.5 MB written in a single day of demo use, most of them of pages nobody
+would ever open.
+
+That rule was defended as "the transcript must not depend on the model's judgement", and
+the trade is real: a model that forgets to screenshot the CAPTCHA it hit leaves a
+transcript where the failure is invisible. Q4/Q5 answered it anyway — no implicit
+captures — and the browser cards render an explicit snapshot well enough that asking the
+model to take one is a reasonable instruction rather than a hope. **Do not reintroduce
+implicit capture without changing that answer first.**
+
+Note what did *not* change: capture still happens **on the failure path** of those two
+tools. A screenshot of a cookie wall is the most valuable artifact this module produces,
+and the tool "failing" is not a reason to discard the evidence of why.
 
 Two artefacts per capture:
 
@@ -20,10 +33,16 @@ driving. CDP allows a second client, and neither `Page.captureScreenshot` nor
 
 ## Cost control
 
-An MHTML serialisation of a real page is megabytes and takes hundreds of milliseconds. A
-`browser_click` that opened a menu does not need a second one, so a capture whose
-`(url, document.lastModified)` matches the previous capture in the same chat reuses the
-previous `body_key` and only takes a fresh screenshot.
+An MHTML serialisation of a real page is megabytes and takes hundreds of milliseconds,
+which is why capturing after every click was expensive. Capturing only when the model
+asked to look is the cost control now.
+
+There used to be a second mechanism on top: a capture whose `(url, document.lastModified)`
+matched the previous one in the same chat reused the previous `body_key`. It went with the
+implicit captures — two explicit snapshots of the same page are a deliberate act, and
+silently pointing the second at the first one's bytes made two `chat_artifacts` rows share
+an object, which the retention sweeper then had to be careful about. (It still is, for the
+rows already written.)
 """
 
 from __future__ import annotations
@@ -36,7 +55,7 @@ import os
 import time
 from dataclasses import dataclass
 
-from agent_common import artifacts, minio_store
+from agent_common import artifacts
 
 from browser_use_server.chat_browser import ChatBrowser
 from browser_use_server import mhtml as mhtml_mod
@@ -64,31 +83,9 @@ IDENTITY_TIMEOUT = float(os.getenv("CAPTURE_IDENTITY_TIMEOUT_SECONDS", "5"))
 SCREENSHOT_TIMEOUT = float(os.getenv("CAPTURE_SCREENSHOT_TIMEOUT_SECONDS", "8"))
 SNAPSHOT_TIMEOUT = float(os.getenv("CAPTURE_SNAPSHOT_TIMEOUT_SECONDS", "12"))
 
-#: Tools after which a capture is taken. Anything that can change what is on screen —
-#: navigation, interaction, waiting, tab switching. Read-only tools
-#: (`browser_console_messages`, `browser_network_requests`) are not here: they change
-#: nothing, so a capture would duplicate the previous one.
-CAPTURING_TOOLS = frozenset(
-    {
-        "browser_navigate",
-        "browser_navigate_back",
-        "browser_navigate_forward",
-        "browser_click",
-        "browser_type",
-        "browser_fill_form",
-        "browser_press_key",
-        "browser_select_option",
-        "browser_hover",
-        "browser_drag",
-        "browser_wait_for",
-        "browser_tabs",
-        "browser_file_upload",
-        "browser_handle_dialog",
-        "browser_evaluate",
-        "browser_take_screenshot",
-        "browser_snapshot",
-    }
-)
+#: The only two tools after which a capture is taken — the two whose entire purpose is to
+#: record what is on screen. See the module docstring: this list used to hold seventeen.
+CAPTURING_TOOLS = frozenset({"browser_take_screenshot", "browser_snapshot"})
 
 
 @dataclass
@@ -147,14 +144,12 @@ async def _capture(
         return CaptureResult(status=artifacts.STATUS_FAILED, detail="no active page")
 
     try:
-        url, title, last_modified = await asyncio.wait_for(
-            _page_identity(tab), timeout=IDENTITY_TIMEOUT
-        )
+        url, title = await asyncio.wait_for(_page_identity(tab), timeout=IDENTITY_TIMEOUT)
     except Exception:  # noqa: BLE001 - includes asyncio.TimeoutError
         # A page mid-navigation will not run our script. The target's own URL is still
         # worth recording — a capture that cannot say *which* page it is of is useless.
         url = getattr(getattr(tab, "target", None), "url", "") or ""
-        title, last_modified = "", ""
+        title = ""
 
     result = CaptureResult(url=url, title=title)
 
@@ -170,55 +165,55 @@ async def _capture(
     except Exception as exc:  # noqa: BLE001
         log.warning("screenshot failed for %s: %s", url, exc)
 
-    # 2. Snapshot, unless this page is byte-for-byte the one we last captured for this
-    #    chat. `document.lastModified` moves on any DOM mutation, so a click that opened a
-    #    menu does get a fresh snapshot; a click that navigated nowhere does not.
-    capture_key = (url, last_modified)
+    # 2. Snapshot. Always taken — the change-detection reuse went with the implicit
+    #    captures (see the module docstring): an explicit snapshot of a page already
+    #    captured is a deliberate act, and quietly handing back the earlier bytes would
+    #    make the second capture a lie about when it was taken.
     body: tuple[str, bytes, str] | None = None
-    reuse_key, reuse_bytes = "", 0
     status, detail = artifacts.STATUS_OK, ""
 
-    if chat.last_capture_key == capture_key and chat.last_body_key:
-        reuse_key, reuse_bytes = chat.last_body_key, chat.last_body_bytes
-        log.debug("capture: page unchanged since the last one, reusing %s", reuse_key)
-    else:
-        try:
-            raw = await asyncio.wait_for(_snapshot_mhtml(tab), timeout=SNAPSHOT_TIMEOUT)
-            if len(raw) > MAX_SNAPSHOT_BYTES:
-                status = artifacts.STATUS_TOO_LARGE
-                detail = (
-                    f"page snapshot is {len(raw) // 1024} kB, over the "
-                    f"{MAX_SNAPSHOT_BYTES // 1024} kB limit; only the screenshot was kept"
-                )
-                log.info("capture too large for %s: %s", url, detail)
-            else:
-                converted = mhtml_mod.convert(raw, captured_at=_now())
-                html = converted.html.encode("utf-8")
-                body = ("page.html", html, "text/html; charset=utf-8")
-                if not result.title:
-                    result.title = mhtml_mod.page_title(converted.html)
-        except asyncio.TimeoutError:
-            # The page is still loading — which is exactly the situation a failed
-            # navigation leaves behind. The screenshot above is the evidence; say so
-            # rather than dropping the artifact.
-            status = artifacts.STATUS_FAILED
+    try:
+        raw = await asyncio.wait_for(_snapshot_mhtml(tab), timeout=SNAPSHOT_TIMEOUT)
+        if len(raw) > MAX_SNAPSHOT_BYTES:
+            status = artifacts.STATUS_TOO_LARGE
             detail = (
-                f"the page was still loading after {SNAPSHOT_TIMEOUT:g}s, so only the "
-                "screenshot was kept"
+                f"page snapshot is {len(raw) // 1024} kB, over the "
+                f"{MAX_SNAPSHOT_BYTES // 1024} kB limit; only the screenshot was kept"
             )
-            log.info("snapshot for %s timed out; keeping the screenshot", url)
-        except mhtml_mod.SnapshotTooLarge as exc:
-            status, detail = artifacts.STATUS_TOO_LARGE, str(exc)
-        except Exception as exc:  # noqa: BLE001
-            status = artifacts.STATUS_FAILED
-            detail = f"snapshot failed: {exc}"
-            log.warning("snapshot failed for %s: %s", url, exc)
+            log.info("capture too large for %s: %s", url, detail)
+        else:
+            converted = mhtml_mod.convert(raw, captured_at=_now())
+            html = converted.html.encode("utf-8")
+            body = ("page.html", html, "text/html; charset=utf-8")
+            if not result.title:
+                result.title = mhtml_mod.page_title(converted.html)
+    except asyncio.TimeoutError:
+        # The page is still loading — which is exactly the situation a failed
+        # navigation leaves behind. The screenshot above is the evidence; say so
+        # rather than dropping the artifact.
+        status = artifacts.STATUS_FAILED
+        detail = (
+            f"the page was still loading after {SNAPSHOT_TIMEOUT:g}s, so only the "
+            "screenshot was kept"
+        )
+        log.info("snapshot for %s timed out; keeping the screenshot", url)
+    except mhtml_mod.SnapshotTooLarge as exc:
+        status, detail = artifacts.STATUS_TOO_LARGE, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        status = artifacts.STATUS_FAILED
+        detail = f"snapshot failed: {exc}"
+        log.warning("snapshot failed for %s: %s", url, exc)
 
     if failed and not detail:
         # The screenshot is the evidence; say why it is here so the card can label it.
         detail = "captured after a failed tool call"
 
-    artifact_id = artifacts.write(
+    # `to_thread`: `artifacts.write` is several synchronous MinIO PUTs (screenshot, MHTML,
+    # thumbnail) followed by a ClickHouse insert, and a page capture is megabytes. On the
+    # event loop that stalls every other chat's browser I/O — including their navigation
+    # timeouts, which then expire on a page that was never actually slow.
+    artifact_id = await asyncio.to_thread(
+        artifacts.write,
         artifacts.ArtifactRequest(
             session_id=chat.session_id,
             username=username,
@@ -230,18 +225,8 @@ async def _capture(
             thumb=thumb,
             status=status,
             detail=detail,
-            reuse_body_key=reuse_key,
-            reuse_body_bytes=reuse_bytes,
         )
     )
-
-    if body is not None and artifact_id:
-        # Remember what was stored so the next capture of the same page can reuse it.
-        chat.last_capture_key = capture_key
-        chat.last_body_key = minio_store.artifact_key(chat.session_id, artifact_id, "page.html")
-        chat.last_body_bytes = len(body[1])
-    elif reuse_key:
-        chat.last_capture_key = capture_key
 
     result.artifact_id = artifact_id
     result.status = status
@@ -274,29 +259,28 @@ async def _active_tab(chat: ChatBrowser):
     return (real or pages)[-1]
 
 
-async def _page_identity(tab) -> tuple[str, str, str]:
-    """`(url, title, document.lastModified)` in one round trip."""
+async def _page_identity(tab) -> tuple[str, str]:
+    """`(url, title)` in one round trip."""
     try:
         payload = await tab.evaluate(
-            "JSON.stringify({u: location.href, t: document.title || '', "
-            "m: document.lastModified || ''})",
+            "JSON.stringify({u: location.href, t: document.title || ''})",
             await_promise=False,
             return_by_value=True,
         )
     except Exception as exc:  # noqa: BLE001
         log.debug("page identity read failed: %s", exc)
-        return (getattr(getattr(tab, "target", None), "url", "") or ""), "", ""
+        return (getattr(getattr(tab, "target", None), "url", "") or ""), ""
     if not isinstance(payload, str):
         # The nodriver return-value trap: anything that is not the JSON string means the
         # script did not run. See the server module docstring.
-        return (getattr(getattr(tab, "target", None), "url", "") or ""), "", ""
+        return (getattr(getattr(tab, "target", None), "url", "") or ""), ""
     import json
 
     try:
         data = json.loads(payload)
     except ValueError:
-        return "", "", ""
-    return data.get("u", ""), data.get("t", ""), data.get("m", "")
+        return "", ""
+    return data.get("u", ""), data.get("t", "")
 
 
 async def _screenshot(tab) -> bytes:

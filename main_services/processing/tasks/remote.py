@@ -130,6 +130,16 @@ class _Breaker:
 _BREAKER = _Breaker()
 
 
+def _record(service: str, provider: str, latency_ms: float, *, ok: bool,
+            detail: str) -> None:
+    """Telemetry for one attempt, if the caller opted in. Never raises."""
+    if not service:
+        return
+    from tasks.ai_telemetry import record
+
+    record(service, provider=provider, latency_ms=latency_ms, ok=ok, detail=detail)
+
+
 @dataclass
 class RemoteResult:
     """A response plus **which endpoint actually served it**.
@@ -151,6 +161,7 @@ def post_json(
     *,
     read_timeout: float = READ_TIMEOUT,
     session: requests.Session | None = None,
+    service: str = "",
 ) -> RemoteResult:
     """POST ``payload`` to the first endpoint that answers.
 
@@ -162,6 +173,12 @@ def post_json(
     connect failure moves to the next endpoint; a *read* failure or an HTTP
     error does not, because the host is alive and retrying elsewhere would hide
     a real server-side problem behind a silently degraded provider.
+
+    ``service`` names the capability for ``ai_service_telemetry`` (``ocr``, ``ner``,
+    ``embeddings``). It is separate from ``provider`` because provider is *which endpoint
+    answered* -- under fallback those differ, and that difference is the evidence an
+    outage happened. Empty means do not record: the callers that opt in are the ones
+    ``/admin/ai_status`` has a panel for.
     """
     live = [(name, url) for name, url in endpoints if url]
     if not live:
@@ -179,7 +196,9 @@ def post_json(
         is_last = index == len(live) - 1
         if _BREAKER.is_open(url) and not is_last:
             attempts.append(f"{provider} ({url}): circuit open, skipped")
+            _record(service, provider, 0.0, ok=False, detail="circuit open, skipped")
             continue
+        started = time.monotonic()
         try:
             response = post(
                 url,
@@ -199,12 +218,24 @@ def post_json(
                     "connect failures", provider, url, CIRCUIT_BREAK_SECONDS,
                 )
             attempts.append(f"{provider} ({url}): {type(exc).__name__}: {exc}")
+            _record(service, provider, (time.monotonic() - started) * 1000.0,
+                    ok=False, detail=type(exc).__name__)
             if isinstance(exc, requests.ReadTimeout):
                 break       # host is alive and slow; do not silently downgrade
             continue
 
         _BREAKER.record_success(url)
-        response.raise_for_status()
+        elapsed_ms = (time.monotonic() - started) * 1000.0
+        try:
+            response.raise_for_status()
+        except Exception:
+            # HTTP errors are recorded too. A capability that writes a telemetry row only
+            # when it succeeds reads as idle on `/admin/ai_status` exactly while it is
+            # failing, which is when someone is looking at the panel.
+            _record(service, provider, elapsed_ms, ok=False,
+                    detail=f"HTTP {getattr(response, 'status_code', '?')}")
+            raise
+        _record(service, provider, elapsed_ms, ok=True, detail=provider)
         if index > 0:
             log.warning("served by fallback provider %s (%s)", provider, url)
         return RemoteResult(data=response.json(), url=url, provider=provider)
@@ -227,7 +258,46 @@ def probe_embeddings(base_url: str) -> tuple[str, int]:
         [("embeddings", f"{base_url.rstrip('/')}/embeddings")],
         {"input": "dimension probe"},
         read_timeout=30.0,
+        service="embeddings",
     )
     data = result.data
     embedding = data["data"][0]["embedding"]
     return data.get("model", ""), len(embedding)
+
+
+def record_embeddings_probe() -> tuple[str, int] | None:
+    """Probe the endpoint and write the result to ``server_settings``.
+
+    Returns ``(model, dims)``, or ``None`` when there is nothing to probe
+    (``embeddings_provider = none``) or the endpoint could not be reached.
+
+    **This must never raise.** Its callers are a worker's startup path and a CLI, and a
+    worker that refuses to boot because the GPU tier is down is worse than one that boots
+    and refuses the embed activity with a clear message — the same stack still has five
+    other stages to run. A failed probe simply leaves ``server_settings`` as it was.
+    """
+    import os
+
+    base_url = (os.getenv("EMBEDDINGS_URL") or "").strip()
+    if not base_url:
+        return None
+
+    try:
+        model, dims = probe_embeddings(base_url)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        log.warning(
+            "embeddings probe failed (%s); server_settings left unchanged — "
+            "consumers will refuse until `main.py probe-embeddings` succeeds", exc,
+        )
+        return None
+
+    if not model or not dims:
+        log.warning("embeddings probe returned model=%r dims=%r; not recording", model, dims)
+        return None
+
+    from tasks.llm_catalog import set_server_setting
+
+    set_server_setting("embeddings_serving_model", model)
+    set_server_setting("embeddings_serving_dim", str(dims))
+    log.info("embeddings probe: serving %s at %d dims", model, dims)
+    return model, dims

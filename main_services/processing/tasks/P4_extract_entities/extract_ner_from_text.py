@@ -48,7 +48,7 @@ def extract_ner_from_texts(texts: list[str]) -> tuple[list[dict[str, list[str]]]
         "input": texts,
         "include_confidence": False,
         "entity_types": None,
-    })
+    }, service="ner")
     entities_by_text = _group_entities_by_text(result.data["data"], len(texts))
     nlp_model = NLP_MODEL_BY_PROVIDER.get(result.provider, f"ner-{result.provider}")
     logger.debug("extracted entities from %d texts via %s", len(texts), nlp_model)

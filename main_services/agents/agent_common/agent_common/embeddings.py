@@ -25,6 +25,8 @@ import logging
 import os
 import time
 
+from agent_common import telemetry
+
 log = logging.getLogger(__name__)
 
 #: Dead-host detection, in seconds. Never inherit the read timeout here.
@@ -107,9 +109,21 @@ def embed_query(query: str, model_id: str) -> list[float]:
     except requests.exceptions.RequestException as exc:
         elapsed = (time.monotonic() - started) * 1000.0
         log.warning("embed_query failed after %.0fms: %s", elapsed, exc)
+        telemetry.record_async(
+            "embeddings", provider=url, latency_ms=elapsed, ok=False,
+            detail=f"{type(exc).__name__}: {exc}",
+        )
         raise EmbeddingUnavailable(f"embeddings endpoint {url} failed: {exc}") from exc
 
     elapsed_ms = (time.monotonic() - started) * 1000.0
+    # Recorded on every outcome, not only the good one. `/admin/ai_status` reads this
+    # table; a capability that writes rows only when it works renders as "no traffic"
+    # while it is failing, which is exactly when the panel is being looked at.
+    telemetry.record_async(
+        "embeddings", provider=url, latency_ms=elapsed_ms,
+        ok=response.status_code == 200,
+        detail=model_id if response.status_code == 200 else f"HTTP {response.status_code}",
+    )
     if response.status_code != 200:
         log.warning("embeddings returned %s in %.0fms", response.status_code, elapsed_ms)
         raise EmbeddingUnavailable(f"embeddings returned {response.status_code}")

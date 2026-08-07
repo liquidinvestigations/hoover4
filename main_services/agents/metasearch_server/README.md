@@ -28,7 +28,7 @@ it filtered to the last day and did not will present stale results as fresh.
 
 | name | kind | what it is |
 |---|---|---|
-| `ddg`, `brave`, `startpage`, `yahoo` | `web` | the HTML scrapers in `engines.py` |
+| `ddg`, `brave`, `yahoo` | `web` | the HTML scrapers in `engines.py` |
 | `ddg_api` | `web` | the `ddgs` library's `text()`, inherited from `hoover4-mcp-ddg` |
 | `ddg_news` | `news` | the `ddgs` library's `news()`, same origin |
 | `wikipedia` | `reference` | MediaWiki `list=search`, inherited from `hoover4-mcp-wikipedia` |
@@ -36,6 +36,12 @@ it filtered to the last day and did not will present stale results as fresh.
 `ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
 independently — a selector change breaks one, a library bump breaks the other — and the
 whole point of the `degraded` list is that rot is visible rather than silent.
+
+**`startpage` was removed, not disabled.** It serves a Gatsby single-page app with a
+`<noscript>` wall and a captcha field: there are no results in the HTML for any query, on
+the first request from a cold container. There is no selector to repair, so there is no run
+in which it can come back — and a permanently-degraded source inflates the source count the
+tool advertises. Reporting rot is not the same as tolerating it.
 
 `kind` is not decoration: it drives the per-kind floor below.
 
@@ -70,6 +76,19 @@ an obvious Wikipedia answer returns twenty blogs about it. Each kind keeps its o
 score up to `METASEARCH_MAX_PER_KIND` per kind. A page both Wikipedia and a scraper returned
 keeps the *more specific* kind, or the floor could not see it.
 
+**A floor guarantees representation, not relevance**, and representation of nothing is
+padding. A floor of ten reference results on a query with one encyclopaedia answer filled
+the rest with whatever Wikipedia ranked next — live, "Yanam district" and "Aasta Hansteen
+spar" for an Eiffel Tower query — and the model cannot tell a reserved slot from an earned
+one. So a result the cross-encoder scored below `METASEARCH_RESERVE_MIN_SCORE` cannot take a
+reserved slot; it can still be filled in on merit. The threshold defaults to `0`, which is
+the cross-encoder's own decision boundary (it returns a raw logit). A result with **no**
+rerank score is always reservable: the GPU being down is not evidence against a result.
+
+The floor is `3`, not `10`. Q14 settled the policy at fifteen results, always reranked, and
+a floor of ten across three kinds reserves thirty slots — `max_results` then means nothing,
+because a reserved slot is never evicted.
+
 ## Reranking
 
 `POST /v1/rerank` on the GPU tier (`RERANK_URL`, rendered by `deploy.py` from the same
@@ -91,8 +110,12 @@ replacing.
 
 Per result: `title`, `url`, `display_url`, `snippet`, `sources[]`, `kind`, `rrf_rank`,
 `rrf_score`, `rerank_rank`, `rerank_score`, `published`. Top level: `sources_used`,
-`degraded`, `unknown_sources`, `total_before_dedupe`, `total_after_dedupe`,
-`rerank_applied`, `rerank_ms`, per-source `source_latency_ms` and `source_counts`.
+`degraded`, `degraded_reasons`, `unknown_sources`, `total_before_dedupe`,
+`total_after_dedupe`, `rerank_applied`, `rerank_ms`, per-source `source_latency_ms` and
+`source_counts`.
+
+A result the reranker did not score keeps its fused position rather than disappearing: a
+partial rerank response must not silently shrink the search.
 
 **The pre-rerank ordering of every candidate is not sent to the model.** It is search
 bookkeeping, not evidence, and it would roughly double the tool's token cost. It goes to a
@@ -103,22 +126,25 @@ fetches it lazily. See `../README.md` for how artifacts are stored and served.
 Measured on the live server (`danube water level drought 2026`):
 
 ```
-sources_used: ['ddg','brave','startpage','yahoo','ddg_api','ddg_news','wikipedia']
-degraded:     ['brave','startpage']
-74 results in, 48 after dedupe, reranked in 256 ms, 30 returned
+sources_used: ['ddg','brave','yahoo','ddg_api','ddg_news','wikipedia']
+degraded:     ['brave']
+degraded_reasons: {'brave': 'HTTP 429'}
+74 results in, 48 after dedupe, reranked in 256 ms, 15 returned
 rerank moved RRF #26 to #1
-detail artifact: 48 before_rerank rows / 30 after_rerank rows, 49 kB
+detail artifact: 48 before_rerank rows / 15 after_rerank rows, 49 kB
 ```
 
 ## Expect a scraper to rot
 
 Every HTML source is **CSS selectors and no API key**. That is what makes it free and what
 makes it fragile: assume at least one selector breaks within months. In the run above, Brave
-and Startpage had already stopped matching — the search still worked, and said so. Two
-things keep that visible:
+had already stopped matching — the search still worked, and said so. Two things keep that
+visible:
 
-* **The `degraded` field** on every response names the sources that returned nothing. Never
-  swallow a zero-result source.
+* **The `degraded` field** on every response names the sources that returned nothing, and
+  `degraded_reasons` says why each one did. Those are different questions: "brave returned
+  nothing" reads identically for a rotted selector, an `HTTP 429` and an unreachable host,
+  and the three want three different fixes. Never swallow a zero-result source.
 * **`METASEARCH_SOURCES`** turns a broken one off without a rebuild. Unknown names are
   dropped with a warning rather than raising, because a typo must not take the server down —
   and the same rule applies to the model's own `sources` argument.
@@ -131,12 +157,13 @@ selector edit fails a test rather than production.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `METASEARCH_SOURCES` | all seven | the set to query; `METASEARCH_ENGINES` is still honoured for the four scrapers |
+| `METASEARCH_SOURCES` | all six | the set to query; `METASEARCH_ENGINES` is still honoured for the scrapers |
 | `METASEARCH_SOURCE_TIMEOUT` | `8` | per source, seconds; a slow source degrades rather than delays |
 | `METASEARCH_OVERALL_TIMEOUT` | `20` | whole fan-out deadline |
 | `METASEARCH_PER_SOURCE_RESULTS` | `15` | asked of each source; larger than `max_results` so fusion and reranking have candidates |
 | `METASEARCH_RRF_K` | `60` | the RRF constant; larger flattens rank differences |
-| `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `10` / `20` | the floor and ceiling per kind |
+| `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` | the floor and ceiling per kind |
+| `METASEARCH_RESERVE_MIN_SCORE` | `0` | rerank logit below which a result no longer earns a reserved floor slot |
 | `METASEARCH_RERANK_CANDIDATES` | `60` | how many fused candidates reach the cross-encoder |
 | `MAX_RESULTS` | `15` | default result count |
 | `SEARCH_SNIPPET_CHARS` | `400` | snippets land in the agent's context, so they are capped |
@@ -147,7 +174,7 @@ selector edit fails a test rather than production.
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-metasearch python -m pytest tests/ -q   # 51 tests
+docker exec hoover4-mcp-metasearch python -m pytest tests/ -q   # 71 tests
 ```
 
 They cover URL normalisation, both dedupes, the RRF merge, the per-kind floor, the rerank

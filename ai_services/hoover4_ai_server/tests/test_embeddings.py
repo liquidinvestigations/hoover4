@@ -218,6 +218,36 @@ def test_single_text_embedding():
         pytest.fail(f"Error getting single text embedding: {e}")
 
 
+def test_a_model_this_server_does_not_serve_is_refused():
+    """The response's `model` must name what produced the vectors, or it is not evidence.
+
+    It used to be `request.model or model_name` — an echo. The worker compares that field
+    against the probed serving model and refuses a mismatch, because vectors written under
+    the wrong name are re-embedded forever (the anti-join never matches) and may carry the
+    wrong e5 prefix convention. An echo makes that check unable to fail.
+    """
+    print_test_header("EMBEDDING MODEL MISMATCH TEST")
+
+    if not validate_server_connection():
+        pytest.skip("Server not available")
+
+    response = requests.post(
+        DEFAULT_BASE_URL + "/v1/embeddings",
+        json={"input": "dimension probe", "model": "some/other-model-v9"},
+    )
+    assert response.status_code == 400, (
+        f"a model this server does not serve must be refused, got {response.status_code}"
+    )
+    assert "not" in response.text.lower()
+
+    # And the honest path: no `model`, or the served one, still works and names itself.
+    for payload in ({"input": "dimension probe"},
+                    {"input": "dimension probe", "model": DEFAULT_MODEL}):
+        ok = requests.post(DEFAULT_BASE_URL + "/v1/embeddings", json=payload)
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["model"] == DEFAULT_MODEL
+
+
 def test_error_handling():
     """Test API error handling"""
     print_test_header("EMBEDDING API ERROR HANDLING TEST")

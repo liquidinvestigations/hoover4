@@ -107,7 +107,32 @@ def validate_server_connection(base_url: str = DEFAULT_BASE_URL) -> bool:
 
 
 # Common test configurations
-DEFAULT_MODEL = "intfloat/multilingual-e5-large-instruct"
+
+
+def served_embedding_model(base_url=None):
+    """The embedding model this server actually has loaded, from `/v1/models`.
+
+    Hardcoding a name here was a lie waiting to happen, and it happened: the constant said
+    `multilingual-e5-large-instruct` while every deployment served
+    `multilingual-e5-small`. It went unnoticed because `/v1/embeddings` used to echo the
+    requested name back over vectors the real model produced — the same echo the worker's
+    "did I get the model I probed?" check depends on, which is why the endpoint now
+    refuses a `model` it does not serve instead. Ask the server rather than assuming.
+    """
+    import os
+
+    import requests
+
+    url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+    try:
+        response = requests.get(f"{url}/v1/models", timeout=(2, 10))
+        response.raise_for_status()
+        return response.json()["data"][0]["id"]
+    except Exception:  # noqa: BLE001 - tests skip on an unreachable server anyway
+        return os.getenv("EMBEDDINGS_MODEL", "intfloat/multilingual-e5-small")
+
+
+DEFAULT_MODEL = served_embedding_model()
 DEFAULT_TASK_DESCRIPTION = "Given a web search query, retrieve relevant passages that answer the query"
 
 # Common test texts

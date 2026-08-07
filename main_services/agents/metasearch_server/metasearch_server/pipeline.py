@@ -14,6 +14,15 @@ on a page beats one encyclopaedia entry every time, so without a floor a query w
 obvious Wikipedia answer returns twenty blogs about it. Minimum
 :data:`MIN_PER_KIND` and maximum :data:`MAX_PER_KIND` results per kind.
 
+**A floor is a guarantee of representation, not of relevance.** A floor of ten reference
+results on a query with one encyclopaedia answer padded the reply with whatever Wikipedia
+ranked next — "Yanam district" and "Aasta Hansteen spar" for a query about the Eiffel
+Tower — and the model has no way to tell a reserved slot from an earned one. So the
+reservation pass only fires for results the cross-encoder scored at or above
+:data:`RESERVE_MIN_SCORE`; below that a kind simply goes unrepresented, which is the honest
+answer when it has nothing to say. Results with no rerank score at all (the GPU is down)
+are always reservable — no score is not a low score.
+
 A rerank failure is **reported, not hidden**: `rerank_applied` goes false, the RRF order
 stands, and the reason lands in `rerank_error`. The tool still answers — a GPU outage
 must degrade search quality, not remove search.
@@ -33,8 +42,22 @@ from metasearch_server.engines import SearchResult, reciprocal_rank_fusion
 log = logging.getLogger(__name__)
 
 #: Per-kind floor and ceiling, applied after reranking. See the module docstring.
-MIN_PER_KIND = int(os.getenv("METASEARCH_MIN_PER_KIND", "10"))
-MAX_PER_KIND = int(os.getenv("METASEARCH_MAX_PER_KIND", "20"))
+#:
+#: The floor is **3**, not 10: Q14 settled the result policy at "go down to 15 results,
+#: always use the re-ranker", and a floor of 10 across three kinds reserves 30 slots, which
+#: silently overrides any smaller cap the caller asked for. Three is enough for a kind to
+#: be visibly represented and small enough that the cap means what it says.
+MIN_PER_KIND = int(os.getenv("METASEARCH_MIN_PER_KIND", "3"))
+MAX_PER_KIND = int(os.getenv("METASEARCH_MAX_PER_KIND", "15"))
+
+#: Lowest rerank score that still earns a reserved floor slot.
+#:
+#: The cross-encoder returns a raw logit, so 0 is its own decision boundary: at or above,
+#: the model judged the document more relevant to the query than not. Anything below is a
+#: result the floor would be *inventing* representation for. Overridable because the
+#: number is only meaningful for the model named in Q7; a different reranker needs a
+#: different threshold, and a wrong one here quietly empties a kind.
+RESERVE_MIN_SCORE = float(os.getenv("METASEARCH_RESERVE_MIN_SCORE", "0"))
 
 #: How many fused candidates are sent to the cross-encoder. Reranking is O(n) forward
 #: passes, so this bounds the GPU cost of one search.
@@ -66,6 +89,8 @@ class SearchOutcome:
     sources_used: list[str] = field(default_factory=list)
     unknown_sources: list[str] = field(default_factory=list)
     degraded: list[str] = field(default_factory=list)
+    #: Why each degraded source came back empty — HTTP status, timeout, selector rot.
+    degraded_reasons: dict[str, str] = field(default_factory=dict)
     source_latency_ms: dict[str, float] = field(default_factory=dict)
     source_counts: dict[str, int] = field(default_factory=dict)
     total_before_dedupe: int = 0
@@ -106,6 +131,7 @@ def apply_per_kind_floor(
     max_results: int,
     min_per_kind: int = MIN_PER_KIND,
     max_per_kind: int = MAX_PER_KIND,
+    reserve_min_score: float = RESERVE_MIN_SCORE,
 ) -> list[Ranked]:
     """Guarantee each kind a share of the answer, then fill the rest by score.
 
@@ -116,6 +142,10 @@ def apply_per_kind_floor(
     encyclopaedia entry), then everything else fills in rank order up to `max_per_kind`
     per kind and `max_results` overall, never evicting a reserved slot.
 
+    A result the cross-encoder scored below `reserve_min_score` cannot take a reserved
+    slot — see the module docstring. It can still be *filled* in on merit if the budget
+    reaches it.
+
     The returned list keeps the input's order, so the reranked ordering the model sees is
     still the reranked ordering.
     """
@@ -125,6 +155,10 @@ def apply_per_kind_floor(
         kind_of=lambda item: item.result.kind or "web",
         min_per_kind=min_per_kind,
         max_per_kind=max_per_kind,
+        # No rerank score means the reranker did not run; the floor is then the only
+        # protection a minority kind has and must not be gated on a number we do not have.
+        is_reservable=lambda item: item.rerank_score is None
+        or item.rerank_score >= reserve_min_score,
     )
 
 
@@ -139,7 +173,7 @@ async def run_search(
     names, unknown = sources_mod.resolve_sources(requested_sources)
 
     fetch_started = time.monotonic()
-    per_source, latency, degraded = await sources_mod.fetch_all(
+    per_source, latency, degraded, degraded_reasons = await sources_mod.fetch_all(
         query, names, timelimit=timelimit
     )
     fetch_ms = (time.monotonic() - fetch_started) * 1000.0
@@ -149,6 +183,7 @@ async def run_search(
         sources_used=names,
         unknown_sources=unknown,
         degraded=degraded,
+        degraded_reasons=degraded_reasons,
         source_latency_ms=latency,
         source_counts={name: len(rows) for name, rows in per_source.items()},
         total_before_dedupe=sum(len(rows) for rows in per_source.values()),
@@ -177,12 +212,20 @@ async def run_search(
         outcome.rerank_ms = round(rerank_ms, 1)
         if scores:
             ordered = []
+            seen: set[int] = set()
             for position, score in enumerate(scores, start=1):
-                if 0 <= score.index < len(outcome.fused):
+                if 0 <= score.index < len(outcome.fused) and score.index not in seen:
+                    seen.add(score.index)
                     item = outcome.fused[score.index]
                     item.rerank_rank = position
                     item.rerank_score = round(score.score, 6)
                     ordered.append(item)
+            # A response that scored only some of the candidates (a `top_k` the server
+            # applied, a truncated body) must not *delete* the rest: they were real
+            # results with a real RRF position, and dropping them turns a partial rerank
+            # into a partial search. They keep their fused order, behind everything the
+            # cross-encoder did score, with no rerank rank — which is exactly true.
+            ordered += [item for i, item in enumerate(outcome.fused) if i not in seen]
             outcome.rerank_applied = True
     except rerank_client.RerankUnavailable as exc:
         # Visible, never silent: the card shows an unreranked search as unreranked.
@@ -251,6 +294,7 @@ def detail_document(outcome: SearchOutcome) -> dict:
         "after_rerank": [row(i) for i in outcome.ranked],
         "sources_used": outcome.sources_used,
         "degraded": outcome.degraded,
+        "degraded_reasons": outcome.degraded_reasons,
         "unknown_sources": outcome.unknown_sources,
         "source_latency_ms": outcome.source_latency_ms,
         "source_counts": outcome.source_counts,

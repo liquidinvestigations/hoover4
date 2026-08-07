@@ -29,6 +29,7 @@ from temporalio.exceptions import ApplicationError
 from database.clickhouse import get_collection_client, get_server_setting
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.remote import post_json
+from tasks.text_quality import non_linguistic_reason
 
 from .chunking import chunk_page_text
 from .embedding_prefix import embedding_input
@@ -86,9 +87,17 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     heartbeat.beat("querying text_content")
 
     with get_collection_client(params.collectionname) as client:
+        # FINAL, not a bare read. `text_content` is a ReplacingMergeTree and a re-parse
+        # inserts a second row for the same
+        # (collection_dataset, file_hash, extracted_by, page_id) that lives until the
+        # background merge collapses it. Without FINAL both rows come back, both are
+        # chunked, and both survive the anti-join below — because they produce *identical*
+        # chunk keys, so neither is in `existing` on the first run. The endpoint is then
+        # asked to embed every chunk of the page twice, at full GPU cost, and both vectors
+        # are inserted. The filter is on the ORDER BY prefix, so FINAL is cheap here.
         text_content = client.query_arrow("""
             SELECT collection_dataset, file_hash, extracted_by, page_id, text
-            FROM text_content
+            FROM text_content FINAL
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
             ORDER BY file_hash, extracted_by, page_id
@@ -106,8 +115,24 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     # a crash between batches leaves a page half-embedded, and only the missing
     # chunks may be redone.
     candidates: list[dict] = []
+    skipped_non_linguistic = 0
+    skip_examples: list[str] = []
     for row in text_content:
         for chunk in chunk_page_text(row["text"]):
+            # Text extraction is greedy on purpose, so it also yields an email
+            # attachment's base64 and an image's pixel rows. Embedding those costs GPU
+            # time to produce a vector that then wins searches it has no business
+            # winning — live, an `.xpm` colour table was the top hit for "Eiffel Tower
+            # height". `text_content` still holds every byte; only the embedding and the
+            # KNN index skip them.
+            reason = non_linguistic_reason(chunk.text)
+            if reason:
+                skipped_non_linguistic += 1
+                if len(skip_examples) < 3:
+                    skip_examples.append(
+                        f"{row['file_hash'][:8]} p{row['page_id']}#{chunk.chunk_index}: {reason}"
+                    )
+                continue
             candidates.append({
                 "collection_dataset": row["collection_dataset"],
                 "file_hash": row["file_hash"],
@@ -118,6 +143,11 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                 "index_end": chunk.index_end,
                 "text": chunk.text,
             })
+    if skipped_non_linguistic:
+        log.info(
+            "%s (plan %s): skipped %d non-linguistic chunk(s) before embedding, e.g. %s",
+            collection_dataset, plan_hash[:8], skipped_non_linguistic, "; ".join(skip_examples),
+        )
     heartbeat.beat(f"chunked {len(text_content)} segments into {len(candidates)} chunks")
 
     with get_collection_client(params.collectionname) as client:
@@ -145,7 +175,10 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
             "%s (plan %s): all %d chunks already embedded via %s",
             collection_dataset, plan_hash[:8], len(candidates), serving_model,
         )
-        return ChunkEmbedResult(text_segments=len(text_content), chunks_written=0, vectors_written=0)
+        return ChunkEmbedResult(
+            text_segments=len(text_content), chunks_written=0, vectors_written=0,
+            chunks_skipped_non_linguistic=skipped_non_linguistic,
+        )
 
     # Chunk rows go in before the first vector of their page: a vector without its
     # chunk row would be a KNN hit with no text to rerank or render. Only pages with
@@ -177,6 +210,7 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
         result = post_json(
             [("embeddings", f"{base_url}/embeddings")],
             {"input": prefixed},
+            service="embeddings",
         )
         data = result.data
         served_model = data.get("model") or ""
@@ -233,4 +267,5 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
         text_segments=len(text_content),
         chunks_written=len(chunk_rows),
         vectors_written=vectors_written,
+        chunks_skipped_non_linguistic=skipped_non_linguistic,
     )

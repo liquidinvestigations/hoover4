@@ -29,9 +29,20 @@ Runs named-entity recognition over parsed text content via the remote NER servic
 
 ### P5 - Chunk and Embed
 
-Reserved. Splits `text_content` pages into `text_chunks` and embeds them into
-`text_chunk_vectors`, on `processing-embed-queue`. The tables exist from Part 2 Phase 0;
-the stage itself lands in Part 2 Phase 3.
+Splits `text_content` pages into `text_chunks` and embeds them into `text_chunk_vectors`,
+on `processing-embed-queue`. Chunking is deterministic and byte-addressed, which is what
+makes the left-anti join against `text_chunk_vectors` a correct idempotency key.
+
+**Chunks that are not language are not embedded.** Text extraction is greedy on purpose —
+a parser that skips what it does not understand loses real documents — so it also yields
+an email attachment's base64, an XPM colour table and an XBM byte dump as "page text".
+`text_quality.non_linguistic_reason` holds those back before the embeddings call: it cost
+GPU time to produce a vector that then won searches it had no business winning (live,
+`search_collections("Eiffel Tower height")` returned an image's pixel rows as its top hit,
+because noise is close to everything in embedding space). `text_content` still holds every
+byte — this filters what is *embedded*, never what is stored, and the count comes back as
+`chunks_skipped_non_linguistic` so a heuristic that starts eating real documents is visible
+rather than silent.
 
 The number was freed by renaming indexing to P6 — indexing genuinely runs last, and
 inserting a stage before it would otherwise have meant either an out-of-order number or

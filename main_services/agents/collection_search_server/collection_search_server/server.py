@@ -14,8 +14,8 @@ Search is **hybrid** when the embeddings stack is probed (`server_settings.
 embeddings_serving_model` + `EMBEDDINGS_URL`): a keyword ranking from the `_pages`
 shards and a vector ranking from the `_vectors` shards are RRF-fused
 (`agent_common.fusion`, the same module metasearch uses), reranked through the same
-cross-encoder client, and put through the min-10/max-20 per-kind floor so keyword-exact
-hits cannot drown semantic ones. With no probe or a dead GPU the tool degrades to the
+cross-encoder client, and put through the per-kind floor so keyword-exact hits cannot
+drown semantic ones. With no probe or a dead GPU the tool degrades to the
 keyword-only path and says so in `note` — a GPU outage must degrade search quality,
 not remove search.
 """
@@ -70,8 +70,14 @@ FUSION_CANDIDATES = int(os.getenv("COLLECTION_SEARCH_FUSION_CANDIDATES", "60"))
 #: The per-kind floor after reranking: each of the `keyword` and `vector` kinds keeps
 #: its best results even when the other kind dominates the fused order (RRF is a
 #: popularity measure; keyword-exact hits would otherwise drown semantic ones).
-MIN_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MIN_PER_KIND", "10"))
-MAX_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MAX_PER_KIND", "20"))
+#:
+#: **The floor must stay well under `max_results`.** A reserved slot outranks the cap by
+#: design (`per_kind_floor` never evicts one), so a floor of 10 over two kinds reserved 20
+#: results and the caller's `max_results=8` did nothing at all — `search_collections` was
+#: returning 20 hits to a model that asked for 8, at 1200 snippet characters each. Three
+#: is enough to keep a minority ranking visible without overriding the cap.
+MIN_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MIN_PER_KIND", "3"))
+MAX_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MAX_PER_KIND", "15"))
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_collection_search"),
@@ -447,6 +453,12 @@ def _fused_pipeline(
     for c in keyword_list:
         by_key.setdefault(c.key(), c)
     vector_candidates: list[_Candidate] = []
+    #: Pages whose snippet already came from a chunk. `vector_list` is nearest-first, so
+    #: the first chunk seen for a page is its best one — and assigning unconditionally
+    #: meant the *last*, i.e. the FARTHEST, chunk of a multi-chunk page won. That text is
+    #: also what the reranker scores, so a page was being judged on its least relevant
+    #: passage and then shown to the user with it.
+    snippet_from_chunk: set[tuple] = set()
     for v in vector_list:
         key = (v.collectionname, v.collection_dataset, v.file_hash, v.page_id)
         c = by_key.get(key)
@@ -458,10 +470,11 @@ def _fused_pipeline(
                 page_id=v.page_id,
             )
             by_key[key] = c
-        if v.text:
+        if v.text and key not in snippet_from_chunk:
             # The chunk is the matched passage; it makes a better snippet than the
             # page excerpt the keyword half brought.
             c.text = v.text[:SNIPPET_CHARS]
+            snippet_from_chunk.add(key)
         vector_candidates.append(c)
 
     fused = fusion.fuse_ranked_lists(
@@ -475,7 +488,16 @@ def _fused_pipeline(
     try:
         scores, rerank_ms = rerank_client.rerank(query, [f.item.text for f in fused])
         if scores:
-            ordered = [fused[s.index] for s in scores if 0 <= s.index < len(fused)]
+            seen: set[int] = set()
+            ordered = []
+            for s in scores:
+                if 0 <= s.index < len(fused) and s.index not in seen:
+                    seen.add(s.index)
+                    ordered.append(fused[s.index])
+            # A partial rerank response must not delete the candidates it did not score:
+            # they were real hits with a real fused position, and dropping them silently
+            # shrinks the search. They keep their fused order behind the scored ones.
+            ordered += [f for i, f in enumerate(fused) if i not in seen]
             rerank_applied = True
     except rerank_client.RerankUnavailable as exc:
         notes.append(f"rerank unavailable ({exc}); showing the fused order")

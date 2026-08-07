@@ -112,6 +112,25 @@ Idempotent: closing an unknown session is a 200 with `closed: false`.
 concurrent CDP sessions safely; with one browser per chat, serialisation belongs per chat,
 and a global lock would make eight conversations queue behind each other.
 
+The router keeps one lock over its **map**, and that lock is never held across a spawn, an
+eviction stop or a sidecar restart. It used to be held across `chat_browser.start()` — a
+cold Chromium launch plus a Node sidecar, 45 to 90 seconds — so one chat's first browse
+blocked every other chat's map lookup for that whole time. The cap said eight contexts and
+the router behaved like one. Callers racing for the *same* chat still share a single spawn,
+through a future parked in the map: releasing the lock must not buy back the bug the lock
+was there to prevent (two browsers for one chat, double the memory, split cookies).
+
+**`init: true` on the container.** Chromium is a process tree, and PID 1 here is the Python
+server, which never reaps grandchildren. Every renderer and crashpad handler a closed
+browser leaves behind stayed a zombie — 104 of them on a stack that had been up for hours.
+Each holds a PID; the end of that road is `cannot fork`, surfacing as an unrelated browser
+launch failing.
+
+**Artifact writes and telemetry go through `asyncio.to_thread`.** `artifacts.write` is
+several MinIO PUTs of megabyte page captures plus a ClickHouse insert, all synchronous; on
+the event loop it stalls every other chat's browser I/O, including their navigation
+timeouts, which then expire on pages that were never slow.
+
 `GET /health` and `GET /sessions` report live sessions with both ports, spawn failures,
 sidecar restarts and whether the template is ready.
 
@@ -195,8 +214,8 @@ host regardless.
 
 ## Capture
 
-After any tool that can change what is on screen — and **also when it failed** — the router
-takes a capture through its own CDP connection:
+After `browser_take_screenshot` or `browser_snapshot` — and **also when the tool failed** —
+the router takes a capture through its own CDP connection:
 
 1. `Page.captureScreenshot` → downscaled to 1280×720 → WebP q72;
 2. `Page.captureSnapshot{format: "mhtml"}` → inlined to self-contained HTML by
@@ -221,9 +240,20 @@ it as a dead link in the transcript. Lines that merely *mention* the path are un
 the rule matches a whole line that is only the link, because the rest of the result is
 evidence and must not be rewritten.
 
-**Capture is never a tool argument.** The completeness of the transcript must not depend on
-the model's judgement — a model that forgets to screenshot the CAPTCHA it hit produces a
-transcript where the failure is invisible.
+**Captures are explicit — those two tools and nothing else.**
+
+The set used to hold seventeen tools: a screenshot plus a multi-megabyte MHTML
+serialisation after almost every click, 23 rows and 12.5 MB in a single day of demo use.
+The argument for it was real — the completeness of the transcript should not depend on the
+model's judgement, and a model that forgets to screenshot the CAPTCHA it hit leaves a
+transcript where the failure is invisible. Q4/Q5 answered it anyway: no implicit captures.
+The browser cards render an explicit snapshot well, so asking the model to take one is an
+instruction rather than a hope. **Do not add a tool to `CAPTURING_TOOLS` without changing
+that answer first**; `tests/test_result_shaping.py` pins the rule.
+
+What did *not* change: capture still happens on the **failure path** of those two tools. A
+screenshot of a cookie wall is the most valuable artifact this module produces, and the
+tool "failing" is not a reason to discard the evidence of why.
 
 **Each step has its own deadline, and this is not a detail.** A navigation that timed out
 leaves the page still loading, and `captureSnapshot` then blocks until the load settles — so
@@ -236,10 +266,13 @@ with `status = 'failed'` and a `detail` the card shows.
 Over `CAPTURE_MAX_SNAPSHOT_BYTES` (8 MB) the snapshot is dropped, the row says
 `status = 'too_large'`, and the thumbnail is kept regardless.
 
-Cost control: a capture whose `(url, document.lastModified)` matches the previous one in the
-same chat **reuses the previous `body_key`** and only takes a fresh screenshot. A
-`browser_click` that opened a menu does not need a second 3 MB snapshot. (Verified: a
-`browser_navigate` and the `browser_snapshot` after it share one `page.html`.)
+Cost control is now the capture policy itself. There used to be a second mechanism: a
+capture whose `(url, document.lastModified)` matched the previous one in the same chat
+reused the previous `body_key` and took only a fresh screenshot. It went with the implicit
+captures — two explicit snapshots of one page are a deliberate act, and quietly handing the
+second the first one's bytes made two `chat_artifacts` rows share a MinIO object, so
+deleting either could strand the other. The **sweeper still handles shared body keys**, for
+the rows written while this existed.
 
 ## MHTML → self-contained HTML
 

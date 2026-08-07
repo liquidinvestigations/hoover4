@@ -17,6 +17,7 @@ result carries only that artifact's UUID.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -48,7 +49,7 @@ mcp = FastMCP(
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
         "Search the OPEN WEB — not the user's own documents. One tool covers several "
-        "independent engines (DuckDuckGo, Brave, Startpage, Yahoo), DuckDuckGo News and "
+        "independent engines (DuckDuckGo, Brave, Yahoo), DuckDuckGo News and "
         "Wikipedia at once. Results are merged with reciprocal rank fusion and then "
         "reordered by a cross-encoder, so the top results are the ones most relevant to "
         "the exact question rather than the ones most engines happened to agree on. Each "
@@ -95,6 +96,11 @@ class WebSearchResponse(BaseModel):
         default_factory=list,
         description="Sources that returned nothing — likely broken, so these results "
         "come from fewer sources than intended",
+    )
+    degraded_reasons: dict[str, str] = Field(
+        default_factory=dict,
+        description="Why each degraded source came back empty (HTTP status, timeout, "
+        "no results). Diagnostic, not evidence — nothing here changes the answer.",
     )
     unknown_sources: list[str] = Field(
         default_factory=list, description="Names in `sources` that do not exist and were ignored"
@@ -152,7 +158,11 @@ async def web_search(
         log.exception("metasearch failed")
         return WebSearchResponse(success=False, query=query, error=str(exc))
 
-    artifact_id = artifacts.write_json_detail(
+    # `to_thread`: this is a MinIO PUT plus a ClickHouse insert, both synchronous. On the
+    # event loop they block every *other* in-flight search's source fan-out for the
+    # duration — and the fan-out is the part with a deadline.
+    artifact_id = await asyncio.to_thread(
+        artifacts.write_json_detail,
         session_id=_header(SESSION_HEADER),
         username=_header(USER_HEADER),
         tool_name="web_search",
@@ -166,6 +176,7 @@ async def web_search(
         results=[WebResult(**pipeline.result_payload(item)) for item in outcome.ranked],
         sources_used=outcome.sources_used,
         degraded=outcome.degraded,
+        degraded_reasons=outcome.degraded_reasons,
         unknown_sources=outcome.unknown_sources,
         total_before_dedupe=outcome.total_before_dedupe,
         total_after_dedupe=outcome.total_after_dedupe,

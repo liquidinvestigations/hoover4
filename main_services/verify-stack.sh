@@ -399,6 +399,33 @@ else
     echo "NOTE - no RERANK_URL rendered (reranker_enabled = false); skipping rerank probe"
 fi
 
+# 7d-bis. The two MCP servers the chat depends on answer their own /health.
+#     Both endpoints have existed since phase 2 and nothing probed them, so the only way
+#     to learn that metasearch or the browser router was down was a chat answering badly.
+#     Probed from the worker, not the host: container-to-container is the path that
+#     matters, and "it answers on localhost" proves nothing about it (AGENTS.md).
+#
+#     Metasearch's /health also reports its configured source list and whether the rerank
+#     breaker is open — a source list that has silently shrunk is worth seeing here.
+for probe in "metasearch:hoover4-mcp-metasearch:8086" "browser router:hoover4-mcp-browser:8087"; do
+    label=${probe%%:*}
+    rest=${probe#*:}
+    host=${rest%%:*}
+    port=${rest##*:}
+    out=$(docker exec "$WORKER" curl -s --max-time 10 "http://$host:$port/health" 2>/dev/null || true)
+    case "$out" in
+        *'"status":"ok"'*) ok "$label /health is ok" ;;
+        "")  fail "$label /health unreachable from the worker (http://$host:$port/health)" ;;
+        *)   fail "$label /health did not report ok: $(printf '%s' "$out" | head -c 200)" ;;
+    esac
+done
+# The source list is a NOTE rather than a check: which sources are configured is a
+# deployment choice, but seeing it next to the other checks is how a shrunk list gets
+# noticed at all.
+ms_health=$(docker exec "$WORKER" curl -s --max-time 10 "http://hoover4-mcp-metasearch:8086/health" 2>/dev/null || true)
+ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
+[ -n "$ms_sources" ] && echo "NOTE - metasearch $ms_sources"
+
 # 7e. Chat artifacts (captured pages, search detail) live under `derived/` in MinIO, and
 #     P0_scan_disk must never walk that prefix. If it ever does, each artifact becomes a
 #     vfs_files row, is ingested, is captured again by the next chat that opens it, and

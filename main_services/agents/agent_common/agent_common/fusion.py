@@ -212,6 +212,7 @@ def per_kind_floor(
     kind_of: Callable[[T], str],
     min_per_kind: int,
     max_per_kind: int,
+    is_reservable: Callable[[T], bool] | None = None,
 ) -> list[T]:
     """Guarantee each kind a share of the answer, then fill the rest by rank.
 
@@ -225,6 +226,12 @@ def per_kind_floor(
     2. **Fill.** Everything else in rank order, up to `max_per_kind` per kind and
        `max_results` overall — but never evicting a reserved slot.
 
+    `is_reservable` bounds pass 1 to results that deserve the guarantee. A floor promises
+    *representation*, and representation of nothing is padding: with no gate, a query whose
+    reference source has one good answer and fourteen unrelated ones reserved slots for the
+    unrelated ones too, and the model cannot tell a reserved slot from an earned one. A
+    rejected item is not dropped — pass 2 can still pick it on merit.
+
     The returned list keeps the input's order, so a reranked ordering stays reranked.
     """
     if max_per_kind < min_per_kind:
@@ -233,6 +240,8 @@ def per_kind_floor(
     reserved: set[int] = set()
     per_kind: dict[str, int] = {}
     for index, item in enumerate(ranked):
+        if is_reservable is not None and not is_reservable(item):
+            continue
         kind = kind_of(item)
         if per_kind.get(kind, 0) < min_per_kind:
             per_kind[kind] = per_kind.get(kind, 0) + 1

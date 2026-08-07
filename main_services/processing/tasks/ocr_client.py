@@ -83,7 +83,8 @@ def run_ocr(engine: str, languages: str, image_bytes: bytes,
     if psm is not None:
         payload["psm"] = psm
 
-    result = post_json(_endpoints_for(engine), payload, read_timeout=OCR_READ_TIMEOUT)
+    result = post_json(_endpoints_for(engine), payload, read_timeout=OCR_READ_TIMEOUT,
+                       service="ocr")
     data = result.data if isinstance(result.data, dict) else {}
 
     return OcrOutcome(

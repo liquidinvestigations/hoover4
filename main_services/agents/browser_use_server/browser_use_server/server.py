@@ -38,7 +38,7 @@ from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools.tool import Tool, ToolResult
 from mcp.types import TextContent
 
-from agent_common import artifacts
+from agent_common import artifacts, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
@@ -159,7 +159,10 @@ class RoutedTool(Tool):
         self, chat, tool_name: str, arguments: dict[str, Any]
     ) -> tuple[ToolResult, bool]:
         """Call the sidecar, restarting it once if it has died."""
+        import time
+
         last_error: Exception | None = None
+        started = time.monotonic()
         for attempt in range(SIDECAR_RETRIES + 1):
             if chat.client is None or not chat_browser.sidecar_alive(chat):
                 await chat_browser.restart_sidecar(chat)
@@ -175,6 +178,17 @@ class RoutedTool(Tool):
                 await chat_browser.restart_sidecar(chat)
                 continue
             failed = bool(getattr(call, "is_error", False))
+            # One `ai_service_telemetry` row per forwarded tool call. `/admin/ai_status`
+            # had a browser column that no writer ever filled, so a dead router and an
+            # unused one looked identical there — and the router is the capability most
+            # likely to be quietly broken, because a page can fail for reasons that are
+            # nobody's fault.
+            telemetry.record_async(
+                "browser", provider=tool_name,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                ok=not failed, detail=tool_name,
+                session_id=chat.session_id,
+            )
             return (
                 ToolResult(
                     content=list(getattr(call, "content", []) or []),
@@ -185,6 +199,12 @@ class RoutedTool(Tool):
 
         # Both attempts failed. This is returned as a tool error rather than raised so the
         # model sees a retryable failure instead of the connection wedging.
+        telemetry.record_async(
+            "browser", provider=tool_name,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            ok=False, detail=f"sidecar unresponsive: {last_error}",
+            session_id=chat.session_id,
+        )
         return (
             _refusal(f"the browser sidecar is not responding: {last_error}"),
             True,

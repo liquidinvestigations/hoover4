@@ -11,6 +11,15 @@ use crate::auth::guard;
 use crate::db_auth::settings;
 use crate::db_utils::clickhouse_utils::get_global_client;
 
+/// Model ids written by smoke tests and by `verify-stack.sh`, never by a real turn.
+///
+/// They are excluded from the traffic and use% panels rather than deleted: the rows are
+/// evidence that the check ran, and dropping them would make a failed smoke test look
+/// identical to one that was never run. But a single 12 ms synthetic call dominated the
+/// p50 of a panel whose whole job is showing how slow real turns are — a median computed
+/// over two populations describes neither.
+const SYNTHETIC_MODEL_IDS: &[&str] = &["phase5-smoke", "test-model"];
+
 fn ai_server_url() -> String {
     // Prefer the embeddings URL's origin; fall back to the well-known compose name.
     if let Ok(url) = std::env::var("EMBEDDINGS_URL") {
@@ -140,6 +149,14 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
     // NER — GPU with CPU twin fallback
     let ner_url = std::env::var("NER_URL").unwrap_or_default();
     let ner_fallback = std::env::var("NER_URL_FALLBACK").unwrap_or_default();
+    // The NER probe stands on its own — **never** `|| ai_ok`.
+    //
+    // That fallback made "NER is reachable" mean "the main AI server answered /health",
+    // which is a different question with a different answer: the AI server hosts three
+    // capabilities behind independent model loads, and `ner_model_loaded` can be false
+    // while the process is perfectly healthy. The panel reported NER up in exactly the
+    // situation it exists to report it down. If the endpoint's own /health does not
+    // answer, that is what the row says.
     let ner_gpu_ok = if ner_url.is_empty() {
         false
     } else {
@@ -151,8 +168,15 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
             2,
         )
         .await
-        .is_ok()
-            || ai_ok
+        .map(|body| {
+            // Same server as the embeddings/rerank rows above, so when it *is* the main
+            // AI server its own per-model flag is the honest answer. A twin that does not
+            // publish the flag is taken at its word: answering /health is all it claims.
+            body.get("ner_model_loaded")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
+        })
+        .unwrap_or(false)
     };
     let ner_cpu_ok = if ner_fallback.is_empty() {
         false
@@ -306,8 +330,10 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
                     quantile(0.5)(latency_ms) AS median_ms \
              FROM llm_call_events \
              WHERE event_time >= now() - INTERVAL 24 HOUR \
+               AND model_id NOT IN ({synthetic:Array(String)}) \
              GROUP BY username ORDER BY calls DESC LIMIT 20",
         )
+        .param("synthetic", SYNTHETIC_MODEL_IDS)
         .fetch_all::<TrafficRow>()
         .await
         .unwrap_or_default()
@@ -333,8 +359,10 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
                     sum(latency_ms) AS busy_ms \
              FROM ai_service_telemetry \
              WHERE event_time >= now() - INTERVAL 24 HOUR \
+               AND detail NOT IN ({synthetic:Array(String)}) \
              GROUP BY service ORDER BY service",
         )
+        .param("synthetic", SYNTHETIC_MODEL_IDS)
         .fetch_all::<UseRow>()
         .await
         .unwrap_or_default()

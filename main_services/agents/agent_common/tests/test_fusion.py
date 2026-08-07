@@ -79,6 +79,39 @@ class TestPerKindFloor:
         with pytest.raises(ValueError):
             per_kind_floor([], 5, kind_of=lambda i: "x", min_per_kind=21, max_per_kind=20)
 
+    def test_an_unreservable_item_does_not_take_a_reserved_slot(self):
+        """A floor promises representation; representation of nothing is padding. Live,
+        an Eiffel Tower query got "Yanam district" reserved as a reference result."""
+        ranked = self._items(["keyword"] * 12 + ["vector"] * 3)
+        for item in ranked:
+            item["good"] = item["kind"] == "keyword"
+        out = per_kind_floor(
+            ranked, max_results=5, kind_of=lambda i: i["kind"],
+            min_per_kind=3, max_per_kind=20, is_reservable=lambda i: i["good"],
+        )
+        assert all(i["kind"] == "keyword" for i in out)
+        assert len(out) == 5
+
+    def test_a_rejected_item_can_still_be_filled_in_on_merit(self):
+        """The gate blocks the reservation, not the result."""
+        ranked = self._items(["keyword", "vector"])
+        out = per_kind_floor(
+            ranked, max_results=10, kind_of=lambda i: i["kind"],
+            min_per_kind=3, max_per_kind=20,
+            is_reservable=lambda i: i["kind"] == "keyword",
+        )
+        assert len(out) == 2
+
+    def test_without_the_gate_nothing_changes(self):
+        ranked = self._items(["keyword"] * 12 + ["vector"] * 3)
+        assert per_kind_floor(
+            ranked, max_results=5, kind_of=lambda i: i["kind"],
+            min_per_kind=10, max_per_kind=20, is_reservable=None,
+        ) == per_kind_floor(
+            ranked, max_results=5, kind_of=lambda i: i["kind"],
+            min_per_kind=10, max_per_kind=20,
+        )
+
 
 class TestMovedWebFusion:
     """The metasearch RRF now lives here; pin its behaviour at its new home."""

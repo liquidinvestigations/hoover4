@@ -929,6 +929,37 @@ def podman_stale_image_fix(cfg, side, rt, files):
     run_or_fail(compose_command(cfg, side, rt, ["up", "-d"]))
 
 
+def reprobe_embeddings(rt):
+    """Re-record what the GPU tier serves, after `--ai-services` brought it up.
+
+    `server_settings.embeddings_serving_model` is the *truth* the whole vector half is
+    built on, and bringing the AI tier up with a different `embeddings_model` is precisely
+    when it goes stale. Every consumer then correctly refuses — which is the hard part to
+    diagnose, because nothing is broken and nothing says so.
+
+    Best effort, and never fatal to the deploy: the worker lives on the main stack, which
+    may be on another host or simply not running. A model still loading is the normal
+    case here, and the workers probe again at their own startup.
+    """
+    ps = rt.run(["ps", "--filter", "name=hoover4-worker", "--format", "{{.Names}}"],
+                capture_output=True, text=True)
+    if "hoover4-worker" not in (ps.stdout or ""):
+        print("skipping the embeddings re-probe: hoover4-worker is not running here "
+              "(run `./deploy` then `docker exec hoover4-worker uv run python main.py "
+              "probe-embeddings` if the model changed)")
+        return
+    print("re-probing the embeddings endpoint...")
+    result = rt.run(["exec", "hoover4-worker", "uv", "run", "python", "main.py",
+                     "probe-embeddings"], capture_output=True, text=True)
+    output = (result.stdout or "").strip() or (result.stderr or "").strip()
+    if result.returncode != 0:
+        print("WARNING: embeddings probe failed (%s); server_settings is unchanged and "
+              "the embed/index stages will refuse until it succeeds" % output)
+        return
+    for line in output.splitlines():
+        print("  %s" % line)
+
+
 def serena_command(cfg, rt, extra_args):
     # --env-file is NOT optional here. Compose auto-discovers `.env` from the directory
     # of the first -f file; the main stack's first file is the base compose in
@@ -1120,6 +1151,7 @@ def main(argv=None):
     compose_up(cfg, side, rt, args.build)
     if side == "ai":
         verify_network_dns(rt, cfg, side)
+        reprobe_embeddings(rt)
     else:
         # Serena is deployed as its own project, AFTER the main stack: the MCP server
         # the agent talks through must not share a project with anything `down` or

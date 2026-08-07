@@ -190,48 +190,81 @@ pub async fn generate_title_and_summary_for(
         return None;
     }
 
+    // From here on the call has been BILLED. Every path that returns `None` below is a
+    // successful HTTP request whose answer we chose not to use, and each one used to
+    // vanish: no row, no cost recorded, and `/admin/ai_status` showing a summariser that
+    // apparently never ran. A model that hits `max_tokens` on every single call is
+    // invisible in exactly the same way as one that is not configured at all.
+    //
+    // `discard` records the row and returns `None`, so a new early return cannot forget.
+    macro_rules! discard {
+        ($reason:expr) => {{
+            let reason: String = $reason;
+            tracing::warn!("chat summariser: {reason}");
+            crate::api::chat::llm_events::record_llm_call(
+                username,
+                session_id,
+                "title",
+                &model,
+                started.elapsed().as_millis() as u32,
+                0,
+                // `ok: false` on purpose. The endpoint worked; the *call* produced
+                // nothing usable, and a discarded answer counted as a success would make
+                // the error rate say the summariser is healthy while every title falls
+                // back to the user's own words.
+                false,
+                &reason,
+            )
+            .await;
+            return None;
+        }};
+    }
+
     let parsed: ChatCompletionResponse = match response.json().await {
         Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("chat summariser: bad JSON: {e}");
-            return None;
-        }
+        Err(e) => discard!(format!("unparseable body: {e}")),
     };
 
-    let choice = parsed.choices.first()?;
+    let Some(choice) = parsed.choices.first() else {
+        discard!("no choices in the response".to_string())
+    };
     // A completion cut off at `max_tokens` is not a title. Falling back to
     // `title_from_message` shows the user's own words, which is always better than half
     // a sentence — or, when the model was still thinking, than its scratchpad.
     if choice.finish_reason.as_deref() == Some("length") {
-        tracing::warn!("chat summariser: model hit max_tokens; keeping the fallback title");
-        return None;
+        discard!("hit max_tokens; keeping the fallback title".to_string())
     }
-    let raw = choice
+    let Some(raw) = choice
         .message
         .content
         .as_ref()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())?;
+        .filter(|s| !s.is_empty())
+    else {
+        discard!("empty content".to_string())
+    };
 
     // Reasoning is never the answer. A model that mirrors its scratchpad into `content`
     // has told us nothing usable, and the fallback title is the honest outcome.
     if let Some(reasoning) = choice.message.reasoning_content.as_deref() {
         if !reasoning.trim().is_empty() && raw == reasoning.trim() {
-            tracing::warn!("chat summariser: model returned only its reasoning; keeping the fallback title");
-            return None;
+            discard!("returned only its reasoning; keeping the fallback title".to_string())
         }
     }
 
     // Strip optional <think>…</think> blocks some local models emit.
     let cleaned = strip_think_blocks(&raw);
     let mut lines = cleaned.lines().map(str::trim).filter(|l| !l.is_empty());
-    let title: String = strip_label(lines.next()?).chars().take(80).collect();
+    let Some(first_line) = lines.next() else {
+        discard!("no non-empty lines after cleaning".to_string())
+    };
+    let title: String = strip_label(first_line).chars().take(80).collect();
     let summary = lines
         .map(strip_label)
         .collect::<Vec<_>>()
         .join(" ");
     if title.is_empty() {
-        return None;
+        discard!("first line was all label decoration".to_string())
     }
     let result = SessionTitleSummary {
         title: title.clone(),

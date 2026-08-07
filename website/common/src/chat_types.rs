@@ -134,6 +134,40 @@ impl ChatDocRef {
             self.file_hash.clone()
         }
     }
+
+    /// The snippet as a card may render it: collapsed whitespace, clamped length.
+    ///
+    /// A hit's snippet is up to `SEARCH_SNIPPET_CHARS` (1200) of page text chosen by a
+    /// search server, and one turn can surface a dozen of them. Rendered whole, a single
+    /// result put kilobytes into the transcript — and the worst offenders were exactly the
+    /// results least worth reading, because extraction indexes an email attachment's
+    /// base64 and an image's pixel rows as page text (`tasks/text_quality.py` now keeps
+    /// those out of the *vector* index, but a keyword hit can still surface one, and a
+    /// card must not depend on the pipeline having been perfect).
+    ///
+    /// This is a **display** clamp. The full text stays in the payload, and the document
+    /// card links to the document itself, which is where reading it belongs.
+    pub fn display_snippet(&self) -> String {
+        clamp_display_text(&self.snippet, DOC_REF_SNIPPET_CHARS)
+    }
+}
+
+/// Longest snippet a chat document card renders inline.
+pub const DOC_REF_SNIPPET_CHARS: usize = 400;
+
+/// Collapse runs of whitespace and cut to `max_chars` **characters**, never bytes.
+///
+/// Byte-slicing a `&str` panics mid-codepoint, and this text is arbitrary extracted
+/// content: page data, OCR output, whatever a parser produced. Romanian diacritics alone
+/// are enough to land a cut inside a two-byte sequence.
+pub fn clamp_display_text(text: &str, max_chars: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max_chars {
+        return flat;
+    }
+    let mut out: String = flat.chars().take(max_chars).collect();
+    out.push('\u{2026}');
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -657,6 +691,57 @@ mod tests {
         assert!(ChatRole::Assistant.is_conversational());
         assert!(!ChatRole::Tool.is_conversational());
         assert!(!ChatRole::Error.is_conversational());
+    }
+
+    fn doc_ref(snippet: &str) -> ChatDocRef {
+        ChatDocRef {
+            collection_dataset: "coll_ds".into(),
+            file_hash: "a".repeat(64),
+            collectionname: "coll".into(),
+            path: "/img/sample.xpm".into(),
+            page_id: Some(4),
+            score: Some(0.5),
+            snippet: snippet.into(),
+        }
+    }
+
+    #[test]
+    fn a_doc_ref_snippet_is_clamped_before_it_reaches_the_transcript() {
+        // One search hit carries up to SEARCH_SNIPPET_CHARS (1200) of page text, and a
+        // turn surfaces a dozen. Rendered whole, one result buried the conversation.
+        let long = "word ".repeat(500);
+        let shown = doc_ref(&long).display_snippet();
+        assert_eq!(shown.chars().count(), DOC_REF_SNIPPET_CHARS + 1);
+        assert!(shown.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn a_short_snippet_is_passed_through_without_an_ellipsis() {
+        let shown = doc_ref("  the matched   passage\n").display_snippet();
+        assert_eq!(shown, "the matched passage");
+    }
+
+    #[test]
+    fn clamping_never_cuts_a_multibyte_character_in_half() {
+        // Extracted text is arbitrary: Romanian diacritics, CJK, base64 from an
+        // attachment. Byte-slicing a &str here panics mid-codepoint.
+        let text = "ă".repeat(DOC_REF_SNIPPET_CHARS + 50);
+        let shown = clamp_display_text(&text, DOC_REF_SNIPPET_CHARS);
+        assert_eq!(shown.chars().count(), DOC_REF_SNIPPET_CHARS + 1);
+        assert!(shown.starts_with('ă'));
+
+        let cjk = "埃菲尔铁塔".repeat(200);
+        assert_eq!(
+            clamp_display_text(&cjk, 10).chars().count(),
+            11,
+            "a clamp that counts bytes would split a 3-byte character"
+        );
+    }
+
+    #[test]
+    fn an_empty_snippet_clamps_to_empty_rather_than_an_ellipsis() {
+        assert_eq!(clamp_display_text("", 400), "");
+        assert_eq!(clamp_display_text("   \n  ", 400), "");
     }
 
     #[test]

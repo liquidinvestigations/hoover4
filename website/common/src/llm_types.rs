@@ -49,7 +49,14 @@ pub struct AiCapabilityStatus {
     pub serving_model: String,
     pub reachable: bool,
     pub detail: String,
-    /// Circuit open remaining seconds, 0 when closed / unknown.
+    /// Circuit open remaining seconds.
+    ///
+    /// **Always 0 today — read it as "n/a", not as "closed".** The breakers live in the
+    /// worker (`tasks/remote.py`) and in each MCP server's own process
+    /// (`agent_common/rerank.py`); the website has no channel to any of them, so nothing
+    /// can fill this in. It is not rendered for that reason. Wiring it up means exposing
+    /// breaker state on those services' `/health` and aggregating here — until then, a
+    /// zero here says nothing about whether a circuit is open.
     pub circuit_open_remaining_s: u32,
 }
 

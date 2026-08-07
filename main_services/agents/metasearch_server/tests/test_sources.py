@@ -19,12 +19,23 @@ class TestRegistry:
             assert name in sources_mod.SOURCES
 
     def test_the_html_scrapers_are_all_web_kind(self):
-        for name in ("ddg", "brave", "startpage", "yahoo"):
+        for name in ("ddg", "brave", "yahoo"):
             assert sources_mod.SOURCES[name].kind == sources_mod.KIND_WEB
 
     def test_news_and_reference_are_distinguishable(self):
         assert sources_mod.SOURCES["ddg_news"].kind == sources_mod.KIND_NEWS
         assert sources_mod.SOURCES["wikipedia"].kind == sources_mod.KIND_REFERENCE
+
+    def test_startpage_is_gone_rather_than_permanently_degraded(self):
+        """It serves a JS app with a captcha and no results in the HTML for any query.
+        Leaving it registered advertised seven sources where there were six."""
+        assert "startpage" not in sources_mod.SOURCES
+        assert "startpage" not in sources_mod.DEFAULT_SOURCES
+
+    def test_the_default_set_names_only_sources_that_exist(self):
+        """Written out by hand, this string outlived a source it named."""
+        for name in sources_mod.DEFAULT_SOURCES.split(","):
+            assert name in sources_mod.SOURCES
 
 
 class TestConfiguration:
@@ -78,6 +89,69 @@ class TestResolveSources:
         monkeypatch.setenv("METASEARCH_SOURCES", "ddg")
         used, unknown = sources_mod.resolve_sources(["ddg_news"])
         assert used == ["ddg_news"] and unknown == []
+
+
+class TestTrackingUrlUnwrap:
+    """C2: the `ddgs` library mixes back ends, so its rows carry other engines' wrappers.
+
+    Not cosmetic. A wrapped URL normalises to a different dedupe key from the direct one,
+    so the same article survives fusion twice and the model cites the tracker.
+    """
+
+    YAHOO = (
+        "https://r.search.yahoo.com/_ylt=Awr123;_ylu=abc/RV=2/RE=1787337101/RO=10"
+        "/RU=https%3a%2f%2fnews.example%2fstory/RK=2/RS=zzz-"
+    )
+
+    def test_a_news_row_is_unwrapped(self):
+        rows = [{"url": self.YAHOO, "title": "T", "body": "b", "source": "Example"}]
+        out = self._news(rows)
+        assert out[0].url == "https://news.example/story"
+
+    def test_a_text_row_is_unwrapped(self):
+        rows = [{"href": self.YAHOO, "title": "T", "body": "b"}]
+        out = self._text(rows)
+        assert out[0].url == "https://news.example/story"
+
+    def test_a_ddg_redirect_row_is_unwrapped(self):
+        rows = [{"href": "https://duckduckgo.com/l/?uddg=https%3A%2F%2Freal.example%2Fp&rut=x"}]
+        assert self._text(rows)[0].url == "https://real.example/p"
+
+    def test_a_direct_url_is_left_alone(self):
+        rows = [{"href": "https://direct.example/page?id=7"}]
+        assert self._text(rows)[0].url == "https://direct.example/page?id=7"
+
+    def test_the_wrapper_and_the_direct_url_now_dedupe_together(self):
+        from agent_common.fusion import normalise_url
+
+        from metasearch_server.engines import unwrap_tracking_url
+
+        assert normalise_url(unwrap_tracking_url(self.YAHOO)) == normalise_url(
+            "https://news.example/story"
+        )
+
+    # The two adapters are sync-inside-async; drive them through a stubbed `ddgs` call.
+    @staticmethod
+    def _run(method: str, rows: list[dict]):
+        import asyncio
+
+        import metasearch_server.sources as m
+
+        original = m._ddgs_call
+        m._ddgs_call = lambda *a, **k: rows
+        try:
+            fetch = m._fetch_ddg_news if method == "news" else m._fetch_ddg_api
+            return asyncio.run(fetch("q", 10, None))
+        finally:
+            m._ddgs_call = original
+
+    @classmethod
+    def _news(cls, rows):
+        return cls._run("news", rows)
+
+    @classmethod
+    def _text(cls, rows):
+        return cls._run("text", rows)
 
 
 class TestWikipediaSnippets:
