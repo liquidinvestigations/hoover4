@@ -113,6 +113,12 @@ DEFAULTS = {
         "datasets_mount_path": "/testdata",
         # shared bearer token between the research agents and the MCP servers
         "mcp_shared_secret_file": "",
+        # Interfaces the published ports bind to. 0.0.0.0 keeps a dev box behaving the
+        # way it always has; a host with a public IP wants both narrowed, because the
+        # website carries no authentication of its own and the infrastructure ports
+        # carry none at all.
+        "website_bind_ip": "0.0.0.0",
+        "infra_bind_ip": "0.0.0.0",
         # ports — main infrastructure
         "clickhouse_http_port": "21900",
         "clickhouse_native_port": "21901",
@@ -428,6 +434,11 @@ def render_main_env(cfg):
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
     env["HOOVER4_DEMO_MODE"] = cfg.get(m, "demo_mode")
+    # The address half of every published port mapping. The website's own port stays
+    # hardcoded at 12345 in the compose file (see MAIN_PUBLISHED) -- only the interface
+    # it answers on is configurable, which is the half that decides who can reach it.
+    env["WEBSITE_BIND_IP"] = cfg.get(m, "website_bind_ip")
+    env["INFRA_BIND_IP"] = cfg.get(m, "infra_bind_ip")
     # Read by the website (the creation form lists its subfolders) and by the worker
     # (the ingest walker gets the resulting absolute path). Both containers mount the
     # same host directory there, so the one value is meaningful on both sides.

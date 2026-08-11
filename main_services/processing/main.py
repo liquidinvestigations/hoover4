@@ -47,6 +47,54 @@ def ensure_collection(collectionname: str):
     print(db_name)
 
 
+@cli.command(name="create-collection")
+@click.argument("collectionname", type=str)
+@click.option("--fullname", type=str, default="", help="Human-readable display name.")
+@click.option("--public/--no-public", "is_public", default=False,
+              help="Readable by every user (and by guests), rather than by group grant only.")
+def create_collection(collectionname: str, fullname: str, is_public: bool):
+    """Register a collection and provision its ClickHouse database.
+
+    The scripted equivalent of creating a collection in the admin UI: it writes the
+    `collections` row the UI writes and then does what `ensure-collection` does, so one
+    command leaves a collection that can be ingested into. Idempotent, so an ingest
+    script that re-runs is safe.
+
+    `--public` is worth stating explicitly. A collection is restricted by default and is
+    then visible only through a group grant; a demo that shows its collections anyway is
+    relying on `demo_mode` and the `guest_permissions_mode` setting both being open,
+    which is two independent defaults holding rather than one intent recorded.
+    """
+    from database.clickhouse import (
+        collection_db_name, get_global_client, migrate_collection, validate_collectionname,
+    )
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    with get_global_client() as client:
+        existing = client.query(
+            "SELECT fullname, is_public FROM collections FINAL "
+            "WHERE collectionname = {name:String} AND is_deleted = 0",
+            parameters={"name": collectionname},
+        ).result_rows
+        if existing:
+            log.info("Collection row already present: %s", collectionname)
+        else:
+            client.insert(
+                "collections",
+                [[collectionname, fullname or collectionname, int(is_public)]],
+                column_names=["collectionname", "fullname", "is_public"],
+            )
+            log.info("Collection row created: %s (is_public=%d)", collectionname, int(is_public))
+
+    migrate_collection(collectionname)
+    log.info("Collection database ready: %s", collection_db_name(collectionname))
+    print(collectionname)
+
+
 @cli.command()
 @click.option("--no-defaults", is_flag=True,
               help="Refresh the model list without touching the chat/summarisation choices.")

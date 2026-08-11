@@ -51,6 +51,10 @@ by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); t
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
 
+[deployment.md](deployment.md) is the runbook for a host with a public IP: the
+`website_bind_ip` / `infra_bind_ip` keys and what they protect, a worked no-GPU
+`hoover4.ini`, the reset order, the staged ingest and the post-deploy assertions.
+
 ## Manticore `_vectors` shards (HNSW)
 
 Every logical shard has a third table, `<collection>_<n>_vectors`: the disposable HNSW

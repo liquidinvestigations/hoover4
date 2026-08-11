@@ -17,6 +17,7 @@ use common::{
 };
 
 use crate::api::admin::collections::collectionname_valid;
+use crate::db_utils::manticore_match::prepare_match_query;
 
 /// `extracted_by` of the synthetic pages row that carries a document's filenames.
 ///
@@ -230,19 +231,33 @@ fn range_predicate(
     }))
 }
 
+/// The `MATCH()` argument for one search, quoted and ready to interpolate.
+///
+/// An EMPTY query is `MATCH('')` on purpose: that is how the site browses a collection
+/// with no search term, and Manticore reads it as "every row". Every non-empty query
+/// goes through [`prepare_match_query`], which repairs the shapes the parser rejects and
+/// returns an error for the two it cannot — never a string that 500s at Manticore.
+fn match_argument(query_string: &str) -> anyhow::Result<String> {
+    // automatically quote all @ symbols in the query string to avoid problems with FIELD SELECTOR manticore operator
+    let query_string = query_string.trim().replace("@", "\\@");
+    if query_string.is_empty() {
+        return Ok("''".to_string());
+    }
+    Ok(prepare_match_query(&query_string)
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .quoted())
+}
+
 pub fn build_sql_where_clause(
     query: &SearchQuery,
     pages_table: &str,
     meta_table: &str,
 ) -> anyhow::Result<String> {
-    // automatically quote all @ symbols in the query string to avoid problems with FIELD SELECTOR manticore operator
-    let query_string = query.query_string.clone().trim().replace("@", "\\@");
-
     let mut terms = vec![format!(
         "
         WHERE MATCH({}, {pages_table})
     ",
-        format_sql_query::QuotedData(&query_string)
+        match_argument(&query.query_string)?
     )];
 
     for (field_name, values) in query.facet_filters.iter() {
@@ -362,8 +377,8 @@ mod tests {
     #[test]
     fn where_clause_escapes_at_field_selector() {
         // `@` is the Manticore field-selector operator; it must reach the query escaped.
-        // format_sql_query additionally escapes the backslash itself, so the wire
-        // string is `user\\@example.com`.
+        // The escape pass then escapes the backslash itself, so the wire string is
+        // `user\\@example.com`.
         let q = query("user@example.com", &[]);
         let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('user\\\\@example.com', testdata_1_pages)");
@@ -371,10 +386,52 @@ mod tests {
 
     #[test]
     fn where_clause_trims_and_quotes() {
-        // Single quotes are escaped by doubling, per format_sql_query::QuotedData.
+        // A single quote is escaped with a BACKSLASH. Manticore's parser rejects the
+        // SQL-standard doubling outright (`P01: syntax error`), so an assertion on the
+        // doubled form passes in the test suite while every such search 500s in
+        // production — which is exactly how this reached a live site.
         let q = query("  it's a test  ", &[]);
         let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
-        assert_eq!(normalize(&sql), "WHERE MATCH('it''s a test', testdata_1_pages)");
+        assert_eq!(normalize(&sql), "WHERE MATCH('it\\'s a test', testdata_1_pages)");
+    }
+
+    /// Every character measured against a live Manticore as breaking the query parser.
+    /// These are searches a person types, not exotic input: `3/4`, `it's`, a quote left
+    /// open mid-word.
+    #[test]
+    fn where_clause_repairs_the_query_syntax_manticore_rejects() {
+        for (input, expected) in [
+            ("3/4", "WHERE MATCH('3 4', testdata_1_pages)"),
+            ("say\"hi", "WHERE MATCH('sayhi', testdata_1_pages)"),
+            ("a~2", "WHERE MATCH('a 2', testdata_1_pages)"),
+            ("(a | b", "WHERE MATCH('(a | b)', testdata_1_pages)"),
+            ("computer", "WHERE MATCH('computer', testdata_1_pages)"),
+        ] {
+            let sql =
+                build_sql_where_clause(&query(input, &[]), "testdata_1_pages", "testdata_1_meta")
+                    .unwrap();
+            assert_eq!(normalize(&sql), expected, "for {input:?}");
+        }
+    }
+
+    /// A query made only of negations is `non-computable (single NOT operator)` at
+    /// Manticore. Failing here turns that into a message in the search bar.
+    #[test]
+    fn where_clause_rejects_a_query_with_nothing_to_match() {
+        assert!(
+            build_sql_where_clause(&query("!a", &[]), "testdata_1_pages", "testdata_1_meta")
+                .is_err()
+        );
+    }
+
+    /// The empty query is how the site browses without a search term, and it must stay
+    /// `MATCH('')` — every row — rather than becoming an error.
+    #[test]
+    fn where_clause_keeps_the_empty_query_matching_everything() {
+        let sql =
+            build_sql_where_clause(&query("   ", &[]), "testdata_1_pages", "testdata_1_meta")
+                .unwrap();
+        assert_eq!(normalize(&sql), "WHERE MATCH('', testdata_1_pages)");
     }
 
     #[test]

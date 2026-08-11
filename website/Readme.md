@@ -41,6 +41,35 @@ A dataset's collection is **fixed when the dataset is created** and cannot be ch
 there is no assign/unassign/move in the admin UI; creating a collection provisions its
 database, deleting one (only allowed when it has no datasets) drops it.
 
+### Every `MATCH()` argument goes through `db_utils/manticore_match.rs`
+
+Manticore has no parameter binding over its HTTP SQL endpoint, so a `MATCH()` argument
+crosses two language boundaries at once and each has its own rule. `format_sql_query::
+QuotedData` gets both wrong for this database and **must never be used to build a
+`MATCH()` argument**:
+
+- It escapes `'` by SQL-standard **doubling**. Manticore's parser wants a backslash and
+  rejects the doubled form outright — `MATCH('it''s')` is `P01: syntax error`, while
+  `MATCH('it\'s')` returns hits. `escape_manticore_string` does the backslash pass first
+  and the quote pass second; the other order double-escapes the backslashes the quote
+  pass introduces.
+- It does nothing about the text *inside* the literal, which is a query expression.
+  A dangling `"`, an unbalanced `(`, a bare `/` or `~`, and a query made only of
+  negations are each a parser error rather than an empty result — `3/4` and `say"hi` are
+  ordinary things to type into a search box. `prepare_match_query` repairs the first
+  three, passes the real operators (`"exact phrase"`, `-exclude`, `term*`, `a | b`,
+  `NEAR/3`) through untouched, and returns a typed error for the two shapes with no
+  searchable reading, so the message reaches the search bar instead of a 500 reaching
+  the user.
+
+A pure string assertion is how this last reached production: the unit test asserted the
+doubled form, so it passed while every search containing an apostrophe failed. Tests for
+this helper assert against the character set measured to break a live Manticore, and a
+change here is not verified until the query has run against a real one.
+
+Non-`MATCH()` uses of `QuotedData` — attribute comparisons against hashes, dataset ids
+and facet values — carry the same wrong quoting rule and are not yet converted.
+
 ### Search fan-out
 
 Manticore holds no global search tables. Each collection's search data lives in a

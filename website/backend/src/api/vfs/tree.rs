@@ -23,6 +23,7 @@ use crate::api::admin::collections::collectionname_valid;
 use crate::api::search::search_sql::sql_options_clause;
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils;
+use crate::db_utils::manticore_match::quoted_manticore_string;
 use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
 /// Children returned per expansion before the tree shows a "N more…" row. A folder with
@@ -200,7 +201,7 @@ pub async fn vfs_search_in_folder(
         {options_clause}
         ;",
         format_sql_query::QuotedData(&collection_dataset),
-        format_sql_query::QuotedData(&format!("*{cleaned}*")),
+        quoted_manticore_string(&format!("*{cleaned}*")),
     );
     let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
     Ok(VfsTreeChildren {

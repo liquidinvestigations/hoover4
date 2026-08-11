@@ -126,6 +126,19 @@ datasets_mount_path = /testdata
 ; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
 mcp_shared_secret_file =
 
+# ---- which interfaces the published ports answer on ------------------------------
+; Address the website's 12345 is published on. 0.0.0.0 = every interface. Set this to a
+; single private address on a host with a public IP: the website carries no
+; authentication of its own, and demo_mode makes anonymous guests admins.
+website_bind_ip    = 0.0.0.0
+; Address the infrastructure ports (ClickHouse, Manticore, MinIO, the admin UIs,
+; pdf-to-html) are published on. These services are unauthenticated or carry default
+; credentials, so 0.0.0.0 is for a trusted dev LAN only; 127.0.0.1 plus an ssh tunnel
+; is the right setting anywhere else. The services already bound to loopback in the
+; compose file (Temporal, Cassandra, Elasticsearch, Redis, the CPU twins, every MCP
+; server and agent) ignore this and stay on loopback.
+infra_bind_ip      = 0.0.0.0
+
 # ---- ports ----------------------------------------------------------------------
 ; Every service port is an ini key. The one exception is the website, which stays
 ; hardcoded on 12345 in the compose file — it is the one URL humans type.

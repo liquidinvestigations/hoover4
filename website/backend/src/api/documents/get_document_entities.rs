@@ -6,9 +6,10 @@ use common::{
     document_entities::{DocumentEntitiesResponse, DocumentEntityItem, DocumentEntityType},
     search_result::DocumentIdentifier,
 };
-use futures::{StreamExt, stream::FuturesUnordered};
+use futures::{StreamExt, stream};
 use serde::Deserialize;
 
+use crate::api::search::fanout;
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
@@ -41,20 +42,35 @@ pub async fn get_document_entities(
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
 
     let _ents = _get_document_entities(document_identifier.clone()).await?;
-    
-    // these ents maybe don't match properly, so let's skip them and fix match count
 
-    let mut fut = FuturesUnordered::new();
-    for item in _ents.items {
-        fut.push(_adjust_hit_item_count(user, document_identifier.clone(), item));
-    }
-    let mut v2 = vec![];
-    while let Some(item) =  fut.next().await {
-        let item = item?;
-        if item.hit_count > 0 {
-            v2.push(item);
+    // The stored hit count is per entity_hit row, which does not have to agree with what
+    // the text index can find; each entity is re-counted against the document's own pages
+    // and dropped when it counts zero. That is one full-text search per entity, up to the
+    // 500 the query above returns, so the concurrency is capped exactly as the main
+    // search path caps its shard fan-out -- an uncapped version puts 500 simultaneous
+    // searches on one shard.
+    //
+    // A per-entity failure drops that entity instead of the whole panel. Collecting with
+    // `?` here means one unsearchable value blanks the entities of an otherwise fine
+    // document, which is a far worse answer than a list one entity short.
+    let mut v2: Vec<DocumentEntityItem> = stream::iter(_ents.items.into_iter().map(|item| {
+        let document_identifier = document_identifier.clone();
+        let value = item.value.clone();
+        async move {
+            match _adjust_hit_item_count(user, document_identifier, item).await {
+                Ok(item) => Some(item),
+                Err(e) => {
+                    tracing::warn!("dropping entity {value:?}: could not count its hits: {e}");
+                    None
+                }
+            }
         }
-    }
+    }))
+    .buffer_unordered(fanout::max_parallelism())
+    .filter_map(|item| async move { item.filter(|item| item.hit_count > 0) })
+    .collect()
+    .await;
+
     v2.sort_by_key(|item| {
         (item.entity_type, item.hit_count, item.value.clone())
     });

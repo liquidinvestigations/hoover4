@@ -19,7 +19,8 @@ use crate::db_utils::clickhouse_utils::{
 };
 use crate::{api::search::search_sql::{shard_table_names, sql_options_clause}};
 use crate::db_utils::{
-    decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
+    decompose_spans::decompose_text_into_spans, manticore_match::prepare_match_query,
+    manticore_utils::manticore_search_sql,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,6 +50,24 @@ async fn pages_table_for_document(
     Ok(Some((pages_table, format!("{collectionname}@{generation}"))))
 }
 
+/// The quoted `MATCH()` argument for an in-document find, or `None` when the query
+/// cannot search for anything.
+///
+/// `None` covers the empty query and the shapes Manticore's parser rejects outright.
+/// Both mean "no hits" here rather than an error: in-document search runs on every
+/// keystroke and per entity value, so a query that cannot match is an ordinary state,
+/// not a failure to report. (The main search box is the opposite — there an empty query
+/// means *every* document, which is why it does not share this helper.)
+fn find_query_match_argument(find_query: &str) -> Option<String> {
+    match prepare_match_query(find_query) {
+        Ok(prepared) => Some(prepared.quoted()),
+        Err(e) => {
+            tracing::debug!("in-document search skipped for {find_query:?}: {e}");
+            None
+        }
+    }
+}
+
 pub async fn search_document_text_for_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -59,6 +78,9 @@ pub async fn search_document_text_for_hits(
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
+        return Ok(vec![]);
+    };
+    let Some(match_argument) = find_query_match_argument(&find_query) else {
         return Ok(vec![]);
     };
     let options_clause = sql_options_clause(1000);
@@ -79,7 +101,7 @@ pub async fn search_document_text_for_hits(
             FROM {pages_table}
             WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {} AND page_id = {}
             AND extracted_by != 'filename_index'
-            AND MATCH({})
+            AND MATCH({match_argument})
             LIMIT 1000
             {options_clause}
         "#,
@@ -87,7 +109,6 @@ pub async fn search_document_text_for_hits(
         format_sql_query::QuotedData(&document_identifier.collection_dataset),
         format_sql_query::QuotedData(&extracted_by),
         page_id,
-        format_sql_query::QuotedData(&find_query),
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
     let hits = response.hits.hits;
@@ -119,6 +140,9 @@ pub async fn search_document_text_all_hits(
     let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
         return Ok(vec![]);
     };
+    let Some(match_argument) = find_query_match_argument(&find_query) else {
+        return Ok(vec![]);
+    };
     let options_clause = sql_options_clause(1000);
     let sql = format!(
         r#"
@@ -137,13 +161,12 @@ pub async fn search_document_text_all_hits(
         FROM {pages_table}
         WHERE file_hash = {} AND collection_dataset = {}
         AND extracted_by != 'filename_index'
-        AND MATCH({})
+        AND MATCH({match_argument})
         LIMIT 1000
         {options_clause}
     "#,
         format_sql_query::QuotedData(&document_identifier.file_hash),
         format_sql_query::QuotedData(&document_identifier.collection_dataset),
-        format_sql_query::QuotedData(&find_query),
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
     let hits = response.hits.hits;

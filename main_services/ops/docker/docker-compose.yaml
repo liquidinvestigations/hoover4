@@ -14,8 +14,8 @@ services:
     image: manticoresearch/manticore:14.1.0
     container_name: manticore
     ports:
-      - '0.0.0.0:${MANTICORE_SQL_PORT}:9306'
-      - '0.0.0.0:${MANTICORE_HTTP_PORT}:9308'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_SQL_PORT}:9306'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_HTTP_PORT}:9308'
     volumes:
       - manticore_data_v14:/var/lib/manticore
     memswap_limit: 19000M
@@ -52,8 +52,8 @@ services:
       - CLICKHOUSE_USER=hoover4
       - CLICKHOUSE_PASSWORD=hoover4
     ports:
-      - '0.0.0.0:${CLICKHOUSE_HTTP_PORT}:8123'
-      - '0.0.0.0:${CLICKHOUSE_NATIVE_PORT}:9000'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_HTTP_PORT}:8123'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_NATIVE_PORT}:9000'
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       # - ./data:/var/lib/clickhouse/user_files
@@ -81,7 +81,7 @@ services:
       clickhouse:
         condition: service_healthy
     ports:
-      - '0.0.0.0:${CLICKHOUSE_MONITORING_PORT}:3000'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_MONITORING_PORT}:3000'
     volumes:
       - clickhouse_monitoring:/var/lib/clickhouse-monitoring
     memswap_limit: 6000M
@@ -93,7 +93,7 @@ services:
   ch-ui:
     image: ghcr.io/caioricciuti/ch-ui:sha-6227281d8c096e4259a1b96c92aa3f8d784a3c2b
     ports:
-      - '0.0.0.0:${CH_UI_PORT}:5521'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${CH_UI_PORT}:5521'
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -252,8 +252,8 @@ services:
     networks:
       - hoover4
     ports:
-      - "0.0.0.0:${MINIO_CONSOLE_PORT}:8084"
-      - "0.0.0.0:${MINIO_API_PORT}:9000"
+      - "${INFRA_BIND_IP:-0.0.0.0}:${MINIO_CONSOLE_PORT}:8084"
+      - "${INFRA_BIND_IP:-0.0.0.0}:${MINIO_API_PORT}:9000"
     environment:
       MINIO_ACCESS_KEY: hoover4
       MINIO_SECRET_KEY: hoover4-secret
@@ -417,7 +417,7 @@ services:
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     ports:
-      - "0.0.0.0:12345:8080"
+      - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
     environment:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
@@ -506,7 +506,7 @@ services:
       context: ./pdf-to-html
       dockerfile: Dockerfile
     ports:
-      - "0.0.0.0:${PDF_TO_HTML_PORT}:19027"
+      - "${INFRA_BIND_IP:-0.0.0.0}:${PDF_TO_HTML_PORT}:19027"
     networks:
       - hoover4
     restart: unless-stopped
