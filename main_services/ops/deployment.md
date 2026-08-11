@@ -276,6 +276,21 @@ The largest ingest is the window in which this happens. If something is killed, 
 that container's `mem_limit` — or, for `hoover4-mcp-browser`, which has no `mem_limit`
 and runs up to eight Chromium instances, lower `BROWSER_MAX_CONTEXTS`.
 
+**A killed server process does not look like a memory problem to its callers.** When a
+cgroup kills the process inside a container that restarts, `docker ps` shows the service
+healthy moments later and `OOMKilled` on the container is **false** — so what the pipeline
+reports is `ConnectionError: Connection refused` against something that is plainly up.
+The two things that identify it are `RestartCount` climbing and
+`Memory cgroup out of memory` in `dmesg`. Check both before believing a network fault
+between two containers on the same network.
+
+`hoover4-ner-spacy` is the one to watch during a large ingest, and its growth is not a
+leak in the ordinary sense: a spaCy pipeline interns every distinct string it has ever
+seen and never evicts, so memory tracks the corpus's vocabulary rather than the current
+request. `NER_RECYCLE_CHARS` bounds it by rebuilding the pipeline on a character budget;
+`/health` reports `pipeline_reloads`, and that number staying at 0 through a long ingest
+means the bound is not being applied.
+
 ## What a no-GPU configuration does not do
 
 Stated up front, because none of it is a fault to be diagnosed later:

@@ -51,6 +51,26 @@ NER_QUEUE_DEPTH = int(os.getenv("NER_QUEUE_DEPTH", "16"))
 #: spaCy's own default is 1_000_000 characters.
 MAX_TEXT_CHARS = int(os.getenv("NER_MAX_TEXT_CHARS", "1000000"))
 
+#: Characters to process before rebuilding the pipeline, which is the only way to give
+#: back what it accumulates.
+#:
+#: **A spaCy pipeline's memory grows monotonically with the number of DISTINCT strings it
+#: has ever seen.** The `Vocab`/`StringStore` interns every token, and nothing is ever
+#: evicted — that is by design, because `Doc` objects hold integer keys into it. In a
+#: long-lived server processing an entire corpus the practical effect is an unbounded
+#: leak with no leaking allocation anywhere: memory climbs steadily, is unrelated to
+#: request or batch size, and ends with the cgroup killing the process.
+#:
+#: On a corpus of raw text archives this walked the container past a 4 GB limit and then
+#: past a 12 GB one, and each time the kill landed on the SERVER PROCESS rather than the
+#: container, so callers saw `Connection refused` from something that looked healthy
+#: seconds later. Bounding the batch size did not help and could not have: the growth is
+#: in what has been seen, not in what is resident.
+#:
+#: Rebuilding drops the accumulated vocabulary. The cost is one model load (tens of MB,
+#: about a second) per budget, which is nothing next to the throughput of the interval.
+NER_RECYCLE_CHARS = int(os.getenv("NER_RECYCLE_CHARS", "20000000"))
+
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 
 app = FastAPI(title="hoover4 spaCy NER (CPU twin)", version="1.0")
@@ -74,6 +94,11 @@ _LABEL_MAP: Dict[str, str] = {
 }
 
 
+_chars_since_reload = 0
+_recycle_lock = threading.Lock()
+_reload_count = 0
+
+
 def _load_model():
     global _nlp, _load_error
     try:
@@ -88,6 +113,39 @@ def _load_model():
 
 
 _load_model()
+
+
+def _note_processed(chars: int) -> None:
+    """Account for finished work and rebuild the pipeline once the budget is spent.
+
+    The swap is a rebind of a module global, so threads already inside `_nlp.pipe` keep
+    working against the object they started with and it is freed — with its accumulated
+    vocabulary — when the last of them lets go. Nothing is interrupted and no request
+    waits for the load: the lock only stops two threads rebuilding at once.
+
+    A failed reload keeps the existing pipeline. Serving with a pipeline that is too
+    large is strictly better than serving nothing, and the next budget tries again.
+    """
+    global _chars_since_reload, _reload_count
+    with _recycle_lock:
+        _chars_since_reload += chars
+        if _chars_since_reload < NER_RECYCLE_CHARS:
+            return
+        spent, _chars_since_reload = _chars_since_reload, 0
+    try:
+        import spacy
+
+        fresh = spacy.load(MODEL_NAME)
+    except Exception as exc:
+        log.error("pipeline recycle failed, keeping the current one: %s", exc)
+        return
+    global _nlp
+    _nlp = fresh
+    _reload_count += 1
+    log.info(
+        "recycled the spaCy pipeline after %d characters (reload #%d) to release the "
+        "interned vocabulary", spent, _reload_count,
+    )
 
 
 class EntityInfo(BaseModel):
@@ -117,8 +175,11 @@ def _extract(texts: List[str], entity_types: Optional[List[str]]) -> List[Entity
     out: List[EntityInfo] = []
     wanted = set(entity_types) if entity_types else None
 
+    # Bound to the object this call started with. Rebinding the global mid-iteration
+    # (see `_note_processed`) must not swap the pipeline out from under a running batch.
+    nlp = _nlp
     # `nlp.pipe` batches, which is most of spaCy's throughput on many short texts.
-    for index, doc in enumerate(_nlp.pipe(texts)):
+    for index, doc in enumerate(nlp.pipe(texts)):
         for ent in doc.ents:
             label = _LABEL_MAP.get(ent.label_, ent.label_)
             if wanted and label not in wanted:
@@ -133,6 +194,7 @@ def _extract(texts: List[str], entity_types: Optional[List[str]]) -> List[Entity
                 confidence=None,
                 text_index=index,
             ))
+    _note_processed(sum(len(t) for t in texts))
     return out
 
 
@@ -146,6 +208,11 @@ def health():
         "load_error": _load_error,
         "concurrency": NER_CONCURRENCY,
         "queue_depth": NER_QUEUE_DEPTH,
+        # Rising `pipeline_reloads` is the pipeline giving back its interned vocabulary
+        # on schedule. A count stuck at 0 on a long ingest means the recycle is not
+        # firing, which is the shape of the memory growth that ends in an OOM kill.
+        "pipeline_reloads": _reload_count,
+        "recycle_chars": NER_RECYCLE_CHARS,
         "config_fingerprint": CONFIG_FINGERPRINT,
     }
 
