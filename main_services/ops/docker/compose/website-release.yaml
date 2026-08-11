@@ -18,10 +18,14 @@
 # every source change. With the target volume warm the release build is incremental; the
 # FIRST run after enabling this is a cold release build and takes a while — watch it.
 #
-# The server binary is *discovered*, not hardcoded to a path: `dx` decides the layout
-# (today `target/dx/<package>/release/web/<package>`), and a wrong guess would fail as a
-# blank page rather than as an error. If it is not found the container prints the tree
-# and exits, which is the failure you can act on.
+# The server binary is *discovered*, not hardcoded: `dx` decides both the layout and the
+# binary's NAME, and has used more than one — `target/dx/<package>/release/web/server`
+# today, `.../web/<package>` before. Matching on the name is what breaks on a dx upgrade,
+# and it breaks *after* a successful build, so the log reads "no release server binary"
+# directly under the lines reporting that the build succeeded. The predicate is therefore
+# structural: the one executable file under `release/web/` that is not a copied asset.
+# If it is not found the container prints the tree and exits, which is the failure you
+# can act on.
 services:
   hoover4-website:
     command:
@@ -31,7 +35,7 @@ services:
         cd /app
         echo "[website] release build starting (cold builds take several minutes)"
         dx build --fullstack --package frontend --renderer web --release
-        bin="$$(find /app/target/dx -type f -path '*/release/web/*' -name frontend -perm -u+x | head -1)"
+        bin="$$(find /app/target/dx -type f -path '*/release/web/*' -not -path '*/release/web/public/*' -perm -u+x | head -1)"
         if [ -z "$$bin" ]; then
           echo "[website] FATAL: no release server binary under /app/target/dx" >&2
           find /app/target/dx -maxdepth 5 >&2 || true
