@@ -54,9 +54,12 @@ COPY ./pyproject.toml ./
 # Expose the port
 EXPOSE 8083
 
-# Health check
+# Health check. It probes $PORT rather than the literal above, because compose sets a
+# different one: a probe pinned to the image's default reports a working server as
+# `unhealthy` forever, which is worse than no healthcheck — it trains the operator to
+# ignore the one column that says whether the stack came up.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8083/health', timeout=5)" || exit 1
+    CMD python -c "import os, requests; requests.get('http://localhost:%s/health' % os.environ.get('PORT', '8083'), timeout=5)" || exit 1
 
 # Run the MCP server
 CMD ["python", "whois_server/server.py"]
