@@ -533,8 +533,19 @@ services:
     networks:
       - hoover4
     restart: unless-stopped
-    memswap_limit: 4000M
-    mem_limit: 4000M
+    # Sized for the WORST batch, not the average one. A request carries a list of texts,
+    # each of up to NER_MAX_TEXT_CHARS (1 M chars), and NER_CONCURRENCY of them are in
+    # flight at once — so the peak is several large documents resident in spaCy at the
+    # same time, which was measured at just over 4 GB on a real corpus.
+    #
+    # The failure this guards against is silent and expensive: the cgroup kills uvicorn,
+    # the container restarts (so `docker ps` shows it healthy and `OOMKilled` is false —
+    # the PROCESS was killed, not the container), and every NER activity in flight fails
+    # with `ConnectionError: Connection refused` against a service that looks fine by the
+    # time anyone looks. It reads as a network fault. The tell is RestartCount climbing
+    # and `Memory cgroup out of memory` in dmesg.
+    memswap_limit: 12000M
+    mem_limit: 12000M
     environment:
       - HOST=0.0.0.0
       - PORT=8000
