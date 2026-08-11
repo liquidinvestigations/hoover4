@@ -38,7 +38,8 @@
 #     if it stops holding, the ingest time is the thing that will say so.
 #
 # Environment knobs:
-#   WEBSITE_URL           default http://localhost:12345 (containerized website)
+#   WEBSITE_URL           default derived from WEBSITE_BIND_IP in the rendered .env,
+#                         falling back to http://localhost:12345
 #   SEARCH_WORD           default easychair (present in the pdf-doc-txt fixture)
 #   POLL_TIMEOUT          seconds to wait for ingestion, default 3600
 #   INGEST_ROOT_TESTDATA  disk root for testdata/testfiles
@@ -50,7 +51,24 @@ set -euo pipefail
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
 cd "$SCRIPT_DIR"
 
-WEBSITE_URL="${WEBSITE_URL:-http://localhost:12345}"
+# The website's published address follows `website_bind_ip`, so a default of `localhost`
+# is only right when that key is unset or 0.0.0.0. On a host that binds the website to one
+# private address, localhost:12345 has nothing listening -- and because every check below
+# runs under `set -e`, a curl that cannot connect used to kill the whole run silently,
+# mid-way through, with the last line of output being an unrelated passing check.
+website_url_default() {
+    local env_file="ops/docker/.env" bind
+    bind=$(grep -E '^WEBSITE_BIND_IP=' "$env_file" 2>/dev/null | cut -d= -f2- || true)
+    case "$bind" in
+        ""|0.0.0.0) echo "http://localhost:12345" ;;
+        *)          echo "http://$bind:12345" ;;
+    esac
+}
+WEBSITE_URL="${WEBSITE_URL:-$(website_url_default)}"
+# Every website probe goes through this: it bounds the wait and, crucially, never returns
+# non-zero, so an unreachable site is reported by the check that wanted it rather than
+# aborting the run before that check is reached.
+WEB() { curl -s --max-time 30 "$@" || true; }
 WORKER="${WORKER:-hoover4-worker}"
 SEARCH_WORD="${SEARCH_WORD:-easychair}"
 POLL_TIMEOUT="${POLL_TIMEOUT:-3600}"
@@ -140,13 +158,12 @@ run_step() {
 }
 
 ensure_collection_row() {
-    # The admin UI is the normal way to create a collection row; for a scripted
-    # reset the row is inserted directly (same columns the UI writes).
+    # `create-collection` owns both halves -- the `collections` row and the database --
+    # and is idempotent. Writing the row with raw SQL here instead would be a second
+    # definition of what creating a collection means, which rots the next time the
+    # schema moves.
     local name="$1" fullname="$2"
-    CH "INSERT INTO Hoover4_Processing.collections (collectionname, fullname)
-        SELECT '$name', '$fullname'
-        WHERE NOT EXISTS (SELECT 1 FROM Hoover4_Processing.collections FINAL
-                          WHERE collectionname = '$name' AND is_deleted = 0)"
+    run_step create-collection "$name" --fullname "$fullname"
 }
 
 if [ "${1:-}" = "--reset" ]; then
@@ -176,8 +193,6 @@ run_step migrate
 echo "== ensure collections =="
 ensure_collection_row testdata "Test Data"
 ensure_collection_row other "Other Collection"
-run_step ensure-collection testdata
-run_step ensure-collection other
 
 ingest_dataset() {
     local coll="$1" ds="$2" root="$3"
@@ -479,8 +494,9 @@ if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
 fi
 
 # 7. The website serves.
-code=$(curl -s -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")
-[ "$code" = "200" ] && ok "website / returns 200" || fail "website / returned $code"
+code=$(WEB -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")
+[ "$code" = "200" ] && ok "website / returns 200 at $WEBSITE_URL" \
+    || fail "website / at $WEBSITE_URL returned ${code:-no response}"
 
 # 7b. Config-drift guard between the two hosts (hoover4.ini is copied by hand, so it
 #     WILL drift). Compare the fingerprint deploy.py rendered on this host against
@@ -631,14 +647,14 @@ fi
 # 8. A search through the site's HTTP API returns >0 hits for a word known to
 #    be in the fixture data. The server-function URL contains a build hash, so
 #    it is discovered from the served WASM bundle.
-wasm_path=$(curl -s "$WEBSITE_URL/" | grep -oE 'wasm/[a-zA-Z0-9_-]+\.js' | head -1)
+wasm_path=$(WEB "$WEBSITE_URL/" | grep -oE 'wasm/[a-zA-Z0-9_-]+\.js' | head -1)
 api_path=""
 if [ -n "$wasm_path" ]; then
-    wasm_file=$(curl -s "$WEBSITE_URL/$wasm_path" | grep -oE '[a-zA-Z0-9_./-]*frontend_bg[a-zA-Z0-9_-]*\.wasm' | head -1)
+    wasm_file=$(WEB "$WEBSITE_URL/$wasm_path" | grep -oE '[a-zA-Z0-9_./-]*frontend_bg[a-zA-Z0-9_-]*\.wasm' | head -1)
     if [ -n "$wasm_file" ]; then
         wasm_url="${wasm_file#/}"
         case "$wasm_url" in wasm/*) ;; *) wasm_url="wasm/$wasm_url";; esac
-        api_path=$(curl -s "$WEBSITE_URL/$wasm_url" | strings \
+        api_path=$(WEB "$WEBSITE_URL/$wasm_url" | strings \
             | grep -oE '/api/search_for_results_hit_count[0-9]+' | head -1)
     fi
 fi
@@ -646,7 +662,7 @@ if [ -z "$api_path" ]; then
     fail "could not discover the search server-function URL from the WASM bundle"
 else
     body='[{"collection_datasets":[],"query_string":"'"$SEARCH_WORD"'","facet_filters":{}}]'
-    response=$(curl -s -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
+    response=$(WEB -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
     # SearchResultHitCount serialises as {"total":N,"partial":bool}.
     hits=$(printf '%s' "$response" | grep -oE '"total":[0-9]+' | grep -oE '[0-9]+' | head -1)
     if [ -n "$hits" ] && [ "$hits" -gt 0 ]; then
