@@ -152,3 +152,45 @@ def test_ner_failure_propagates_and_writes_nothing(monkeypatch):
         nlp_activities.extract_entities_for_hashes(_params(3))
 
     assert fake_client.inserts == {}
+
+
+class TestBatchCharacterBudget:
+    """A batch bounded only by COUNT is not bounded at all.
+
+    Each text may be as long as the NER service's per-text ceiling, so 64 of them is
+    tens of megabytes in one request — and the service holds a parsed document for every
+    text in the batch simultaneously. On a corpus of large plain-text files that walked
+    the spaCy container through a 4 GB memory limit and then a 12 GB one, and each time
+    the cgroup killed the server process rather than the container, so every in-flight
+    activity failed with `Connection refused` against something that looked healthy
+    afterwards. These pin the character budget that makes the peak a property of the
+    constant instead of a property of the corpus.
+    """
+
+    def test_the_count_cap_still_applies(self):
+        batches = list(nlp_activities.batch_texts_by_chars(["x"] * 200))
+        assert all(len(b) <= NLP_BATCH_TEXTS for b in batches)
+        assert sum(len(b) for b in batches) == 200
+
+    def test_a_few_large_texts_are_split_where_a_count_cap_would_not(self):
+        # Eight texts is well under NLP_BATCH_TEXTS, so a count-based batcher sends all
+        # eight at once. Each is a quarter of the budget, so this must become 2+ batches.
+        texts = ["y" * (nlp_activities.NLP_BATCH_CHARS // 4) for _ in range(8)]
+        batches = list(nlp_activities.batch_texts_by_chars(texts))
+        assert len(texts) < NLP_BATCH_TEXTS
+        assert len(batches) > 1
+        for b in batches:
+            assert sum(len(t) for t in b) <= nlp_activities.NLP_BATCH_CHARS
+
+    def test_an_oversized_text_travels_alone_and_is_not_dropped(self):
+        huge = "z" * (nlp_activities.NLP_BATCH_CHARS * 2)
+        batches = list(nlp_activities.batch_texts_by_chars(["a", huge, "b"]))
+        assert [t for b in batches for t in b] == ["a", huge, "b"]
+        assert [huge] in batches
+
+    def test_order_is_preserved_exactly(self):
+        texts = [f"t{i}" for i in range(150)]
+        assert [t for b in nlp_activities.batch_texts_by_chars(texts) for t in b] == texts
+
+    def test_no_texts_means_no_requests(self):
+        assert list(nlp_activities.batch_texts_by_chars([])) == []

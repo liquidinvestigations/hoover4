@@ -28,6 +28,40 @@ log = logging.getLogger(__name__)
 # possible (today's alternative is the whole activity chunk in one request).
 NLP_BATCH_TEXTS = 64
 
+# Characters per NER-service request, and the limit that actually matters.
+#
+# A count alone does not bound anything: a text may be up to the service's
+# NER_MAX_TEXT_CHARS (1 M), so 64 of them is up to 64 MB of text in one request — and the
+# NER server holds a parsed document for every text in the batch at once. On a corpus of
+# large plain-text files that drove the spaCy container past a 4 GB limit, then past a
+# 12 GB one; the cgroup killed uvicorn and every in-flight activity failed with
+# `Connection refused` against a container that looked healthy by the time anyone looked.
+#
+# Budgeting by characters makes the peak a property of this constant instead of a
+# property of the corpus. The value equals the service's per-text ceiling, so the worst
+# batch is the same size as the worst single text — a document already too large to batch
+# with anything simply travels alone.
+NLP_BATCH_CHARS = 1_000_000
+
+
+def batch_texts_by_chars(texts, max_texts=NLP_BATCH_TEXTS, max_chars=NLP_BATCH_CHARS):
+    """Split `texts` into request-sized batches, bounded by count AND by characters.
+
+    A text longer than `max_chars` is emitted on its own rather than dropped: the service
+    decides whether it is processable, and silently skipping it here would lose that
+    document's entities with no error anywhere.
+    """
+    batch: list[str] = []
+    chars = 0
+    for text in texts:
+        if batch and (len(batch) >= max_texts or chars + len(text) > max_chars):
+            yield batch
+            batch, chars = [], 0
+        batch.append(text)
+        chars += len(text)
+    if batch:
+        yield batch
+
 
 def configured_nlp_model() -> str:
     """The ``nlp_model`` this worker *intends* to write.
@@ -93,8 +127,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     # CPU twin. Recording a single activity-wide model would attribute rows to a
     # provider that never saw them.
     served_models: list[str] = []
-    for i in range(0, len(cleaned_texts), NLP_BATCH_TEXTS):
-        batch = cleaned_texts[i:i + NLP_BATCH_TEXTS]
+    for batch in batch_texts_by_chars(cleaned_texts):
         batch_results, batch_model = extract_ner_from_texts(batch)
         ner_results.extend(batch_results)
         served_models.extend([batch_model] * len(batch))
