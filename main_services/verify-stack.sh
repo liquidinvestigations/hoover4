@@ -660,7 +660,16 @@ fi
 #    * **A miss must be a FAILURE, not the end of the run.** `grep` exits non-zero when
 #      it matches nothing, and under `set -euo pipefail` that killed the script mid-file
 #      with the last line of output being an unrelated passing check.
-grep_first() { grep -a -oE "$1" | head -1 || true; }
+#    * **Prefer the reference that carries a path.** The glue names its bundle twice —
+#      once as the real hashed asset (`/./assets/frontend_bg-dxh….wasm`) and once as a
+#      bare `frontend_bg.wasm` fallback, in that order or the reverse depending on the
+#      build. Taking the first match fetches the bare name, which the SPA answers with
+#      its shell.
+grep_first() {
+    local matches
+    matches=$(grep -a -oE "$1" || true)
+    { printf '%s\n' "$matches" | grep '/' || printf '%s\n' "$matches"; } | head -1
+}
 resolve_url() {  # an asset href as written in the markup -> a path off the site root
     local href="${1#.}"; href="${href#/}"; href="${href#./}"; printf '/%s' "$href"
 }
