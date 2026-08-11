@@ -68,8 +68,17 @@ MAX_TEXT_CHARS = int(os.getenv("NER_MAX_TEXT_CHARS", "1000000"))
 #: in what has been seen, not in what is resident.
 #:
 #: Rebuilding drops the accumulated vocabulary. The cost is one model load (tens of MB,
-#: about a second) per budget, which is nothing next to the throughput of the interval.
-NER_RECYCLE_CHARS = int(os.getenv("NER_RECYCLE_CHARS", "20000000"))
+#: about a second) per budget, which is nothing next to the throughput of the interval —
+#: so the budget should be set from how much memory the growth is worth, not from what
+#: the reloads cost.
+#:
+#: Measured on a corpus of raw text archives: 20 M characters of it interns enough
+#: vocabulary to reach a 12 GB ceiling *between* recycles, so the recycle fired on
+#: schedule and the process was still killed. 5 M holds the peak to a few GB on the same
+#: data. A corpus of ordinary prose reuses far more of its vocabulary and could run a much
+#: larger budget; when in doubt, watch `docker stats` across one interval rather than
+#: assuming this number transfers.
+NER_RECYCLE_CHARS = int(os.getenv("NER_RECYCLE_CHARS", "5000000"))
 
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 

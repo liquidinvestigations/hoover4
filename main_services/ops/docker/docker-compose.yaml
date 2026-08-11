@@ -556,6 +556,12 @@ services:
       - NLP_MODEL_ID=${NLP_MODEL_ID_SPACY:-ner-spacy-xx}
       - NER_CONCURRENCY=${NER_SPACY_CONCURRENCY:-2}
       - NER_QUEUE_DEPTH=${NER_SPACY_QUEUE_DEPTH:-16}
+      # Characters between pipeline rebuilds. This is what bounds the container's memory:
+      # a spaCy pipeline interns every distinct string it has ever seen and never evicts,
+      # so without a rebuild the footprint tracks the corpus's vocabulary rather than the
+      # request. Lower it for a corpus with an unusually large vocabulary (raw text
+      # archives, OCR output); `/health` reports `pipeline_reloads` so it can be watched.
+      - NER_RECYCLE_CHARS=${NER_SPACY_RECYCLE_CHARS:-5000000}
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:
