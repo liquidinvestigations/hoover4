@@ -645,17 +645,42 @@ else
 fi
 
 # 8. A search through the site's HTTP API returns >0 hits for a word known to
-#    be in the fixture data. The server-function URL contains a build hash, so
-#    it is discovered from the served WASM bundle.
-wasm_path=$(WEB "$WEBSITE_URL/" | grep -oE 'wasm/[a-zA-Z0-9_-]+\.js' | head -1)
+#    be in the fixture data. The server-function URL carries a build hash, so it is
+#    discovered from the served WASM bundle rather than written down.
+#
+#    Three properties this discovery must keep, each of which has cost a run:
+#
+#    * **It follows whatever asset layout dx produced.** `dx serve` publishes the glue
+#      under `wasm/`, a release build under `assets/` with a hash in the name. A pattern
+#      pinned to one of them finds nothing on the other.
+#    * **Every unknown path answers 200.** The site serves the SPA shell for anything it
+#      does not recognise, so "did I get the wasm" is a question about the CONTENT
+#      (`\0asm`), never about the status code. Guessing a URL and trusting 200 reads an
+#      11 KB HTML page as a 4 MB binary.
+#    * **A miss must be a FAILURE, not the end of the run.** `grep` exits non-zero when
+#      it matches nothing, and under `set -euo pipefail` that killed the script mid-file
+#      with the last line of output being an unrelated passing check.
+grep_first() { grep -a -oE "$1" | head -1 || true; }
+resolve_url() {  # an asset href as written in the markup -> a path off the site root
+    local href="${1#.}"; href="${href#/}"; href="${href#./}"; printf '/%s' "$href"
+}
 api_path=""
-if [ -n "$wasm_path" ]; then
-    wasm_file=$(WEB "$WEBSITE_URL/$wasm_path" | grep -oE '[a-zA-Z0-9_./-]*frontend_bg[a-zA-Z0-9_-]*\.wasm' | head -1)
-    if [ -n "$wasm_file" ]; then
-        wasm_url="${wasm_file#/}"
-        case "$wasm_url" in wasm/*) ;; *) wasm_url="wasm/$wasm_url";; esac
-        api_path=$(WEB "$WEBSITE_URL/$wasm_url" | strings \
-            | grep -oE '/api/search_for_results_hit_count[0-9]+' | head -1)
+js_href=$(WEB "$WEBSITE_URL/" | grep_first '[a-zA-Z0-9_./-]*frontend[a-zA-Z0-9_-]*\.js')
+if [ -n "$js_href" ]; then
+    wasm_href=$(WEB "$WEBSITE_URL$(resolve_url "$js_href")" \
+        | grep_first '[a-zA-Z0-9_./-]*frontend_bg[a-zA-Z0-9_-]*\.wasm')
+    if [ -n "$wasm_href" ]; then
+        wasm_tmp=$(mktemp)
+        WEB -o "$wasm_tmp" "$WEBSITE_URL$(resolve_url "$wasm_href")"
+        # `\0asm` is the WebAssembly magic number. Without this the SPA fallback page
+        # passes for the bundle and the grep below just finds nothing, which reads as
+        # "no such server function" rather than "wrong URL".
+        if [ "$(head -c 4 "$wasm_tmp" | tr -d '\0')" = "asm" ]; then
+            api_path=$(grep_first '/api/search_for_results_hit_count[0-9]+' < "$wasm_tmp")
+        else
+            fail "$(resolve_url "$wasm_href") did not serve a WASM module (got $(wc -c < "$wasm_tmp") bytes of something else)"
+        fi
+        rm -f "$wasm_tmp"
     fi
 fi
 if [ -z "$api_path" ]; then
