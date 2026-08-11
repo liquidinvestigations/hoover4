@@ -44,11 +44,11 @@ conversation. Weight and colour carry the hierarchy instead. A test pins this.
 
 ## Tool cards: a registry, not a growing `match`
 
-`tool_disclosure.rs` used to be one `match` with a branch per tool, and that shape has a
-specific failure: the generic branch got the *newest* tools, which are the ones whose
-output is least readable as flat key/value rows. Dispatch now lives in `tool_cards/mod.rs`
-and the generic card is the deliberate fallback — an MCP server that adds a tool tomorrow
-still renders, just plainly.
+Do not collapse this back into one `match` in `tool_disclosure.rs` with a branch per
+tool. That shape has a specific failure: the generic branch collects the *newest* tools,
+which are the ones whose output is least readable as flat key/value rows. Dispatch lives
+in `tool_cards/mod.rs` and the generic card is the deliberate fallback — an MCP server
+that adds a tool tomorrow still renders, just plainly.
 
 `browser_*` is matched on the **prefix**, not by listing thirty names, so a
 playwright-mcp upgrade that adds a tool does not silently drop it into the generic card.

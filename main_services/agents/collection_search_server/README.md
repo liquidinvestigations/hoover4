@@ -31,10 +31,10 @@ the ACL in a tool argument would let the model choose its own permissions; re-de
 here would mean a second implementation of the group/public union that could drift from
 the website's. See [`collection_search_server/acl.py`](collection_search_server/acl.py).
 
-## MATCH syntax — operators pass through now (Q7)
+## MATCH syntax — operators pass through
 
 `sanitize_match_query` used to **strip** every operator character (`!"$()-/<@^|~*`) on the
-grounds that an LLM writes prose, not query syntax. Q7 reversed that: the operators are
+grounds that an LLM writes prose, not query syntax. That is wrong: the operators are
 valuable and the model is told how to use them. The canonical syntax reference lives in
 [`collection_search_server/prompts.py`](collection_search_server/prompts.py) and reaches
 the model as the server's FastMCP `instructions`, i.e. at tool-discovery time.

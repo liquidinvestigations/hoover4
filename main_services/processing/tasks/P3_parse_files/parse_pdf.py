@@ -24,8 +24,8 @@ from tasks.text_sources import OCR_ENGINES
 #: Wall-clock ceiling for one qpdf/pdftotext invocation. These had NO timeout,
 #: which the heartbeat pump does not fix: the pump proves the pump thread is
 #: alive, so a wedged qpdf would heartbeat happily until start_to_close. A
-#: subprocess timeout is the only thing that catches a wedged child
-#: (plans/1-part-3.md 2.5). Generous, because a 500-page split is legitimately
+#: subprocess timeout is the only thing that catches a wedged child.
+#: Generous, because a 500-page split is legitimately
 #: slow -- the point is that it is finite.
 _PDF_SUBPROCESS_TIMEOUT_S = 900
 

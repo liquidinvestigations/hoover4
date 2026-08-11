@@ -138,6 +138,6 @@ def test_the_clickhouse_side_never_sees_the_row():
     )
     assert "text_content" not in body, (
         "the filename row is built from vfs_files basenames, never from page text "
-        "(2-zz C6: page text carries base64 and XPM junk)"
+        "(page text carries base64 and XPM junk)"
     )
     assert "vfs_files" in body, "it must be built from the VFS paths"

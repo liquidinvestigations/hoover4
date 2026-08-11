@@ -96,10 +96,11 @@ class TestManticoreEscaping:
         assert escape_manticore_string("a\\'b") == "a\\\\\\'b"
 
     def test_injection_attempt_cannot_close_the_literal(self):
-        """The escaping is the injection barrier and is unchanged by Q7.
+        """The escaping is the injection barrier.
 
-        Operators are no longer stripped, so this is the *only* thing standing between
-        caller text and the query. `'` must not survive unescaped in any form.
+        Operators are passed through rather than stripped, so this is the *only* thing
+        standing between caller text and the query. `'` must not survive unescaped in
+        any form.
         """
         out = sanitize_match_query("x') OR 1=1 --")
         assert "')" not in out.replace("\\'", "")
@@ -108,7 +109,7 @@ class TestManticoreEscaping:
 
 
 class TestMatchOperatorsPassThrough:
-    """Q7: the operators are the point, so they must survive sanitisation.
+    """The operators are the point, so they must survive sanitisation.
 
     Every expression here was run against the live `testdata_1_pages` shard and returns
     rows rather than an HTTP 500 — see the battery in `main_services/agents/README.md`.

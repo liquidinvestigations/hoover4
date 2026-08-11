@@ -3,8 +3,7 @@
 //! Search data is sharded per collection: logical shard `<collectionname>_<n>` (n is
 //! 1-based) consists of two physical Manticore tables, `<shard>_pages` and
 //! `<shard>_meta`. There are no global search tables and no distributed tables
-//! (Manticore 14.1.0 cannot JOIN over them — see
-//! `plans/2-collections/2-spike-manticore-results.md`), so every search query is built
+//! (Manticore 14.1.0 cannot JOIN over them), so every search query is built
 //! once per shard with the table names substituted and fanned out (see `fanout.rs`).
 //!
 //! Table and field names are interpolated into SQL strings and cannot be bound

@@ -1,10 +1,10 @@
 //! The page for a URL that names nothing.
 //!
 //! It is a ROUTE, not an error boundary. A mistyped path and a bookmark whose route
-//! parameter no longer decodes are both ordinary things a user does, and the router used
-//! to hand them to `GlobalErrorBoundary` — a red "Error" heading over a `ParseRouteError`
-//! debug dump. The boundary stays where it is for genuine panics; this takes the traffic
-//! that was never a panic in the first place.
+//! parameter does not decode are both ordinary things a user does, and handing them to
+//! `GlobalErrorBoundary` gives them a red "Error" heading over a `ParseRouteError` debug
+//! dump. The boundary is for genuine panics; this route takes the traffic that is not a
+//! panic in the first place.
 
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;

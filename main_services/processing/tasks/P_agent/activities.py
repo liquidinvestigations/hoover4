@@ -57,7 +57,7 @@ def run_research_agent(params: ResearchTaskParams) -> str:
     separate activity: a retried research run must not append a second transcript.
 
     The agent is consumed through its streaming endpoint, and the events are mirrored
-    into `chat_message_stream` as they arrive (Q11): a research run shows the same
+    into `chat_message_stream` as they arrive: a research run shows the same
     pending tool cards and growing answer as an inline chat turn instead of a static
     "Research task started" placeholder for the whole run. The returned payload is the
     same shape `/chat` produced, so the workflow's finalisation is unchanged.

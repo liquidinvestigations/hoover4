@@ -1,11 +1,9 @@
 """FastMCP server: **the** web search tool.
 
-One tool searches the open web. Before Phase 2 the full research agent carried three
-overlapping ones — `web_search` here, `ddg_text_search`/`ddg_news_search` on
-`hoover4-mcp-ddg`, and `wikipedia_search` on `hoover4-mcp-wikipedia` — and a small model
-faced with three near-identical descriptions picks badly and inconsistently. Those two
-servers are retired; their sources live in :mod:`.sources` as `ddg_api`, `ddg_news` and
-`wikipedia`, selectable through the `sources` argument.
+One tool searches the open web, and there must never be a second: a small model faced with
+several near-identical "search the web" descriptions picks badly and inconsistently. Every
+source lives in :mod:`.sources` — `ddg_api`, `ddg_news`, `wikipedia` and the scrapers —
+selectable through the `sources` argument.
 
 What the model gets back is deliberately richer than before (the old payload was a title,
 a URL and 400 characters, which is not enough to decide what to read): full snippets,

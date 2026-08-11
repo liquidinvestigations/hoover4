@@ -2,8 +2,8 @@
 //!
 //! Four states, because the four questions are different:
 //!
-//! * **Pending** — the query and an elapsed counter, while the search runs. This exists
-//!   only because Phase 1 made in-flight tool calls visible at all.
+//! * **Pending** — the query and an elapsed counter, while the search runs. Possible
+//!   only because in-flight tool calls are visible at all.
 //! * **Collapsed** — `web_search · "danube water level" · 18 results · 5 sources`, plus a
 //!   warning pip when a source came back empty.
 //! * **Expanded** — the result list: rank badge, domain chip, the title as a real link,
@@ -71,7 +71,7 @@ pub fn WebSearchCard(
 ) -> Element {
     let expanded = use_signal(|| false);
     let mut popup_open = use_signal(|| false);
-    // The button that opened the popup, so focus returns to it on close (§7.7).
+    // The button that opened the popup, so focus returns to it on close.
     let mut opener: FocusHandle = use_signal(|| None);
 
     let query = serde_json::from_str::<serde_json::Value>(&tool_input)

@@ -80,7 +80,7 @@ def test_resolve_collection_returns_and_caches(monkeypatch):
     client = _patch_global_client(monkeypatch, [["testdata"]])
 
     assert resolve_collection("testdata_testfiles") == "testdata"
-    # Immutable per D1, so the second call must not hit the database again.
+    # The mapping never changes, so the second call must not hit the database again.
     assert resolve_collection("testdata_testfiles") == "testdata"
     assert len(client.queries) == 1
 

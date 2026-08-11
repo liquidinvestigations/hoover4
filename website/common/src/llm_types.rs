@@ -1,4 +1,4 @@
-//! LLM catalog / AI-status DTOs shared between frontend and backend (plan 2 phase 5).
+//! LLM catalog / AI-status DTOs shared between frontend and backend.
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LlmModelItem {

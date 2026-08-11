@@ -4,9 +4,8 @@ services:
   # ---------------------------------------------------------------- GPU: embeddings
   # Embeddings, reranking and NER. The processing pipeline's P4 stage calls this too
   # (NER_URL in main_services), so when the GPU tier is enabled it is not optional
-  # infrastructure. After the host split it is reached cross-host on AI_SERVER_PORT;
-  # before the split it shared the `hoover4` network — see compose/agents.yaml on the
-  # main side for the services that used to live next to it.
+  # infrastructure. It lives on the private `ai_services` network and is reached
+  # cross-host on AI_SERVER_PORT — never by container name from the main stack.
   hoover4-ai-server:
     build:
       # Context is ai_services/, NOT this folder: the Dockerfile's COPY paths are

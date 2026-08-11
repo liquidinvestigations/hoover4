@@ -8,16 +8,13 @@ answers a different question: "how long may this activity go without proving it
 is alive?" That one has the same answer, ~2 minutes, for every activity in the
 tree regardless of how long its real work takes.
 
-The distinction is not academic. On 2026-08-06 an ``extract_plaintext_chunks``
-activity task was lost between the Temporal matching service and the worker: the
-server showed ``State: Started`` while a py-spy dump proved every executor thread
-was idle and the body had never run. The only timeout configured was
-``start_to_close_timeout=timedelta(seconds=proc_secs)`` -- the whole-file budget,
-1583 s -- so the stall lasted 26 minutes. The heartbeat clock starts at
-``ActivityTaskStarted``, which is exactly the state that task was stuck in, so a
-``heartbeat_timeout`` alone would have turned it into a ~2 minute stall.
-
-See plans/1-part-3.md for the full write-up.
+The distinction is not academic. An activity task can be lost between the
+Temporal matching service and the worker: the server shows ``State: Started``
+while a py-spy dump proves every executor thread is idle and the body never ran.
+With only ``start_to_close_timeout`` configured, that stall lasts the whole-file
+budget -- tens of minutes for a large file. The heartbeat clock starts at
+``ActivityTaskStarted``, which is exactly the state such a task is stuck in, so a
+``heartbeat_timeout`` turns the same stall into ~2 minutes.
 """
 
 from contextlib import contextmanager
@@ -107,7 +104,7 @@ def with_heartbeat(fn):
     This does NOT replace in-loop heartbeats. Where a loop exists, a
     ``HeartbeatClock`` inside it reports genuine progress (and shows an
     advancing count in ``temporal workflow describe``), while this only proves
-    the worker thread is alive. Both are wanted; see plans/1-part-3.md 2.5.
+    the worker thread is alive. Both are wanted.
     """
     import functools
 
@@ -125,8 +122,8 @@ def heartbeat_pump(*details, interval_seconds: float = HEARTBEAT_INTERVAL_SECOND
 
     For activities that block in a subprocess (7z, ffmpeg, qpdf, Extractous) and
     cannot heartbeat themselves. Prefer an in-loop ``HeartbeatClock`` when the
-    body already has a loop -- see plans/1-part-3.md 2.5 for why this is the
-    weaker option: the pump keeps beating even if the *child* process wedges, so
+    body already has a loop. This is the weaker option: the pump keeps beating
+    even if the *child* process wedges, so
     it detects a lost task, a dead worker or a wedged worker process, but not a
     wedged child. That case stays covered by the existing
     ``subprocess.run(..., timeout=...)`` guards, which must never be removed on

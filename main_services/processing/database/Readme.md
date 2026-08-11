@@ -63,17 +63,16 @@ consequences:
 - Collections created at different times converge on the same schema at the next
   `migrate` run, because each has its own independent `schema_versions`.
 
-Both sets were collapsed and renumbered from `00001` when storage was split, and
-**re-collapsed again** in Part 2 Phase 0: every `ALTER` accumulated since is folded back
-into the `CREATE TABLE` it modified, the Milvus create-then-drop trio is deleted outright,
-and both directories are contiguous from `00001` with no `ALTER TABLE` and no `DROP TABLE`
-anywhere. `COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is now
+Both sets are **collapsed**: every `ALTER` is folded back into the `CREATE TABLE` it
+modified, and both directories run contiguously from `00001` with no `ALTER TABLE` and no
+`DROP TABLE` anywhere. `COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is
 `{global: 20, collection: 31}` — files at or below those numbers are the collapsed
-baseline and must never be edited again.
+baseline and must never be edited.
 
-The re-collapse was a deliberate, one-time break of the never-edit-history rule, paid for
-by a full `./deploy --reset`: it drops all data, and `testdata` is reindexed. There is no
-migration path from a pre-collapse database and none is wanted (D1/D2 of `plans/1-part-2.md`).
+Collapsing is a deliberate break of the never-edit-history rule and is paid for by a full
+`./deploy --reset`: it drops all data and reindexes `testdata`. There is no migration path
+from a pre-collapse database and none is wanted. Do not collapse again without that reset
+being acceptable.
 
 ## Manticore infix indexing (`min_infix_len='3'`)
 
@@ -164,57 +163,50 @@ for w in ['document','docum*','*ocument*','doc*','wat*']:
 `docum*` and `*ocument*` must be non-zero, and `doc*` must be **larger** than the 7 it
 returns without infix indexing, not equal to it.
 
-## Navigation
+## Migrations above the collapsed baseline
 
--  [Go Back](../Readme.md)
-
-## The plan-3 schema epoch (2026-08-08)
-
-Three tables were appended above the collapsed baseline — `email_addresses` (00032),
-`document_dates` (00033), `vfs_nodes` (00034) — and **two baseline files were edited in
-place**: `00005_vfs_files.sql` (adds `container_hash` to the sort key, plus
-`mtime`/`mtime_source`) and `00008_email_headers.sql` (adds `date_sent_known`).
-
-Editing history is normally forbidden: the runner records an md5 per applied migration, so
-an edit fails on every deployment that already ran it. It was safe here for exactly one
-reason — **the rollout is a docker reset, which wipes the applied-migration table** — and
-that reason expires the moment a deployment exists that must be upgraded rather than
-rebuilt. `COLLAPSED_BASELINE` was deliberately NOT raised, so the next change is a new
-numbered file again.
-
-The readiness sentinel moved from `index_state` to `vfs_nodes`, in both copies. The rule is
-unchanged: it names whatever the LAST table-creating migration creates, because "ready"
-means the schema is fully built. (It moved again in the Phase 7 epoch below — `vfs_nodes`'s
-own comment still claims to be last, and is deliberately not edited to say otherwise.)
-
-`vfs_files`'s sort key needed `container_hash` because two containers holding the same
-inner path (two copies of one archive) collapsed into one ReplacingMergeTree row, and the
-second container lost its children. The P0 dedupe read had the same blind spot and gained
-the same filter.
-
-## The Phase 7 epoch: processing-time instrumentation (2026-08-08)
-
-Two tables appended to the collection set, and **nothing edited** — the plan-3 note above
-that `COLLAPSED_BASELINE` was deliberately not raised is exactly what this obeys:
+`COLLAPSED_BASELINE` is `{global: 20, collection: 31}`. Files at or below those numbers
+are the collapsed baseline and must never be edited. Above them the collection set carries
+five appended tables:
 
 | | |
 |---|---|
-| `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only ever recorded failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
+| `00032_email_addresses.sql` | Structured sender/recipient rows written by `parse_email`. |
+| `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
+| `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
+| `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only records failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
 | `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters — read the newest per worker and sum those. TTL 2 days. |
 
-Both are written by `tasks/task_timing.py` (a Temporal activity interceptor, batched,
-best-effort but never silent) and read by the admin processing page and
-`main_services/task-time-report.sh`.
+The last two are written by `tasks/task_timing.py` (a Temporal activity interceptor,
+batched, best-effort but never silent) and read by the admin processing page and
+`main_services/task-time-report.sh`. Volume, so nobody is surprised by it: a full ~200k-file
+ingest produces single-digit millions of `processing_task_runs` rows (a handful of
+activities per file), which is a fraction of a second to aggregate and a few tens of
+megabytes on disk. The in-flight table is thousands of rows for the same run, and zero
+while nothing is being processed.
 
-The readiness sentinel is now `processing_task_inflight`, updated in both copies
-(`db_collection_migrations/READINESS_SENTINEL` and
-`website/backend/src/db_auth/READINESS_SENTINEL`). `00034_vfs_nodes.sql` still says it
-must stay the last table-creating migration; that sentence is stale and is **left alone on
-purpose** — the file is applied history, the runner records its md5, and editing it would
-fail every deployment that already ran it. The rule the sentence states is still in force,
-which is why the sentinel moved.
+Two baseline files carry edits made in place: `00005_vfs_files.sql` (`container_hash` in
+the sort key, plus `mtime`/`mtime_source`) and `00008_email_headers.sql`
+(`date_sent_known`). **Do not take that as licence to do it again.** Editing an applied
+migration is normally impossible: the runner records an md5 per file and an edit fails
+every deployment that already ran it. It was survivable only because the rollout was a
+docker reset, which wipes the applied-migration table, and that excuse expires the moment
+a deployment exists that must be upgraded rather than rebuilt. `COLLAPSED_BASELINE` was
+deliberately not raised over those edits, so the next schema change is a new numbered file.
 
-Volume, so nobody is surprised by it: a full ~200k-file ingest produces single-digit
-millions of `processing_task_runs` rows (a handful of activities per file), which is a
-fraction of a second to aggregate and a few tens of megabytes on disk. The in-flight table
-is thousands of rows for the same run, and zero while nothing is being processed.
+`vfs_files`'s sort key needs `container_hash` because two containers holding the same
+inner path — two copies of one archive — otherwise collapse into a single
+ReplacingMergeTree row and the second container loses its children. The P0 dedupe read
+carries the same filter for the same reason.
+
+**The readiness sentinel names whatever the LAST table-creating migration creates**,
+because "ready" means the schema is fully built. It is currently `processing_task_inflight`
+and must be updated in both copies (`db_collection_migrations/READINESS_SENTINEL` and
+`website/backend/src/db_auth/READINESS_SENTINEL`) whenever a table-creating migration is
+appended. `00034_vfs_nodes.sql` contains a comment claiming it must stay last; that
+sentence is wrong and is **left alone on purpose**, because it is applied history whose md5
+is recorded. The rule it states still holds — that is why the sentinel is not there.
+
+## Navigation
+
+-  [Go Back](../Readme.md)

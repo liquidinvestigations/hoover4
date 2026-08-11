@@ -201,7 +201,7 @@ class TestRowIds:
 
     def test_no_collisions_over_realistic_keys(self):
         # 24k realistic (dataset, hash, extractor, page) keys must be distinct.
-        # With crc32|adler32 this class of check is what failed review (B11).
+        # A crc32|adler32 composite fails this: the two checksums correlate.
         seen = set()
         for ds in ("testdata_testfiles", "other_emails"):
             for i in range(2000):

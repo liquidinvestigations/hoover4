@@ -85,7 +85,7 @@ class TestFusedPipeline:
         assert any(h.file_hash == H3 and h.match_sources == ["vector"] for h in hits)
 
     def test_max_results_is_honoured_on_the_hybrid_path(self, monkeypatch):
-        """C4: a per-kind floor of 10 reserved 20 slots and `max_results=8` did nothing,
+        """A per-kind floor of 10 reserves 20 slots, so `max_results=8` does nothing,
         so an agent asking for 8 hits got 20 — at 1200 snippet characters each."""
         keyword = [_keyword(H1, p, 20.0 - p, f"keyword page {p}") for p in range(1, 21)]
         vector = [_vector(H2, p, 0.01 * p, f"vector chunk {p}") for p in range(1, 21)]
@@ -98,7 +98,7 @@ class TestFusedPipeline:
 
 
 class TestFusedSnippet:
-    """C5: which chunk of a multi-chunk page becomes the page's snippet.
+    """Which chunk of a multi-chunk page becomes the page's snippet.
 
     The snippet is not only what the user reads — it is the document string handed to the
     cross-encoder. Scoring a page on its least relevant passage misranks it *and* then
@@ -144,7 +144,7 @@ class TestFusedSnippet:
 
 class TestPartialRerank:
     def test_candidates_the_reranker_skipped_are_kept_in_fused_order(self, monkeypatch):
-        """C7: a partial rerank response must not shrink the search. The unscored hits
+        """A partial rerank response must not shrink the search. The unscored hits
         were real, with a real fused position, and they keep it behind the scored ones."""
         keyword = [_keyword(H1, 1, 9.0, "first"), _keyword(H2, 1, 8.0, "second"),
                    _keyword(H3, 1, 7.0, "third")]

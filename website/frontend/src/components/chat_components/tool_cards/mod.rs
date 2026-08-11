@@ -1,10 +1,10 @@
 //! Per-tool cards, dispatched from a registry keyed on the tool's name.
 //!
-//! `tool_disclosure.rs` used to be one `match` that grew a branch per tool, and that
-//! shape has a specific failure: the generic branch got the *newest* tools, which are the
-//! ones whose output is least readable as flat key/value rows. So the dispatch now lives
-//! here and the generic card is the deliberate fallback rather than the default — an MCP
-//! server that adds a tool tomorrow still renders, just plainly.
+//! Do not fold this back into one `match` in `tool_disclosure.rs` that grows a branch
+//! per tool. That shape has a specific failure: the generic branch collects the *newest*
+//! tools, which are the ones whose output is least readable as flat key/value rows. With
+//! the dispatch here the generic card is a deliberate fallback rather than the default —
+//! an MCP server that adds a tool tomorrow still renders, just plainly.
 //!
 //! ## The rule every card follows
 //!
@@ -22,8 +22,7 @@ use crate::components::chat_components::tool_disclosure::ToolCallDisclosure;
 /// Route one tool call to its card.
 ///
 /// `running` is true between `start_tool` and `end_tool`, when there is no output yet —
-/// the whole reason Phase 1 exists is that a card can now show the query while the search
-/// is still running.
+/// which is what lets a card show the query while the search is still running.
 #[component]
 pub fn ToolCard(
     tool_name: String,
@@ -462,7 +461,7 @@ pub fn CardShell(
 /// A mounted element we may want to move focus to later.
 pub type FocusHandle = Signal<Option<std::rc::Rc<MountedData>>>;
 
-/// Move focus to a previously mounted element, if it is still there.
+/// Move focus to an element mounted earlier, if it is still there.
 pub fn focus(handle: FocusHandle) {
     let Some(node) = handle.read().clone() else {
         return;
@@ -474,10 +473,10 @@ pub fn focus(handle: FocusHandle) {
 
 /// The chrome every tool-card popup shares: backdrop, pane, and the keyboard contract.
 ///
-/// Plan §7.7, and it is not decoration. Both popups cover the page and neither could be
-/// closed or navigated without a mouse: no `role`, so a screen reader announced nothing;
-/// no focus move, so Tab carried on through the transcript *behind* the overlay; and the
-/// search-detail one had no Escape at all.
+/// It is not decoration. A popup that covers the page cannot be closed or navigated
+/// without a mouse unless it carries all of this: a `role`, so a screen reader announces
+/// it; a focus move, so Tab does not carry on through the transcript *behind* the
+/// overlay; and an Escape handler.
 ///
 /// The trap is two focus guards rather than a DOM query for focusable descendants — there
 /// is no DOM to query from here. Tab off either end lands on a guard, which bounces focus

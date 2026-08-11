@@ -182,11 +182,11 @@ pub async fn admin_collection_processing(
 
     // P4 — NLP/NER. Denominator is the text pages extracted by P3.
     //
-    // These count `(file_hash, extracted_by, page_id)` triples, which used to be
-    // 32 MB segments and are pages now (Part 2 Phase 0): the same corpus reports a unit
-    // count orders of magnitude larger than it did before. The label below says "pages"
-    // for that reason, and `processing_eta_samples` history from before the change is
-    // not comparable — it is reset with the rest of the data.
+    // These count `(file_hash, extracted_by, page_id)` triples, and `page_id` is a real
+    // page number rather than a multi-megabyte segment ordinal, so the unit count is
+    // orders of magnitude larger than a segment count would be. The label below says
+    // "pages" for that reason. `processing_eta_samples` rows are only comparable across
+    // runs that share this unit.
     //
     // `nlp_processed` now carries `nlp_model` too, so a segment has one row per NER
     // provider. Counting the triple rather than the quad deliberately reads as "at
@@ -1097,7 +1097,7 @@ pub async fn admin_retry_failed_task(
 ///
 /// Reopens the plan that document belongs to, clears its error rows, and restarts
 /// `ExecutePlans`. The plan is the pipeline's unit of work, so its other documents are
-/// reprocessed too — see open question Q4.
+/// reprocessed too, which is not yet decided.
 pub async fn admin_retry_document(
     user: &CurrentUser,
     collectionname: String,

@@ -145,10 +145,10 @@ def record_llm_call(
         return
     # Values go in the request BODY as JSON, never interpolated into the SQL.
     #
-    # These used to be f-string quoting with a `.replace("'", "")` per field, and
-    # `username` — which arrives from an HTTP header — got no quoting at all. A quote in
-    # it either broke every telemetry insert for that user or appended SQL of the caller's
-    # choosing to a statement running as the ClickHouse admin. `FORMAT JSONEachRow` is what
+    # Never go back to f-string quoting with a `.replace("'", "")` per field: `username`
+    # arrives from an HTTP header, and a quote in it either breaks every telemetry insert
+    # for that user or appends SQL of the caller's choosing to a statement running as the
+    # ClickHouse admin. `FORMAT JSONEachRow` is what
     # `agent_common/artifacts.py` already uses and it has no quoting to get wrong.
     ok = 1 if stats.ok else 0
     row = {

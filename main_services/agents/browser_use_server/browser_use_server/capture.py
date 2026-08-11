@@ -1,20 +1,17 @@
 """Capture what the agent saw, on the two tools whose whole purpose is to look.
 
 **Captures are explicit.** `browser_take_screenshot` and `browser_snapshot` produce one;
-nothing else does. The earlier rule captured after every action that could change the
-screen, which meant a screenshot plus an MHTML serialisation after almost every click —
-23 rows and 12.5 MB written in a single day of demo use, most of them of pages nobody
-would ever open.
+nothing else does. Capturing after every action that could change the screen means a
+screenshot plus an MHTML serialisation after almost every click — tens of rows and over
+ten megabytes in a single day of demo use, most of them of pages nobody will ever open.
 
-That rule was defended as "the transcript must not depend on the model's judgement", and
-the trade is real: a model that forgets to screenshot the CAPTCHA it hit leaves a
-transcript where the failure is invisible. Q4/Q5 answered it anyway — no implicit
-captures — and the browser cards render an explicit snapshot well enough that asking the
-model to take one is a reasonable instruction rather than a hope. **Do not reintroduce
-implicit capture without changing that answer first.**
+The argument for implicit capture is real — "the transcript must not depend on the
+model's judgement", and a model that forgets to screenshot the CAPTCHA it hit leaves a
+transcript where the failure is invisible. Explicit still wins, because the browser cards
+render an explicit snapshot well enough that asking the model to take one is a reasonable
+instruction rather than a hope. **Do not reintroduce implicit capture.**
 
-Note what did *not* change: capture still happens **on the failure path** of those two
-tools. A screenshot of a cookie wall is the most valuable artifact this module produces,
+Capture does happen **on the failure path** of those two tools. A screenshot of a cookie wall is the most valuable artifact this module produces,
 and the tool "failing" is not a reason to discard the evidence of why.
 
 Two artefacts per capture:
@@ -34,15 +31,15 @@ driving. CDP allows a second client, and neither `Page.captureScreenshot` nor
 ## Cost control
 
 An MHTML serialisation of a real page is megabytes and takes hundreds of milliseconds,
-which is why capturing after every click was expensive. Capturing only when the model
-asked to look is the cost control now.
+which is what makes capturing after every click expensive. Capturing only when the model
+asks to look is the cost control.
 
-There used to be a second mechanism on top: a capture whose `(url, document.lastModified)`
-matched the previous one in the same chat reused the previous `body_key`. It went with the
-implicit captures — two explicit snapshots of the same page are a deliberate act, and
-silently pointing the second at the first one's bytes made two `chat_artifacts` rows share
-an object, which the retention sweeper then had to be careful about. (It still is, for the
-rows already written.)
+**Do not add body-key reuse on top of it.** Deduplicating a capture whose
+`(url, document.lastModified)` matches the previous one in the same chat looks free, but
+two explicit snapshots of the same page are a deliberate act, and pointing the second at
+the first one's bytes makes two `chat_artifacts` rows share an object — the retention
+sweeper then has to be careful never to delete one out from under the other. (It is
+careful, because transcripts contain rows written that way.)
 """
 
 from __future__ import annotations
@@ -84,7 +81,8 @@ SCREENSHOT_TIMEOUT = float(os.getenv("CAPTURE_SCREENSHOT_TIMEOUT_SECONDS", "8"))
 SNAPSHOT_TIMEOUT = float(os.getenv("CAPTURE_SNAPSHOT_TIMEOUT_SECONDS", "12"))
 
 #: The only two tools after which a capture is taken — the two whose entire purpose is to
-#: record what is on screen. See the module docstring: this list used to hold seventeen.
+#: record what is on screen. Keep it that size — see the module docstring for what a
+#: capture-after-every-tool list costs.
 CAPTURING_TOOLS = frozenset({"browser_take_screenshot", "browser_snapshot"})
 
 
@@ -165,10 +163,10 @@ async def _capture(
     except Exception as exc:  # noqa: BLE001
         log.warning("screenshot failed for %s: %s", url, exc)
 
-    # 2. Snapshot. Always taken — the change-detection reuse went with the implicit
-    #    captures (see the module docstring): an explicit snapshot of a page already
-    #    captured is a deliberate act, and quietly handing back the earlier bytes would
-    #    make the second capture a lie about when it was taken.
+    # 2. Snapshot. Always taken, with no change-detection reuse (see the module
+    #    docstring): an explicit snapshot of a page already captured is a deliberate act,
+    #    and quietly handing back the earlier bytes would make the second capture a lie
+    #    about when it was taken.
     body: tuple[str, bytes, str] | None = None
     status, detail = artifacts.STATUS_OK, ""
 

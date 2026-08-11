@@ -601,7 +601,7 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
     }
 }
 
-/// Crumbs rendered before the trail collapses into a `…` chip. Design §6.4.
+/// Crumbs rendered before the trail collapses into a `…` chip.
 pub const MAX_CRUMBS_SHOWN: usize = 3;
 
 const CRUMB_CHIP_STYLE: &str = "
@@ -1060,7 +1060,7 @@ fn ViewDetailsButton(
 
 
 
-// ---------- Plan 3: folder tree sidebar, in-folder search, Open in Search ----------
+// ---------- Folder tree sidebar, in-folder search, Open in Search ----------
 
 /// `[Search in folder…]` on the left, `Open in Search` on the right.
 #[component]

@@ -1,7 +1,7 @@
 # Hoover4 agents: MCP servers + research agents
 
 The tool servers the research agents connect to, and the agents themselves. These live
-in **main_services** (they moved out of `ai_services` in plan 1 part 1): they read
+in **main_services**, not the GPU tier: they read
 ClickHouse and Manticore directly and serve the website's chat, and the one-way
 dependency rule — `ai_services` never calls into `main_services` — is what makes the
 GPU tier optional.
@@ -19,13 +19,14 @@ from the repo root, no separate tier to start.
 | Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | Playwright's whole browser surface, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | Domain registration lookup |
 
-**`hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` were retired in plan 2 phase 2.** Three
-overlapping "search the web" tools is a choice a small model makes badly and
-inconsistently; their sources now live in
+**There is exactly one web-search tool, and it must stay that way.** Choosing between
+three overlapping "search the web" tools is something a small model does badly and
+inconsistently, so every open-web source lives behind `web_search` in
 [`metasearch_server/metasearch_server/sources.py`](metasearch_server/metasearch_server/sources.py)
-as `ddg_api`, `ddg_news` and `wikipedia`, selectable through `web_search(sources=[…])`.
-The two directories stay in git as history — nothing builds or deploys them, and their
-port keys (`mcp_ddg_port`, `mcp_wikipedia_port`) are gone from `hoover4.ini`.
+— `ddg_api`, `ddg_news`, `wikipedia` and the scrapers — selectable through
+`web_search(sources=[…])`. The `hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` directories
+are still in the tree but nothing builds or deploys them, and `hoover4.ini` has no
+`mcp_ddg_port` / `mcp_wikipedia_port`. Do not revive them.
 
 ### Shared code: `agent_common/`
 
@@ -71,11 +72,11 @@ authenticates the marker by: a browser tool's text is the fetched page, so a hos
 that plants the marker in its own body would otherwise get attacker-chosen titles and URLs
 rendered in the trusted "Archived page" chrome.
 
-The payload used to be a bare array and the card still reads that form for rows already in
-transcripts. It became an object to carry one more thing the card cannot work out for
-itself: `"failed": true` when the sidecar reported `is_error`. Playwright says a call
-failed in prose, and by the time the result reaches the website that prose is
-indistinguishable from the page it was trying to fetch — so the card rendered "opened
+The payload is an object, and the card also accepts a bare array because transcripts hold
+rows in that shape. The object carries one thing the card cannot work out for itself:
+`"failed": true` when the sidecar reported `is_error`. Playwright says a call failed in
+prose, and by the time the result reaches the website that prose is indistinguishable from
+the page it was trying to fetch — without the flag the card renders "opened
 http://clickhouse:8123" for a navigation that never happened. The flag is written only
 when true.
 
@@ -158,17 +159,15 @@ The ingestion pipeline writes extracted text to ClickHouse and search documents 
 Manticore shards. It **never wrote vectors**, so the whole Milvus tier — three containers
 (`milvus-standalone`, `milvus-etcd`, `milvus-minio`) holding ~39 GB of memory limit, an
 MCP server that would have searched an empty index, a `pymilvus` dependency in three
-packages, and the legacy `hoover4_rag` ingestion CLI — has been removed (Q1/Q3).
+packages, and the legacy `hoover4_rag` ingestion CLI — is gone.
 
 The `text_chunks_milvus`, `entity_hits_milvus` and `entity_hits_milvus_unique` ClickHouse
-tables are gone. They were created by two collection migrations and dropped again by a
-third for as long as the tree carried its migration history; the Part 2 re-collapse
-deleted all three files, and `test_no_migration_recreates_a_removed_table` in
-`tests/unit/test_migrations_parity.py` now keeps them from coming back.
+tables do not exist, and no migration creates them — the collapsed migration set carries
+no trace of them. `test_no_migration_recreates_a_removed_table` in
+`tests/unit/test_migrations_parity.py` keeps them from coming back.
 
-**Vector search is being rebuilt without Milvus.** The schema for it landed with the
-re-collapse — `text_chunks` and `text_chunk_vectors` are collection tables now — and the
-three pieces that make it work are:
+**Vector search runs without Milvus.** `text_chunks` and `text_chunk_vectors` are
+collection tables, and three pieces make it work:
 
 1. A **chunk-and-embed stage (`P5_chunk_embed`)**: `text_content` split per page into
    chunks and embedded, with the vectors written durably to `text_chunk_vectors`.
@@ -178,8 +177,6 @@ three pieces that make it work are:
    changes: `knn_dims` cannot be altered).
 3. Hybrid retrieval in the collection MCP server: BM25 from Manticore and vectors from the
    same engine, merged with RRF and then reranked by the cross-encoder.
-
-Steps 1–3 are Part 2 Phase 3. Until they land, the tables exist and are empty.
 
 **The stopped Milvus containers and their podman volumes are deliberately left on this
 host.** Reclaiming the disk is your call:
@@ -222,11 +219,12 @@ Two facts worth keeping:
 * **`page_text` is the only full-text field.** Everything else in the shard schema
   (`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
   and belongs in `WHERE`, not `MATCH()`.
-* **Wildcards used to fail silently.** Without infix indexing the star was dropped during
-  tokenisation and the query became an exact search for a truncated word — `doc*` returned
-  **7** where `document` returned 16. Not zero. Wrong.
+* **Wildcards fail silently without infix indexing.** The star is dropped during
+  tokenisation and the query becomes an exact search for a truncated word — `doc*` returns
+  **7** where `document` returns 16. Not zero. Wrong. This is why `min_infix_len` is set
+  on the shard DDLs, and why removing it breaks search without breaking any query.
 
-`sanitize_match_query` no longer strips operators. It passes them through and repairs only
+`sanitize_match_query` does not strip operators. It passes them through and repairs only
 the shapes that 500 (unbalanced quote or paren, NOT-only, bare `@word`, empty), reporting
 what it repaired in the response's `note` and returning Manticore's own error text in
 `error` so the model can correct itself. The escaping of `\` and `'` is unchanged and is
@@ -234,9 +232,9 @@ the injection barrier.
 
 ### Infix indexing: what it cost
 
-`min_infix_len='3'` was added to both `pages_table_ddl` and `meta_table_ddl` in
-`main_services/processing/database/manticore.py`, and both collections reindexed.
-Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
+`min_infix_len='3'` is set on both `pages_table_ddl` and `meta_table_ddl` in
+`main_services/processing/database/manticore.py`. Changing it requires a full reindex of
+every collection. Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
 
 | query | before | after |
 |---|---|---|

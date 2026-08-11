@@ -1,5 +1,5 @@
 # Serena MCP server for this repository: symbolic code navigation/editing for the
-# agent working on the checkout (see plans/1-part-1.md, Phase A). Dev tooling only —
+# agent working on the checkout. Dev tooling only —
 # it is never part of the deployed stack and binds to 127.0.0.1 via compose/serena.yaml.
 #
 # The image carries its own language tooling so the language servers never touch the

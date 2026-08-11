@@ -103,7 +103,7 @@ pub struct ServerSettingItem {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 6 — per-dataset OCR settings, the apply job, and dataset creation
+// Per-dataset OCR settings, the apply job, and dataset creation
 // ---------------------------------------------------------------------------
 
 /// One long-running admin job, as the dataset page's status strip renders it.

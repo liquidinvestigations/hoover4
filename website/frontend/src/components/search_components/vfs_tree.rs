@@ -58,18 +58,18 @@ pub const MAX_CHILDREN_PER_NODE: u64 = 500;
 pub const MAX_VISUAL_DEPTH: usize = 4;
 
 /// Ancestor rows rendered on the path to the focused node before the middle is elided.
-/// Design §6.3. `deep-stuff` is 42 levels; all 42 rendered is a scrollbar in which the
-/// thing you are looking at is off-screen.
+/// `deep-stuff` is 42 levels; all 42 rendered is a scrollbar in which the thing you are
+/// looking at is off-screen.
 pub const MAX_VISIBLE_ANCESTORS: usize = 8;
 
-/// How many of those always come from the TOP of the chain. The design's rule is "the
+/// How many of those always come from the TOP of the chain. The rule is "the
 /// dataset/collection root and the last folder always render", and the tail is where you
 /// are — but one top row is a single name with no context above the `N more levels…`
 /// row, and in a 42-level chain that name is as likely to be `1` as anything else. Two
 /// says where the chain STARTED as well as where it goes.
 pub const ANCESTORS_SHOWN_AT_TOP: usize = 2;
 
-/// Siblings rendered either side of the focused node in one level. Design §6.3.
+/// Siblings rendered either side of the focused node in one level.
 pub const MAX_SIBLINGS_EACH_SIDE: usize = 10;
 
 /// Pixels of indent per level, below the cap.

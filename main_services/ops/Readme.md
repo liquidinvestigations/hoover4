@@ -77,7 +77,7 @@ Expect roughly 3–5× the ledger's `text_bytes` in total storage for a dataset 
 native and one OCR variant, more with more variants — do not be surprised by the shard
 count.
 
-KNN query shape, verified live against Manticore 14.1.0 (2026-08-07): attribute
+KNN query shape, verified live against Manticore 14.1.0: attribute
 filters in `WHERE` are applied **before** k selection (no over-fetch needed), and
 `knn(embedding, K, (...))` bounds nothing by itself — the working shape is
 `WHERE knn(embedding, K, (...)) ORDER BY <knn_dist alias> ASC LIMIT K`.
@@ -129,7 +129,8 @@ The docker containers start up the following services:
 The website rate limiter (`website/backend/src/api/rate_limit.rs`) defaults every knob
 in Rust, so the stack runs unconfigured. These are the same names and values, ready to
 paste into `docker/docker-compose.yaml` for the integrator to tune — **the block is not
-in the compose file yet** (tracked in `plans/3-auth-and-ai/open-questions.md`).
+in the compose file**, deliberately, so the Rust defaults stay the single source of truth
+until someone needs to override them.
 
 ```yaml
     environment:
@@ -184,7 +185,7 @@ docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 \
 
 Drive a browser across every page as fast as possible for 5 minutes, read the count,
 and set `HOOVER4_RATE_API_PER_MINUTE` to 10x that rate (count / 5 * 10). The baseline
-above was measured this way on 2026-08-05 (scripted flood, 1380 calls / 5 min).
+above was measured this way (scripted flood, 1380 calls / 5 min).
 
 ## How the website is served: `dx serve` vs a release build
 

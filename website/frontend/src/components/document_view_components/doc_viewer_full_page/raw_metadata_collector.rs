@@ -295,7 +295,7 @@ async fn get_raw_metadata_tables(
 }
 
 
-// ---------- Curated provenance sections (plan 3 §12-b / §12-d) ----------
+// ---------- Curated provenance sections ----------
 
 const SECTION_STYLE: &str = "
     border: 1px solid black;

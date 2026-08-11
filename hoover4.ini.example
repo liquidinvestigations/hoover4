@@ -45,8 +45,8 @@ host               = 127.0.0.1
 bind_ip            = 0.0.0.0
 
 # ---- local LLM: SUPPORTED BUT PARKED -------------------------------------------
-# The overlay, the image pin and the docs stay, but nothing in Part 1 or Part 2
-# starts vLLM — the NVIDIA NIM cloud provider carries the live tests instead.
+# The overlay, the image pin and the docs stay, but nothing starts vLLM — the
+# NVIDIA NIM cloud provider carries the live tests instead.
 llm_selfhosted     = false
 vllm_port          = 21960
 vllm_image         = vllm/vllm-openai:v0.17.1
@@ -84,7 +84,7 @@ easyocr_port       = 21962
 easyocr_languages  = en
 
 [main_services]
-# ---- which side of each capability the pipeline prefers (Part 2 consumers) ------
+# ---- which side of each capability the pipeline prefers -------------------------
 ner_provider          = gpu        ; gpu | spacy | both
 embeddings_provider   = gpu        ; gpu | cpu | none
 pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
@@ -107,7 +107,7 @@ gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipel
 gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
 
 # ---- dev tooling ----------------------------------------------------------------
-; Serena MCP server for the host-side coding agent (Phase A). Dev tool only, never
+; Serena MCP server for the host-side coding agent. Dev tool only, never
 ; part of the deployed stack; published on 127.0.0.1 only. Resets never touch it.
 serena_enabled     = true
 serena_port        = 21940
@@ -145,10 +145,10 @@ cassandra_port            = 21912
 elasticsearch_port        = 21913
 
 pdf_to_html_port          = 21920
-tesseract_cpu_port        = 21921   ; Part 2
-ocr_pdf_port              = 21922   ; Part 2
-ner_spacy_port            = 21923   ; Part 2
-embeddings_cpu_port       = 21924   ; Part 2
+tesseract_cpu_port        = 21921   ; CPU OCR twin
+ocr_pdf_port              = 21922   ; searchable-PDF builder
+ner_spacy_port            = 21923   ; CPU NER twin
+embeddings_cpu_port       = 21924   ; CPU embeddings twin
 
 mcp_collections_port      = 21930
 mcp_metasearch_port       = 21931
@@ -168,7 +168,7 @@ minio_version          = RELEASE.2025-07-23T15-54-02Z
 # Repeatable by name, several active at once. main_services talks to the selfhosted
 # one when llm_selfhosted = true, otherwise the first enabled cloud provider.
 # api_key_file: host path to a file containing ONLY the key (chmod 600, outside the
-# repo). model: empty keeps the provider's default (Part 2's registry discovers it).
+# repo). model: empty keeps the provider's default (the model registry discovers it).
 
 [llm_provider.selfhosted]
 enabled      = false
@@ -177,7 +177,7 @@ model        =           ; empty = vllm_served_name
 api_key_file =
 
 [llm_provider.nvidia]
-; The only LLM provider in Part 2's live tests — vLLM is parked.
+; The only LLM provider the live tests exercise — vLLM is parked.
 enabled      = true
 base_url     = https://integrate.api.nvidia.com/v1
 model        = nvidia/nemotron-3-super-120b-a12b

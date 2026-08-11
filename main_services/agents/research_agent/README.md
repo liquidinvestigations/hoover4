@@ -142,7 +142,7 @@ runs the same model **with no tools bound** — a model that cannot call a tool 
 watch both. Omitting it is why the forced answer first came back as an empty string with a
 cheerful HTTP 200.
 
-## `LLM_STREAMING` and `disable_streaming` — the Q12 finding
+## `LLM_STREAMING` and `disable_streaming`
 
 **Streaming is back on** (`LLM_STREAMING=true`), and the workaround is retained.
 
@@ -150,7 +150,7 @@ Under **vLLM 0.11**, streamed tool-call deltas arrived with the function name bu
 `arguments` absent. langchain turned those into `tool_call_chunk`s with `args=None`, which
 never accumulated into the final `AIMessage`. `message.tool_calls` came back empty,
 `should_continue` routed straight to `END`, and the agent produced a confident answer having
-silently made **zero** tool calls. That is Q12, and it presented as "the model is bad".
+silently made **zero** tool calls. It presents as "the model is bad".
 
 `disable_streaming` is the switch that actually matters, not `streaming`: the latter only
 affects `invoke`, while langgraph drives the model through `astream_events`, which calls

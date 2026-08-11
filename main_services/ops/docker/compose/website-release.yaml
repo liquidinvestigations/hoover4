@@ -3,7 +3,7 @@
 # Enabled by `website_release_mode = true` in hoover4.ini. Off by default: `dx serve` is
 # the development loop and losing it to gain a demo would be a bad trade.
 #
-# Why this exists (plan 2 B4). `dx serve` is a *development* server and it behaves like
+# Why this exists. `dx serve` is a *development* server and it behaves like
 # one in front of visitors:
 #
 #   * it bakes "Your app is being rebuilt." into the served page — every page, every

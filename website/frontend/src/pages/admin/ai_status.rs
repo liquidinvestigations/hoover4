@@ -1,4 +1,4 @@
-//! Admin page: `/admin/ai_status` — the silent-fallback surface (plan 2 §9.4).
+//! Admin page: `/admin/ai_status` — the silent-fallback surface.
 
 use common::llm_types::AdminAiStatus;
 use dioxus::prelude::*;

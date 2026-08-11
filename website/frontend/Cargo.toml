@@ -15,9 +15,9 @@ dioxus-free-icons={version="0.10.0", features=[
     "material-design-icons-navigation",
     "material-design-icons-editor",
     "material-design-icons-toggle",
-    # Plan 3: MdFilterList / MdSort / MdArchive live in `content`, MdStorage in
-    # `device`. Pure-Rust SVG data, no runtime cost — but a missing feature is a
-    # compile error naming only the icon, which reads like a typo.
+    # MdFilterList / MdSort / MdArchive live in `content`, MdStorage in `device`.
+    # Pure-Rust SVG data, no runtime cost — but a missing feature is a compile error
+    # naming only the icon, which reads like a typo.
     "material-design-icons-content",
     "material-design-icons-device",
     "octicons",

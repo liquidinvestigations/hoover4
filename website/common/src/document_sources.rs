@@ -53,7 +53,7 @@ impl TextSource {
 
     /// The label shown in the source selector, e.g. `OCR · Tesseract · eng+ron`.
     ///
-    /// **The only place an `extracted_by` string is turned into display text.** The D4
+    /// **The only place an `extracted_by` string is turned into display text.** The OCR
     /// fan-out turns 3–4 sources into 6–10, and parsing this string in each component
     /// that renders one is how they start disagreeing about what a source is called.
     pub fn label(&self) -> String {
@@ -259,7 +259,7 @@ pub enum DocumentSourceItem {
     Audio(DocumentAudioSourceItem),
     Text(DocumentTextSourceItem),
     FileLocations,
-    /// No longer offered as a preview source — the viewer's Metadata tab is the metadata
+    /// Not offered as a preview source — the viewer's Metadata tab is the metadata
     /// surface. Kept because it is part of the URL-encoded viewer state and dropping the
     /// variant would turn every bookmark carrying it into a parse failure.
     Metadata,

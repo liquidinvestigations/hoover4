@@ -7,7 +7,7 @@
 #
 #   compose/vllm.yaml       [ai_services] llm_selfhosted   (SUPPORTED BUT PARKED)
 #   compose/ai-server.yaml  [ai_services] ai_server_enabled (GPU NER + embeddings)
-#   compose/easyocr.yaml    [ai_services] easyocr_enabled   (server lands in Part 2)
+#   compose/easyocr.yaml    [ai_services] easyocr_enabled   (no server image in tree)
 #
 # SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
 # NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only

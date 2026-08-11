@@ -1,7 +1,7 @@
 """Tests for the pure shard-packing algorithm.
 
 The packer decides which Manticore shard each document of a plan goes to; the
-cases below are the ones called out in plan part 6 §7.
+cases below are the ones where a naive packer gets it wrong.
 """
 
 import pytest

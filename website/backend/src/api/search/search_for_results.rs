@@ -344,7 +344,7 @@ mod tests {
 
     /// Golden string for the full per-shard results query — the largest interpolated
     /// SQL string in the repo. In particular this locks the `ORDER BY` that makes
-    /// pagination a stable prefix (B3): removing it must fail loudly here. It also
+    /// pagination a stable prefix: removing it must fail loudly here. It also
     /// locks the SELECT list, which the cross-shard merge depends on: the sort key must
     /// be selected or the merge has nothing to compare.
     #[test]

@@ -1,10 +1,10 @@
-"""Integration test: two datasets in one collection sharing the same content (I1).
+"""Integration test: two datasets in one collection sharing the same content.
 
 Blobs are content-addressed, so ingesting the same path twice under two dataset
 names puts the same file_hash into two datasets of one collection. Document
-identity for indexing is the ``(collection_dataset, file_hash)`` PAIR (B2
+identity for indexing is the ``(collection_dataset, file_hash)`` PAIR (
 contract): each pair lives in exactly one shard, and the shared content is
-indexed once per dataset. This is the test that pins the B2 invariant.
+indexed once per dataset. This is the test that pins that invariant.
 
 Requires the docker stack; run inside the worker container:
 ``docker exec -it hoover4-worker uv run pytest tests/integration --integration -q``

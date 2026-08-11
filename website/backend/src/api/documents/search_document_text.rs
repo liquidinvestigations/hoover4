@@ -106,10 +106,9 @@ pub async fn search_document_text_for_hits(
 /// Every matching `(extracted_by, page_id)` of one document, in one query.
 ///
 /// The per-page variant above exists for the viewer, which asks about the one page it is
-/// showing. Anything that wants the whole document must come through here: since
-/// `page_id` became a real page number (Part 2 Phase 0), a document has hundreds of pages
-/// where it used to have one 32 MB segment, and looping the per-page query over
-/// `min_page..=max_page` turns one round trip into one per page.
+/// showing. Anything that wants the whole document must come through here: `page_id` is
+/// a real page number, so a document has hundreds of pages and looping the per-page query
+/// over `min_page..=max_page` turns one round trip into one per page.
 pub async fn search_document_text_all_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,

@@ -1,11 +1,11 @@
 """Session router: one :class:`ChatBrowser` per chat, created lazily, reaped on idle.
 
-The lifetime rules (plan D8) and why each number is what it is:
+The lifetime rules, and why each number is what it is:
 
 * ``BROWSER_MAX_CONTEXTS`` (8) — a whole Chromium per chat costs a few hundred MB, so this
   is a memory ceiling, not a politeness limit. Past it the least recently used chat is
   evicted: both processes die and the profile directory goes. The evicted chat's next call
-  transparently starts a fresh browser — its cookies and tabs are gone, which D7 accepts.
+  transparently starts a fresh browser — its cookies and tabs are gone, which is accepted.
 * ``BROWSER_IDLE_SECONDS`` (900) — a conversation the user has walked away from should not
   hold a browser. Fifteen minutes is long enough to survive reading an answer.
 * ``BROWSER_MAX_TABS_PER_CHAT`` (6) — a model that opens a tab per search result would
@@ -51,11 +51,11 @@ class Router:
         self._chats: "OrderedDict[str, ChatBrowser]" = OrderedDict()
         # Guards the map, not the browsers. Per-chat serialisation is each ChatBrowser's
         # own lock; a global lock here would make eight chats queue behind each other,
-        # which is exactly what Phase 3 removed.
+        # defeating the whole point of a browser per chat.
         #
-        # **Never hold this across a spawn, a stop or a sidecar restart.** It was held
+        # **Never hold this across a spawn, a stop or a sidecar restart.** Holding it
         # across `chat_browser.start()`, which is a cold Chromium launch plus a Node
-        # sidecar — 45 to 90 seconds — so one chat's first browse blocked every other
+        # sidecar — 45 to 90 seconds — makes one chat's first browse block every other
         # chat's map lookup for that whole time. The cap says eight contexts; the lock
         # made it behave like one.
         self._lock = asyncio.Lock()
@@ -105,8 +105,8 @@ class Router:
 
         The map lock is held only for map operations — never across a spawn, an eviction
         stop, or a sidecar restart. Callers racing for the *same* chat still share one
-        spawn (see `_spawning`); callers for different chats no longer wait on each other
-        at all, which is what the eight-context cap was always supposed to mean.
+        spawn (see `_spawning`); callers for different chats never wait on each other
+        at all, which is what the eight-context cap is supposed to mean.
         """
         key = (session_id or "").strip() or ANONYMOUS
 

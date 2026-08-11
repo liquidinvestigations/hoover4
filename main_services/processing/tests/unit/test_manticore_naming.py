@@ -1,4 +1,4 @@
-"""Tests for Manticore shard table naming (plan overview §3 canonical names)."""
+"""Tests for Manticore shard table naming: the canonical shard-table names."""
 
 import pytest
 

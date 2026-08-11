@@ -2,8 +2,8 @@
 //!
 //! These two are one file because they are one mechanism. The form disables itself while
 //! an apply job runs; the strip is what makes that job visible. A form that hides its own
-//! lock is a form that locks forever, which is the specific failure plan 2 §10.3 warns
-//! about — so the strip polls, reports staleness, and shows the error when a job fails.
+//! lock is a form that locks forever — so the strip polls, reports staleness, and shows
+//! the error when a job fails.
 //!
 //! Neither of them is the actual guard. `admin_apply_ocr_languages` refuses a second
 //! dispatch server-side by reading the same `dataset_jobs` row, because two admins in two

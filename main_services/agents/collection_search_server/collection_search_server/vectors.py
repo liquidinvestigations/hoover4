@@ -7,13 +7,12 @@ and its query-side prefix convention (`agent_common.embeddings.embedding_input`)
 never the configured ini value.
 
 Two Manticore behaviours below were verified live against the running daemon
-(14.1.0, 2026-08-07), not assumed from the docs:
+(14.1.0), not assumed from the docs:
 
 * **Attribute filters pre-apply before k selection.** `WHERE grp='b' AND knn(v, 2, …)`
   returned the two nearest `b` rows even though the global top-2 were `a` rows. So a
-  filtered KNN needs no over-fetch — the recall trap the plan warns about (filters
-  applied AFTER k, returning near-empty sets from a healthy index) does not exist in
-  this version. Collection search barely filters (the shard is already per-collection);
+  filtered KNN needs no over-fetch — the usual recall trap (filters applied AFTER k,
+  returning near-empty sets from a healthy index) does not exist in this version. Collection search barely filters (the shard is already per-collection);
   what it relies on is the same mechanism.
 * **`knn(v, k, …)` bounds nothing by itself** — without a LIMIT the query matched every
   row. The working shape is `WHERE knn(embedding, K, (…)) ORDER BY <alias> ASC LIMIT K`,

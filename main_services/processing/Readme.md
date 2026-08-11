@@ -46,9 +46,9 @@ Usage:
 - [database/Readme.md](database/Readme.md)
 - [tasks/Readme.md](tasks/Readme.md)
 
-## What plan 3 added to the pipeline
+## Dates, email addresses and the folder tree
 
-**P0 (`scan_disk`)** now records `vfs_files.mtime` alongside a `mtime_source` that says
+**P0 (`scan_disk`)** records `vfs_files.mtime` alongside a `mtime_source` that says
 how far to trust it. The number alone means nothing: the same field carries "the archive
 recorded this in 2013" in one row and "the worker wrote this temp file a second ago" in the
 next.
@@ -60,14 +60,14 @@ next.
 | `filesystem` | top level — the clone/save time of the corpus | no |
 | `''` | a container we do not recognise (extracted PDF images, video frames) | no |
 
-**P3 (`parse_files`)** gained `document_dates.py`: a pure `resolve_dates` plus the
+**P3 (`parse_files`)** owns `document_dates.py`: a pure `resolve_dates` plus the
 `resolve_document_dates` activity that runs between parsing and indexing. It COLLECTS
 every confirmed date rather than picking a best one, applies a `[1800-01-01, now + 1y]`
 sanity window (outside → dropped and logged, never clamped), and records the metadata key
 each date came from. `parse_email` writes structured `email_addresses` rows and sets
 `date_sent_known` so the epoch stops meaning two things.
 
-**P6 (`index_data`)** gained:
+**P6 (`index_data`)** runs:
 
 * `build_vfs_nodes` — materialises the dataset's tree into ClickHouse `vfs_nodes`.
   Dataset-scoped and idempotent, because a plan holds only a slice and a tree assembled

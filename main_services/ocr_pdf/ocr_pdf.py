@@ -24,7 +24,7 @@ its own:
 The derived-PDF trap
 --------------------
 The output is a new PDF. If the ingest walker could see it, it would be ingested, OCR'd,
-and produce another PDF, forever — the most expensive possible bug (plan 2 §11.1). Three
+and produce another PDF, forever — the most expensive possible bug. Three
 guards, of which this file owns the first two:
 
 1. `dest_key` **must** start with ``derived/``. A request that asks for anything else is
@@ -391,7 +391,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
 
         blob_hash = hashlib.sha3_256(out_bytes).hexdigest()
         # Bytes before the row, always: an object with no row is found by a prefix scan,
-        # a row with no object is a broken link nothing can repair (plan 2 §11.1). The
+        # a row with no object is a broken link nothing can repair. The
         # `pdf_ocr_results` row is the caller's to write, after this returns.
         client.put_object(
             MINIO_BUCKET,

@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 
 #: Per-kind floor and ceiling, applied after reranking. See the module docstring.
 #:
-#: The floor is **3**, not 10: Q14 settled the result policy at "go down to 15 results,
+#: The floor is **3**, not 10. The result policy is "go down to 15 results,
 #: always use the re-ranker", and a floor of 10 across three kinds reserves 30 slots, which
 #: silently overrides any smaller cap the caller asked for. Three is enough for a kind to
 #: be visibly represented and small enough that the cap means what it says.
@@ -55,7 +55,7 @@ MAX_PER_KIND = int(os.getenv("METASEARCH_MAX_PER_KIND", "15"))
 #: The cross-encoder returns a raw logit, so 0 is its own decision boundary: at or above,
 #: the model judged the document more relevant to the query than not. Anything below is a
 #: result the floor would be *inventing* representation for. Overridable because the
-#: number is only meaningful for the model named in Q7; a different reranker needs a
+#: number is only meaningful for the reranker model in use; a different one needs a
 #: different threshold, and a wrong one here quietly empties a kind.
 RESERVE_MIN_SCORE = float(os.getenv("METASEARCH_RESERVE_MIN_SCORE", "0"))
 

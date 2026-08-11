@@ -2,13 +2,13 @@
 
 GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
 (`hoover4-vllm`, **supported but parked**), and GPU EasyOCR (`hoover4-easyocr-gpu`,
-the server image lands in plan 1 part 2).
+**overlay only — no server image in the tree**).
 
-> **Standalone (plan 1 part 1).** This tier is fully optional and has **no
+> **Standalone.** This tier is fully optional and has **no
 > dependencies on anything else**: no external network, nothing here calls into
-> `main_services`. The MCP servers and research agents that used to live here moved to
-> [`main_services/agents/`](../main_services/agents/README.md) — they read ClickHouse
-> and Manticore directly, so they belong to the always-on stack. `main_services`
+> `main_services`. The MCP servers and research agents live in
+> [`main_services/agents/`](../main_services/agents/README.md) instead — they read
+> ClickHouse and Manticore directly, so they belong to the always-on stack. `main_services`
 > reaches this tier over the published ports only, using the `[ai_services] host` and
 > `*_port` values from an **identical copy** of `hoover4.ini` (copied by hand to both
 > hosts).
@@ -26,8 +26,8 @@ Every service is an optional overlay under `compose/`, selected by `hoover4.ini`
 | Overlay | Service | Port (ini key) | Enabled by | Purpose |
 |---|---|---|---|---|
 | `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. **Parked**: nothing in plan 1 starts it; the NVIDIA NIM cloud provider carries the live tests. |
-| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP. The server (`easyocr_server/`) is built in plan 1 part 2 — enabling the overlay before then fails at build time, deliberately. |
+| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. **Parked**: nothing starts it; the NVIDIA NIM cloud provider carries the live tests. |
+| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP. The server directory (`easyocr_server/`) does not exist, so enabling this overlay fails at build time — deliberately, rather than starting a container that cannot serve. The CPU twin `main_services/ocr_tesseract` carries OCR today. |
 
 ## Deploy
 
@@ -155,7 +155,7 @@ Qwen3.5 emits XML-style blocks:
 ```
 
 `hermes` does not match that, so every tool call arrives as ordinary assistant text, the
-agent makes **zero** tool calls, and answers from nothing — the same symptom as Q12,
+agent makes **zero** tool calls, and answers from nothing — the same symptom as the streaming interop bug below,
 from a different cause. The right parser is **`qwen3_xml`** (note the underscore: the
 registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
 spelling is a startup crash-loop rather than a clear error).
@@ -186,7 +186,7 @@ infinite loops rather than as errors:
 
 ### Token streaming is back on
 
-`LLM_STREAMING=true` is now the default. Q12 was a vLLM-0.11/langchain interop bug where
+`LLM_STREAMING=true` is the default. The hazard it guards against is a vLLM/langchain interop bug where
 streamed tool-call deltas arrived with `arguments` absent and never accumulated, so the
 agent silently made zero tool calls. Re-tested on 0.17.1 with a real agent run: **4 tool
 calls and a correctly cited answer with streaming on.** The `disable_streaming` workaround

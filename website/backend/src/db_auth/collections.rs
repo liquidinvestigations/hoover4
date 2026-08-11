@@ -13,8 +13,8 @@ pub struct CollectionRow {
     pub updated_at: time::OffsetDateTime,
     pub is_deleted: u8,
     /// 0 = restricted (readable only through a group grant), 1 = public (readable by
-    /// every authenticated user). Declared in `00005_collections.sql` — it was its own
-    /// `ALTER` migration until the Part 2 Phase 0 re-collapse folded it in.
+    /// every authenticated user). Declared in `00005_collections.sql`, not in an `ALTER`
+    /// of its own — the migration set is collapsed.
     pub is_public: u8,
 }
 
@@ -27,7 +27,7 @@ const COLLECTION_SELECT: &str =
 /// A dataset's collection membership.
 ///
 /// Since the database split there is no `collection_datasets` table: the mapping is a
-/// column on `dataset` (decision D1 — a dataset belongs to exactly one collection, fixed
+/// column on `dataset` (a dataset belongs to exactly one collection, fixed
 /// at creation), so this is a projection of the registry row.
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 pub struct CollectionDatasetRow {

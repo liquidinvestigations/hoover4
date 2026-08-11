@@ -224,7 +224,7 @@ pub async fn send_message(
     }
 
     // Resolve the model before allocating a seq: a forged id must be refused, not merely
-    // absent from the dropdown (plan 2 §9.3).
+    // absent from the dropdown.
     let llm_model = crate::api::admin::llm::resolve_chat_model(
         requested_model.as_deref(),
         user.is_guest,
@@ -663,7 +663,7 @@ struct TurnContext {
     message: String,
     allowed: Vec<String>,
     options: ChatOptions,
-    /// Resolved, allowlist-checked model id for this turn (plan 2 §9.3).
+    /// Resolved, allowlist-checked model id for this turn.
     llm_model: String,
     /// The transcript as it stood *before* the user row — what the agent is told.
     history: Vec<common::chat_types::ChatMessageItem>,
@@ -1349,7 +1349,7 @@ pub async fn start_research_task(
     }
 
     // No "Research task started" placeholder in `chat_messages`: the Temporal activity
-    // streams its progress into chat_message_stream (Q11), so the turn renders live
+    // streams its progress into chat_message_stream, so the turn renders live
     // exactly like an inline one and the workflow writes the finished rows at `seq`.
     //
     // An empty *stream* row does go in, though, and it is load-bearing rather than

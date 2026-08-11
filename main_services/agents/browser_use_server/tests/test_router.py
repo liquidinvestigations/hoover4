@@ -70,8 +70,8 @@ class TestPerChatIsolation:
 
 class TestEviction:
     def test_the_least_recently_used_chat_is_evicted_at_the_cap(self, fake_browsers, monkeypatch):
-        """Plan §7.10 check 2: the ninth chat evicts the first, and the first's next call
-        transparently gets a fresh browser."""
+        """At the cap, the newest chat evicts the least recently used one, and the evicted
+        chat's next call transparently gets a fresh browser rather than an error."""
         router, started, stopped = fake_browsers
         monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 3)
 
@@ -156,9 +156,8 @@ class TestClose:
 
 class TestSidecarRecovery:
     def test_a_dead_sidecar_is_restarted_on_the_next_call(self, fake_browsers, monkeypatch):
-        """Plan §7.10 check 11. Restarting here rather than failing means the tool call
-        the user is waiting on succeeds, instead of failing once to teach us the process
-        was gone."""
+        """Restarting here rather than failing means the tool call the user is waiting on
+        succeeds, instead of failing once just to discover the process was gone."""
         router, _, _ = fake_browsers
         restarts = []
 
@@ -179,7 +178,7 @@ class TestSidecarRecovery:
 
 
 class TestSpawnDoesNotBlockOtherChats:
-    """D3: the map lock must not be held across a spawn.
+    """The map lock must not be held across a spawn.
 
     A cold Chromium plus its Node sidecar takes 45–90 seconds. Holding the router's single
     lock for that long made every other chat's tool call queue behind one chat's first

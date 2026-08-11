@@ -99,7 +99,8 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         ner_results.extend(batch_results)
         served_models.extend([batch_model] * len(batch))
         # In-loop heartbeat: evidence of forward progress, not merely of a live
-        # thread. This is the loop that stalled for 26 minutes on 2026-08-06.
+        # thread. This is the loop whose stalls are measured in tens of minutes
+        # when only start_to_close_timeout guards it.
         heartbeat.beat(f"NER {len(ner_results)}/{len(cleaned_texts)} texts")
         log.info(
             f"{collection_dataset} (plan {plan_hash[:8]}): "

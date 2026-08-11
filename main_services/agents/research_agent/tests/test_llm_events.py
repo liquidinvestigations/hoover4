@@ -20,10 +20,10 @@ def test_provider_from_base_url_derives_label(monkeypatch):
 def test_the_row_goes_in_the_body_not_in_the_sql(monkeypatch):
     """A username with a quote in it must not be able to end the INSERT statement.
 
-    `username` arrives from an HTTP header. It used to be interpolated into a `VALUES`
-    clause with no quoting at all (session_id, model and provider got a
-    `.replace("'", "")`, which is not an escaper either), on a statement running as the
-    ClickHouse admin. Everything now travels as JSON in the request body.
+    `username` arrives from an HTTP header, and the INSERT runs as the ClickHouse admin.
+    Interpolating it into a `VALUES` clause is the failure this guards against, including
+    the near-miss version where a `.replace("'", "")` stands in for an escaper. Everything
+    travels as JSON in the request body.
     """
     import json
 

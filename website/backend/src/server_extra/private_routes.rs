@@ -6,8 +6,8 @@
 //! this" attached to a response whose whole job is deciding that not any origin may. A
 //! browser will not hand a `*` response to a *credentialed* cross-origin read, so it was
 //! never a live hole — it is a permission statement contradicting the code beneath it, on
-//! the two routes where an audit of the headers must not be told the wrong thing. Plan
-//! §7.4 says same-origin only, so they say so.
+//! the two routes where an audit of the headers must not be told the wrong thing. These
+//! routes are same-origin only, so they say so.
 //!
 //! **Where the header actually came from, measured.** The application emits no CORS
 //! headers at all: probed directly, the server binary answers `/_chat_artifact/…` with no

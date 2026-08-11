@@ -42,7 +42,7 @@ under two different `entity_type` values depending on which provider served it,
 and the union above renders them as two facets — which reads as duplicate data
 rather than as one entity found twice.
 
-**Fallback is verified, not assumed** (`plans/1-part-3.md` §5.1): stopping
+**Fallback is verified, not assumed.** Stopping
 `hoover4-ai-server` makes NER fail over to `ner-spacy-xx` in ~0.02 s, the breaker
 opens for 60 s after three consecutive connect failures, and work returns to
 `ner-gpu-xlmr` once the host is back.

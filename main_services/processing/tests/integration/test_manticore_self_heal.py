@@ -1,8 +1,8 @@
-"""Integration test: manticore_migrate self-heals a missing shard table (I6).
+"""Integration test: manticore_migrate self-heals a missing shard table.
 
 The documented recovery from a Manticore volume loss is: migrate recreates every
 shard table recorded in a collection's ``manticore_shards`` ledger (EMPTY — the
-documents come back via ``main.py reindex-collection``, covered by I5). This
+documents come back via ``main.py reindex-collection``, covered by its own test). This
 drops one pages table, runs the migrate, and asserts the table is back and
 empty while its sibling meta table is untouched.
 

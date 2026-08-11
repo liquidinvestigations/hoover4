@@ -1,14 +1,15 @@
 # Optional overlay: GPU EasyOCR server (enabled via [ai_services] easyocr_enabled).
 #
 # The overlay renders and is wired end-to-end, but the SERVER itself
-# (ai_services/easyocr_server/) is Part 2 of plan 1 — until it exists, enabling this
-# overlay fails at build time. That is deliberate: the flag already means what the
-# target architecture says it means.
+# (ai_services/easyocr_server/) is not in the tree, so enabling this overlay fails at
+# build time. That is deliberate: the flag means what the target architecture says it
+# means, and failing to build beats starting a container that cannot serve.
 services:
   hoover4-easyocr-gpu:
     build:
-      # Narrow context on purpose — never widen to ai_services/ or the repo root
-      # (testdata/ and plans/tmp/ would silently bloat every build).
+      # Narrow context on purpose — never widen to ai_services/ or the repo root,
+      # which hold large untracked scratch directories that would silently bloat
+      # every build.
       context: ${HOOVER4_REPO_ROOT}/ai_services/easyocr_server
       dockerfile: Dockerfile
     image: hoover4-easyocr:local

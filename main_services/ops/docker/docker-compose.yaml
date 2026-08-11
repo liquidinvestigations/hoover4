@@ -348,7 +348,7 @@ services:
       # The full research agent, for the P_agent ResearchTask workflow. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
       # Provider switches and GPU-failure behaviour, rendered from hoover4.ini by
-      # deploy.py. Consumed by the pipeline starting in Part 2.
+      # deploy.py. Read by the pipeline worker.
       - "NER_PROVIDER=${NER_PROVIDER:-gpu}"
       - "EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-gpu}"
       # Embeddings + reranker base URL (one server serves both /v1/embeddings and
@@ -358,7 +358,7 @@ services:
       - "RERANK_URL=${RERANK_URL:-}"
       - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
       # Stack-wide language DEFAULTS. A dataset inherits these until the admin page
-      # writes a dataset_settings row for it, after which that row wins (D6).
+      # writes a dataset_settings row for it, after which that row wins.
       - "TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}"
       - "EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}"
       # Same root the website's creation form lists, mounted from the same host dir.
@@ -479,7 +479,7 @@ services:
       # provider key configured the mount source is /dev/null and the code falls
       # back to its local default.
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
-      # Phase 5 `/admin/ai_status` probes. Same URLs the worker uses; without them the
+      # `/admin/ai_status` probes. Same URLs the worker uses; without them the
       # page falls back to compose DNS names that are not on this container's network
       # (the GPU tier publishes via host.containers.internal).
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}

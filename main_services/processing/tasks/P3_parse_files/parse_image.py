@@ -68,7 +68,7 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
 
     meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
     width, height = _first_stream_resolution(meta)
-    # TODO(plan 2, part 1): if ffprobe reports a 0x0 resolution here the image
+    # TODO: if ffprobe reports a 0x0 resolution here the image
     # may be undecodable; consider routing it through
     # tasks/P3_parse_files/image_loader.load_image_rgb like parse_ocr.py does.
 

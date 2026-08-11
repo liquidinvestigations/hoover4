@@ -1,4 +1,4 @@
-//! `/admin/ai_status` — configured vs serving, circuits, dims, traffic (plan 2 §9.4 / Q10).
+//! `/admin/ai_status` — configured vs serving, circuits, dims, traffic.
 
 use std::time::Duration;
 
@@ -432,7 +432,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
 async fn list_shard_dim_checks(probe_dim: u32) -> Vec<AiShardDimCheck> {
     // `manticore_shards` tracks the text shards (`testdata_1`), not the `_vectors`
     // companions. Derive the vector table name and ask Manticore for the live DDL —
-    // knn_dims is fixed at CREATE and is what Phase 4 refuses on.
+    // knn_dims is fixed at CREATE and is what the index builder refuses on.
     let client = get_global_client();
     #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
     struct ColRow {

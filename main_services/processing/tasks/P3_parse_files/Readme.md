@@ -22,9 +22,7 @@ This stage parses downloaded files by type and writes structured content and met
 ## How text is stored — `page_id` is a page number
 
 `text_content.page_id` is a **1-based page number** for paged formats and a **1-based
-~256 KB segment ordinal** for everything else. It is never 0. This changed in Part 2
-Phase 0; before it, everything was a 32 MB segment ordinal and a whole PDF was usually
-one row.
+~256 KB segment ordinal** for everything else. It is never 0.
 
 - `insert_text_pages(...)` is the paged path. Callers pass the real page numbers.
   **Call it once per `(file, extracted_by)` with the complete page list** — it deletes

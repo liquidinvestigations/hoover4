@@ -6,7 +6,7 @@
 //! The two checkboxes disappear from here once the conversation has a turn in it: they
 //! are frozen onto the session at that point and shown read-only above the transcript
 //! by [`LockedOptionsBar`](super::locked_options::LockedOptionsBar). Leaving an editable
-//! control that silently no longer does anything would be worse than removing it.
+//! control that silently does nothing would be worse than removing it.
 
 use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
 use dioxus::prelude::*;

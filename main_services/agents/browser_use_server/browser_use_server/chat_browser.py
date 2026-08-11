@@ -2,15 +2,15 @@
 
 ## Why a whole browser per chat and not a context
 
-Phase 1 gave each conversation a Chromium *browser context* — cheap, and the right
-isolation boundary for cookies. Phase 3 needs more than cookies: the agent now drives the
-page through **playwright-mcp**, and playwright-mcp connected with `--cdp-endpoint` shares
-one browser context across every client attached to that endpoint. Measured, not assumed
-(plan §3.2): two clients, one cookie jar. `--isolated` restores isolation but makes
+A Chromium *browser context* per conversation is cheap and is the right isolation
+boundary for cookies. It is not enough here: the agent drives the page through
+**playwright-mcp**, and playwright-mcp connected with `--cdp-endpoint` shares
+one browser context across every client attached to that endpoint. Measured, not assumed:
+two clients, one cookie jar. `--isolated` restores isolation but makes
 playwright launch its *own* browser, which loses the extensions and the CDP handle this
 module needs for capture.
 
-So the isolation boundary moves down one level: **one Chromium process per chat**, each
+So the isolation boundary sits one level lower: **one Chromium process per chat**, each
 with its own `--user-data-dir` and its own sidecar bound to it. That costs a few hundred
 MB per live chat, which is why `BROWSER_MAX_CONTEXTS` is 8 and the reaper is aggressive.
 
@@ -315,7 +315,7 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
     `--isolated` is deliberately absent: it would make playwright launch a browser of its
     own, losing the extensions and the CDP handle capture needs. `--cdp-endpoint` is what
     binds it to the Chromium above, and the per-chat *process* is what supplies the
-    isolation `--cdp-endpoint` alone does not (plan §3.2).
+    isolation `--cdp-endpoint` alone does not.
     """
     chat.sidecar_port = _free_port()
     args = [

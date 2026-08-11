@@ -9,9 +9,8 @@ DDL and the lifecycle helpers.
 
 There are deliberately **no distributed tables**. Manticore 14.1.0 (and 17.5.1 / 28.4.4)
 cannot run the website's JOIN + stored-field + FACET query shape over distributed tables -
-the daemon crashes or returns NULL stored fields (see
-``plans/2-collections/2-spike-manticore-results.md``). Search therefore fans out per
-shard in the website backend (plan part 7).
+the daemon crashes or returns NULL stored fields. Search therefore fans out per
+shard in the website backend.
 
 Every identifier reaching a DDL string is built from a validated ``collectionname``
 plus an integer shard index, or validated against the shard-name regex. Never

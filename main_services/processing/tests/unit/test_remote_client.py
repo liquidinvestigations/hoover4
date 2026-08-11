@@ -1,10 +1,10 @@
 """Tests for tasks.remote: the timeout contract, the fallback and the breaker.
 
 These three settings -- GPU_CONNECT_TIMEOUT_MS, GPU_FALLBACK and
-GPU_CIRCUIT_BREAK_SECONDS -- were rendered into the worker's environment by
-deploy.py from Part 1 and read by nothing, which is how a dead GPU host stalled
-the pipeline for tens of minutes instead of degrading it. Each one gets a test
-here so it cannot go back to being decorative.
+GPU_CIRCUIT_BREAK_SECONDS -- are rendered into the worker's environment by
+deploy.py. A knob that is rendered and read by nothing is how a dead GPU host
+stalls the pipeline for tens of minutes instead of degrading it, so each one
+gets a test here to keep it from becoming decorative.
 """
 
 import pytest
@@ -77,8 +77,8 @@ def test_falls_back_to_the_cpu_twin_on_connect_failure(monkeypatch):
 
 
 def test_no_twin_configured_fails_fast_and_names_the_url(monkeypatch):
-    """Until Part 2 builds the CPU twin, GPU_FALLBACK=true with nothing to fall
-    back to must fail fast with a clear message, not stall."""
+    """With no CPU twin deployed, GPU_FALLBACK=true and nothing to fall back to
+    must fail fast with a clear message, not stall."""
     def post(url, **kwargs):
         raise requests.ConnectTimeout("no route to host")
 

@@ -3,11 +3,10 @@
 **The** web search server. Port `21931`, container `hoover4-mcp-metasearch`, wired into the
 **full research agent** only.
 
-One tool searches the open web. Before plan 2 phase 2 the agent carried three overlapping
-ones — `web_search` here, `ddg_text_search`/`ddg_news_search` on `hoover4-mcp-ddg`, and
-`wikipedia_search` on `hoover4-mcp-wikipedia`. A small model faced with three near-identical
-descriptions picks badly and inconsistently. Those two servers are retired and their sources
-live here.
+One tool searches the open web, and there must never be a second. A small model faced with
+several near-identical "search the web" descriptions picks badly and inconsistently, so
+every source — the scrapers, DuckDuckGo text and news, Wikipedia — is a `sources` entry
+here rather than a tool of its own.
 
 Modelled on [`MikeLuu99/metasearch-rust`](https://github.com/MikeLuu99/metasearch-rust) —
 the design worth taking is: query several sources in parallel, deduplicate on a normalised
@@ -85,7 +84,7 @@ reserved slot; it can still be filled in on merit. The threshold defaults to `0`
 the cross-encoder's own decision boundary (it returns a raw logit). A result with **no**
 rerank score is always reservable: the GPU being down is not evidence against a result.
 
-The floor is `3`, not `10`. Q14 settled the policy at fifteen results, always reranked, and
+The floor is `3`, not `10`. The result policy is fifteen results, always reranked, and
 a floor of ten across three kinds reserves thirty slots — `max_results` then means nothing,
 because a reserved slot is never evicted.
 

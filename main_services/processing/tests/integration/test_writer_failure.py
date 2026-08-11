@@ -1,4 +1,4 @@
-"""Integration test: a permanently failed writer chunk must not inflate the shard ledger (I2 / B1).
+"""Integration test: a permanently failed writer chunk must not inflate the shard ledger.
 
 Drives the IndexDatasetPlan failure path in-process: plan_shards reserves the
 assignments, both writer activities fail (retries already exhausted, simulated by
@@ -36,7 +36,7 @@ PLAN_HASH = "0" * 40
 
 
 def _raising_writer(params):
-    raise RuntimeError("simulated writer failure (integration test I2)")
+    raise RuntimeError("simulated writer failure (integration test)")
 
 
 def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_dataset, monkeypatch):
@@ -89,7 +89,7 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
             "hash": item_hash,
             "task_name": task_name,
             "run_time_ms": 1,
-            "error_logs": "simulated writer failure (integration test I2)",
+            "error_logs": "simulated writer failure (integration test)",
         }
         for assignment in assignments
         for item_hash in assignment.hashes
@@ -138,6 +138,6 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
 
     assert int(assignment_count) == len(hashes)
     assert int(index_state_count) == 0
-    assert int(ledger_rows[0] or 0) == 0, "failed writers must not inflate doc_count (B1)"
-    assert int(ledger_rows[1] or 0) == 0, "failed writers must not inflate text_bytes (B1)"
+    assert int(ledger_rows[0] or 0) == 0, "failed writers must not inflate doc_count"
+    assert int(ledger_rows[1] or 0) == 0, "failed writers must not inflate text_bytes"
     assert int(error_count) == 2 * len(hashes)

@@ -2,8 +2,7 @@
 
 Why this is a service and not a subprocess in the worker
 -------------------------------------------------------
-OCR moved out of the worker image on purpose (plans/1-part-2.md §3.1). Two reasons,
-both learned the hard way:
+OCR is not in the worker image, on purpose. Two reasons, both learned the hard way:
 
 * **`tesseract-ocr-eng` inside the worker made native Tika OCR scanned PDFs
   implicitly**, producing text attributed to `extractous` that nobody asked for and

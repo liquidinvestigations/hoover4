@@ -367,8 +367,8 @@ pub const TITLE_CHARS: usize = 60;
 
 /// Cap on `tool_output` (and a soft cap on `tool_input`) stored in `chat_messages`.
 /// A `search_collections` result set with long snippets is large; this table is read on
-/// every page load. Doubled from 12k when the richer web_search payload landed (plan 2,
-/// Q14) — the search-detail artifact absorbs anything bigger.
+/// every page load. Sized for the richer web_search payload — the search-detail artifact
+/// absorbs anything bigger.
 pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
 
 /// Derive a session title from its first user message.

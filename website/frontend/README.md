@@ -20,7 +20,7 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
 | `/ai_chat/history` | `AiChatHistoryPage` |
 | `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state` | `AiChatSessionPage` |
 
-Admin stubs Plan 2 owns the bodies for:
+Admin route stubs — registered, no body yet:
 
 | Path | Component |
 |---|---|

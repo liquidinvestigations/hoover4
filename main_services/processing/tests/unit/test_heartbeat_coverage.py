@@ -1,10 +1,9 @@
 """Every execute_activity call site must declare a heartbeat_timeout.
 
-This is the regression guard for the 2026-08-06 incident: an activity task was
-lost between the Temporal matching service and the worker, and because the only
-timeout on that call site was the whole-file ``start_to_close_timeout`` (1583 s),
-the stall lasted 26 minutes. The heartbeat clock starts at
-``ActivityTaskStarted`` -- exactly the state the lost task was stuck in -- so a
+This is the regression guard for a lost activity task: the task never reaches the
+worker, and if the only timeout on that call site is the whole-file
+``start_to_close_timeout`` the stall runs for tens of minutes. The heartbeat clock
+starts at ``ActivityTaskStarted`` -- exactly the state a lost task is stuck in -- so a
 ``heartbeat_timeout`` turns that into a ~30 s stall.
 
 An AST test rather than a grep: these calls span multiple lines with nested
@@ -148,8 +147,8 @@ def test_no_bare_integer_timeout_on_outbound_http():
                 if kw.arg != "timeout":
                     continue
                 if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, (int, float)):
-                    # subprocess.run(timeout=N) is fine and must be KEPT (see
-                    # plans/1-part-3.md 2.5); only HTTP calls are in scope.
+                    # subprocess.run(timeout=N) is fine and must be KEPT: it is the
+                    # only guard against a wedged child. Only HTTP calls are in scope.
                     func = node.func
                     name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
                     if name in ("post", "get", "put", "patch", "delete", "request"):

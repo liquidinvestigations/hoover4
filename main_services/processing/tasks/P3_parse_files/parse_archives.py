@@ -39,7 +39,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     # alive, which is not the same as proving 7z is making progress -- on a
     # corrupt archive the pump would heartbeat happily forever. Removing a
     # subprocess timeout because "we heartbeat now" is the one way this change
-    # makes reliability worse (plans/1-part-3.md 2.5).
+    # makes reliability worse.
     try:
         with heartbeat_pump(f"7z {params.archive_hash[:8]}"):
             res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
@@ -48,7 +48,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
         raise RuntimeError(f"7z extraction timed out for {params.archive_path}")
     except BaseException:
         # Heartbeating is how Temporal DELIVERS cancellation to a sync activity,
-        # so this path is now reachable where it never used to be. Without the
+        # so this path is reachable on cancellation, not only on error. Without the
         # cleanup, a retry finds a half-extracted directory from the previous
         # attempt and two 7z processes write to the same path.
         shutil.rmtree(out_dir, ignore_errors=True)

@@ -61,9 +61,9 @@ reranker = None
 ner_model = None
 
 # Model ids come from the environment, rendered by deploy.py from hoover4.ini
-# ([ai_services] embeddings_model / reranker_model). The constants that used to live
-# here are why the running container served e5-large-instruct while the ini said
-# e5-small for weeks: the ini was rendered into the .env and nothing read it.
+# ([ai_services] embeddings_model / reranker_model). Never hardcode them here: a
+# constant in this file is how the container ends up serving e5-large-instruct while the
+# ini says e5-small, with the rendered .env read by nothing and nobody any the wiser.
 model_name = os.getenv("EMBEDDINGS_MODEL", "intfloat/multilingual-e5-small")
 reranker_model_name = os.getenv("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
 ner_model_name = os.getenv("NER_MODEL", "FacebookAI/xlm-roberta-large-finetuned-conll03-english")

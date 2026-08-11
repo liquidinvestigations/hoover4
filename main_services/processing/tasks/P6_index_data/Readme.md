@@ -1,6 +1,6 @@
 # P6 - Index Data
 
-This stage indexes parsed text and metadata into Manticore to enable search and entity retrieval. (Renamed from `P4_index_data` when the NER work was split into the P4_extract_entities stage.)
+This stage indexes parsed text and metadata into Manticore to enable search and entity retrieval. It is P6, not P4 or P5: entity extraction (P4) and chunk embedding (P5) both run before it.
 
 ## Key Responsibilities
 

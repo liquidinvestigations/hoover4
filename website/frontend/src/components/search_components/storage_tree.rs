@@ -1,9 +1,8 @@
 //! One tree for the whole corpus: collections > datasets > folders.
 //!
-//! The storage sidebar used to be two lists — a flat COLLECTIONS list and, separately,
-//! the folder tree of whichever dataset the URL named — and the filter pane refused to
-//! show a folder tree at all until you had picked a dataset under Collections. Both were
-//! the same thing said twice, and neither showed the corpus as it is.
+//! One tree rather than two lists. A flat COLLECTIONS list plus a separate folder tree
+//! for whichever dataset the URL names says the same thing twice, forces the user to pick
+//! a dataset before any folder tree appears, and never shows the corpus as it is.
 //!
 //! **The two upper levels are synthetic.** VFS node keys are dataset-scoped by
 //! construction (`common::vfs::make_node_key`), so the structure index cannot produce a

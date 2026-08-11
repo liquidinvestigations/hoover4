@@ -229,11 +229,10 @@ def test_collection_tables_match_expected():
     assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) == EXPECTED_COLLECTION_TABLES
 
 
-#: Tables that must not reappear. The Milvus alignment trio was created by
-#: 00023/00024 and dropped again by 00031 until the re-collapse removed all three files:
-#: nothing ever wrote them, and the Milvus tier that would have read them is gone. The
-#: vector store that replaced them is `text_chunk_vectors` in ClickHouse plus a
-#: disposable Manticore HNSW copy.
+#: Tables that must not reappear. The Milvus alignment trio is gone: nothing ever wrote
+#: them, and the Milvus tier that would have read them is gone too. The vector store in
+#: their place is `text_chunk_vectors` in ClickHouse plus a disposable Manticore HNSW
+#: copy.
 FORBIDDEN_TABLES = {
     "text_chunks_milvus",
     "entity_hits_milvus",
@@ -291,13 +290,12 @@ def test_readiness_sentinel_matches_last_collection_migration():
     "Last table-creating file" rather than plain "last file": a migration that only drops
     or backfills is a legitimate way to end the sequence and creates nothing, and
     anchoring on the literal last file would fail on it. Readiness means "the schema is
-    fully built", which is decided by the last CREATE. There is no such trailing file
-    today — `vfs_nodes` (00034) is both the last CREATE and the last file — but the
-    distinction is what keeps the next one from making every collection report un-ready.
-    (It moved once already: `vfs_nodes` (00034) held it until Phase 7 appended
-    `processing_task_runs` (00035) and `processing_task_inflight` (00036). 00034's own
-    comment still claims to be last -- it is applied history and its md5 is recorded, so
-    it is not edited to say otherwise.)
+    fully built", which is decided by the last CREATE, and that distinction is what keeps
+    a trailing drop-only migration from making every collection report un-ready.
+
+    `00034_vfs_nodes.sql` carries a comment claiming it must stay last. That comment is
+    wrong and is deliberately not corrected: it is applied history whose md5 is recorded,
+    and editing it would fail every deployment that already ran it.
 
     The sentinel name is checked in next to the migrations (READINESS_SENTINEL) so this
     test does not depend on the website sources being mounted — the old version read
@@ -320,8 +318,8 @@ def test_readiness_sentinel_matches_last_collection_migration():
     )
 
 
-def test_new_part2_tables_are_in_the_right_directory():
-    """The Part 2 tables split across both directories, which is the exact mistake this
+def test_settings_and_job_tables_are_in_the_right_directory():
+    """These tables split across both directories, which is the exact mistake this
     module exists to catch.
 
     Per-dataset settings and job status are global — the admin UI edits them before the

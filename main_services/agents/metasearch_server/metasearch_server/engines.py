@@ -20,9 +20,9 @@ engine here as a *source* alongside the `ddgs`-library and Wikipedia sources tha
 be their own MCP servers, and :mod:`.pipeline` is what orders the merged set.
 
 The fusion machinery itself (`SearchResult`, `normalise_url`, `dedupe_within_source`,
-`reciprocal_rank_fusion`, `RRF_K`) lives in `agent_common.fusion` since Phase 4 —
-collection search fuses with the same code, and a second copy would drift. The names are
-re-exported here so existing imports keep working.
+`reciprocal_rank_fusion`, `RRF_K`) lives in `agent_common.fusion`, not here — collection
+search fuses with the same code, and a second copy would drift. The names are re-exported
+here so both import paths work.
 """
 
 from __future__ import annotations
@@ -198,10 +198,10 @@ def _parse_yahoo(html: str) -> list[SearchResult]:
 #:
 #: **Startpage was removed, not disabled.** It serves a Gatsby single-page app with a
 #: `<noscript>` wall and a captcha field: there are no results in the HTML for any query,
-#: on the first request from a cold container, so there is no selector to repair. It
-#: returned zero on every live query for the whole of phase 5 while still being counted as
-#: one of seven sources — a facade is worse than a gap, because the `degraded` list is only
-#: informative if a name on it can come off.
+#: on the first request from a cold container, so there is no selector to repair. Left
+#: enabled it returns zero on every live query while still being counted as a source — a
+#: facade is worse than a gap, because the `degraded` list is only informative if a name
+#: on it can come off.
 ENGINES = {
     "ddg": ("https://html.duckduckgo.com/html/?q={q}", _parse_duckduckgo),
     "brave": ("https://search.brave.com/search?q={q}", _parse_brave),

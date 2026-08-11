@@ -221,10 +221,11 @@ def test_single_text_embedding():
 def test_a_model_this_server_does_not_serve_is_refused():
     """The response's `model` must name what produced the vectors, or it is not evidence.
 
-    It used to be `request.model or model_name` — an echo. The worker compares that field
-    against the probed serving model and refuses a mismatch, because vectors written under
-    the wrong name are re-embedded forever (the anti-join never matches) and may carry the
-    wrong e5 prefix convention. An echo makes that check unable to fail.
+    It must not be `request.model or model_name` — that is an echo of the request. The
+    worker compares this field against the probed serving model and refuses a mismatch,
+    because vectors written under the wrong name are re-embedded forever (the anti-join
+    never matches) and may carry the wrong e5 prefix convention. An echo makes that check
+    unable to fail.
     """
     print_test_header("EMBEDDING MODEL MISMATCH TEST")
 

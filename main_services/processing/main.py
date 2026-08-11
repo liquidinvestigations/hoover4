@@ -87,7 +87,7 @@ def probe_embeddings_cmd():
     """Probe the embeddings endpoint and record what it ACTUALLY serves.
 
     Writes ``embeddings_serving_model`` and ``embeddings_serving_dim`` to
-    ``server_settings``. Phase 4's index builder reads those — never the ini — because
+    ``server_settings``. The index builder reads those — never the ini — because
     the ini is the request and this probe is the truth, and a Manticore ``_vectors``
     table's ``knn_dims`` cannot be altered after creation.
 

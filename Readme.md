@@ -37,7 +37,7 @@ Hoover4 is designed for investigative teams, analysts, and organizations that ne
 
 ### Staged pipeline architecture.
 
-Processing is decomposed into discrete, independently scalable stages: P0 filesystem scanning and deduplication, P1 plan computation, P2 plan execution and scheduling, P3 type-specific parsing, P4 named-entity extraction (NLP/NER against a remote service, on its own queue), and P5 indexing. Each stage is a [Temporal](https://temporal.io/) workflow with dedicated worker queues. See the [processing code](main_services/processing/Readme.md) for more details.
+Processing is decomposed into discrete, independently scalable stages: P0 filesystem scanning and deduplication, P1 plan computation, P2 plan execution and scheduling, P3 type-specific parsing, P4 named-entity extraction (NLP/NER against a remote service, on its own queue), P5 chunking and embedding, and P6 indexing. Each stage is a [Temporal](https://temporal.io/) workflow with dedicated worker queues. See the [processing code](main_services/processing/Readme.md) for more details.
 
 ### Content-type routing.
 

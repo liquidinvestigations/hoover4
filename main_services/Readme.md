@@ -12,7 +12,7 @@ This directory contains the core data plane for Hoover4. It includes database in
 
 ## Subdirectories
 
-- `agents/` - the six MCP tool servers and the two research agents (moved out of `ai_services` in plan 1 part 1).
+- `agents/` - the six MCP tool servers and the two research agents. They run here, not in `ai_services`, because they read ClickHouse and Manticore directly.
 - `docs/` - Architecture diagrams and system-level illustrations.
 - `processing/` - Click-based CLI, workflow definitions, workers, and database clients.
 - `ops/` - Docker compose configurations and environment-level operational notes.

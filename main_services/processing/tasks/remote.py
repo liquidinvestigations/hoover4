@@ -2,22 +2,22 @@
 
 Why this module exists
 ----------------------
-On 2026-08-06 an ``extract_entities_for_hashes`` activity stalled with no load
-on the system at all. Two defects stacked:
+An activity that calls out over HTTP can stall with no load on the system at
+all. Two defects stack to produce it:
 
-1. a routing defect (fixed in Part 1, ``8ab0927``): a rootless podman container
-   cannot route to its host's own LAN address, so the GPU endpoint was simply
-   unreachable and hung rather than refusing;
+1. a routing defect: a rootless podman container cannot route to its host's own
+   LAN address, so the GPU endpoint is simply unreachable and hangs rather than
+   refusing;
 2. a timeout defect (this module): ``extract_ner_from_text.py`` passed
-   ``timeout=3000`` to ``requests.post``. **requests measures timeouts in
-   seconds**, so that is a 50-minute budget applied to *both* connect and read,
-   for a single NER batch. The only reason it failed in ~2 minutes rather than
-   50 was the kernel giving up on SYN retries first.
+   a bare ``timeout=3000`` to ``requests.post``. **requests measures timeouts
+   in seconds**, so that is a 50-minute budget applied to *both* connect and
+   read, for a single NER batch. The only reason it fails in ~2 minutes rather
+   than 50 is the kernel giving up on SYN retries first.
 
-And the config contract was not honoured. ``deploy.py`` renders
+The config contract must also be honoured. ``deploy.py`` renders
 ``GPU_CONNECT_TIMEOUT_MS``, ``GPU_FALLBACK`` and ``GPU_CIRCUIT_BREAK_SECONDS``
-into the worker's environment -- the fallback behaviour decided in Part 1 3.1 --
-and nothing read any of them. A dead GPU host stalled the pipeline instead of
+into the worker's environment, and this module is what reads them. A knob that
+is rendered and never read means a dead GPU host stalls the pipeline instead of
 degrading it, which is precisely what those three settings exist to prevent.
 
 The contract implemented here
@@ -167,7 +167,7 @@ def post_json(
 
     ``endpoints`` is an ordered list of ``(provider_name, url)`` -- the primary
     first, the CPU twin after it. Entries with an empty url are skipped, so a
-    caller can pass a twin that Part 2 has not built yet without branching.
+    caller can pass a twin that is not deployed without branching.
 
     An endpoint is skipped without a request while its breaker is open. A
     connect failure moves to the next endpoint; a *read* failure or an HTTP
@@ -249,7 +249,7 @@ def probe_embeddings(base_url: str) -> tuple[str, int]:
     """One trivial ``POST {base_url}/embeddings``; returns ``(serving_model, dims)``.
 
     The ini's ``embeddings_model`` / ``embeddings_dim`` are the *request*; this probe is
-    the *truth*. Phase 4 builds Manticore ``_vectors`` tables from the probed value and
+    the *truth*. The index builder builds Manticore ``_vectors`` tables from the probed value and
     refuses to index when it stops matching a shard's ``knn_dims`` — a table's knn_dims
     is fixed at creation, so writing 384-dim vectors into a 1024-dim table is the
     failure this exists to catch early.

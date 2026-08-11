@@ -1,4 +1,4 @@
-# Optional overlay: Serena MCP server (dev tooling, Phase A of plan 1 part 1).
+# Optional overlay: Serena MCP server (dev tooling).
 #
 # NOT part of the deployed stack. It can read and write the whole repository, so it
 # is published on 127.0.0.1 only — never reachable off the box. Enabled via

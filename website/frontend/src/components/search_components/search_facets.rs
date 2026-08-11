@@ -1,10 +1,10 @@
 //! The reusable pieces of a checkbox facet list.
 //!
-//! The pill strip that used to live here is gone — every facet is now a pane inside the
-//! "All filters" modal (`filter_modal.rs`), because a strip of buttons does not scale
-//! past four facets and has nowhere to put a filter that is not a checkbox list. The
-//! commented-out mime/extension/path buttons went with it: `file_paths` is now a folder
-//! TREE, and a flat list of hashed path ids was never going to be usable.
+//! There is no pill strip here — every facet is a pane inside the "All filters" modal
+//! (`filter_modal.rs`), because a strip of buttons does not scale past four facets and
+//! has nowhere to put a filter that is not a checkbox list. Do not add mime/extension/path
+//! buttons either: `file_paths` is a folder TREE, and a flat list of hashed path ids is
+//! not usable.
 //!
 //! What stayed is the part the modal reuses verbatim: the list itself, its hit counts,
 //! its partial-shard notice, and `ResolveMissingItems`.

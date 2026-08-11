@@ -34,7 +34,7 @@ The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
 1. **A refresh must carry forward everything the provider does not tell it.** `/v1/models`
    returns ids and nothing else, and `is_allowed` defaults to `1`, so a refresh that simply
    wrote its rows produced a *fresher* "allowed" version than the admin's disallow — and
-   the allowlist is enforced server-side against forged model ids (§9.3), not a dropdown
+   the allowlist is enforced server-side against forged model ids, not a dropdown
    filter. `refresh_catalog_now` reads the current state first (`prior_catalog`) and
    preserves `is_allowed` plus the price and capability columns; a model never seen before
    is allowed. The Python catalog task (`tasks/llm_catalog.py::store_models`) does the same,
@@ -118,12 +118,13 @@ and all `api_events` in the session middleware (it is the only choke point that 
 duration and byte counts), and the LLM events in the chat API via
 `telemetry::record_event`.
 
-**A 404 is not an error.** `is_error` is derived from the response status, and every
-`anyhow` error out of a server function used to become a 500 — including "this chat
-session is not yours", which is the normal answer to a stranger asking. One crawler with
-fresh guest cookies walking chat URLs put 11 errors and 22 % on this page overnight.
-`guard::is_not_found` now maps those to 404, and the middleware excludes 404 from
-`is_error`: a not-found is a correct, complete answer about something that is not there.
+**A 404 is not an error.** `is_error` is derived from the response status, and a bare
+`anyhow` error out of a server function becomes a 500 — including "this chat session is
+not yours", which is the normal answer to a stranger asking. One crawler with fresh guest
+cookies walking chat URLs is enough to put double-digit error counts and a 20 %+ error
+rate on this page overnight. `guard::is_not_found` maps those to 404, and the middleware
+excludes 404 from `is_error`: a not-found is a correct, complete answer about something
+that is not there.
 The message stays indistinguishable from "does not exist at all" — an id that 404s only
 for strangers is an existence oracle.
 
@@ -154,7 +155,7 @@ backend::api::rate_limit::{check_and_record, RateLimitKind, RateLimitError};
 backend::api::telemetry::record_event(username, event_type, metadata);
 ```
 
-## Retry semantics (Q4) and the mutation caveat (Q10)
+## Retry semantics and the mutation caveat
 
 Retrying failed processing work reopens the plans containing the failed documents —
 see `processing.rs::reopen_plans_for_hashes` and `tasks/P_admin/Readme.md`, which
@@ -174,8 +175,8 @@ correct and was reviewed — `/_chat_artifact/{id}/{asset}` resolves the id to i
 `session_id`/`username` and enforces owner-or-admin, returning **403 for someone else's
 artifact and 404 only for one that does not exist** (collapsing those two would hide a real
 permission failure behind an apparent missing row). What cannot be demonstrated in this
-configuration is the *outcome*: plan 2 §12 acceptance item 5/10, "a second user gets 403",
-passes vacuously because there is no second user — everyone is the admin.
+configuration is the *outcome*: the acceptance check "a second user gets 403" passes
+vacuously because there is no second user — everyone is the admin.
 
 So the acceptance run must record it as **not verifiable in demo mode**, never as passing.
 To close it: set `guest_permissions_mode = none` on the settings page, create two real
@@ -184,7 +185,7 @@ Expected: 403, and `api_events.is_error = 0` for it (a 403 is the system working
 
 Until that is done, treat "the ACL is fine" as a code review result, not a test result.
 
-The same applies to the OCR'd-PDF route added in phase 6: `/_download_ocr_pdf/...` calls
+The same applies to the OCR'd-PDF route: `/_download_ocr_pdf/...` calls
 `permissions::assert_can_read` on the *source document's* dataset before it looks anything
 up, which is the same check `/_download_document/...` makes. In demo mode that check
 passes for everyone, so it is likewise a code result rather than a test result, and it is

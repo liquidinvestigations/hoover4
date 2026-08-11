@@ -7,18 +7,17 @@
 #
 # Steps: migrate, create the two canonical collections (testdata + other),
 # ingest the three canonical datasets, wait for the pipeline, then assert the
-# epic's invariants (see plans/2-collections/2-plan-0-overview.md §6) one by
-# one. Prints OK/FAIL per check and exits non-zero on the first failure
+# stack's invariants one by one. Prints OK/FAIL per check and exits non-zero on
+# the first failure
 # category with failures.
 #
 # THE INGEST ROOTS ARE DELIBERATELY TINY (~5 MB in total, about a minute of
-# pipeline). This script is a per-phase gate, and a 47-minute run is a gate
-# nobody runs. The full 514 MB corpus is one variable away:
+# pipeline). This script is a gate you run between commits, and a 47-minute run
+# is a gate nobody runs. The full 514 MB corpus is one variable away:
 #
 #     INGEST_ROOT_TESTDATA=/testdata/hoover-testdata/data/disk-files ./verify-stack.sh
 #
-# which is the pre-plan-3 behaviour and takes roughly 47 minutes. Run it before
-# a release, not between commits.
+# which takes roughly 47 minutes. Run it before a release, not between commits.
 #
 # The four roots are not interchangeable:
 #   * INGEST_ROOT_TESTDATA is where check 8's SEARCH_WORD has to live.
@@ -309,11 +308,11 @@ fi
 #    so the table names are the second |-delimited column. Take ALL of them, not
 #    just *_pages/_meta matches: a leftover non-shard table must fail this check.
 #
-#    Phase 4 added a third table family, `<shard>_vectors`, and this check was not told:
-#    it expected exactly pages+meta, so it has been failing on the live stack ever since
-#    — and because §12 requires it green per phase, that made every later phase's
-#    verification meaningless. Whether `_vectors` is expected follows the probe, above.
-#    Plan 3 added a FOURTH family, `<collectionname>_vfs` — one table per collection
+#    There are FOUR table families, not two. `<shard>_vectors` is the third: a check
+#    that expects exactly pages+meta fails on every live stack, and a gate that is red
+#    for a known reason stops being read at all. Whether `_vectors` is expected follows
+#    the probe, above.
+#    The fourth is `<collectionname>_vfs` — one table per collection
 #    rather than per shard (it holds one small row per VFS node and is never sharded). It
 #    has no ledger row to derive from, so it is expected for every collection that has
 #    any shard at all: the same indexing run that opens a shard also creates it.
@@ -424,8 +423,8 @@ done
 
 # 6e. `zip-in-multiple-locations` is TWO copies of one archive. Because containers are
 #     content-addressed they share a container_hash, so a VFS model with a single parent
-#     picks one location and makes the other one's folder filter return nothing — the
-#     §4.4 regression. Filtering on each location's folder node must find the archive's
+#     picks one location and makes the other one's folder filter return nothing.
+#     Filtering on each location's folder node must find the archive's
 #     child under BOTH.
 if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
                WHERE collection_dataset = 'testdata_zips' AND is_deleted = 0")" ]; then
@@ -583,8 +582,8 @@ else
 fi
 
 # 7d-bis. The two MCP servers the chat depends on answer their own /health.
-#     Both endpoints have existed since phase 2 and nothing probed them, so the only way
-#     to learn that metasearch or the browser router was down was a chat answering badly.
+#     Without these probes the only way to learn that metasearch or the browser router
+#     is down is a chat answering badly, which nobody attributes to a dead sidecar.
 #     Probed from the worker, not the host: container-to-container is the path that
 #     matters, and "it answers on localhost" proves nothing about it (AGENTS.md).
 #

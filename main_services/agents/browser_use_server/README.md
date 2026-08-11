@@ -3,13 +3,12 @@
 Drives a real browser for the full research agent. Port `21932`, container
 `hoover4-mcp-browser`.
 
-Until plan 2 phase 3 this server exposed one `browse_page` tool over a shared Chromium. It
-now exposes **Playwright's whole browser surface** — 30 tools: navigate, click, type, fill
+It exposes **Playwright's whole browser surface** — 30 tools: navigate, click, type, fill
 forms, read the accessibility snapshot, list network requests and console messages, take
 screenshots, manage tabs — routed to a browser that belongs to the calling conversation and
 nobody else, with every page automatically captured.
 
-`browse_page` does **not** survive. Reading a page is `browser_navigate` followed by
+There is no single-shot `browse_page` tool and one must not be added. Reading a page is `browser_navigate` followed by
 `browser_snapshot`, and keeping a fifth way to do it would only give a small model another
 thing to pick wrongly.
 
@@ -39,15 +38,15 @@ capture**.
 
 ## Why a whole browser per chat, not a browser context
 
-Phase 1 gave each conversation a Chromium *browser context*, which is the right isolation
-boundary for cookies and costs almost nothing. Phase 3 needed more.
+A Chromium *browser context* per conversation is the right isolation boundary for cookies
+and costs almost nothing. It is not enough here.
 
 **playwright-mcp attached with `--cdp-endpoint` shares one browser context across every
-client on that endpoint.** Measured, not assumed (plan §3.2): two clients, one cookie jar.
+client on that endpoint.** Measured, not assumed: two clients, one cookie jar.
 `--isolated` restores isolation but makes Playwright launch its *own* browser, which loses
 the extensions and the CDP handle capture needs.
 
-So the boundary moved down a level: one Chromium **process** per chat, each with its own
+So the boundary sits one level lower: one Chromium **process** per chat, each with its own
 profile directory and its own sidecar bound to it. That costs a few hundred MB per live
 chat, which is why the cap is 8 and the reaper is aggressive.
 
@@ -113,10 +112,10 @@ concurrent CDP sessions safely; with one browser per chat, serialisation belongs
 and a global lock would make eight conversations queue behind each other.
 
 The router keeps one lock over its **map**, and that lock is never held across a spawn, an
-eviction stop or a sidecar restart. It used to be held across `chat_browser.start()` — a
-cold Chromium launch plus a Node sidecar, 45 to 90 seconds — so one chat's first browse
-blocked every other chat's map lookup for that whole time. The cap said eight contexts and
-the router behaved like one. Callers racing for the *same* chat still share a single spawn,
+eviction stop or a sidecar restart. **Never hold it across `chat_browser.start()`** — a
+cold Chromium launch plus a Node sidecar is 45 to 90 seconds, and holding the map lock for
+that long blocks every other chat's lookup: the cap says eight contexts and the router
+behaves like one. Callers racing for the *same* chat still share a single spawn,
 through a future parked in the map: releasing the lock must not buy back the bug the lock
 was there to prevent (two browsers for one chat, double the memory, split cookies).
 
@@ -242,13 +241,13 @@ evidence and must not be rewritten.
 
 **Captures are explicit — those two tools and nothing else.**
 
-The set used to hold seventeen tools: a screenshot plus a multi-megabyte MHTML
-serialisation after almost every click, 23 rows and 12.5 MB in a single day of demo use.
-The argument for it was real — the completeness of the transcript should not depend on the
-model's judgement, and a model that forgets to screenshot the CAPTCHA it hit leaves a
-transcript where the failure is invisible. Q4/Q5 answered it anyway: no implicit captures.
-The browser cards render an explicit snapshot well, so asking the model to take one is an
-instruction rather than a hope. **Do not add a tool to `CAPTURING_TOOLS` without changing
+Capturing after almost every click — a screenshot plus a multi-megabyte MHTML
+serialisation — costs tens of rows and over ten megabytes in a single day of demo use.
+The argument against explicit-only is real: the completeness of the transcript should not
+depend on the model's judgement, and a model that forgets to screenshot the CAPTCHA it hit
+leaves a transcript where the failure is invisible. Explicit still wins, because the
+browser cards render an explicit snapshot well enough that asking the model to take one is
+an instruction rather than a hope. **Do not add a tool to `CAPTURING_TOOLS` without changing
 that answer first**; `tests/test_result_shaping.py` pins the rule.
 
 What did *not* change: capture still happens on the **failure path** of those two tools. A
@@ -266,13 +265,12 @@ with `status = 'failed'` and a `detail` the card shows.
 Over `CAPTURE_MAX_SNAPSHOT_BYTES` (8 MB) the snapshot is dropped, the row says
 `status = 'too_large'`, and the thumbnail is kept regardless.
 
-Cost control is now the capture policy itself. There used to be a second mechanism: a
-capture whose `(url, document.lastModified)` matched the previous one in the same chat
-reused the previous `body_key` and took only a fresh screenshot. It went with the implicit
-captures — two explicit snapshots of one page are a deliberate act, and quietly handing the
-second the first one's bytes made two `chat_artifacts` rows share a MinIO object, so
-deleting either could strand the other. The **sweeper still handles shared body keys**, for
-the rows written while this existed.
+Cost control is the capture policy itself, and nothing else. **Do not add body-key reuse**
+— deduplicating a capture whose `(url, document.lastModified)` matches the previous one in
+the same chat looks free but is not: two explicit snapshots of one page are a deliberate
+act, and handing the second the first one's bytes makes two `chat_artifacts` rows share a
+MinIO object, so deleting either can strand the other. The **sweeper handles shared body
+keys** anyway, because transcripts contain rows written that way.
 
 ## MHTML → self-contained HTML
 

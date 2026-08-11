@@ -121,7 +121,7 @@ not just a live thread. `threading`/`contextvars`/`time` are imported lazily ins
 helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from
 here and the workflow sandbox restricts those modules.
 
-Outbound HTTP from activities (NER today, OCR/embeddings in Part 2) goes through
+Outbound HTTP from activities (NER, OCR, embeddings) goes through
 `remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
 2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,
 time-boxed circuit breaker (`GPU_CIRCUIT_BREAK_SECONDS`). A connect failure falls back;
@@ -159,7 +159,7 @@ Read it back with `main_services/task-time-report.sh` (per-task totals, shares, 
 clock, achieved parallelism) or on `/admin/collections/<name>/processing`, which has both
 the after-the-fact breakdown and a live view.
 
-## The AI tier is optional (Q11)
+## The AI tier is optional
 
 The website and pipeline degrade rather than hard-fail when the AI services are down:
 P4 records `processing_errors` and continues with empty entities, and chat writes the

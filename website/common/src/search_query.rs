@@ -170,11 +170,11 @@ mod tests {
     /// The bookmark-compatibility guarantee: a CBOR blob written by the build BEFORE
     /// `range_filters` and `sort` existed must still decode.
     ///
-    /// The bytes below are `ciborium` output for the old three-field struct, captured
-    /// from the pre-plan-3 shape. If this test fails, every bookmarked search URL in
-    /// every user's browser has stopped working.
+    /// The bytes below are `ciborium` output for the legacy three-field struct. If this
+    /// test fails, every bookmarked search URL in every user's browser has stopped
+    /// working.
     #[test]
-    fn a_pre_plan_3_query_still_decodes() {
+    fn a_legacy_query_still_decodes() {
         // {"collection_datasets": [], "query_string": "easychair", "facet_filters": {}}
         let old = serde_json::json!({
             "collection_datasets": [],

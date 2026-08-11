@@ -23,11 +23,10 @@ pub async fn search_document_pdf(
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     // One query for every source and every page of this document.
     //
-    // This used to be a nested loop over `source.min_page..=source.max_page` per text
-    // source. That was survivable only because `page_id` was a 32 MB segment ordinal, so
-    // the range was almost always `0..=0`. Since Phase 0 made `page_id` a real PDF page
-    // number the same loop would issue one Manticore round trip per page of the document
-    // — the intended semantics turning a one-shot lookup into a thousand-shot one.
+    // Do NOT turn this back into a nested loop over `source.min_page..=source.max_page`
+    // per text source. `page_id` is a real PDF page number, so that loop issues one
+    // Manticore round trip per page of the document — a one-shot lookup becoming a
+    // thousand-shot one, on the intended semantics rather than on a bug.
     let text_results =
         search_document_text_all_hits(user, document_identifier.clone(), query.clone()).await?;
 

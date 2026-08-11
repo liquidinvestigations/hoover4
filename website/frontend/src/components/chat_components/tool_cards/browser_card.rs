@@ -135,7 +135,7 @@ pub fn BrowserCard(
 ) -> Element {
     let expanded = use_signal(|| false);
     let mut popup: Signal<Option<ArtifactRef>> = use_signal(|| None);
-    // Whatever opened the popup, so focus can go back to it on close (plan §7.7). A
+    // Whatever opened the popup, so focus can go back to it on close. A
     // dialog that drops focus on the document body leaves a keyboard user at the top of
     // the page, having lost the card they were reading.
     let opener: FocusHandle = use_signal(|| None);
@@ -262,7 +262,7 @@ pub fn BrowserCard(
 /// A capture thumbnail that opens the archived page.
 ///
 /// A button, not a bare `img onclick`: it opens a modal, so it must be reachable by
-/// keyboard, and it must be the element focus returns to when that modal closes (§7.7).
+/// keyboard, and it must be the element focus returns to when that modal closes.
 /// It owns its own node handle and publishes it to the shared `opener` **on click** — a
 /// card with three thumbnails would otherwise return focus to whichever mounted last.
 #[component]

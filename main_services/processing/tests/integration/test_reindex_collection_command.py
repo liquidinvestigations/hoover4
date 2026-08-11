@@ -1,4 +1,4 @@
-"""Integration test: ``main.py reindex-collection`` recovers a lost Manticore volume (I5).
+"""Integration test: ``main.py reindex-collection`` recovers a lost Manticore volume.
 
 Drops the collection's shard tables out from under the index, invokes the CLI
 command's callback (which truncates the shard ledger / assignments / index_state

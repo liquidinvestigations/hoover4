@@ -1,6 +1,6 @@
-"""`page_id` is a page number now, not a segment ordinal (plans/1-part-2.md D3).
+"""`page_id` is a page number, not a segment ordinal.
 
-These tests pin the two halves of that change that are cheap to get wrong again: the
+These tests pin the two halves of that contract that are cheap to get wrong: the
 1-based numbering, and the per-page split of PDF text. Both are silent when broken --
 a 0-based page column produces a viewer that jumps one page short, and a missing page
 split produces one enormous row that still looks like a successful extraction.

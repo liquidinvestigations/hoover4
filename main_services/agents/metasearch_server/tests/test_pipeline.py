@@ -64,7 +64,7 @@ class TestPerKindFloor:
             apply_per_kind_floor([], max_results=10, min_per_kind=20, max_per_kind=10)
 
     def test_the_default_floor_leaves_the_cap_meaningful(self, monkeypatch):
-        """C4/Q14: 15 results, always reranked. A floor of 10 across three kinds reserves
+        """15 results, always reranked. A floor of 10 across three kinds reserves
         30 slots and `max_results` stops meaning anything — the defect this pins.
 
         Reloaded with the env cleared because the *code* default is what is under test;
@@ -88,7 +88,7 @@ class TestPerKindFloor:
 
 
 class TestReserveScoreGate:
-    """C4: a floor guarantees representation, and representation of nothing is padding.
+    """A floor guarantees representation, and representation of nothing is padding.
 
     Live, an Eiffel Tower query returned "Yanam district" and "Aasta Hansteen spar" as
     reference results — reserved by the floor, scored around -5 by the cross-encoder,
@@ -201,7 +201,7 @@ class TestRunSearch:
         assert len(outcome.ranked) == 1
 
     def test_a_partial_rerank_response_does_not_delete_the_rest(self, monkeypatch):
-        """C7: the reranker scored one of three candidates (a `top_k`, a truncated body).
+        """The reranker scored one of three candidates (a `top_k`, a truncated body).
         The two it skipped are real results with a real RRF position; dropping them turns
         a partial rerank into a partial search."""
         self._stub_sources(
@@ -249,8 +249,8 @@ class TestRunSearch:
 
 class TestPayloadSplit:
     def test_the_model_never_sees_the_pre_rerank_ordering(self):
-        """§6.3: the fused order is bookkeeping and would roughly double the token cost.
-        It belongs in the artifact, not in the tool result."""
+        """The pre-rerank fused order is bookkeeping and would roughly double the token
+        cost. It belongs in the artifact, not in the tool result."""
         item = _ranked("web", 1)
         item.rerank_rank, item.rerank_score = 1, 4.5
         payload = pipeline.result_payload(item)

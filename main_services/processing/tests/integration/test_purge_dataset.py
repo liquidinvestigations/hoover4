@@ -1,4 +1,4 @@
-"""Integration test: PurgeDataset removes a dataset everywhere and shrinks the ledger (I4).
+"""Integration test: PurgeDataset removes a dataset everywhere and shrinks the ledger.
 
 Ingests the same content as two datasets of one collection, purges the second,
 and asserts: its rows are gone from every relevant collection-DB table and from
@@ -28,7 +28,7 @@ from .helpers import ingest_dataset, wait_for_plans_finished
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 # Collection-DB tables the assertions care about (all keyed on collection_dataset).
-# text_chunks / text_chunk_vectors are Phase 4's durable vector store — purge must
+# text_chunks / text_chunk_vectors are the durable vector store — purge must
 # clear them the same way it clears text_content, or a re-ingest of the same hashes
 # would skip embedding via the left-anti join and leave the corpus unsearchable.
 PURGED_TABLES = [

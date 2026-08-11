@@ -1,10 +1,10 @@
 """Canonical system prompts for the two agent profiles.
 
-Previously these were multi-paragraph strings inlined as YAML defaults in
-`main_services/ops/docker/compose/agents.yaml`, where they were unreadable and drifted from the tool
-descriptions they were supposed to agree with. The compose file now passes an empty
-`SYSTEM_PROMPT` and these are the defaults; setting the env var still overrides, which is
-what you want for an experiment.
+They live here, not as YAML defaults in
+`main_services/ops/docker/compose/agents.yaml`: multi-paragraph prompts inlined in compose
+are unreadable and drift from the tool descriptions they are supposed to agree with. The
+compose file passes an empty `SYSTEM_PROMPT` and these are the defaults; setting the env
+var overrides them, which is what you want for an experiment.
 
 **The Manticore MATCH syntax is deliberately not repeated here.** It reaches the model
 through the collection-search MCP server's `instructions` string (see

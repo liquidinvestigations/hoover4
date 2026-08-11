@@ -351,7 +351,8 @@ async fn ensure_model_known(model_id: &str) -> anyhow::Result<()> {
 }
 
 /// Kick a background catalog refresh. Returns immediately; never blocks the request
-/// path (plan §9.2 — no thundering herd against providers).
+/// path: N concurrent readers refreshing on demand is a thundering herd against every
+/// provider.
 pub async fn admin_refresh_catalog(user: &CurrentUser) -> anyhow::Result<bool> {
     guard::require_admin(user)?;
     if REFRESH_IN_FLIGHT
@@ -501,7 +502,7 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
         // the row already stored. `is_allowed` is the one that matters: this table is a
         // ReplacingMergeTree read through `argMax(…, updated_at)`, so a refresh that
         // wrote a fresher `is_allowed = 1` silently un-did the admin's disallow — and the
-        // allowlist is a server-side security control (§9.3), not a dropdown filter.
+        // allowlist is a server-side security control, not a dropdown filter.
         // Prices and capability flags are carried for the same reason in miniature: a
         // refresh should not blank what another writer discovered.
         let prior = prior.get(model_id.as_str());

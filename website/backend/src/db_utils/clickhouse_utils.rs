@@ -66,7 +66,7 @@ pub fn get_collection_client(collectionname: &str) -> clickhouse::Client {
 
 /// In-process `collection_dataset → collectionname` cache.
 ///
-/// The mapping is immutable once the dataset exists (decision D1: a dataset's
+/// The mapping is immutable once the dataset exists (a dataset's
 /// collection is fixed at creation), so positive entries never expire. Misses and
 /// negative lookups are not cached — a dataset created after this process started must
 /// resolve on the next attempt.

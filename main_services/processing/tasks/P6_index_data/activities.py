@@ -509,7 +509,7 @@ def index_filenames_row(params: IndexShardParams) -> list[str]:
 
     **Only ever real basenames.** It is built from `vfs_files` paths and never from
     `text_content`, which is what keeps it immune to the base64/XPM junk that
-    contaminated page text (2-zz C6). Folder names are deliberately NOT in it: they go
+    contaminated page text. Folder names are deliberately NOT in it: they go
     through the `<coll>_vfs` structure index, where a folder is one row rather than one
     row per document under it.
     """

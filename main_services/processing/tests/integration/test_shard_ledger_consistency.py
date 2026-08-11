@@ -73,9 +73,9 @@ def test_shard_ledger_consistency(temp_collection, tiny_dataset, monkeypatch):
     assert assignments, "expected shard assignments after ingest"
     assert ledger, "expected a shard ledger after ingest"
 
-    # Phase 1: ledger <-> assignments <-> index_state <-> Manticore tables agree.
+    # Step 1: ledger <-> assignments <-> index_state <-> Manticore tables agree.
     # Document identity is the (collection_dataset, file_hash) PAIR: the same
-    # content in two datasets of one collection is indexed twice (B2 contract).
+    # content in two datasets of one collection is indexed twice, by contract.
     pairs = sorted({(row[0], row[1]) for row in assignments})
     hashes = sorted({row[1] for row in assignments})
     assert len(assignments) == len(pairs), "every (dataset, file_hash) pair must appear exactly once"
@@ -85,7 +85,7 @@ def test_shard_ledger_consistency(temp_collection, tiny_dataset, monkeypatch):
     assert manticore_counts, "expected Manticore shard meta tables"
     assert sum(manticore_counts.values()) == len(pairs)
 
-    # Phase 2: re-plan with a tiny budget, in-process (monkeypatch only affects
+    # Step 2: re-plan with a tiny budget, in-process (monkeypatch only affects
     # this process — that is exactly why the planner is called directly here).
     small_budget = 200
     monkeypatch.setattr(shard_planner, "MAX_SHARD_TEXT_BYTES", small_budget)

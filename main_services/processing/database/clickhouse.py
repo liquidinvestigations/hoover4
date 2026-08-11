@@ -50,7 +50,8 @@ _SHARD_SUFFIX_RE = re.compile(r'_[0-9]+$')
 RESERVED_COLLECTIONNAME_SUFFIXES = ('_pages', '_meta', '_vectors')
 RESERVED_COLLECTIONNAMES = ('processing',)
 
-# collection_dataset -> collectionname. Immutable by decision D1, so cached forever.
+# collection_dataset -> collectionname. A dataset belongs to exactly one collection and
+# never moves, so this is cached forever.
 _COLLECTION_OF_DATASET: dict[str, str] = {}
 
 

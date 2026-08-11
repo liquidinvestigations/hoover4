@@ -1,8 +1,7 @@
 """Robust image decoding for OCR: OpenCV first, Pillow fallback.
 
-Follow-up (plan 2, part 1 deferred a third decoder until a second undecodable
-format showed up — several did). Observed in testdata_testfiles, decodable by
-neither OpenCV nor Pillow and therefore currently skipped:
+A third decoder is not wired up. Observed in testdata_testfiles, decodable by
+neither OpenCV nor Pillow and therefore skipped:
 TIFF with "old JPEG" compression, OpenEXR, MNG, XWD, HEIF. `tifffile` (already
 present transitively via scikit-image/imageio) covers the TIFF case and
 `pillow-heif` the HEIF case; an ImageMagick subprocess would cover the rest.

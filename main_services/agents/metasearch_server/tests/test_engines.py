@@ -242,7 +242,7 @@ class TestParsers:
         assert results[0].url == "https://real.example/y"
 
     def test_yahoo_title_is_the_title_not_the_breadcrumb_mash(self):
-        """C1, captured live: the anchor wraps the favicon, the site name AND the URL
+        """Captured live: the anchor wraps the favicon, the site name AND the URL
         breadcrumb as well as the `h3`, so the link's text was
         `Wikipediahttps://en.wikipedia.org › wiki › Eiffel_TowerEiffel Tower - Wikipedia`.
         That string is what the user reads and what the reranker scores — a page with a

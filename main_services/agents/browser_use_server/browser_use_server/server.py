@@ -258,12 +258,12 @@ def _drop_dead_links(result: ToolResult) -> ToolResult:
 #: line, and an unconditional trailing marker is what makes that check hold for every tool
 #: rather than only for the ones that happened to capture something.
 #:
-#: The payload is an **object**, `{"artifacts": [...], "failed": true}`. It used to be the
-#: bare array, and the card still reads that form for rows already in a transcript — but a
-#: bare array had nowhere to put the one other thing the card cannot work out for itself:
+#: The payload is an **object**, `{"artifacts": [...], "failed": true}`. The card also
+#: accepts a bare array, because transcripts hold rows in that shape — but a
+#: bare array has nowhere to put the one other thing the card cannot work out for itself:
 #: whether the call *failed*. Playwright reports failure as `is_error` plus a prose line;
-#: by the time the result reaches the website that flag is gone, and the card was left
-#: rendering "opened http://clickhouse:8123" for a navigation that never happened. `failed`
+#: by the time the result reaches the website that flag is gone, and without `failed` the
+#: card renders "opened http://clickhouse:8123" for a navigation that never happened. `failed`
 #: is written only when true, so a successful call's marker is unchanged in size.
 ARTIFACT_MARKER = "[hoover4:artifacts]"
 
@@ -387,7 +387,7 @@ def main() -> None:
     """Register the tools and serve, **on one event loop**.
 
     `mcp.run()` creates its own loop. Doing the registration on a separate loop first
-    would leave the template browser's MCP client bound to a loop that no longer runs, and
+    would leave the template browser's MCP client bound to a dead loop, and
     every later use of it would fail with a cross-loop error that names nothing useful. So
     `run_async` is awaited from the same `asyncio.run` that did the setup.
     """

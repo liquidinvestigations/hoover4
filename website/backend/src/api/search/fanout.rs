@@ -1,8 +1,8 @@
 //! Bounded fan-out of search queries across Manticore shard tables, with merging.
 //!
-//! Since the part-6 spike showed Manticore 14.1.0 cannot run the website's
-//! JOIN/stored-field/FACET query shape over distributed tables (daemon crashes and
-//! NULL stored fields — `plans/2-collections/2-spike-manticore-results.md`), the
+//! Manticore 14.1.0 cannot run the website's JOIN/stored-field/FACET query shape over
+//! distributed tables — measured, and it fails by crashing the daemon or returning
+//! NULL stored fields rather than by erroring cleanly. So the
 //! backend fans out over **shards**: each permitted collection contributes one query
 //! target per entry of its `manticore_shards` ledger
 //! (`<collectionname>_<n>_pages LEFT JOIN <collectionname>_<n>_meta`, a plain local
@@ -16,7 +16,7 @@
 //! **Known ranking limitation:** BM25 statistics are per-table, so `_score` values
 //! from different shards/collections are not strictly comparable and cross-shard
 //! ranking is approximate. This is inherent to sharded full-text search without a
-//! global IDF and is accepted (plan overview §9). Do not "fix" it with a
+//! global IDF, and is accepted. Do not "fix" it with a
 //! normalisation hack — an unprincipled rescale is worse than this honest note.
 
 use std::collections::BTreeMap;
@@ -229,7 +229,7 @@ pub trait HitIdentity {
     fn file_hash(&self) -> &str;
 
     /// The comparable value of the active sort key. `None` means "use `_score`", which
-    /// is the Relevance case and the only one the pre-plan-3 merge knew about.
+    /// is the Relevance case and the only one the unsorted merge handles.
     ///
     /// Takes the whole `SortSpec`, not just the key, because `Date` compares a
     /// different column per direction (`date_min` ascending, `date_max` descending) —
@@ -773,8 +773,8 @@ mod tests {
         }
     }
 
-    /// Relevance keeps the old behaviour exactly: `_score` descending. `merge_hits` is
-    /// the same call with the default spec, so the pre-plan-3 tests above still pin it.
+    /// Relevance is `_score` descending. `merge_hits` is the same call with the default
+    /// spec, so the unsorted-merge tests above pin this path too.
     #[test]
     fn merge_hits_sorted_falls_back_to_score_for_relevance() {
         let by_relevance = merge_hits_sorted(two_sources(), SortSpec::default(), 0, 10);

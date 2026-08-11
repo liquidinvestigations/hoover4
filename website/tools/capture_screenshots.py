@@ -9,8 +9,8 @@ Why not the browser MCP endpoint
 That container's MCP router refuses internal hosts at two independent layers -- an
 explicit deny-list in `urlcheck.py` and a PAC script handed to Chromium in `netfilter.py`
 -- so `hoover4-website` is unreachable through it *by design*. This script launches its
-own Chromium with neither, which is the same route `plans/next/*` screenshots were taken
-by hand. It does not touch, relax or import the MCP server's filtering.
+own Chromium with neither, which is the same route a screenshot taken by hand would use.
+It does not touch, relax or import the MCP server's filtering.
 
 What comes out, per page
 ------------------------

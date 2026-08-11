@@ -8,8 +8,8 @@ turns OCR'd PDFs off entirely is `ocr_pdf_enabled` (rendered as `OCR_PDF_URL`), 
 per-engine switch stays where it already is, in the OCR tier's own endpoints.
 
 `pdf_ocr_provider` — `tesseract | easyocr | both | none` — is read here, and this is the
-first release in which it means anything. It was rendered into the worker's environment
-since Part 1 and read by nothing.
+only place that reads it. A switch rendered into the worker's environment and consumed
+nowhere is a lie; keep this the consumer.
 """
 
 import logging

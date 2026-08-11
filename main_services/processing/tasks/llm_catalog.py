@@ -41,10 +41,10 @@ READ_TIMEOUT = float(os.getenv("LLM_CATALOG_READ_TIMEOUT_SECONDS", "5"))
 #: Preference order for the chat model. Matched as regexes, case-insensitively, against
 #: the ids the account actually returns — never used as ids themselves.
 #:
-#: Nemotron Super before Ultra deliberately: measured against this account on
-#: 2026-08-06, Super answered a tool-calling smoke test in 1.4 s and Ultra in 7.3 s, for
-#: the same tool call. Ultra stays as the fallback pattern because a plan-level decision
-#: (D11) named it, and because Super is the one more likely to be retired first.
+#: Nemotron Super before Ultra deliberately: measured against this account, Super
+#: answers a tool-calling smoke test in 1.4 s and Ultra in 7.3 s for the same tool call.
+#: Ultra stays as the fallback pattern because Super is the one more likely to be
+#: retired first.
 CHAT_MODEL_PATTERNS = (
     r"nemotron.*super",
     r"nemotron.*ultra",

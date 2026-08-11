@@ -17,11 +17,11 @@ import tasks
 # Modules excluded from the walk: import-time side effects (model loading) and no
 # params dataclasses.
 #
-# Empty since OCR moved behind HTTP. `parse_ocr_models` used to be the only entry: it
-# built an `easyocr.Reader` at import time, which downloaded ~98 MB of weights the first
-# time any worker process touched it. The set stays because the hazard it documents is
-# structural — a module that does real work at import breaks this walk and, more
-# importantly, does that work inside an activity's first call.
+# Empty, because OCR runs behind HTTP and no module here loads a model at import. The
+# set stays because the hazard it documents is structural: a module that builds something
+# like an `easyocr.Reader` at import downloads its weights the first time any worker
+# process touches it, which breaks this walk and, more importantly, does that work inside
+# an activity's first call.
 _SKIP_MODULES: set[str] = set()
 
 

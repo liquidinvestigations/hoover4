@@ -1,4 +1,4 @@
-"""Integration test: re-indexing a plan must not duplicate Manticore rows (I3).
+"""Integration test: re-indexing a plan must not duplicate Manticore rows.
 
 The deterministic-id / REPLACE INTO design (pages/meta row ids derived from the
 (document, segment) identity) exists so that re-running the planner plus both

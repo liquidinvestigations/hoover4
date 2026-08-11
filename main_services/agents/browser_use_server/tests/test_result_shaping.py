@@ -124,9 +124,9 @@ def test_non_text_blocks_pass_through_untouched():
 
 
 class TestCaptureIsExplicit:
-    """D6: captures happen only when the model asked to look.
+    """Captures happen only when the model asked to look.
 
-    Q4/Q5 answered "no implicit captures" and the router captured after seventeen tools
+    The rule is "no implicit captures". A router that captures after every tool
     anyway — a screenshot plus a multi-megabyte MHTML serialisation after almost every
     click. This is the kind of decision that gets quietly reverted by someone adding "just
     one more" tool to the set, so the *shape* of the rule is pinned here, not only its

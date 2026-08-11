@@ -6,7 +6,7 @@ without the call site branching.
 
 ## Why OCR is a service
 
-Two failures put it here, both from 2026-08-06:
+Two failure modes put it here:
 
 1. **EasyOCR in-process deadlocked the worker.** Two concurrent `readtext` calls parked
    all 91 threads of the worker process in `futex_wait`, with heartbeats still flowing —
@@ -30,7 +30,7 @@ POST /ocr     {"image_b64": "...", "languages": "eng+ron", "psm": 3}
   per region, so a multi-language dataset costs one pass and produces one variant. This
   is the asymmetry with EasyOCR, which needs one Reader per script and therefore one
   pass, one variant, and one full set of downstream rows *per script group*.
-- **Per-word confidence is returned** because storing every language variant (D4) is only
+- **Per-word confidence is returned** because storing every language variant is only
   useful if they can be scored against each other and a winner marked for display.
 - **`words` carries boxes**, which is what an hOCR/searchable-PDF layer needs later.
 
@@ -44,9 +44,9 @@ POST /ocr     {"image_b64": "...", "languages": "eng+ron", "psm": 3}
   beyond that the service answers `503` with `Retry-After`. The client maps that to a
   *retryable* Temporal error, so a busy OCR tier slows the pipeline rather than filling
   `processing_errors`.
-- **The subprocess timeout stays.** An HTTP boundary does not fix a wedged child — see
-  `plans/1-part-3.md` §2.5. Do not remove `OCR_SUBPROCESS_TIMEOUT_S` on the grounds that
-  the service is bounded.
+- **The subprocess timeout stays.** An HTTP boundary does not fix a wedged child: the
+  request is bounded, the `tesseract` process it spawned is not. Do not remove
+  `OCR_SUBPROCESS_TIMEOUT_S` on the grounds that the service is bounded.
 - Requests are JSON with base64 rather than multipart so the call goes through
   `tasks/remote.py` and inherits its `(connect, read)` timeouts, CPU fallback and
   circuit breaker. That costs 33% on the wire for a payload capped at

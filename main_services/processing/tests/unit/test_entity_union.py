@@ -55,7 +55,7 @@ def test_entity_types_stay_separate():
 
 
 def test_text_variants_and_pages_stay_separate():
-    """The D4 fan-out means one file has several `extracted_by` variants, each with its
+    """The OCR fan-out means one file has several `extracted_by` variants, each with its
     own pages. Merging across them would attribute an OCR variant's entities to the
     native text and vice versa."""
     grouped = union_entities_by_segment([

@@ -40,9 +40,9 @@ of the AI stack.
 
 - `embeddings_serving_model`/`_dim` missing from `server_settings` → run
   `main.py probe-embeddings`. The embed and indexing workers run that probe at their own
-  startup now, and `./deploy --ai-services` re-runs it, so this should only be reachable
-  when the endpoint was down at both moments — the refusal used to be permanent until a
-  human remembered a command nothing pointed them at.
+  startup, and `./deploy --ai-services` re-runs it, so this is only reachable when the
+  endpoint was down at both moments. Never make the refusal permanent: it must stay
+  recoverable without a human remembering a command nothing points them at.
 - The endpoint serves a different model id or dimension than the probe recorded → the
   probe is stale; proceeding would write vectors under a convention the search side
   does not share, and the anti-join would never match them (re-embedding forever).

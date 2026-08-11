@@ -119,7 +119,7 @@ def test_a_container_at_two_paths_contributes_both_ancestries():
     """`zip-in-multiple-locations`: ONE content hash, TWO locations.
 
     A single-parent model would pick one and make the other location's folder filter
-    return nothing — the §4.4 regression this fixture exists to catch.
+    return nothing — the regression this fixture exists to catch.
     """
     keys, _ = ancestor_node_keys(
         DS,
@@ -325,7 +325,7 @@ def test_container_parents_are_found_from_ordinal_kinds():
 
 
 def test_a_document_in_a_duplicated_container_reaches_both_locations_end_to_end():
-    """The §4.4 regression, assembled the way the indexer assembles it."""
+    """The duplicated-container regression, assembled the way the indexer assembles it."""
     node_rows = [
         {"kind": KIND_TO_INT[KIND_CONTAINER], "file_hash": "ziphash",
          "container_hash": "", "path": "/location-1/parent.zip"},

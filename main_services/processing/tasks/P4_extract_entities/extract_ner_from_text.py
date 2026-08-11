@@ -27,7 +27,7 @@ NLP_MODEL_BY_PROVIDER = {
 def _endpoints() -> list[tuple[str, str]]:
     """Ordered ``(provider, url)`` candidates, primary first.
 
-    ``NER_URL_FALLBACK`` is empty until Part 2 builds the spacy twin. That is
+    ``NER_URL_FALLBACK`` is empty when the spacy twin is not deployed. That is
     deliberate: with no twin, ``post_json`` raises RemoteUnavailable naming the
     unreachable GPU url within the connect timeout instead of stalling.
     """

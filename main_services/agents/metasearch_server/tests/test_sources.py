@@ -92,7 +92,7 @@ class TestResolveSources:
 
 
 class TestTrackingUrlUnwrap:
-    """C2: the `ddgs` library mixes back ends, so its rows carry other engines' wrappers.
+    """The `ddgs` library mixes back ends, so its rows carry other engines' wrappers.
 
     Not cosmetic. A wrapped URL normalises to a different dedupe key from the direct one,
     so the same article survives fusion twice and the model cites the tracker.

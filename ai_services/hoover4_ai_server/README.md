@@ -224,5 +224,5 @@ poetry run python tests/test_batch_optimization.py  # Batch size optimization
 - **[ai_services tier](../README.md)**: the optional GPU tier this server belongs to —
   deployment, overlays, security posture
 - **[main_services/agents](../../main_services/agents/README.md)**: the MCP servers and
-  research agents (moved to the main stack in plan 1 part 1)
+  research agents, which run on the main stack
 - **Processing pipeline**: the P4 NER stage calls this server via `NER_URL`

@@ -47,8 +47,8 @@ Manticore holds no global search tables. Each collection's search data lives in 
 dynamic number of shard table pairs, `<collectionname>_<n>_pages` /
 `<collectionname>_<n>_meta` (capped at ~1 GB of text per shard by the indexing
 planner). Distributed tables are deliberately not used: Manticore 14.1.0 cannot run
-this site's JOIN/stored-field/FACET query shape over them (see
-`plans/2-collections/2-spike-manticore-results.md`).
+this site's JOIN/stored-field/FACET query shape over them — measured, not assumed, and
+it fails by returning NULL stored fields rather than by erroring.
 
 Every search — result list, hit count, string facets, MVA facets — is therefore built
 once **per shard** (`backend/src/api/search/search_sql.rs`) and fanned out with at most
@@ -91,8 +91,8 @@ Storage lives in the global ClickHouse database: `chat_sessions` (migration `000
 `chat_messages` (`00012`), plus `chat_message_stream` (`00018`) for in-flight output. The
 tool payload columns (`tool_input` / `tool_output` / `doc_refs` / `created_ms` /
 `agent_duration_ms`), `retry_errors`, the per-message `model`, the session `summary` and
-the frozen option flags were separate `ALTER` migrations until Part 2 Phase 0 folded them
-back into the two `CREATE TABLE`s — do not look for them in their own files.
+the frozen option flags are all declared in those two `CREATE TABLE`s — the migration set
+is collapsed, so do not look for them in `ALTER` files of their own.
 
 ### The two switches are frozen at the first turn
 
@@ -124,9 +124,9 @@ the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
 internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
 agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
 
-### Streaming a turn (Plan 2 Phase 1)
+### Streaming a turn
 
-`send_message` no longer holds the request open for the whole agent run. It takes the
+`send_message` does not hold the request open for the agent run. It takes the
 session's **turn lock**, writes the user row, registers the run and spawns the turn, then
 returns the transcript *including* the message just sent. The turn consumes the agent's
 `/chat/stream` SSE feed and mirrors it into `chat_message_stream`; the page follows it
@@ -209,12 +209,12 @@ attempts, and cannot abort a generation already in flight.
 Deep-research turns run in a Temporal worker and are **not** listed there; the Temporal UI
 owns that view.
 
-### Q8 — Guests and LLM access (**revisit**)
+### Guests and LLM access (**revisit**)
 
 Guests may chat when `HOOVER4_DEMO_MODE=true`, keyed by their `guest-*` username, with
 the same persistence as any other user. A demo visitor driving a local GPU is a
 **resource** question, not a permission question — the chat rate limiter
-(`backend::api::rate_limit::check_and_record`, Plan 2) is the mitigation for
+(`backend::api::rate_limit::check_and_record`) is the mitigation for
 now. **Revisit whether guests should have LLM access at all.**
 
 ### `chat_messages.seq` race — closed
@@ -264,7 +264,7 @@ transcripts rendered as a wall of JSON in a card whose expand panel opened onto 
 If you change the shape, change both.
 
 
-## Filters, sorting and the folder tree (plan 3)
+## Filters, sorting and the folder tree
 
 ### Dates are HISTORICAL dates only
 

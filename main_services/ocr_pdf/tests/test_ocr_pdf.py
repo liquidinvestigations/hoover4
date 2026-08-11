@@ -1,7 +1,7 @@
 """Tests for the searchable-PDF assembler.
 
 The two things worth pinning are the derived-prefix guard (the cheapest possible defence
-against the infinite-ingest loop, plan 2 §11.1) and the geometry of the invisible text
+against the infinite-ingest loop) and the geometry of the invisible text
 layer — a text layer that is off by a page height is invisible in both senses, and no
 integration test would notice because the PDF still opens.
 """

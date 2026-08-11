@@ -9,9 +9,8 @@ drift.
 | `minio_store.py` | the MinIO client and the `derived/chat-artifacts/` key scheme |
 | `rerank.py` | the GPU tier's `/v1/rerank`, with a 2 s connect timeout and a circuit breaker |
 
-Consumers today: `metasearch_server` (writes `search_detail`, reranks) and
-`browser_use_server` (writes `page_capture`). `collection_search_server` gains the rerank
-client in phase 4.
+Consumers: `metasearch_server` (writes `search_detail`, reranks) and
+`browser_use_server` (writes `page_capture`).
 
 ## It is vendored, not published
 

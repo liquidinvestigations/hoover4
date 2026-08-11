@@ -1,4 +1,4 @@
-//! Shared model picker for the chat composer (plan 2 §9.3).
+//! Shared model picker for the chat composer.
 //!
 //! Grouped by provider, with context / vision / tools badges and median latency from
 //! `llm_call_events`. Guests never see this — the parent hides it.

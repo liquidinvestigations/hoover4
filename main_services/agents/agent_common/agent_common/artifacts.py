@@ -104,7 +104,7 @@ class ArtifactRequest:
     #: **No caller sets this any more.** It existed for the implicit-capture path, which
     #: re-captured after every browser action and skipped the second MHTML serialisation
     #: when `(url, document.lastModified)` had not moved. Implicit captures are gone
-    #: (Q4/Q5), so nothing shares a body key now — but the *sweeper* still has to handle
+    #: so nothing new shares a body key — but the *sweeper* still has to handle
     #: rows written while it did, which is why the field and its handling stay rather than
     #: being deleted. Do not reach for it: two artifacts pointing at one object means
     #: deleting either one can strand the other.

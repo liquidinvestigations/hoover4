@@ -205,8 +205,8 @@ async def chat_stream(request: ChatRequest):
             try:
                 # Convert Pydantic objects to Python dicts using model_dump()
                 chat_history_dicts = [msg.model_dump() for msg in request.chat_history]
-                # Tracing is optional: this deployment runs without Langfuse, and
-                # previously an unconfigured handler made every chat request fail with
+                # Tracing is optional: this deployment runs without Langfuse, and an
+                # unconfigured handler makes every chat request fail with
                 # AttributeError on `None.client`.
                 with _trace_span(agent, request.message_id, request.query) as span:
                     last_chunk = None

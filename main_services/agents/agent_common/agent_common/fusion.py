@@ -3,8 +3,8 @@
 This module is the single implementation of two things every search surface needs:
 
 * **RRF fusion** of several ranked lists into one. `metasearch_server` fuses web
-  sources with it (the code lived in `engines.py` until Phase 4 extracted it here);
-  `collection_search_server` fuses its keyword and vector rankings with the same code.
+  sources with it and `collection_search_server` fuses its keyword and vector rankings
+  with the same code — keep it here rather than copying it into either.
   A second copy would drift, and a drifted fusion is invisible — results just get
   quietly worse.
 * **The per-kind floor.** RRF is a popularity measure: four web scrapers agreeing on a

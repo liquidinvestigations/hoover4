@@ -80,7 +80,7 @@ The estimate is a best-effort hint, not a scheduling promise, and the UI labels 
 one. The chart on the processing page plots estimated deadline against sample time: a
 converging estimate reads as a flattening line, a sawtooth means it is wandering.
 
-## Retry semantics (Q4) and the mutation caveat (Q10)
+## Retry semantics and the mutation caveat
 
 Retrying failed work **reopens the plans containing the failed documents** (deletes
 their `processing_plan_finished` rows), clears the matching `processing_errors`, then

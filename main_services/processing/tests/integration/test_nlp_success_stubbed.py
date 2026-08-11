@@ -1,4 +1,4 @@
-"""Integration test: the NLP success path, with a stubbed NER service (I7 / B6).
+"""Integration test: the NLP success path, with a stubbed NER service.
 
 The real NER service is a GPU box that is not reachable from every environment,
 which left the P4 success path — entity_hit rows, nlp_processed watermarks with

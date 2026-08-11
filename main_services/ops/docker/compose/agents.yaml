@@ -1,7 +1,7 @@
 # Always-on overlay: the six MCP servers and the two research agents.
 #
-# These moved out of ai_services in plan 1 part 1 (Phase E): they read ClickHouse and
-# Manticore directly and serve the website's chat, so they belong to the MAIN stack.
+# These belong to the MAIN stack, not ai_services: they read ClickHouse and
+# Manticore directly and serve the website's chat.
 # ai_services never calls into main_services — that one-way dependency is what makes
 # the GPU tier optional.
 services:
@@ -79,9 +79,9 @@ services:
 
   # Metasearch: THE web search server. One `web_search` tool covering four HTML scrapers,
   # the ddgs library (text and news) and Wikipedia, merged with reciprocal rank fusion and
-  # then reordered by the GPU tier's cross-encoder. hoover4-mcp-ddg and
-  # hoover4-mcp-wikipedia were retired into it in plan 2 phase 2 — three overlapping
-  # "search the web" tools is a choice a small model makes badly.
+  # then reordered by the GPU tier's cross-encoder. Every open-web source lives behind
+  # this one tool and must stay there — several overlapping "search the web" tools is a
+  # choice a small model makes badly.
   #
   # The scrapers have no API keys, so expect one to rot — METASEARCH_SOURCES turns a
   # broken one off without a rebuild, and the response's `degraded` list is how you notice.
@@ -107,7 +107,7 @@ services:
       - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
-      # Q14's policy: 15 results, always reranked. The floor is per kind and must stay well
+      # The result policy: 15 results, always reranked. The floor is per kind and must stay well
       # under the cap — 10 across three kinds reserves 30 and overrides the cap entirely.
       - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
       - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
@@ -147,7 +147,7 @@ services:
   # Memory is the reason BROWSER_MAX_CONTEXTS is 8 and not 32: this is a whole browser
   # per conversation, not a browser context. It has to be a whole browser — playwright-mcp
   # attached with --cdp-endpoint shares one context across every client on that endpoint,
-  # measured, so the isolation boundary had to move down a level (plan §3.2).
+  # measured, so the isolation boundary has to sit one level lower.
   #
   # SECURITY: this server is driven by an LLM and sits on the same network as
   # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL-shaped
@@ -231,11 +231,10 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
-      # arrived without `arguments` and never accumulated, so the agent silently
-      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
-      # survive streaming, so it is back on. Flip to false if that ever regresses —
-      # the symptom is an agent that answers from nothing with no tool calls.
+      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
+      # arrive without `arguments` and never accumulate, so the agent silently makes zero
+      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
+      # regresses — the symptom is an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
@@ -256,7 +255,7 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
-      # llm_call_events / ai_service_telemetry writers (plan 2 phase 5). Best-effort;
+      # llm_call_events / ai_service_telemetry writers. Best-effort;
       # chat still works if ClickHouse is unreachable.
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
@@ -297,11 +296,10 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # Token streaming. Off under vLLM 0.11 because streamed tool-call deltas
-      # arrived without `arguments` and never accumulated, so the agent silently
-      # made zero tool calls (Q12). Re-tested on vLLM 0.17.1 + Qwen3.5: tool calls
-      # survive streaming, so it is back on. Flip to false if that ever regresses —
-      # the symptom is an agent that answers from nothing with no tool calls.
+      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
+      # arrive without `arguments` and never accumulate, so the agent silently makes zero
+      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
+      # regresses — the symptom is an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
@@ -311,8 +309,8 @@ services:
       # collection MCP server contributes the MATCH syntax through its own instructions,
       # so it does not need repeating here.
       - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
-      # One search server, one browser router, one whois. hoover4-mcp-ddg and
-      # hoover4-mcp-wikipedia were folded into metasearch in plan 2 phase 2.
+      # One search server, one browser router, one whois. Do not add a second
+      # web-search server here; every source belongs inside metasearch.
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - RELOAD=false

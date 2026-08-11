@@ -1,8 +1,7 @@
 # Optional overlay: local LLM (enabled via [ai_services] llm_selfhosted = true).
 #
-# SUPPORTED BUT PARKED: the overlay, the image pin and the docs stay, but nothing in
-# Part 1 or Part 2 of plan 1 starts vLLM — the NVIDIA NIM cloud provider carries the
-# live tests instead.
+# SUPPORTED BUT PARKED: the overlay, the image pin and the docs stay, but nothing
+# starts vLLM — the NVIDIA NIM cloud provider carries the live tests instead.
 services:
   # ---------------------------------------------------------------- GPU: local LLM
   # Shares one 24 GB card with hoover4-ai-server (~2.9 GB of embedding/reranker/NER

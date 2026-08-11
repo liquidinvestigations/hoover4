@@ -226,11 +226,12 @@ async fn dataset_facet_selection_prunes_collections() {
 }
 
 
-/// I9: pagination completeness. Walk every page of a multi-page result set and
+/// Pagination completeness. Walk every page of a multi-page result set and
 /// assert the pages are disjoint and their union is exactly the hit count. With
 /// the fixture corpus both pages still fit one per-shard fetch window, so this
 /// pins the merge/window machinery and the stable ORDER BY; it becomes a full
-/// B3 regression test once a shard holds more hits than one fetch window.
+/// regression test for the stable-prefix tiebreak once a shard holds more hits than one
+/// fetch window.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn pagination_pages_are_disjoint_and_complete() {
@@ -239,10 +240,10 @@ async fn pagination_pages_are_disjoint_and_complete() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
     let _budget = Budget::start("pagination_pages_are_disjoint_and_complete");
     // The EMPTY query, not "the". Only 16 documents in the minimal verify-stack roots
-    // contain "the", which is under PAGE_SIZE — this test could not pass at all from the
-    // moment plan 3 cut the ingest from 222 files to 6, and nothing said so because the
-    // stack tests were never run afterwards. An empty query returns every document, which
-    // is both the largest result set available and the one pagination is most used on.
+    // contain "the", which is under PAGE_SIZE, so a term query here silently stops
+    // exercising pagination whenever the fixture roots shrink. An empty query returns
+    // every document: the largest result set available, and the one pagination is most
+    // used on.
     let mk_query = SearchQuery::default;
     let hit_count = backend::api::search::search_for_results_hit_count(&admin_user(), mk_query())
         .await
@@ -281,7 +282,7 @@ async fn pagination_pages_are_disjoint_and_complete() {
     );
 }
 
-/// I8: partial-failure round trip. Insert a bogus shard into one collection's
+/// Partial-failure round trip. Insert a bogus shard into one collection's
 /// ledger (its Manticore tables do not exist), assert the search still returns
 /// the surviving shards' hits with partial == true on results, hit count and
 /// facets — then remove the row again.
@@ -392,7 +393,7 @@ async fn slow_missing_shard_degrades_to_partial_results() {
     );
 }
 
-/// I10: permission isolation. A non-admin, non-guest user whose group has access
+/// Permission isolation. A non-admin, non-guest user whose group has access
 /// to exactly one collection must get zero hits from the other, and the fan-out
 /// must not even target the other collection's shards.
 #[tokio::test]
@@ -412,7 +413,7 @@ async fn permissions_restrict_search_to_granted_collections() {
     let now = time::OffsetDateTime::now_utc();
     groups::upsert_group(groups::GroupRow {
         groupname: groupname.clone(),
-        fullname: "I10 test group".to_string(),
+        fullname: "isolation test group".to_string(),
         created_at: now,
         updated_at: now,
         is_deleted: 0,
@@ -476,7 +477,7 @@ async fn permissions_restrict_search_to_granted_collections() {
 }
 
 // ---------------------------------------------------------------------------------
-// Plan 3 §13: the stack tests that plan left unwritten, plus the plan-4 additions.
+// Fixture-bound stack tests.
 //
 // Every one of these is bound to a named fixture directory ingested by
 // `main_services/verify-stack.sh`, and every one asserts a property of that fixture
@@ -511,7 +512,7 @@ async fn hits(query: SearchQuery) -> u64 {
 /// Not a partition, and that is the point. A date filter is an interval-overlap test
 /// against the document's whole date SPAN (`date_min <= hi AND date_max >= lo`, see
 /// `search_sql::range_predicate`) rather than `ANY(dates) BETWEEN`, because Manticore
-/// cannot evaluate `ANY(mva)` across the pages/meta JOIN — plans/next/3-report.md §2.1.
+/// cannot evaluate `ANY(mva)` across the pages/meta JOIN.
 /// So a document whose span crosses the split satisfies both halves and is counted twice,
 /// which is the honest answer to both questions: it does have dates below AND above.
 /// `other_emails/cap33.pdf` (2003-03 … 2016-06) is that document here.
@@ -526,9 +527,9 @@ async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
 
     // 2010-01-01. The corpus straddles it: `stanley.ec02.pdf` (2002/2003), `sample (1).doc`
     // (2007) and the oldest emails (2001/2003) sit below, `easychair.odt` (2014/2016), the
-    // zip and shapes fixtures (2019/2020) and the rest of the emails above. It used to be
-    // 1990-01-01, which only worked because the .docx was exploded into 20 parts carrying
-    // the 1980 ZIP epoch — nothing in the corpus predates 1990 now.
+    // zip and shapes fixtures (2019/2020) and the rest of the emails above. Do not move
+    // it to 1990-01-01: nothing in the corpus predates 1990, so that split puts every
+    // document on one side and the test asserts nothing.
     let split = 1_262_304_000_i64;
     // Both halves CLOSE on `split`, deliberately: the overlap between them is then exactly
     // "spans that contain that instant", which is a query — the single-instant band below.

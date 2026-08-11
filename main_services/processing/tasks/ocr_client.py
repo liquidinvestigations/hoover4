@@ -7,7 +7,7 @@ one served (`RemoteResult.provider`). OCR deliberately does not, because the pro
 part of the storage key: a variant is `ocr_easyocr_en` or `ocr_tesseract_eng`, and
 serving an EasyOCR request from Tesseract would file Tesseract's output under EasyOCR's
 name. Worse, Tesseract has already run as its own variant, so the result would be the
-same text stored twice under two labels — the fan-out D4 pays for exists to let variants
+same text stored twice under two labels — the fan-out exists to let variants
 be *compared*, and this would quietly make two of them identical.
 
 So: an engine that is not configured produces no variant at all, and an engine that is

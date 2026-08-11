@@ -170,7 +170,7 @@ class MCPGatewayAgent:
         # `llm_model` is part of the key for the same reason the model is: the ChatOpenAI
         # instance is constructed with a fixed model id, so reusing a graph across model
         # choices would silently answer every later turn with the first model that was
-        # cached (plan 2 §9.3).
+        # cached.
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
         return f"{acl}|{session_id or ''}|{llm_model or ''}"
 
@@ -582,8 +582,8 @@ class MCPGatewayAgent:
         # calls it is about to make ("I need to search the collections. Let me start by
         # listing them..."), and those chunks arrive on the same `response` channel as
         # the real answer. Concatenating everything shipped the model's scratchpad into
-        # the transcript ahead of the answer -- observed in the browser on 2026-08-06,
-        # in two of four chat configurations.
+        # the transcript ahead of the answer, and it does not happen in every chat
+        # configuration, so it is easy to miss.
         #
         # So every `start_tool` moves what has accumulated so far into the preamble,
         # which is returned as `reasoning` and rendered behind the existing tool

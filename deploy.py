@@ -55,7 +55,7 @@ DEFAULTS = {
         "enabled": "false",
         "host": "127.0.0.1",
         "bind_ip": "0.0.0.0",
-        # local LLM: supported but parked — nothing in Part 1/2 starts vLLM.
+        # local LLM: supported but parked — nothing in the stack starts vLLM.
         "llm_selfhosted": "false",
         "vllm_port": "21960",
         "vllm_image": "vllm/vllm-openai:v0.17.1",
@@ -85,7 +85,7 @@ DEFAULTS = {
         "easyocr_languages": "en",
     },
     "main_services": {
-        # which side of each capability the pipeline prefers (Part 2 consumers)
+        # which side of each capability the pipeline prefers
         "ner_provider": "gpu",
         "embeddings_provider": "gpu",
         "pdf_ocr_provider": "tesseract",
@@ -97,7 +97,7 @@ DEFAULTS = {
         # compose/website-release.yaml.
         "website_release_mode": "false",
         "ocr_pdf_enabled": "true",
-        # runtime behaviour when the GPU host is unreachable (Part 2 consumers)
+        # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
         "gpu_connect_timeout_ms": "2000",
         "gpu_circuit_break_seconds": "60",
@@ -283,7 +283,7 @@ class Config:
 
     def ai_fingerprint(self):
         """sha256 of the normalised [ai_services] section; guards ini drift between
-        the two hosts (§4.5). Passed in as HOOVER4_CONFIG_FINGERPRINT; ai services
+        the two hosts. Passed in as HOOVER4_CONFIG_FINGERPRINT; ai services
         return it from /health and verify-stack.sh compares."""
         lines = []
         for key in sorted(self.values["ai_services"]):
@@ -349,7 +349,7 @@ def render_main_env(cfg):
     # Endpoints derived from the provider choices.
     ai_host = container_reachable_host(cfg.get("ai_services", "host"))
     ner_provider = cfg.get(m, "ner_provider")
-    spacy_twin = "http://hoover4-ner-spacy:8000/v1"   # Part 2 CPU twin, same network
+    spacy_twin = "http://hoover4-ner-spacy:8000/v1"   # CPU twin, same network
     if ner_provider in ("gpu", "both"):
         env["NER_URL"] = "http://%s:%s/v1" % (ai_host, cfg.get("ai_services", "ai_server_port"))
     elif ner_provider == "spacy":
@@ -358,9 +358,9 @@ def render_main_env(cfg):
         env["NER_URL"] = ""
 
     # Where GPU_FALLBACK actually falls back to. tasks/remote.py walks the
-    # endpoint list in order and skips empty entries, so this stays empty until
-    # Part 2 builds the twin -- and an unreachable GPU then fails fast, naming
-    # the url, instead of stalling. Never point the fallback at the primary.
+    # endpoint list in order and skips empty entries, so this stays empty when the
+    # twin is not running -- and an unreachable GPU then fails fast, naming the
+    # url, instead of stalling. Never point the fallback at the primary.
     env["NER_URL_FALLBACK"] = (
         spacy_twin
         if ner_provider in ("gpu", "both") and cfg.get(m, "gpu_fallback") == "true"
@@ -437,15 +437,16 @@ def render_main_env(cfg):
     if cfg.get(m, "mcp_shared_secret_file"):
         env["MCP_SHARED_SECRET_FILE_HOST"] = cfg.get(m, "mcp_shared_secret_file")
 
-    # Part 2 pipeline switches, rendered now so the worker can pick them up without a
-    # deploy.py change later.
+    # Pipeline switches, rendered unconditionally so the worker can pick up a new one
+    # without a deploy.py change.
     for key in ("ner_provider", "embeddings_provider",
                 "pdf_ocr_provider", "tesseract_languages", "gpu_fallback",
                 "gpu_connect_timeout_ms", "gpu_circuit_break_seconds"):
         env[key.upper()] = cfg.get(m, key)
 
     # The two language settings are the stack-wide DEFAULTS a dataset inherits until the
-    # admin page writes a `dataset_settings` row for it (D6). EasyOCR's lives in the
+    # admin page writes a `dataset_settings` row for it, after which that row wins.
+    # EasyOCR's lives in the
     # [ai_services] section because that is where its server is configured, but the
     # worker is what needs it -- it decides how many passes to run.
     env["EASYOCR_LANGUAGES"] = cfg.get("ai_services", "easyocr_languages")
@@ -506,10 +507,9 @@ def write_env_file(path, env):
 def _ner_spacy_twin_enabled(cfg):
     """Whether the CPU NER twin will actually be running.
 
-    Part 1 4.2 puts hoover4-ner-spacy in the BASE main compose file (it is never
-    optional), so its presence there is the honest test -- and it means the
-    fallback starts working the moment Part 2 lands the service, with no change
-    here. Announcing a fallback url for a container that does not exist would be
+    hoover4-ner-spacy lives in the BASE main compose file (it is never optional),
+    so its presence there is the honest test. Announcing a fallback url for a
+    container that does not exist would be
     worse than having none: tasks/remote.py would spend a connect timeout on it
     before failing, on every single batch.
     """
@@ -582,7 +582,7 @@ class Runtime:
 
 
 # --------------------------------------------------------------------------------------
-# Preflights (§3.2) — all run before any `docker compose` invocation, in this order
+# Preflights — all run before any `docker compose` invocation, in this order
 # --------------------------------------------------------------------------------------
 
 def preflight_os():
@@ -705,8 +705,8 @@ def container_reachable_host(host):
     """Rewrite an ai_services host that is *this* machine into a name containers
     can actually route to.
 
-    Since the Phase E split, ai_services lives on its own private network and
-    main_services reaches it over the published ports on `[ai_services] host`. That
+    ai_services lives on its own private network and main_services reaches it
+    over the published ports on `[ai_services] host`. That
     works when the GPU tier is a different box. When both tiers share one box — the
     dev setup — the ini names this host's own LAN IP, and a rootless podman container
     cannot route to its host's LAN address: the connect hangs until the OS gives up,
@@ -809,7 +809,7 @@ def run_preflights(cfg, side, rt, starting):
 
 
 # --------------------------------------------------------------------------------------
-# Network: ai_services gets its own private network (§3.3)
+# Network: ai_services gets its own private network
 # --------------------------------------------------------------------------------------
 
 def _host_resolvers():
@@ -817,7 +817,8 @@ def _host_resolvers():
 
     A 127.* nameserver (systemd-resolved's 127.0.0.53) is a host-local stub; a
     container cannot reach it, and aardvark-dns forwarding to it is the flaky
-    configuration that wedged external DNS for the whole stack on 2026-08-06.
+    configuration that wedges external DNS for the whole stack while leaving
+    container-name resolution working, so the breakage looks like an app bug.
     """
     resolvers = []
     try:
@@ -1094,7 +1095,7 @@ def load_config(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Deploy hoover4 from hoover4.ini (see plans/1-part-1.md).")
+        description="Deploy hoover4 from hoover4.ini.")
     parser.add_argument("--ai-services", action="store_true",
                         help="deploy the ai_services side instead of main_services")
     parser.add_argument("--print-env", action="store_true",
@@ -1164,7 +1165,7 @@ def main(argv=None):
         # The main stack's network is declared in the compose file without DNS
         # settings; create/repair it ourselves first so compose finds it already
         # configured. Without this, aardvark-dns forwards to the host's 127.*
-        # resolver stub, which wedged external DNS stack-wide on 2026-08-06.
+        # resolver stub and external DNS is wedged stack-wide.
         ensure_network(rt, "hoover4")
     compose_up(cfg, side, rt, args.build)
     if side == "ai":

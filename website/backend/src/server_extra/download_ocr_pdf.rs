@@ -4,7 +4,7 @@
 //! differently. A document is a `blobs` row (sometimes with its bytes in ClickHouse); a
 //! derived PDF has **no** `blobs` row at all — `pdf_ocr_results` is the sole index of its
 //! existence, by design, because a `blobs` row under `derived/` is what would let the
-//! ingest walker find the object and start the re-derive loop (plan 2 §11.1).
+//! ingest walker find the object and start the re-derive loop.
 //!
 //! What the two do share is the permission check, and that is deliberate: an OCR'd PDF is
 //! a rendering of the source document, so being allowed to read one is exactly being
