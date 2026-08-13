@@ -59,24 +59,31 @@ log = logging.getLogger(__name__)
 #: per tool call and is almost independent of how much comes back, so a search that has
 #: to be run four times to see what one run could have shown costs four times as much
 #: wall clock for the same answer — the weight of a result set is bounded by
-#: `SNIPPET_BUDGET_CHARS` below, not by counting it.
+#: `PAYLOAD_BUDGET_CHARS` below, not by counting it. Neither number is a size, and the
+#: budget is what actually decides how many results come back.
 DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "50"))
 MAX_ALLOWED_RESULTS = int(os.getenv("SEARCH_MAX_ALLOWED_RESULTS", "200"))
 
 #: How much page text one hit may contribute, in characters.
 SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
 
-#: Total snippet text one search may return, across every hit.
+#: Total size of the serialised result, across every hit, envelopes included.
 #:
-#: **A result count is not a size.** 46 hits of 1 200 characters is a 27 800-token prompt
-#: and a 22 KB transcript page, and neither number is visible in `max_results`, so the cap
-#: on the count cannot be the only bound — it is why the website truncates a stored
-#: `tool_output` at the same 24 000 characters (`common/src/chat_types.rs`). The per-hit
-#: allowance is this budget divided by the number of hits, clamped between
-#: `MIN_SNIPPET_CHARS` and `SNIPPET_CHARS`: a handful of hits still get the full 1 200
-#: each, and a 200-hit survey gets a line apiece, which is what a survey is for. Reading
-#: one properly is `get_document_text`.
-SNIPPET_BUDGET_CHARS = int(os.getenv("SEARCH_SNIPPET_BUDGET_CHARS", "24000"))
+#: **A result count is not a size, and neither is a snippet budget.** Bounding only the
+#: snippet text leaves every hit's envelope unbounded — `collection_dataset`,
+#: `collectionname`, a 64-character `file_hash`, `match_sources`, `page_id`, `path`,
+#: `score` measure ~250 characters and tokenise badly — so 200 hits carrying 24 000
+#: characters of snippet are a 74 000-character payload: a heavier prompt than the one an
+#: uncapped count produces, which is the trap in bounding a field instead of the message.
+#: What the model receives is the serialised `SearchResponse`, so that is what is
+#: measured and that is what is bounded, by dropping the lowest-ranked hits until it
+#: fits. `max_results` is a ceiling on the count and never a promise.
+#:
+#: 24 000 is the same figure the website truncates a stored `tool_output` at
+#: (`common/src/chat_types.rs`), which is the point: a result that fits the budget is
+#: stored whole, so `chat_messages.tool_output` is an honest copy of what the model saw
+#: instead of a truncated one that cannot be used to check the size.
+PAYLOAD_BUDGET_CHARS = int(os.getenv("SEARCH_PAYLOAD_BUDGET_CHARS", "24000"))
 
 #: Floor on the per-hit snippet, so a large result set still says why each hit matched.
 MIN_SNIPPET_CHARS = int(os.getenv("SEARCH_MIN_SNIPPET_CHARS", "120"))
@@ -295,25 +302,59 @@ def list_collections() -> list[CollectionInfo]:
     return infos
 
 
-def _snippet_chars_for(hit_count: int) -> int:
-    """The per-hit snippet allowance for a result set of `hit_count` hits."""
-    if hit_count <= 0:
-        return SNIPPET_CHARS
-    share = SNIPPET_BUDGET_CHARS // hit_count
-    return max(MIN_SNIPPET_CHARS, min(SNIPPET_CHARS, share))
+def _envelope_chars(hit: SearchHit) -> int:
+    """What one hit costs with no snippet at all: its keys, ids, path and separator.
 
-
-def _apply_snippet_budget(hits: list[SearchHit]) -> None:
-    """Trim snippets in place so the whole result set fits the budget.
-
-    Applied after ranking, never before: the fused order and the cross-encoder both score
-    the full passage, and scoring a truncated one would change which documents come back,
-    not only how much of them does.
+    Measured on the hit rather than estimated, because it is the part that varies —
+    a deep path and a long dataset name cost several times what a short one does.
     """
-    allowance = _snippet_chars_for(len(hits))
+    return len(hit.model_copy(update={"snippet": ""}).model_dump_json()) + 1
+
+
+def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
+    """Trim snippets, then drop whole hits, until the serialised response fits the budget.
+
+    Returns `(size_chars, dropped)`. Applied after ranking, never before: the fused order
+    and the cross-encoder both score the full passage, and scoring a truncated one would
+    change which documents come back, not only how much of them does.
+
+    The order matters. Snippets are shortened first so a broad survey keeps its breadth,
+    and only when the envelopes alone no longer fit does the tail get dropped — a hit
+    that cannot carry `MIN_SNIPPET_CHARS` of text says nothing about why it matched, so
+    it is worth less than the room it takes.
+    """
+    hits = response.results
+    if not hits:
+        return len(response.model_dump_json()), 0
+
+    base = len(response.model_copy(update={"results": []}).model_dump_json())
+    budget = max(PAYLOAD_BUDGET_CHARS - base, MIN_SNIPPET_CHARS)
+
+    kept = 0
+    spent = 0
+    for hit in hits:
+        envelope = _envelope_chars(hit)
+        if kept and spent + envelope + MIN_SNIPPET_CHARS > budget:
+            break
+        spent += envelope
+        kept += 1
+
+    dropped = len(hits) - kept
+    del hits[kept:]
+    allowance = max(MIN_SNIPPET_CHARS, min(SNIPPET_CHARS, (budget - spent) // kept))
     for hit in hits:
         if len(hit.snippet) > allowance:
             hit.snippet = hit.snippet[:allowance].rstrip() + "…"
+
+    # The estimate above counts characters; JSON escaping of newlines and quotes inside a
+    # snippet costs more than one each, so the measured size can still overshoot. Measure
+    # and shed the tail rather than trust the arithmetic.
+    size = len(response.model_dump_json())
+    while len(hits) > 1 and size > PAYLOAD_BUDGET_CHARS:
+        hits.pop()
+        dropped += 1
+        size = len(response.model_dump_json())
+    return size, dropped
 
 
 @mcp.tool(
@@ -323,8 +364,9 @@ def _apply_snippet_budget(hits: list[SearchHit]) -> None:
         "text passages with the document id needed to read the full document. Phrase "
         "the query as a sentence or several descriptive words rather than one keyword. "
         f"Leave max_results at the default of {DEFAULT_MAX_RESULTS}: it is already a "
-        "broad look at the collections, and asking for more returns a shorter passage "
-        "from each rather than more to read. Use get_document_text to read a hit in full."
+        "broad look at the collections. One result set has a fixed size budget, so asking "
+        "for more returns a shorter passage from each and then drops the weakest hits, "
+        "never more to read. Use get_document_text to read a hit in full."
     ),
 )
 def search_collections(
@@ -462,7 +504,6 @@ def search_collections(
             for c in keyword_list[:limit]
         ]
     _attach_paths(hits)
-    _apply_snippet_budget(hits)
 
     if failed_targets:
         notes.append(
@@ -476,7 +517,7 @@ def search_collections(
     if shard_errors and not hits:
         error = f"{sorted(set(shard_errors))[0]}\n\n{MATCH_SYNTAX}"
 
-    return SearchResponse(
+    response = SearchResponse(
         success=not error,
         query=query,
         collections_searched=targets,
@@ -484,6 +525,26 @@ def search_collections(
         error=error,
         note="; ".join(notes) or None,
     )
+    found = len(hits)
+    size, dropped = _apply_payload_budget(response)
+    if dropped:
+        # The model has to know the set was cut, or it reads "12 results" as "there are
+        # twelve". The note is inside the budget: it is added before the final measure.
+        response.note = "; ".join(
+            filter(None, [response.note,
+                          f"{dropped} lower-ranked result(s) omitted to fit the "
+                          f"{PAYLOAD_BUDGET_CHARS}-character tool payload budget"])
+        )
+        size, extra = _apply_payload_budget(response)
+        dropped += extra
+    # The one number that says how heavy this tool call was. `chat_messages.tool_output`
+    # cannot answer it — that column is truncated and the model's copy is not — so the
+    # size the model actually received is only observable if it is recorded here.
+    log.info(
+        "search_collections payload: %d chars, %d of %d hit(s) returned, %d dropped",
+        size, len(response.results), found, dropped,
+    )
+    return response
 
 
 def _fused_pipeline(

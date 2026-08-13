@@ -18,6 +18,14 @@ the day and month names, a handful of SMTP/MIME protocol words.
 tokens that are also names: as a standalone facet value a bare day or month name filters
 nothing a user wants filtered, while every multi-word entity containing one survives.
 
+Two rules are positional rather than whole-value, and they are the exception that proves
+the rule: a value made entirely of single characters is letter-spaced text (`U I`), and a
+value whose LAST token is a reply-block header keyword is the name above that header
+(`Eric Cc`). Both are anchored to a position precisely so they cannot fire on a keyword
+sitting in the middle of a real name, and the second one asks for the header's colon as
+well whenever the keyword is also an ordinary English word (`Blind Date` stays, `Sara
+Shackleton To:` goes).
+
 Applied by the NLP stage before `entity_hit` is written, so every consumer of that table
 agrees without doing anything. The website applies the same rules again when it renders
 entities (`website/common/src/entity_stoplist.rs`) because rows written before a rule
@@ -125,7 +133,31 @@ _BLOB_MIN_CASE_SWITCHES = 4
 
 #: Letter-spaced PDF headings (`F O N T Y S`) arrive as one entity per heading. Real
 #: entities do not carry four bare initials with no punctuation.
+#:
+#: The threshold cannot simply be lowered: `J F Kennedy` carries two and is a name. What
+#: separates the two is that letter-spacing leaves NOTHING but single characters, so a
+#: value whose every token is one character long is stopped whatever the count -- which
+#: takes `U I` and `∆ Y` without touching a value that has a real word in it.
 _MAX_SINGLE_CHAR_TOKENS = 3
+
+#: The header keywords a mail reply block prints, as they appear glued to the end of the
+#: name above them: `Peter Aldhous Subject`, `Eric Cc`, `Larry Sent`. Matched only in
+#: a NON-INITIAL position, and only as the last token or with the header's colon still
+#: attached, because that is what distinguishes debris from prose: `Subject Matter
+#: Experts` starts with one, `Mission To Mars` has one in the middle, and both are kept.
+_REPLY_BLOCK_HEADERS = frozenset({"bcc", "cc", "from", "sent", "subject"})
+
+#: `Date` and `To` are reply-block headers too, but unlike the five above they are also
+#: ordinary English words that end real names: `Blind Date`, `Save The Date`, `Tokyo To`.
+#: A bare trailing one is therefore not evidence of anything, and they count only with the
+#: header's colon still attached (`Sara Shackleton To:`). The colon is what makes the
+#: value a header line rather than a phrase, so nothing a user would search for is lost --
+#: the whole-value header rule still takes `To: Vince J Kaminski` and `Date: Mon`, and the
+#: `X-` rule still takes `X-To`.
+_COLON_ONLY_REPLY_BLOCK_HEADERS = frozenset({"date", "to"})
+
+#: The separator Outlook puts above a quoted message. Never part of a name.
+_ORIGINAL_MESSAGE_MARKER = "-----original message-----"
 
 #: Beyond this the model has captured a paragraph, not a name.
 _MAX_TOKENS = 12
@@ -165,6 +197,33 @@ def _looks_like_encoded_blob(value: str) -> bool:
     return _case_switches(value) >= _BLOB_MIN_CASE_SWITCHES
 
 
+def _ends_in_a_header_keyword(tokens: List[str]) -> bool:
+    """True for `<name> Subject`, `<name> Cc`, `<name> Sent: Monday`, `<name> To:`.
+
+    A mail body's reply block puts the header keyword on the line under the name, and the
+    model returns the pair as one entity. The whole-value rules never see it because the
+    value is not the keyword, it merely ends with it.
+
+    Deliberately narrow, on two axes. By POSITION: matching a header keyword anywhere in a
+    value would take `Mission To Mars` with it, so the first token is exempt entirely
+    (`Subject Matter Experts` survives) and only the last token or a colon-carrying one
+    counts. By KEYWORD: a bare trailing `Date` or `To` is ordinary English and is left
+    alone, so those two count only with the colon attached.
+    """
+    if len(tokens) < 2:
+        return False
+    for index, token in enumerate(tokens[1:], start=1):
+        keyword = token.rstrip(":").lower()
+        carries_colon = token.endswith(":")
+        if carries_colon and (
+            keyword in _REPLY_BLOCK_HEADERS or keyword in _COLON_ONLY_REPLY_BLOCK_HEADERS
+        ):
+            return True
+        if index == len(tokens) - 1 and keyword in _REPLY_BLOCK_HEADERS:
+            return True
+    return False
+
+
 def is_stopped_entity(value: str) -> bool:
     """True if `value` is extraction debris rather than a named entity."""
     text = (value or "").strip()
@@ -194,10 +253,18 @@ def is_stopped_entity(value: str) -> bool:
     ):
         return True
 
+    if _ORIGINAL_MESSAGE_MARKER in lowered:
+        return True
+
     tokens = text.split()
     if len(tokens) > _MAX_TOKENS:
         return True
     if sum(1 for token in tokens if len(token) == 1 and token.isalnum()) > _MAX_SINGLE_CHAR_TOKENS:
+        return True
+    # Letter-spaced text with too few tokens to trip the count above: `U I`, `∆ Y`.
+    if len(tokens) > 1 and all(len(token) == 1 for token in tokens):
+        return True
+    if _ends_in_a_header_keyword(tokens):
         return True
 
     # A quoted-printable soft line break: the `=` is the line continuation, and the model

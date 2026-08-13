@@ -19,6 +19,29 @@ def _keyword(hash_: str, page: int, score: float, text: str) -> server._Candidat
     )
 
 
+def _response(count: int, snippet_chars: int = 1200, path: str | None = None):
+    """A `SearchResponse` of `count` hits, with the envelope a real hit carries: a
+    64-character hash, a dataset name, a path and a score."""
+    return server.SearchResponse(
+        success=True,
+        query="who mentions enron",
+        collections_searched=["enron"],
+        results=[
+            SearchHit(
+                collectionname="enron",
+                collection_dataset="enron_dasovich_j",
+                file_hash="%064d" % i,
+                path=path or f"/maildir/dasovich-j/all_documents/{i}.txt",
+                page_id=i,
+                score=9.0 - i / 1000,
+                snippet="x" * snippet_chars,
+                match_sources=["keyword", "vector"],
+            )
+            for i in range(count)
+        ],
+    )
+
+
 def _vector(
     hash_: str, page: int, dist: float, text: str, chunk_index: int = 0
 ) -> VectorCandidate:
@@ -179,41 +202,63 @@ class TestResultBudget:
         assert "max_results" in description
 
     def test_a_small_result_set_keeps_the_full_snippet(self):
-        hits = [
-            SearchHit(
-                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=1,
-                snippet="x" * 1500,
-            )
-            for _ in range(8)
-        ]
-        server._apply_snippet_budget(hits)
-        assert all(len(h.snippet) <= server.SNIPPET_CHARS + 1 for h in hits)
-        assert all(len(h.snippet) > 1000 for h in hits)
+        response = _response(8, snippet_chars=1500)
+        server._apply_payload_budget(response)
+        assert len(response.results) == 8
+        assert all(len(h.snippet) <= server.SNIPPET_CHARS + 1 for h in response.results)
+        assert all(len(h.snippet) > 1000 for h in response.results)
 
-    def test_a_full_result_set_stays_inside_the_budget(self):
-        hits = [
-            SearchHit(
-                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=i,
-                snippet="x" * 1500,
-            )
-            for i in range(server.MAX_ALLOWED_RESULTS)
-        ]
-        server._apply_snippet_budget(hits)
-        total = sum(len(h.snippet) for h in hits)
-        # The floor buys each hit a readable line, so the bound is the budget plus the
-        # ellipsis per hit -- not the 300 000 characters 200 raw snippets would be.
-        assert total <= server.SNIPPET_BUDGET_CHARS + len(hits)
-        assert all(len(h.snippet) >= server.MIN_SNIPPET_CHARS for h in hits)
+    def test_the_whole_serialised_payload_is_bounded_envelopes_included(self):
+        """Capping the count and budgeting only the snippet text leaves the envelopes
+        unbounded: 200 results of ~250 envelope characters is 50 000 characters of ids and
+        paths on top of whatever the snippets are allowed, so the prompt grows while the
+        cap does exactly what it says. What the model receives is the serialised response,
+        so that is what has to fit."""
+        response = _response(server.MAX_ALLOWED_RESULTS, snippet_chars=1500)
+        size, dropped = server._apply_payload_budget(response)
+        assert size == len(response.model_dump_json())
+        assert size <= server.PAYLOAD_BUDGET_CHARS
+        assert dropped == server.MAX_ALLOWED_RESULTS - len(response.results)
+
+    def test_a_long_path_is_paid_for_out_of_the_same_budget(self):
+        """An envelope is not a constant: a deep path costs several times a short one,
+        and a per-field trim never sees it."""
+        response = _response(server.MAX_ALLOWED_RESULTS, snippet_chars=1500,
+                             path="/" + "/".join(["a-long-directory-name"] * 12) + "/f.txt")
+        size, _ = server._apply_payload_budget(response)
+        assert size <= server.PAYLOAD_BUDGET_CHARS
+
+    def test_every_returned_hit_still_says_why_it_matched(self):
+        response = _response(server.MAX_ALLOWED_RESULTS, snippet_chars=1500)
+        server._apply_payload_budget(response)
+        assert response.results
+        assert all(len(h.snippet) >= server.MIN_SNIPPET_CHARS for h in response.results)
+
+    def test_the_hits_that_survive_are_the_highest_ranked_ones(self):
+        response = _response(server.MAX_ALLOWED_RESULTS, snippet_chars=1500)
+        server._apply_payload_budget(response)
+        assert [h.page_id for h in response.results] == list(range(len(response.results)))
+
+    def test_snippets_full_of_escapes_do_not_overshoot_the_budget(self):
+        """JSON escaping costs two characters per newline and per quote, so an estimate
+        made in raw characters undershoots on real page text."""
+        response = _response(server.MAX_ALLOWED_RESULTS, snippet_chars=0)
+        for hit in response.results:
+            hit.snippet = '"\n' * 800
+        size, _ = server._apply_payload_budget(response)
+        assert size == len(response.model_dump_json())
+        assert size <= server.PAYLOAD_BUDGET_CHARS
 
     def test_a_short_snippet_is_never_padded_or_marked_truncated(self):
-        hits = [
-            SearchHit(
-                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=1,
-                snippet="short",
-            )
-        ]
-        server._apply_snippet_budget(hits)
-        assert hits[0].snippet == "short"
+        response = _response(1, snippet_chars=0)
+        response.results[0].snippet = "short"
+        server._apply_payload_budget(response)
+        assert response.results[0].snippet == "short"
+
+    def test_an_empty_result_set_is_measured_not_crashed(self):
+        response = _response(0)
+        size, dropped = server._apply_payload_budget(response)
+        assert dropped == 0 and size == len(response.model_dump_json())
 
     def test_the_per_kind_guard_cannot_undercut_a_large_max_results(self, monkeypatch):
         # Two kinds x MAX_PER_KIND was the real cap on a hybrid search: a caller asking

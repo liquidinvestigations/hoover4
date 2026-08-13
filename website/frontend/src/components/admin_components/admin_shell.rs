@@ -2,8 +2,8 @@
 
 use dioxus::prelude::*;
 
-use crate::api::auth_api::whoami;
 use crate::components::admin_components::{C_ACCENT, C_HEADER, C_LINK, C_YELLOW, FONT, PAGE_TITLE};
+use crate::components::session_gate::use_session_user;
 use crate::routes::Route;
 
 /// `active` selects the highlighted sidebar row: one of
@@ -15,11 +15,8 @@ pub fn AdminShell(
     active: String,
     children: Element,
 ) -> Element {
-    let user = use_resource(whoami);
-    let welcome = user
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
+    // The gate already resolved this; asking again would mint-route the browser twice.
+    let welcome = use_session_user()
         .map(|u| {
             if u.fullname.is_empty() {
                 u.username.clone()

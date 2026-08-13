@@ -114,6 +114,16 @@ is watermarks, then rows — a crash between the two leaves a page that is simpl
 re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
 for the documents it can show are fixed.
 
+**One `processing_errors` row per (document, task), however many retries it takes.** The
+table is append-only and both `/file_browser/c/<name>` and the admin processing page count
+its *rows*, so a retry that fails the same way and simply appends shows a visitor twice the
+failures, and one more multiple on every further attempt. After the re-run each
+retried hash is in exactly one of three states: recovered (its rows go), failed again with
+a fresh row (the rows that row replaces go, the new one stays), or failed again with
+nothing written because the run died first (the original row is the only evidence there is
+and is left alone). A fresh error row outranks the stage's own verification: a document
+that recorded a new failure is never counted as recovered.
+
 ## A finished plan is not a successful one
 
 `processing_plan_finished` records that a plan's stages ran, not that every document

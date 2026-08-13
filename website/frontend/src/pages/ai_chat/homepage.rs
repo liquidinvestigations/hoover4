@@ -4,11 +4,11 @@ use common::chat_types::{rate_limited_seconds, ChatOptions};
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
-use crate::api::auth_api::whoami;
 use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
     chat_start_research,
 };
+use crate::components::session_gate::use_session_user;
 use crate::components::chat_components::{ChatComposer, ChatSessionCard, ModelSelector};
 use crate::routes::Route;
 
@@ -19,7 +19,6 @@ pub fn AiChatPage() -> Element {
     let sessions_res = use_resource(chat_list_sessions);
     let configured_res = use_resource(chat_llm_configured);
     let models_res = use_resource(chat_list_models);
-    let whoami_res = use_resource(whoami);
     let mut draft = use_signal(String::new);
     let mut options = use_signal(ChatOptions::default);
     let mut selected_model = use_signal(String::new);
@@ -34,14 +33,10 @@ pub fn AiChatPage() -> Element {
         .and_then(|r| r.as_ref().ok())
         .copied()
         .unwrap_or(true);
-    // `None` while `whoami` is in flight, not `false`. Defaulting to "not a guest" drew
-    // the model picker for a moment on every guest's first paint, then took it away —
-    // a control that appears and vanishes reads as a bug or as something being withheld.
-    let is_guest = whoami_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .map(|u| u.is_guest);
+    // `None` while the session gate's `whoami` is in flight, not `false`. Defaulting to
+    // "not a guest" drew the model picker for a moment on every guest's first paint, then
+    // took it away — a control that appears and vanishes reads as a bug.
+    let is_guest = use_session_user().map(|u| u.is_guest);
     let choices = models_res
         .read()
         .as_ref()

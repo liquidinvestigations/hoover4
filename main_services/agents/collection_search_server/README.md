@@ -84,21 +84,37 @@ while queries keep returning the old answers. See
 
 ## How big a search result may be
 
-Two independent bounds, because either one alone has already failed:
+**The size of the serialised response is the bound. The count is only a ceiling.**
 
-* **Count.** `max_results` is clamped to `SEARCH_MAX_ALLOWED_RESULTS` (200) and defaults to
-  `SEARCH_MAX_RESULTS` (50). A model asked for `10000` and the tool had no reason to say
-  no. The default is most of the cap on purpose: a tool call costs one provider round trip
-  regardless of how much comes back, so running the same search four times to see what one
-  run could have shown is four times the wall clock for the same answer. Both the tool
-  description and `prompts.py` tell the model to leave the argument alone.
-* **Weight.** `_apply_snippet_budget` divides `SEARCH_SNIPPET_BUDGET_CHARS` (24 000) over
-  the hits actually returned and trims each snippet to that share, clamped between
-  `SEARCH_MIN_SNIPPET_CHARS` (120) and `SEARCH_SNIPPET_CHARS` (1200). Eight hits still get
-  the full 1 200 each; 200 hits get a line each. **A count is not a size** — 46 hits at
-  1 200 characters is a 27 800-token prompt, and the number 46 does not look alarming
-  anywhere. The budget matches the website's own cap on a stored `tool_output`, so a result
-  that fits it survives into the transcript whole.
+`_apply_payload_budget` measures `SearchResponse.model_dump_json()` and holds it under
+`SEARCH_PAYLOAD_BUDGET_CHARS` (24 000). It first shrinks every snippet to an equal share
+of what is left after the envelopes, clamped between `SEARCH_MIN_SNIPPET_CHARS` (120) and
+`SEARCH_SNIPPET_CHARS` (1200); when the envelopes alone no longer leave room for a
+readable line each, it drops the lowest-ranked hits and says so in `note`. Eight hits
+still get the full 1 200 characters each; a request for 200 comes back as ~60 with a line
+apiece. Reading one properly is `get_document_text`.
+
+Bounding a field is not bounding a payload. A per-snippet budget with a count cap leaves
+every hit's envelope — `collection_dataset`, `collectionname`, a 64-character `file_hash`,
+`match_sources`, `page_id`, `path`, `score` — unmeasured at ~250 characters each, so 200
+results are 50 000 characters of ids and paths on top of whatever the snippets are allowed:
+a prompt that is heavier than the one a count cap alone produces, while the cap does exactly
+what it says. Envelopes also vary — a deep path costs several times a shallow one — which is
+why they are measured per hit rather than assumed.
+
+The budget matches the website's cap on a stored `tool_output`
+(`common/src/chat_types.rs`), and that is the point: a result that fits is stored whole,
+so `chat_messages.tool_output` is an honest copy of what the model saw rather than a
+truncated one that cannot answer the question. Every call also logs
+`search_collections payload: N chars, K of M hit(s) returned` — the only place the size
+the model actually received is observable.
+
+`max_results` is clamped to `SEARCH_MAX_ALLOWED_RESULTS` (200) and defaults to
+`SEARCH_MAX_RESULTS` (50) — a model that asks for `10000` gets 200 — but it decides how
+deep the search goes, not how much comes back. The default is most of
+the cap on purpose: a tool call costs one provider round trip regardless of how much comes
+back, so running the same search four times to see what one run could have shown is four
+times the wall clock for the same answer.
 
 The trim runs **after** ranking. The fused order and the cross-encoder both score the full
 passage; scoring a truncated one would change which documents come back, not only how much
@@ -138,7 +154,7 @@ versions:
 | `MANTICORE_URL` | `http://manticore:9308` |
 | `SEARCH_MAX_RESULTS` / `SEARCH_MAX_ALLOWED_RESULTS` | `50` / `200` |
 | `SEARCH_SNIPPET_CHARS` | `1200` |
-| `SEARCH_SNIPPET_BUDGET_CHARS` / `SEARCH_MIN_SNIPPET_CHARS` | `24000` / `120` |
+| `SEARCH_PAYLOAD_BUDGET_CHARS` / `SEARCH_MIN_SNIPPET_CHARS` | `24000` / `120` |
 | `COLLECTION_SEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` |
 | `COLLECTION_SEARCH_FUSION_CANDIDATES` | `60` |
 | `MAX_DOCUMENT_CHARS` | `40000` |
@@ -147,7 +163,7 @@ versions:
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 67 tests
+docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 72 tests
 ```
 
 Everything in `tests/test_acl.py` is pure — no database — because the ACL and the query

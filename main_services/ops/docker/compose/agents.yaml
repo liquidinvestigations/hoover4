@@ -31,11 +31,13 @@ services:
       # The default result count and the hard cap the model's `max_results` is clamped to.
       - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-50}
       - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS:-200}
-      # What the result set WEIGHS. The per-hit ceiling alone is not a bound: 46 hits at
-      # 1200 characters is a 27 800-token prompt. The budget is divided over the hits, so
-      # a big result set returns a line each instead of a page each.
+      # What the result set WEIGHS, measured on the whole serialised response. Neither the
+      # count nor a per-snippet ceiling is a bound: capping the count at 200 while
+      # budgeting only snippet text left 50 000 characters of ids and paths on top, and
+      # the prompt grew from 27 800 tokens to 44 700. Snippets shrink first, then the
+      # lowest-ranked hits are dropped until the payload fits.
       - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
-      - SEARCH_SNIPPET_BUDGET_CHARS=${SEARCH_SNIPPET_BUDGET_CHARS:-24000}
+      - SEARCH_PAYLOAD_BUDGET_CHARS=${SEARCH_PAYLOAD_BUDGET_CHARS:-24000}
       - SEARCH_MIN_SNIPPET_CHARS=${SEARCH_MIN_SNIPPET_CHARS:-120}
       # Per-kind floor over the keyword/vector rankings. Kept well below SEARCH_MAX_RESULTS
       # on purpose: a floor of 10 per kind reserves 20 slots and max_results stops meaning

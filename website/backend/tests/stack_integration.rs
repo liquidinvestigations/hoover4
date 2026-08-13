@@ -1711,4 +1711,20 @@ async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
         404,
         "an unknown dataset must be a 404, not a server error"
     );
+
+    // The same answer on every custom byte route, not only the one the first report
+    // named: the OCR route kept 500ing on an unknown dataset because it matched one
+    // error message instead of asking whether the thing was there.
+    for path in [
+        "/_download_ocr_pdf/no_such_dataset/deadbeef/tesseract/eng",
+        "/_download_ocr_pdf/testdata_testfiles/deadbeef/tesseract/eng",
+    ] {
+        let response = client
+            .get(format!("{}{}", site_url(), path))
+            .header("Cookie", &cookie)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 404, "{path} must be a 404, not a server error");
+    }
 }

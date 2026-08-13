@@ -405,14 +405,17 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
     re-processes its other documents too.
 
     The `processing_errors` rows are cleared only after the re-run has finished and the
-    documents have a watermark again, so a retry that fails a second time leaves the
-    record it started from.
+    documents have a watermark again. A document that fails again keeps exactly one row —
+    the one this run wrote, replacing the one it started from. The count is what the file
+    browser and the admin processing page show, so appending instead would double the
+    failures a visitor sees, and again on every further retry.
     """
     from database.clickhouse import get_collection_client, validate_collectionname
     from tasks.P_admin.failed_file_retry import (
         RETRY_EMBED, RETRY_INDEX, RETRY_NLP, RETRY_PLAN,
-        clear_error_rows, clear_nlp_state, failed_hashes, hashes_without_entities,
-        list_failures, plans_for_hashes, reopen_plans, retry_kind_for_task,
+        clear_error_rows, clear_nlp_state, drop_superseded_error_rows, failed_hashes,
+        hashes_without_entities, list_failures, partition_retry_result, plans_for_hashes,
+        refreshed_hashes, reopen_plans, retry_kind_for_task,
     )
 
     try:
@@ -548,30 +551,29 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
 
     # Clear only what is demonstrably fixed. For an NER retry that is "the document has
     # a watermark for its text again"; for the other kinds the workflow completing IS
-    # the result, since they record their own errors on failure.
-    if kind == RETRY_NLP:
-        still_missing = set(hashes_without_entities(collectionname, collection_dataset, hashes))
-        fixed = [h for h in hashes if h not in still_missing]
-    else:
-        with get_collection_client(collectionname) as client:
-            rows = client.query(
-                "SELECT DISTINCT hash FROM processing_errors "
-                "WHERE collection_dataset = {ds:String} AND task_name = {task:String} "
-                "AND hash != '' AND timestamp >= {since:DateTime}",
-                parameters={"ds": collection_dataset, "task": task_name, "since": started_at},
-            ).result_rows
-        failed_again = {row[0] for row in rows}
-        fixed = [h for h in hashes if h not in failed_again]
-        still_missing = set(hashes) - set(fixed)
+    # the result, since they record their own errors on failure. A document that recorded
+    # a fresh error row is never counted as fixed, whatever the verification says.
+    refreshed = refreshed_hashes(collectionname, collection_dataset, task_name, started_at)
+    still_broken = (
+        hashes_without_entities(collectionname, collection_dataset, hashes)
+        if kind == RETRY_NLP else []
+    )
+    outcome = partition_retry_result(hashes, refreshed, still_broken)
 
-    if fixed:
-        clear_error_rows(collectionname, collection_dataset, task_name, fixed)
+    if outcome.recovered:
+        clear_error_rows(collectionname, collection_dataset, task_name, outcome.recovered)
+    if outcome.superseded:
+        # The re-run wrote its own row for these. Drop the ones it replaces, or the count
+        # the file browser and the admin processing page show doubles on every retry.
+        drop_superseded_error_rows(collectionname, collection_dataset, task_name,
+                                   outcome.superseded, started_at)
+    still_failing = sorted(outcome.superseded + outcome.unchanged)
     print(f"retry-failed-files {collection_dataset} {task_name}: "
-          f"{len(fixed)} document(s) recovered, {len(still_missing)} still failing")
-    if still_missing:
+          f"{len(outcome.recovered)} document(s) recovered, {len(still_failing)} still failing")
+    if still_failing:
         raise click.ClickException(
-            f"{len(still_missing)} document(s) still failing; their processing_errors "
-            f"rows were kept. First few: {sorted(still_missing)[:5]}"
+            f"{len(still_failing)} document(s) still failing; one processing_errors "
+            f"row each was kept. First few: {still_failing[:5]}"
         )
 
 

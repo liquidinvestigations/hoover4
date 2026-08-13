@@ -26,6 +26,13 @@ What actually re-runs is the stage that failed, for the plans those hashes belon
 Deletion order everywhere: **watermarks first, then rows**. A crash between the two
 leaves pages that are simply re-extracted, which is the harmless direction; the
 reverse leaves a page watermarked with no entities and it is never looked at again.
+
+``processing_errors`` is append-only and both the file browser and the admin processing
+page count its **rows**, so a retry that fails the same way must not leave a second copy
+behind: the failure count a visitor reads would double, and again on the next retry.
+One row per ``(document, task)`` is the invariant, kept by
+:func:`partition_retry_result` + :func:`drop_superseded_error_rows` — the run's own row
+survives and the row it replaces is deleted.
 """
 
 import logging
@@ -227,6 +234,95 @@ def hashes_without_entities(collectionname: str, collection_dataset: str, hashes
             """, parameters={"ds": collection_dataset, "hashes": chunk}).result_rows
             missing.extend(row[0] for row in rows)
     return sorted(missing)
+
+
+class RetryOutcome(NamedTuple):
+    """What happens to each retried hash's ``processing_errors`` rows.
+
+    * ``recovered`` — nothing new was recorded and the kind's own verification passed:
+      every row of that document goes.
+    * ``superseded`` — the re-run recorded a fresh error row, so the rows it replaces go
+      and the new one stays. This is what keeps a repeated failure at one row instead of
+      one more row per attempt.
+    * ``unchanged`` — still broken but the re-run recorded nothing (it died before it
+      could): the original row is the only evidence there is and is left alone.
+    """
+
+    recovered: list[str]
+    superseded: list[str]
+    unchanged: list[str]
+
+
+def partition_retry_result(hashes, refreshed, still_broken) -> RetryOutcome:
+    """Split the retried hashes by what the re-run did to them.
+
+    ``refreshed`` are the hashes that have a ``processing_errors`` row written during the
+    run; ``still_broken`` are the ones the kind's own verification rejects (for an NER
+    retry: no watermark for their text). A hash that is in neither is recovered.
+
+    A fresh error row wins over the verification: a document that recorded a new failure
+    is not recovered even if a watermark appeared for some other page of it.
+    """
+    fresh = set(refreshed)
+    broken = set(still_broken)
+    outcome = RetryOutcome([], [], [])
+    for file_hash in hashes:
+        if file_hash in fresh:
+            outcome.superseded.append(file_hash)
+        elif file_hash in broken:
+            outcome.unchanged.append(file_hash)
+        else:
+            outcome.recovered.append(file_hash)
+    return outcome
+
+
+def refreshed_hashes(collectionname: str, collection_dataset: str, task_name: str,
+                     since) -> list[str]:
+    """The hashes `task_name` recorded a NEW error row for at or after `since`.
+
+    `since` is read from the ClickHouse server's clock, not this process's: the rows are
+    timestamped by the workers that write them, on another host.
+    """
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT hash FROM processing_errors "
+            "WHERE collection_dataset = {ds:String} AND task_name = {task:String} "
+            "AND hash != '' AND timestamp >= {since:DateTime}",
+            parameters={"ds": collection_dataset, "task": task_name, "since": since},
+        ).result_rows
+    return sorted(row[0] for row in rows)
+
+
+def drop_superseded_error_rows(collectionname: str, collection_dataset: str,
+                               task_name: str, hashes, since) -> int:
+    """Delete the pre-`since` rows of `hashes`, leaving the ones this run wrote.
+
+    Called for documents that failed AGAIN, and it is what makes a retry replace an error
+    record rather than add to it. The newest row is the one kept because it describes the
+    code that is running now; the count the file browser shows stays at one per document
+    however many times the retry is run.
+    """
+    from database.clickhouse import get_collection_client
+
+    dropped = 0
+    with get_collection_client(collectionname) as client:
+        for chunk in chunked(hashes):
+            client.command(
+                "ALTER TABLE processing_errors DELETE "
+                "WHERE collection_dataset = {ds:String} AND task_name = {task:String} "
+                "AND hash IN {hashes:Array(String)} AND timestamp < {since:DateTime}",
+                parameters={"ds": collection_dataset, "task": task_name,
+                            "hashes": chunk, "since": since},
+                settings={"mutations_sync": 2},
+            )
+            dropped += len(chunk)
+    log.info(
+        "[retry] superseded the error rows of %d document(s) of %s %s",
+        dropped, collection_dataset, task_name,
+    )
+    return dropped
 
 
 def clear_error_rows(collectionname: str, collection_dataset: str, task_name: str, hashes) -> int:

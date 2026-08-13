@@ -9,6 +9,7 @@ use common::{
 };
 use futures::{StreamExt, stream};
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use crate::api::search::fanout;
 use crate::auth::permissions;
@@ -20,6 +21,19 @@ struct EntityRow {
     pub value: String,
     pub hit_count: u64,
     pub providers: Vec<String>,
+}
+
+/// Collapse every run of whitespace to a single space and trim.
+///
+/// A document extracted by more than one extractor carries one `entity_hit` row per
+/// extractor, and on mail the two differ only in line endings: `email_parser` stores
+/// `Eric \nCc` where `raw_text` stores `Eric \r\nCc`. Grouped by the raw string those are
+/// two entries that render identically, so an email carrying both variants lists every one
+/// of its values twice. Folding the whitespace is also what lets the stop-list see
+/// `Eric Cc` for what it is, and it merges nothing else: two entities that differ only in
+/// how much space is between their words are one entity.
+fn normalize_entity_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn normalize_entity_type(s: &str) -> DocumentEntityType {
@@ -125,28 +139,105 @@ async fn _get_document_entities(
         .fetch_all()
         .await?;
 
-    let mut items = Vec::new();
+    Ok(DocumentEntitiesResponse {
+        items: fold_entity_rows(rows),
+    })
+}
+
+/// Turn the stored rows into one item per `(type, value)`, dropping debris.
+///
+/// The grouping key is the whitespace-folded value, which is what merges the two rows a
+/// pre-existing email carries — see [`normalize_entity_whitespace`]. The hit count is
+/// *not* summed: each row already counts the same occurrences in a different variant of
+/// the same text, and adding them would double the number. It is replaced outright by a
+/// full-text count of the document before it reaches the panel anyway.
+fn fold_entity_rows(rows: Vec<EntityRow>) -> Vec<DocumentEntityItem> {
+    let mut items: Vec<DocumentEntityItem> = Vec::new();
+    let mut seen: HashMap<(DocumentEntityType, String), usize> = HashMap::new();
     for r in rows {
-        let value = r.value.trim().to_string();
+        let value = normalize_entity_whitespace(&r.value);
         if value.is_empty() {
             continue;
         }
         // Header names, encoding fragments and letter-spaced PDF headings. The pipeline
-        // stops these before they are stored; this catches what older rows kept.
+        // stops these before they are stored; this catches what older rows kept. Run
+        // after the whitespace fold, so a value the extractor split across a line break
+        // is matched by the same rules as its unwrapped twin.
         if is_stopped_entity(&value) {
             continue;
         }
         let entity_type = normalize_entity_type(&r.entity_type);
-        let hit_count = r.hit_count;
+        // An empty model name is an ingest that predates the column, not a provider.
+        let providers = r.providers.into_iter().filter(|p| !p.is_empty());
 
-        items.push(DocumentEntityItem {
-            entity_type,
-            value,
+        match seen.get(&(entity_type, value.clone())) {
+            Some(&index) => {
+                let item = &mut items[index];
+                item.hit_count = item.hit_count.max(r.hit_count);
+                for provider in providers {
+                    if !item.providers.contains(&provider) {
+                        item.providers.push(provider);
+                    }
+                }
+                item.providers.sort();
+            }
+            None => {
+                seen.insert((entity_type, value.clone()), items.len());
+                let mut providers: Vec<String> = providers.collect();
+                providers.sort();
+                items.push(DocumentEntityItem {
+                    entity_type,
+                    value,
+                    hit_count: r.hit_count,
+                    providers,
+                });
+            }
+        }
+    }
+    items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(entity_type: &str, value: &str, hit_count: u64, provider: &str) -> EntityRow {
+        EntityRow {
+            entity_type: entity_type.to_string(),
+            value: value.to_string(),
             hit_count,
-            // An empty model name is an ingest that predates the column, not a provider.
-            providers: r.providers.into_iter().filter(|p| !p.is_empty()).collect(),
-        });
+            providers: vec![provider.to_string()],
+        }
     }
 
-    Ok(DocumentEntitiesResponse { items })
+    #[test]
+    fn the_two_line_ending_variants_of_one_value_are_one_entry() {
+        // What the panel showed: `Eric Cc  6` twice, adjacent, identical. The document has
+        // an `email_parser` row and a `raw_text` row that differ only in `\r\n`.
+        let items = fold_entity_rows(vec![
+            row("PER", "Virginia \nHughes", 2, "email_parser"),
+            row("PER", "Virginia \r\nHughes", 2, "raw_text"),
+        ]);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].value, "Virginia Hughes");
+        assert_eq!(items[0].hit_count, 2, "the same occurrences seen twice are not twice as many");
+        assert_eq!(items[0].providers, vec!["email_parser", "raw_text"]);
+    }
+
+    #[test]
+    fn two_genuinely_different_values_are_never_merged() {
+        let items = fold_entity_rows(vec![
+            row("PER", "Virginia Hughes", 2, "raw_text"),
+            row("PER", "Virginia Hughes-Smith", 1, "raw_text"),
+            row("ORG", "Virginia Hughes", 3, "raw_text"),
+        ]);
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn a_value_only_a_line_break_hid_from_the_stop_list_is_now_stopped() {
+        // `Eric \nCc` is the reply block's header keyword glued to the name above it. The
+        // whole-value rules never saw it while the newline was in the middle.
+        assert!(fold_entity_rows(vec![row("PER", "Eric \r\nCc", 6, "raw_text")]).is_empty());
+    }
 }

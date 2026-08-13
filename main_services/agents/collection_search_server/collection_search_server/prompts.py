@@ -78,9 +78,10 @@ full with `get_document_text` before you cite it, and use `list_document_entitie
 find names worth searching for next.
 
 Leave `max_results` alone. Its default already returns a broad view of the collections,
-and a bigger number does not return more text — the same budget is divided over more
-hits, so every passage gets shorter and the answer gets harder to find. If a search
-brings back too much, make the query narrower, not the result set bigger.
+and a bigger number does not return more text — one result set has a fixed size budget,
+so a bigger number makes every passage shorter and then starts dropping the weakest hits
+entirely. If a search brings back too much, make the query narrower, not the result set
+bigger.
 
 Then STOP and write the answer. Specifically:
 

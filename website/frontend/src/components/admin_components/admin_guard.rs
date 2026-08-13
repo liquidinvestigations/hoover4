@@ -2,17 +2,19 @@
 
 use dioxus::prelude::*;
 
-use crate::api::auth_api::whoami;
 use crate::components::admin_components::{C_DANGER, C_HEADER, C_YELLOW, FONT};
+use crate::components::session_gate::use_session_user;
 use crate::components::suspend_boundary::LoadingIndicator;
 
 #[component]
 pub fn AdminGuard(children: Element) -> Element {
-    let user = use_resource(whoami);
+    // The gate's identity, not another `whoami`: this component sits under it, and a
+    // second call to the mint route per page load is the one request that writes sessions.
+    let user = use_session_user();
     rsx! {
-        match &*user.read() {
-            Some(Ok(u)) if u.is_admin => rsx! { {children} },
-            Some(Ok(u)) => rsx! {
+        match &user {
+            Some(u) if u.is_admin => rsx! { {children} },
+            Some(u) => rsx! {
                 div {
                     style: "display: flex; flex-direction: column; width: 100%; height: 100%; background: white; {FONT}",
                     header {
@@ -29,9 +31,6 @@ pub fn AdminGuard(children: Element) -> Element {
                         }
                     }
                 }
-            },
-            Some(Err(e)) => rsx! {
-                div { style: "padding: 40px; color: {C_DANGER}; {FONT}", "Error loading identity: {e}" }
             },
             None => rsx! {
                 div { style: "padding: 40px; display: flex; justify-content: center;", LoadingIndicator {} }

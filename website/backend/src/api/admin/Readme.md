@@ -190,7 +190,9 @@ row can briefly still appear in the failure list after a retry. Accepted, not a 
 The button here is the coarse form: it re-runs whole plans, which for thousands of
 failed documents means re-downloading and re-parsing the corpus. The cheap form is
 `main.py retry-failed-files`, which re-runs only the stage that failed, only for the
-hashes that failed it.
+hashes that failed it, and leaves one error row per (document, task) however many times it
+is run — the counts on this page and on `/file_browser/c/<name>` are row counts, so an
+append-only retry doubles them.
 
 ## A finished plan is not a successful one
 

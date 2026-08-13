@@ -22,7 +22,7 @@ import os
 from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
-from database.manticore import shard_tables_from_name
+from database.manticore import manticore_execute, shard_tables_from_name
 from .params import BuildVfsNodesParams, IndexShardParams
 from tasks.heartbeat import with_heartbeat
 log = logging.getLogger(__name__)
@@ -246,10 +246,10 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             row[field_name] = repr_manticore_tuple(field_values)
 
     with get_manticore_client() as client:
-        cursor = client.cursor()
         for chunk in chunks(text_content, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
-                cursor.execute(
+                manticore_execute(
+                    client,
                     pages_replace_sql(pages_table, row),
                     (
                         pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id']),
@@ -477,10 +477,10 @@ def index_metadata(params: IndexShardParams) -> list[str]:
         })
 
     with get_manticore_client() as client:
-        cursor = client.cursor()
         for chunk in chunks(search_rows, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
-                cursor.execute(
+                manticore_execute(
+                    client,
                     meta_replace_sql(meta_table, row),
                     meta_replace_params(collection_dataset, row),
                 )
@@ -534,11 +534,11 @@ def index_filenames_row(params: IndexShardParams) -> list[str]:
 
     written = []
     with get_manticore_client() as client:
-        cursor = client.cursor()
         for chunk in chunks(rows, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
                 basenames = sorted({os.path.basename(p) for p in row['paths'] if p})
-                cursor.execute(
+                manticore_execute(
+                    client,
                     pages_replace_sql(pages_table, {}),
                     (
                         pages_row_id(collection_dataset, row['hash'], FILENAME_EXTRACTED_BY, FILENAME_PAGE_ID),
@@ -673,12 +673,12 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     key_ids = get_string_term_ids(params.collectionname, collection_dataset, 'vfs_node', all_keys)
 
     with get_manticore_client() as client:
-        cursor = client.cursor()
         for start in range(0, len(nodes), INDEX_ROW_CHUNK_SIZE):
             for node, closure in zip(nodes[start:start + INDEX_ROW_CHUNK_SIZE],
                                      closures[start:start + INDEX_ROW_CHUNK_SIZE]):
                 ancestors = repr_manticore_tuple(sorted(key_ids[k] for k in closure))
-                cursor.execute(
+                manticore_execute(
+                    client,
                     f"""REPLACE INTO {vfs_table} (
                             id, collection_dataset, container_hash, node_key, parent_key,
                             ancestor_keys, name, path, kind, file_hash, file_size_bytes, depth
@@ -817,10 +817,10 @@ def index_vectors(params: IndexShardParams) -> list[str]:
         )
 
     with get_manticore_client() as client:
-        cursor = client.cursor()
         for chunk in chunks(kept, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
-                cursor.execute(
+                manticore_execute(
+                    client,
                     f"""REPLACE INTO {vectors_table} (
                         id,
                         collection_dataset,

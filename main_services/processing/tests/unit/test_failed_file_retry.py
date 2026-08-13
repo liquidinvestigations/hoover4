@@ -9,6 +9,7 @@ from tasks.P_admin.failed_file_retry import (
     RETRY_PLAN,
     FailureGroup,
     chunked,
+    partition_retry_result,
     retry_kind_for_task,
 )
 
@@ -55,3 +56,40 @@ def test_chunked_bounds_every_batch():
 
 def test_chunked_of_nothing_yields_nothing():
     assert list(chunked([])) == []
+
+
+def test_a_repeated_failure_replaces_its_row_instead_of_adding_one():
+    """The row count is what a visitor reads on `/file_browser/c/<name>` and what the
+    admin processing page prints beside the bar. An append-only retry shows N failed
+    documents as 2N failures, and 3N after the next attempt."""
+    hashes = ["a", "b", "c"]
+    outcome = partition_retry_result(hashes, refreshed=["a", "b"], still_broken=[])
+    assert outcome.recovered == ["c"]
+    assert outcome.superseded == ["a", "b"]
+    assert outcome.unchanged == []
+
+
+def test_a_document_that_recorded_nothing_new_keeps_its_evidence():
+    """An NER retry verifies by watermark, so a document can be judged still broken
+    without the re-run having written anything. Its original row is the only record of
+    the failure and must survive untouched."""
+    outcome = partition_retry_result(["a", "b"], refreshed=[], still_broken=["b"])
+    assert outcome.recovered == ["a"]
+    assert outcome.superseded == []
+    assert outcome.unchanged == ["b"]
+
+
+def test_a_fresh_error_row_outranks_the_watermark_check():
+    # A document whose text got a watermark but whose re-run still recorded an error is
+    # not recovered: clearing its rows would delete the failure that just happened.
+    outcome = partition_retry_result(["a"], refreshed=["a"], still_broken=[])
+    assert outcome.recovered == []
+    assert outcome.superseded == ["a"]
+
+
+def test_every_retried_hash_is_accounted_for_exactly_once():
+    hashes = [f"h{i}" for i in range(20)]
+    outcome = partition_retry_result(hashes, refreshed=hashes[:5], still_broken=hashes[3:8])
+    seen = outcome.recovered + outcome.superseded + outcome.unchanged
+    assert sorted(seen) == sorted(hashes)
+    assert len(seen) == len(set(seen))

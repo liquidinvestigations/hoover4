@@ -39,6 +39,16 @@ arrives through a checked route.
 renders until `whoami` resolves. Rendering pages first and letting each page's resources
 race the sign-in would hand every one of them a 401 to display on first paint.
 
+**And it calls it once.** The gate publishes what it resolved as a context; anything under
+it that needs the identity — the admin shell, the admin guard, both chat pages — reads it
+with `use_session_user()` instead of running its own `use_resource(whoami)`. A component
+that fetches for itself puts another request on the single endpoint that *writes* sessions,
+once per page load — the count becomes "how many identity-aware components does this route
+mount" rather than one.
+`use_session_user()` answers `None` while the gate's call is in flight, which means "not
+known yet" and never "guest" — a component that defaults an unknown identity to a concrete
+answer draws the wrong control on first paint and then takes it away.
+
 **Why it matters that only one route mints.** A response that attaches a fresh
 `set-cookie` on any route lets every client that stores no cookies — a crawler, a `curl`
 loop, a link checker — create a `guest-<hex>` user and a `user_login` row *per request*,
@@ -156,6 +166,13 @@ finds nothing; it exists because a write-time rule governs only rows written aft
 and on a mail corpus the rows written earlier put `Content-Transfer-Encoding` at the top
 of the facet. The duplication is deliberate and mirrors `document_sources.rs`: neither
 runtime may depend on the other being right.
+
+The two copies are held together by a digest rather than by discipline. No path is
+visible to both test runs — `hoover4-website` mounts only `website/` and `hoover4-worker`
+only `main_services/processing` — so each side hashes its own header names, thresholds and
+canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the same literal. A rule changed
+on one side alone fails that side's test; updating the digest then fails the other side
+until the same change is made there.
 
 Search responses are cached per sub-query in the global `search_manticore_cache`
 table; the cache key includes the collection's shard-ledger generation
@@ -682,6 +699,15 @@ Dioxus unless you go through the prototype's setter and dispatch a bubbling `inp
 and the home box submits on `onkeypress`, so Enter has to be a real CDP key event. The long
 base64 segments in the ini are CBOR route parameters (`data_definitions/url_param.rs`);
 `9g==` is `None`.
+
+### Two single-question diagnostics next to it
+
+`tools/count_whoami.py` prints the number of `/api/whoami` requests per navigation, and
+`tools/check_session_gate.py` reports which of the gate's three states a page settled in.
+Both run the same way — `docker cp` into `hoover4-mcp-browser`, then `docker exec`. They
+answer questions the screenshot gate cannot: a page that costs three mint-route calls looks
+identical to one that costs one, and a gate stuck on *Sign-in required* renders the same
+clean page on every route.
 
 ## Development Notes
 

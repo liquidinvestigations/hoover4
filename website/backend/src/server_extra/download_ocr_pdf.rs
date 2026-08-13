@@ -58,7 +58,9 @@ async fn lookup_blob_key(
     let (key, size) = rows
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow::anyhow!("no OCR'd PDF for {pdf_hash} ({engine}+{languages})"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("no OCR'd PDF for {pdf_hash} ({engine}+{languages}): not found")
+        })?;
     if !key.starts_with(DERIVED_PREFIX) {
         anyhow::bail!("refusing to serve {key:?}: it is not under {DERIVED_PREFIX}");
     }
@@ -122,9 +124,12 @@ pub async fn download_ocr_pdf(
             }
             // A missing variant is a 404, not a 500: the selector offers what
             // `pdf_ocr_results` said existed, and a purge between the page load and the
-            // click is a normal race rather than a broken server.
+            // click is a normal race rather than a broken server. An unknown dataset is
+            // the same answer and reaches here from `get_client_for_dataset`, which is
+            // why this asks `guard::is_not_found` rather than matching one message —
+            // matching one message leaves every unknown dataset 500ing on this route.
             let message = e.to_string();
-            if message.starts_with("no OCR'd PDF for") {
+            if guard::is_not_found(&e) {
                 return (StatusCode::NOT_FOUND, Body::from(message)).into_response();
             }
             tracing::error!("download_ocr_pdf: request failed: {:#?}", e);

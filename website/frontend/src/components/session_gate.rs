@@ -17,11 +17,34 @@
 //! rendered as prose, not raised into the error boundary, because a boundary presents the
 //! site as broken and offers a retry that cannot work.
 
+use common::current_user::CurrentUser;
 use dioxus::prelude::*;
 
 use crate::api::auth_api::whoami;
 use crate::api::error_util::user_facing_message;
 use crate::components::suspend_boundary::LoadingIndicator;
+
+/// The one `whoami` the app runs, shared with everything under the gate.
+///
+/// Handed down as a context rather than fetched again wherever the identity is needed.
+/// `whoami` is the mint route — the only endpoint that writes a session — so a component
+/// that calls it for itself puts another request on the one endpoint the whole app is
+/// gated behind, once per page load, and the count becomes "how many identity-aware
+/// components does this route mount" rather than one.
+#[derive(Clone, Copy)]
+pub struct SessionResource(pub Resource<Result<CurrentUser, ServerFnError>>);
+
+/// The signed-in user, or `None` while the gate's `whoami` is still in flight.
+///
+/// `None` means "not known yet", never "guest": a component that defaults an unknown
+/// identity to a concrete answer draws the wrong control on first paint and then takes it
+/// away, which reads as a bug. There is no error case here — a refused sign-in never
+/// renders children at all.
+pub fn use_session_user() -> Option<CurrentUser> {
+    let session = try_consume_context::<SessionResource>()?;
+    let value = session.0.read();
+    value.as_ref().and_then(|r| r.as_ref().ok()).cloned()
+}
 
 #[component]
 pub fn SessionGate(children: Element) -> Element {
@@ -29,6 +52,7 @@ pub fn SessionGate(children: Element) -> Element {
     // error there and the shell renders the waiting state. The browser re-runs it against
     // `/api/whoami`, which is the request that mints and sets the cookie.
     let session = use_resource(whoami);
+    use_context_provider(|| SessionResource(session));
 
     rsx! {
         match &*session.read() {

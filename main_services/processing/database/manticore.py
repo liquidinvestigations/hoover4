@@ -57,6 +57,69 @@ def get_manticore_client():
             pass
 
 
+def quote_manticore_values(cnx, params) -> list:
+    """Escape and quote `params` the way `cnx` would for its own statements.
+
+    The pure-Python connection exposes a ``converter``; the C-extension one does the same
+    work behind ``prepare_for_mysql`` and has no converter at all.
+    """
+    converter = getattr(cnx, "converter", None)
+    if converter is not None:
+        sql_mode = getattr(cnx, "sql_mode", None)
+        return [
+            converter.quote(converter.escape(converter.to_mysql(value), sql_mode))
+            for value in params
+        ]
+    return list(cnx.prepare_for_mysql(list(params)))
+
+
+def bind_manticore_sql(cnx, sql, params=()) -> bytes:
+    """Substitute `%s` placeholders in `sql` with `params`, escaped by the driver.
+
+    Same convention as ``cursor.execute(sql, params)`` — every ``%s`` takes one
+    parameter, quoting included — and the escaping is the connection's own, so a quote
+    becomes ``\\'`` as Manticore wants and never the SQL-standard doubling it rejects.
+    Splitting the TEMPLATE on ``%s`` is what makes a ``%s`` inside the *data* harmless.
+
+    Both driver flavours have to be handled: whether ``mysql.connector.connect`` returns
+    the C-extension connection or the pure-Python one depends on import order, so the
+    worker gets one and a script that imported the driver first gets the other, and only
+    one of the two exposes ``prepare_for_mysql``.
+    """
+    template = sql.encode("utf-8") if isinstance(sql, str) else bytes(sql)
+    parts = template.split(b"%s")
+    params = list(params)
+    if len(parts) - 1 != len(params):
+        raise ValueError(
+            f"{len(parts) - 1} placeholder(s) in the statement, {len(params)} parameter(s)"
+        )
+    if not params:
+        return template
+    values = quote_manticore_values(cnx, params)
+    out = bytearray(parts[0])
+    for value, tail in zip(values, parts[1:]):
+        out += value if isinstance(value, (bytes, bytearray)) else str(value).encode("utf-8")
+        out += tail
+    return bytes(out)
+
+
+def manticore_execute(cnx, sql, params=()) -> None:
+    """Run one parameterised statement against Manticore.
+
+    **Never use ``cursor.execute`` for a statement carrying corpus text.** The MySQL
+    driver scans the fully interpolated statement for a client-side ``DELIMITER``
+    command before sending it, and that scanner does not understand the backslash
+    escaping the same driver has just applied: a document containing the word
+    ``delimiter`` followed by whitespace and a quote — ordinary MediaWiki and manual-page
+    text does this — is read as a delimiter change. The statement is then either rejected
+    outright or re-split and re-joined into something Manticore answers with
+    ``P01: syntax error``, and the document can never be indexed. No amount of escaping
+    fixes it, because the corruption happens after the escaping; the data has to stay out
+    of the cursor. ``cmd_query`` sends the bytes as they are.
+    """
+    cnx.cmd_query(bind_manticore_sql(cnx, sql, params))
+
+
 def check_manticore_health():
     log.info("Checking ManticoreSearch health...")
     with get_manticore_client() as cnx:

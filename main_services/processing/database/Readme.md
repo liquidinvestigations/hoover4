@@ -74,6 +74,35 @@ Collapsing is a deliberate break of the never-edit-history rule and is paid for 
 from a pre-collapse database and none is wanted. Do not collapse again without that reset
 being acceptable.
 
+## Every Manticore write goes through `manticore_execute`, never a cursor
+
+`cursor.execute(sql, params)` is not safe for a statement carrying corpus text, and no
+amount of escaping makes it safe. The MySQL driver scans the **fully interpolated**
+statement for a client-side `DELIMITER` command before sending it, and that scanner does
+not understand the backslash escaping the same driver has just applied. A document
+containing the word `delimiter` followed by whitespace and a quote — ordinary MediaWiki
+markup and manual pages do this — is read as a delimiter change: the statement is either
+refused outright (`the backslash (\) character is not a valid delimiter`) or re-split and
+re-joined into something Manticore answers with `P01: syntax error`. One such page in a
+batch fails the whole indexing activity, and every document in that batch is recorded as
+failed, so a single file can hide dozens of healthy ones.
+
+`manticore_execute(cnx, sql, params)` substitutes the parameters with the connection's own
+escaping and sends the bytes with `cmd_query`, which has no splitter in front of it. The
+statement template is split on `%s` rather than `%`-formatted, so a `%s` inside a document
+is just text.
+
+Two properties this depends on, both of which have to be handled and neither of which can
+be assumed:
+
+* **A quote is escaped with a backslash, never by doubling.** Manticore's parser rejects
+  the SQL-standard `''`. That is the driver's behaviour and the reason the driver does the
+  escaping here rather than any hand-written routine.
+* **Which connection class `mysql.connector.connect` returns depends on import order.**
+  The C-extension one exposes `prepare_for_mysql` and no `converter`; the pure-Python one
+  is the other way round. The worker gets one and a script that imported the driver first
+  gets the other, so `quote_manticore_values` handles both.
+
 ## Manticore infix indexing (`min_infix_len='3'`)
 
 Both shard table DDLs in `manticore.py` — `pages_table_ddl` and `meta_table_ddl` — set

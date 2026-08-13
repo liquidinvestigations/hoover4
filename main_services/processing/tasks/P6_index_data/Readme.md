@@ -16,6 +16,8 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 
 ## Technical Details
 
+Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch — so a single file can present as dozens of unindexable ones.
+
 Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit`; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
 
 ## Usage

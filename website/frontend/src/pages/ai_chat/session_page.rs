@@ -6,11 +6,11 @@ use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchRes
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
-use crate::api::auth_api::whoami;
 use crate::api::chat_api::{
     chat_get_session, chat_poll, chat_send_message, chat_start_research, chat_stop,
     chat_dismiss_interrupted,
 };
+use crate::components::session_gate::use_session_user;
 use crate::components::chat_components::{
     ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
@@ -126,20 +126,15 @@ fn AiChatSessionRoot(
 
     let models_res = use_resource(chat_list_models);
     let configured_res = use_resource(chat_llm_configured);
-    let whoami_res = use_resource(whoami);
     let configured = configured_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
         .copied()
         .unwrap_or(true);
-    // `None` while `whoami` is in flight, not `false`: defaulting to "not a guest" drew
-    // the model picker for a moment on every guest's first paint and then removed it.
-    let is_guest = whoami_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .map(|u| u.is_guest);
+    // `None` while the session gate's `whoami` is in flight, not `false`: defaulting to
+    // "not a guest" drew the model picker for a guest's first paint and then removed it.
+    let is_guest = use_session_user().map(|u| u.is_guest);
     let choices = models_res
         .read()
         .as_ref()

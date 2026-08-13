@@ -60,11 +60,17 @@ makes dropping `May` safe while `May Chen` stays.
 
 `Mr`, `Inc`, `NA` and `Rights Reserved` are deliberately kept. A list that guesses at
 what is uninteresting removes real names; one that removes only what cannot be an entity
-does not.
+does not. The same line is drawn inside the reply-block rule, which drops the header
+keyword a mail client prints under a name (`Eric Cc`, `Larry Sent`): `Date` and `To` are
+ordinary English words as well as headers, so they count only with the header's colon
+still attached (`Sara Shackleton To:`) and `Blind Date` stays searchable.
 
 The website applies the same rules again when it renders entities
 (`website/common/src/entity_stoplist.rs`), because rows written before a rule existed
-keep their values until this stage is re-run over the collection.
+keep their values until this stage is re-run over the collection. The two copies cannot
+share a file — the two test suites run in containers that mount different trees — so each
+hashes its own rule data and canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the
+same literal, which makes a one-sided change fail a test rather than drift.
 
 ## Two providers, and the two places they collide
 
