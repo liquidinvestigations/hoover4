@@ -63,6 +63,13 @@ required*, and the only way in is a reverse proxy setting `X-Forwarded-User`. A
 proxy-authenticated identity is honoured on every route, because the proxy is what
 authenticated it; what is confined to the mint route is writing a session for it.
 
+That elevation is applied to the request and never written to the account, so a guest's
+`users` row keeps `is_admin = false` while `whoami` reports true for the same session.
+The disagreement is the design — the grant belongs to the deployment and lasts exactly as
+long as the switch does, where a persisted flag would leave real administrators behind the
+day it is turned off — and `/admin/users` states it on the page, because that is the one
+screen where the stored flag and the live grant sit side by side.
+
 A non-browser client must therefore hold a cookie jar and call `whoami` first. That is what
 `main_services/verify-stack.sh` does, discovering both URLs from the served WASM bundle
 because a server function's path carries a build hash.
@@ -413,6 +420,33 @@ attempts, and cannot abort a generation already in flight.
 Deep-research turns run in a Temporal worker and are **not** listed there; the Temporal UI
 owns that view.
 
+### Admin: the inline SVG charts
+
+The events-per-hour bars on `/admin/metrics` and the ETA lines on a collection's
+processing page are hand-written SVG, and two traps come with that.
+
+**A `<title>` inside `<svg>` has to be built in the SVG namespace, and `dioxus-html` has
+no such element.** It declares `title` in the HTML namespace only — the SVG twin collides
+on the Rust identifier and is commented out in that crate — so `title { … }` written
+inside a chart is created with `createElement` and lands in the document as an
+`HTMLTitleElement`. Inside `<svg>` that is a foreign element: not rendered, not a tooltip,
+and no warning on any build. `components::svg_title` declares the missing element by
+shadowing the `dioxus_elements` module rsx resolves against, and the charts use
+`svgtitle { … }`. The tooltip is the only place a bar's exact bucket timestamp and count
+are readable, because the axis deliberately drops the date.
+
+**Keys among SVG siblings are positions, never labels.** Two axis ticks can legitimately
+carry the same text — three ticks all read `0s` on a finished pipeline, and the 24 h window
+spans 25 hourly buckets so its two ends print the same `HH:MM` — and duplicate keys among
+keyed siblings are a `debug_assert` in dioxus-core that kills the renderer on the next
+re-diff, then puts *App panicked!* on the next page the operator opens. A release build
+does not assert; it re-associates the wrong nodes instead. Both charts key by tick index.
+
+The tick VALUES are chosen so they cannot collide in the first place: the count axis rounds
+its top up to an even number, so the half-height rule is labelled with the value it is
+actually drawn at rather than a rounded one, and a remaining-time axis whose whole range is
+zero draws one baseline tick instead of three that all read `0s`.
+
 ### Guests and LLM access (**revisit**)
 
 Guests may chat when `HOOVER4_DEMO_MODE=true`, keyed by their `guest-*` username, with
@@ -497,6 +531,17 @@ string for an unknown date and `DocumentEmailSourceItem::sent_date` rejects the 
 again on the client, because viewer state restored from a URL carries whatever was written
 into it. Printing the sentinel puts a sent date on the preview of a document the Metadata
 tab reports as having no confirmed date at all.
+
+**An email's headers and its body are stored independently, and the second is not implied
+by the first.** `email_headers` gets a row whenever the file parses at all; `text_content`
+gets an `email_parser` row only if the message yielded body text worth storing, and the
+text writer drops a page whose stripped text is under two characters. Mail whose whole
+`text/plain` part is a single `,` clears the first bar and not the second, exactly like
+mail whose only body part is HTML. `DocumentEmailSourceItem` therefore carries
+`has_body` alongside the body's page range, and the preview renders the headers with an
+explicit "no body text was extracted" line instead of asking for a page that has no row —
+which the text endpoint answers, correctly, with a 404 the viewer rendered as *document
+not found!* where the body belongs.
 
 **Archive-mtime limitation.** An archive member's mtime is only as good as the archive.
 Many archives store the extraction machine's clock rather than the document's, and nothing
@@ -624,13 +669,30 @@ screen is `many-children` (a 42-level chain and a folder of 334 siblings), inges
 affordable. A row's rung is its position in the ladder on screen; ancestor elision hides
 whole levels without spending rungs, so the deepest folder of a 43-row chain renders on
 rung 11 rather than rung 45. Every visible row is therefore indented strictly more than the
-row it hangs off, at any depth, which is the thing a tree has to show. `indent_px` spends
-16 px on the first four rungs and 8 px on every rung after them, bounded by a pixel ceiling
-and — through a CSS `min()` — by a share of the pane, so dragging the sidebar narrow
-tightens the ladder with no re-render. The 8 px step is small because the app lays out at a
-1920 px design width and `zoom`s it to the window (`assets/main.css`): a 4 px step would be
-2.5 device pixels at a 1280 px window, which is not a step anyone can see. Past four rungs
-the row also states its true depth in a badge, because the ladder does not count it.
+row it hangs off, at any depth and at any pane width, which is the thing a tree has to
+show. `indent_px` spends 16 px on the first four rungs and 8 px on every rung after them,
+bounded by a pixel ceiling and — through a CSS `min()` — by a share of the pane, so
+dragging the sidebar narrow tightens the ladder with no re-render. The 8 px step is small
+because the app lays out at a 1920 px design width and `zoom`s it to the window
+(`assets/main.css`): a 4 px step would be 2.5 device pixels at a 1280 px window, which is
+not a step anyone can see. Past four rungs the row also states its true depth in a badge,
+because the ladder does not count it.
+
+**That pane share is scaled by the rung, not applied flat**, which is the difference
+between a ladder that tightens and one that stops. A flat `min(Npx, 40%)` resolves to one
+number for every rung above the percentage, so at the narrowest pane the drag offers, four
+to five consecutive levels render at pixel-identical indent — the flat cap the ladder
+replaced, reached from the other direction. `indent_style` emits
+`min(Npx, calc(40% * f))` where `f` is the rung's share of the pixel ceiling, so the
+narrow-pane branch is a proportional copy of the wide-pane one: bounded by the same share
+of the pane, and still stepping at every rung.
+
+**Refocusing collapses the subtree below the new focus** (`expansion_after_refocus`).
+Elision only shortens the ladder ABOVE the focus, so an expanded chain left hanging below
+it keeps taking a rung each until the pixel ceiling absorbs them: navigating up from a
+44-deep folder to a 26-deep one otherwise leaves twenty-one nested levels rendered as
+twenty-one siblings. The path to the focus stays open, including the levels elision hides,
+and branches elsewhere in the tree keep whatever the user opened by hand.
 
 **The storage sidebar is resizable and remembers its width**
 (`components/resizable_sidebar.rs`). The unit is CSS pixels — a percentage or `vw` would
@@ -641,6 +703,13 @@ scale is a media-query ladder and cannot be a constant on the Rust side. A remem
 width is clamped to 240–720 px on the way in and on the way out, anything that is not a
 plain positive integer falls back to the default, and `max-width: 50%` backstops both. The
 720 px ceiling is 37 % of the design width, so no window size can put the pane off screen.
+
+**The double-click that resets it is recognised from the two `mousedown`s**, because no
+`click` or `dblclick` ever reaches the handle: the first press mounts the full-screen
+overlay that catches the drag, the release lands on that overlay, and the overlay unmounts
+in the same handler — so the browser has no live common ancestor for the two and drops the
+whole activation sequence. `is_double_press` pairs two presses within 400 ms and 4 px of
+each other, which is the only path that writes the default width back to storage.
 
 Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
 crosses container boundaries — `PathDescriptor` carries a single `container_hash`, so an

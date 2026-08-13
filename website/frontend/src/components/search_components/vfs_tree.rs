@@ -30,10 +30,18 @@
 //! for each other. A row's `rung` is its position in the ladder actually on screen; its
 //! `depth` is its position in the tree. Ancestor elision makes the first much smaller than
 //! the second — the deepest folder in a 42-level chain sits on rung 11 — so indenting by
-//! rung means every visible row is indented strictly more than the row it hangs off,
-//! however deep the folder is, in a total the sidebar can afford. Indenting by depth is
-//! what forced the old flat cap: it had to stop at four levels or spend the whole pane,
-//! and once it stopped, ten nested folders rendered as ten siblings.
+//! rung means every row on the path the tree opens for you is indented strictly more than
+//! the row it hangs off, at every width the sidebar can be dragged to, in a total the
+//! sidebar can afford. Indenting by depth is what forced the old flat cap: it had to stop
+//! at four levels or spend the whole pane, and once it stopped, ten nested folders
+//! rendered as ten siblings.
+//!
+//! Three things hold that up together, and dropping any one of them brings the flat list
+//! back: [`indent_style`] scales its pane-relative ceiling by the rung so a narrow pane
+//! keeps the steps instead of collapsing them; [`expansion_after_refocus`] closes the
+//! subtree below the focus so no automatic ladder ever runs past what elision bounds; and
+//! [`MAX_INDENT_PX`] is the backstop for a user who opens twenty chevrons by hand, past
+//! which the depth badge is what carries the number.
 
 use std::collections::BTreeSet;
 
@@ -235,13 +243,14 @@ pub fn VfsTree(
             return;
         };
         let keys: Vec<String> = nodes.iter().map(|node| node.node_key.clone()).collect();
-        // Every ancestor is expanded, including the ones elision will hide: unfolding the
-        // gap must reveal an already-open path rather than a column of collapsed rows.
-        let mut open = expanded_signal.write();
-        for key in &keys {
-            open.insert(key.clone());
+        // Open the path to the focus and close everything under it — see
+        // [`expansion_after_refocus`]. Written only when it changes: this effect re-runs
+        // on every chain read, and an unconditional `write()` on a signal the tree
+        // renders from is a re-render per run.
+        let next = expansion_after_refocus(&expanded_signal.peek(), &keys);
+        if *expanded_signal.peek() != next {
+            expanded_signal.set(next);
         }
-        drop(open);
         if *chain_signal.peek() != keys {
             chain_signal.set(keys);
         }
@@ -480,14 +489,46 @@ pub(crate) fn indent_px(rung: usize) -> usize {
     full.saturating_add(deep).min(MAX_INDENT_PX)
 }
 
+/// The share of [`MAX_INDENT_PX`] that rung `rung` has reached, in `0.0..=1.0`.
+///
+/// This is what makes the pane-relative ceiling keep its steps. A flat
+/// `min(Npx, {MAX_INDENT_PERCENT}%)` collapses every rung whose pixel indent is past the
+/// percentage into one value, so at the narrowest pane the drag offers, four to five
+/// consecutive levels render at pixel-identical indent — the flattening the rung ladder
+/// exists to prevent, reachable by dragging the sidebar to its floor. Scaling the
+/// percentage by the rung's own share instead means the narrow-pane branch is a
+/// proportional copy of the wide-pane one: it is bounded by the same
+/// [`MAX_INDENT_PERCENT`] of the pane, and it still steps at every rung the pixel ladder
+/// steps at.
+fn indent_fraction(rung: usize) -> f64 {
+    indent_px(rung) as f64 / MAX_INDENT_PX as f64
+}
+
 /// The `padding-left` value for a row on rung `rung`.
 ///
 /// Two ceilings, because they guard different things: [`indent_px`] is what the layout was
 /// designed against, and [`MAX_INDENT_PERCENT`] is what keeps a row readable in a pane the
 /// user has dragged narrow — the percentage resolves against the pane, so it tracks the
-/// drag with no re-render.
+/// drag with no re-render. Both are scaled by the rung's [`indent_fraction`], so whichever
+/// binds, the ladder still steps.
 pub(crate) fn indent_style(rung: usize) -> String {
-    format!("min({}px, {MAX_INDENT_PERCENT}%)", indent_px(rung))
+    format!(
+        "min({}px, calc({MAX_INDENT_PERCENT}% * {:.4}))",
+        indent_px(rung),
+        indent_fraction(rung)
+    )
+}
+
+/// What [`indent_style`] resolves to, in pixels, in a tree `container_px` wide.
+///
+/// The CSS is what the browser evaluates; this is the same arithmetic written twice on
+/// purpose, so the ladder's one load-bearing property — a step at every width — is a test
+/// rather than a measurement taken by hand at three widths. It has to move whenever the
+/// format string above does.
+#[cfg(test)]
+pub(crate) fn indent_resolved_px(rung: usize, container_px: f64) -> f64 {
+    let percentage = container_px * MAX_INDENT_PERCENT as f64 / 100.0 * indent_fraction(rung);
+    (indent_px(rung) as f64).min(percentage)
 }
 
 /// Where the middle of a deep ancestor chain is replaced by one row.
@@ -680,6 +721,39 @@ pub fn tri_state(node_key: &str, selected: &BTreeSet<String>) -> TriState {
     }
 }
 
+/// The expansion set the tree holds once it has refocused on the end of `chain`.
+///
+/// Two rules, and the second is the one that is easy to miss. Every ancestor of the
+/// focused node is expanded, including the ones elision will hide, so unfolding the gap
+/// reveals an already-open path rather than a column of collapsed rows. And every strict
+/// DESCENDANT of the focused node is collapsed, because the chain you walked down is not
+/// the chain you are on any more.
+///
+/// Leaving descendants expanded is what turned navigating *up* into a flat list: elision
+/// only shortens the ladder on the path to the focus, so rows below it keep taking a rung
+/// each until the indent ceiling swallows them — going up from a 44-deep folder to a
+/// 26-deep one left twenty-one consecutive rows at identical indent, twenty-one nested
+/// levels rendered as twenty-one siblings.
+///
+/// An empty chain is not a focus: the picker skin has none, and collapsing everything
+/// there would fight the user's own chevrons.
+pub fn expansion_after_refocus(
+    expanded: &BTreeSet<String>,
+    chain: &[String],
+) -> BTreeSet<String> {
+    let Some(focus) = chain.last() else {
+        return expanded.clone();
+    };
+    let below_focus = descendant_prefix(focus);
+    let mut next: BTreeSet<String> = expanded
+        .iter()
+        .filter(|key| !key.starts_with(&below_focus))
+        .cloned()
+        .collect();
+    next.extend(chain.iter().cloned());
+    next
+}
+
 /// The string every descendant key of `node_key` starts with.
 ///
 /// A separator has to be appended so that `/ab` is not read as a child of `/a` — except
@@ -802,10 +876,10 @@ mod tests {
         // holds when the user drags the sidebar in, and the browser re-evaluates it with
         // no re-render. It has to bind at the narrowest pane the drag allows, or the
         // ceiling is the only guard there and it is the wrong one.
-        assert_eq!(indent_style(0), format!("min(0px, {MAX_INDENT_PERCENT}%)"));
+        assert_eq!(indent_style(0), format!("min(0px, calc({MAX_INDENT_PERCENT}% * 0.0000))"));
         assert_eq!(
             indent_style(usize::MAX),
-            format!("min({MAX_INDENT_PX}px, {MAX_INDENT_PERCENT}%)")
+            format!("min({MAX_INDENT_PX}px, calc({MAX_INDENT_PERCENT}% * 1.0000))")
         );
         assert!(MAX_INDENT_PERCENT < 50, "the indent may never outweigh the label");
         let narrowest = crate::components::resizable_sidebar::MIN_SIDEBAR_PX as usize;
@@ -813,6 +887,90 @@ mod tests {
             narrowest * MAX_INDENT_PERCENT / 100 < MAX_INDENT_PX,
             "at the narrowest pane the percentage must be the binding guard"
         );
+        // And whichever guard binds, no rung may take more than the stated share.
+        for rung in 0..40 {
+            assert!(
+                indent_resolved_px(rung, narrowest as f64)
+                    <= narrowest as f64 * MAX_INDENT_PERCENT as f64 / 100.0 + 0.001,
+                "rung {rung} takes more than {MAX_INDENT_PERCENT}% of the narrowest pane"
+            );
+        }
+    }
+
+    /// The property the whole ladder exists for, asserted at the widths the drag offers.
+    ///
+    /// A pane-relative ceiling that is not scaled by the rung collapses every rung above
+    /// it onto one value: at the 240 px floor the drag allows, five consecutive levels
+    /// then render at pixel-identical indent and a deep chain reads as a flat list —
+    /// which is exactly the defect the ladder replaced, reached from the other direction.
+    /// The tree also scrolls, which takes a further ~13 px off the containing block, so
+    /// the narrow case is checked below the pane width as well as at it.
+    #[test]
+    fn every_rung_still_steps_at_every_pane_width() {
+        let widths = [
+            crate::components::resizable_sidebar::MIN_SIDEBAR_PX as f64 - 13.0,
+            crate::components::resizable_sidebar::MIN_SIDEBAR_PX as f64,
+            crate::components::resizable_sidebar::DEFAULT_SIDEBAR_PX as f64,
+            crate::components::resizable_sidebar::MAX_SIDEBAR_PX as f64,
+        ];
+        // Up to the rung where the pixel ladder itself stops; past that the depth badge
+        // carries the number and [`MAX_INDENT_PX`] is doing what it is there for.
+        let last_stepping_rung = (0..usize::MAX)
+            .find(|rung| indent_px(*rung) == MAX_INDENT_PX)
+            .expect("the ladder reaches its ceiling");
+        for width in widths {
+            for rung in 1..=last_stepping_rung {
+                let previous = indent_resolved_px(rung - 1, width);
+                let current = indent_resolved_px(rung, width);
+                assert!(
+                    current > previous,
+                    "at {width}px, rung {rung} indents {current} and rung {} indents {previous}",
+                    rung - 1
+                );
+            }
+        }
+    }
+
+    /// Navigating up must not leave the chain you came from hanging off the new focus.
+    ///
+    /// Elision shortens the ladder only above the focus, so an expanded descendant chain
+    /// keeps taking a rung each until the indent ceiling absorbs it: going up from a
+    /// 44-deep folder to a 26-deep one left twenty-one consecutive rows at the same
+    /// indent, which is the flat list the ladder exists to prevent.
+    #[test]
+    fn refocusing_closes_the_subtree_below_the_new_focus() {
+        let root = "ds\u{1f}\u{1f}/";
+        let chain_down: Vec<String> = (0..6)
+            .map(|d| format!("ds\u{1f}\u{1f}/{}", (0..=d).map(|i| i.to_string()).collect::<Vec<_>>().join("/")))
+            .collect();
+        let mut expanded: BTreeSet<String> = chain_down.iter().cloned().collect();
+        expanded.insert(root.to_string());
+        // A sibling branch the user opened by hand, which has nothing to do with the walk.
+        expanded.insert("ds\u{1f}\u{1f}/9".to_string());
+
+        // Back up to the third folder in the chain.
+        let mut chain_up = vec![root.to_string()];
+        chain_up.extend(chain_down[..3].iter().cloned());
+        let after = expansion_after_refocus(&expanded, &chain_up);
+
+        for key in &chain_up {
+            assert!(after.contains(key), "the path to the focus stays open: {key}");
+        }
+        for key in &chain_down[3..] {
+            assert!(!after.contains(key), "the chain below the focus is closed: {key}");
+        }
+        assert!(after.contains("ds\u{1f}\u{1f}/9"), "a branch elsewhere is untouched");
+    }
+
+    #[test]
+    fn a_tree_with_no_focus_keeps_every_chevron_the_user_opened() {
+        // The picker skin has no focus at all, and an empty chain must not be read as
+        // "focused on the root", which would collapse the whole tree on every render.
+        let expanded = BTreeSet::from([
+            "ds\u{1f}\u{1f}/a".to_string(),
+            "ds\u{1f}\u{1f}/a/b".to_string(),
+        ]);
+        assert_eq!(expansion_after_refocus(&expanded, &[]), expanded);
     }
 
     #[test]

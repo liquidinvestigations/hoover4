@@ -127,6 +127,46 @@ struct Drag {
     scale: f64,
 }
 
+/// The longest gap between two presses that still reads as one double-click, in
+/// milliseconds. The platform default sits between 400 and 500 ms everywhere that has
+/// one; this is the low end of that, so a deliberate second grab of the handle is a
+/// second drag rather than a reset.
+const DOUBLE_PRESS_MS: f64 = 400.0;
+
+/// How far the cursor may move between the two presses and still be in the same place, in
+/// viewport pixels. A double-click is a gesture at a point; a press three pixels along the
+/// handle after a drag is the user grabbing it again.
+const DOUBLE_PRESS_SLOP_PX: f64 = 4.0;
+
+/// Is this press the second half of a double-click on the handle?
+///
+/// **The gesture has to be recognised from `mousedown`, because no `click` or `dblclick`
+/// ever reaches the handle.** The first press mounts a full-screen overlay to catch the
+/// drag, the release lands on that overlay, and the overlay unmounts in the same handler —
+/// so the browser has no live common ancestor of the press and the release and drops the
+/// whole activation sequence, `click` included. The `ondoubleclick` handler below is
+/// correct and was simply unreachable from a real mouse; this is what reaches it.
+///
+/// `previous` is `(timestamp_ms, client_x)` of the last press on the handle, and the
+/// caller only records one when it actually starts a drag.
+fn is_double_press(previous: Option<(f64, f64)>, now_ms: f64, client_x: f64) -> bool {
+    let Some((then, x)) = previous else {
+        return false;
+    };
+    let elapsed = now_ms - then;
+    elapsed >= 0.0 && elapsed <= DOUBLE_PRESS_MS && (client_x - x).abs() <= DOUBLE_PRESS_SLOP_PX
+}
+
+/// A monotonic-enough clock for [`is_double_press`]. Anything unmeasurable reads as 0,
+/// which makes the elapsed time negative on the next press and the gesture simply not
+/// fire — a reset that does not happen is far better than one that happens mid-drag.
+fn now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now())
+        .unwrap_or(0.0)
+}
+
 /// The pane, its remembered width, and the handle that changes it.
 ///
 /// The moving half of the drag lives on a full-screen overlay that only exists while the
@@ -137,6 +177,8 @@ struct Drag {
 pub fn ResizableSidebar(children: Element) -> Element {
     let mut width = use_signal(|| DEFAULT_SIDEBAR_PX);
     let mut drag = use_signal(|| None::<Drag>);
+    // `(timestamp_ms, client_x)` of the last press on the handle. See [`is_double_press`].
+    let mut last_press = use_signal(|| None::<(f64, f64)>);
 
     // Reads nothing reactive, so it runs once, on the client. The server render has no
     // local storage and shows the default.
@@ -157,6 +199,14 @@ pub fn ResizableSidebar(children: Element) -> Element {
         if was_dragging {
             write_stored_px(*width.peek());
         }
+    });
+
+    // The only path that writes the default back to storage, so it has to be reachable
+    // from a real mouse — see [`is_double_press`].
+    let reset_width = Callback::new(move |_: ()| {
+        drag.set(None);
+        width.set(DEFAULT_SIDEBAR_PX);
+        write_stored_px(DEFAULT_SIDEBAR_PX);
     });
 
     rsx! {
@@ -190,17 +240,23 @@ pub fn ResizableSidebar(children: Element) -> Element {
                 title: "Drag to resize the sidebar, double-click to reset it",
                 onmousedown: move |event: Event<MouseData>| {
                     event.prevent_default();
+                    let client_x = event.client_coordinates().x;
+                    if is_double_press(*last_press.peek(), now_ms(), client_x) {
+                        last_press.set(None);
+                        reset_width.call(());
+                        return;
+                    }
+                    last_press.set(Some((now_ms(), client_x)));
                     drag.set(Some(Drag {
-                        client_x: event.client_coordinates().x,
+                        client_x,
                         start_px: *width.peek(),
                         scale: layout_scale(),
                     }));
                 },
-                ondoubleclick: move |_| {
-                    drag.set(None);
-                    width.set(DEFAULT_SIDEBAR_PX);
-                    write_stored_px(DEFAULT_SIDEBAR_PX);
-                },
+                // Kept as well as the press-pair above: a synthetic `dblclick` — an
+                // accessibility tool, a script — does reach the handle, and this is the
+                // shorter path for it.
+                ondoubleclick: move |_| reset_width.call(()),
             }
         }
         if dragging {
@@ -264,6 +320,28 @@ mod tests {
         assert_eq!(dragged_sidebar_px(300, 100.0, 1.0), 400);
         assert_eq!(dragged_sidebar_px(300, 100.0, 0.0), 400);
         assert_eq!(dragged_sidebar_px(300, 100.0, f64::NAN), 400);
+    }
+
+    /// The reset gesture is recognised from the presses, because nothing else arrives.
+    ///
+    /// The handle's own `title` advertises it, and it is the only path that writes the
+    /// default width back to storage — so "the handler is correct but unreachable" is
+    /// indistinguishable, to the user, from no handler at all.
+    #[test]
+    fn two_presses_in_the_same_place_are_the_reset_gesture() {
+        assert!(is_double_press(Some((1_000.0, 300.0)), 1_150.0, 300.0));
+        // Within the slop: a hand does not hold a pixel.
+        assert!(is_double_press(Some((1_000.0, 300.0)), 1_150.0, 303.0));
+
+        // A first press has nothing to pair with.
+        assert!(!is_double_press(None, 1_000.0, 300.0));
+        // Too slow is two clicks, not one gesture.
+        assert!(!is_double_press(Some((1_000.0, 300.0)), 1_401.0, 300.0));
+        // Too far is the user grabbing the handle again after a drag, which must resize
+        // rather than throw the width away.
+        assert!(!is_double_press(Some((1_000.0, 300.0)), 1_150.0, 320.0));
+        // An unmeasurable clock reads as 0, which must not fire the gesture.
+        assert!(!is_double_press(Some((1_000.0, 300.0)), 0.0, 300.0));
     }
 
     #[test]

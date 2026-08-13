@@ -19,6 +19,9 @@ use crate::components::admin_components::{
     MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+// Shadows the prelude's element table so `svg_title` exists — see its module docs. An
+// HTML `<title>` inside an `<svg>` is a foreign element and never becomes a tooltip.
+use crate::components::svg_title::dioxus_elements;
 use crate::routes::Route;
 
 /// How many rows each list fetches. Deliberately small: these pages are a triage view,
@@ -389,15 +392,22 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
     let px = move |t: i64| LEFT + (t - min_x) as f64 / span_x * plot_w;
     let py = move |eta: u64| baseline - eta as f64 / span_y * plot_h;
 
-    let ticks: Vec<(f64, String)> = (0..=2)
-        .map(|i| {
-            let fraction = i as f64 / 2.0;
-            (
-                baseline - fraction * plot_h,
-                humanize_seconds((max_eta as f64 * fraction).round() as u64),
-            )
-        })
-        .collect();
+    // Three ticks over a real range; one when there is no range. Every remaining time
+    // being zero is a finished pipeline, and three gridlines all reading `0s` describe an
+    // axis that does not exist — the baseline alone is the whole truth there.
+    let ticks: Vec<(f64, String)> = if max_eta == 0 {
+        vec![(baseline, humanize_seconds(0))]
+    } else {
+        (0..=2)
+            .map(|i| {
+                let fraction = i as f64 / 2.0;
+                (
+                    baseline - fraction * plot_h,
+                    humanize_seconds((max_eta as f64 * fraction).round() as u64),
+                )
+            })
+            .collect()
+    };
 
     let first = samples.iter().min_by_key(|s| s.sampled_at_unix);
     let last = samples.iter().max_by_key(|s| s.sampled_at_unix);
@@ -409,9 +419,12 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
             "viewBox": "0 0 {W} {H}",
             style: "background: white; border: 1px solid #eee; max-width: 720px; display: block;",
 
-            for (y, label) in ticks {
+            // Keyed by position on the axis, never by the label: two ticks can carry the
+            // same text, and duplicate keys among siblings are a dioxus-core assertion on
+            // a debug build and an undefined re-association on a release one.
+            for (tick, (y, label)) in ticks.into_iter().enumerate() {
                 g {
-                    key: "y-{label}",
+                    key: "y-{tick}",
                     line {
                         x1: "{LEFT}", y1: "{y}", x2: "{W - RIGHT}", y2: "{y}",
                         "stroke": "#e5e5e5", "stroke-width": "1",
@@ -450,7 +463,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                             "stroke": "{color}",
                             "stroke-width": "2",
                             "stroke-linejoin": "round",
-                            title { "{label}" }
+                            svgtitle { "{label}" }
                         }
                     }
                 }

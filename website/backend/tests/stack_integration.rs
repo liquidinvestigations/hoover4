@@ -1125,6 +1125,7 @@ async fn email_source_names_a_page_that_holds_the_body() {
         })
         .expect("a document with an email_parser body offers an Email source");
 
+    assert!(email.has_body, "this document has an email_parser row: {email:?}");
     assert!(
         email.min_page >= 1,
         "page_id is 1-based, so {} names no row at all",
@@ -1141,6 +1142,126 @@ async fn email_source_names_a_page_that_holds_the_body() {
     .await
     .expect("the page the Email source names must resolve to text");
     assert!(!body.is_empty(), "the email body came back empty");
+}
+
+/// An email with headers but no parsed body says so, rather than naming a page.
+///
+/// The two halves of a mail file are stored independently: `email_headers` gets a row
+/// whenever the file parses at all, `text_content` gets an `email_parser` row only if the
+/// message yielded body text worth storing. Mail whose whole `text/plain` part is a
+/// single character — a bare `,` on a line of its own, which the Enron export produces by
+/// the dozen — clears the first bar and not the second, exactly like mail whose only body
+/// part is HTML. The viewer still offers the Email source for those, so the source has to
+/// carry the fact that there is nothing to fetch; when it did not, the body pane rendered
+/// the text endpoint's 404 as `document not found!`.
+///
+/// The fixture is built rather than found, because the corpus is not guaranteed to hold
+/// one: a body-less email is written straight into `emails`/`email_headers` with no
+/// `text_content` at all, which is precisely the shape of the deployed failures.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
+    let _budget = Budget::start("an_email_with_no_parsed_body_is_not_offered_as_one");
+    use common::document_sources::{DocumentSourceItem, EMAIL_TEXT_EXTRACTOR};
+    use common::search_result::DocumentIdentifier;
+
+    let client = get_client_for_dataset(EMAILS).await.unwrap();
+    // A hash of its own so the fixture cannot collide with a real document, and so it is
+    // removable by exactly the rows this test wrote.
+    let file_hash = "0000000000000000000000000000000000000000000000000000bodyless".to_string();
+    client
+        .query("DELETE FROM emails WHERE collection_dataset = ? AND email_hash = ?")
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query("DELETE FROM email_headers WHERE collection_dataset = ? AND email_hash = ?")
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query(
+            "INSERT INTO emails (collection_dataset, email_hash, email_type) \
+             VALUES (?, ?, 'eml')",
+        )
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query(
+            "INSERT INTO email_headers \
+             (collection_dataset, email_hash, raw_headers_json, subject, addresses, date_sent, date_sent_known) \
+             VALUES (?, ?, '{}', 'one comma and nothing else', 'from: a@b.com', now(), 1)",
+        )
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
+
+    let document = DocumentIdentifier {
+        collection_dataset: EMAILS.to_string(),
+        file_hash: file_hash.clone(),
+    };
+    let sources = backend::api::documents::get_document_sources::get_document_sources(
+        &admin_user(),
+        document.clone(),
+    )
+    .await
+    .unwrap();
+    let email = sources
+        .iter()
+        .find_map(|source| match source {
+            DocumentSourceItem::Email(email) => Some(email.clone()),
+            _ => None,
+        })
+        .expect("an email with headers still offers an Email source");
+
+    assert!(
+        !email.has_body,
+        "no email_parser row exists for this document, so the source must not claim a body: {email:?}"
+    );
+    assert!(
+        !sources.iter().any(|source| matches!(
+            source,
+            DocumentSourceItem::Text(text) if text.extracted_by == EMAIL_TEXT_EXTRACTOR
+        )),
+        "the fixture is only meaningful while it has no email_parser text source"
+    );
+    // The fetch the viewer used to make unconditionally. It fails, and that is correct —
+    // which is why the source must not send the viewer to it.
+    let body = backend::api::documents::search_document_text::get_document_text_by_id_and_source(
+        &admin_user(),
+        document,
+        EMAIL_TEXT_EXTRACTOR.to_string(),
+        email.min_page.max(1),
+    )
+    .await;
+    assert!(
+        body.is_err(),
+        "asking for a body page that has no row must fail, not return text"
+    );
+
+    client
+        .query("DELETE FROM emails WHERE collection_dataset = ? AND email_hash = ?")
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query("DELETE FROM email_headers WHERE collection_dataset = ? AND email_hash = ?")
+        .bind(EMAILS)
+        .bind(&file_hash)
+        .execute()
+        .await
+        .unwrap();
 }
 
 /// In-PDF search answers with real hits, through the sidecar, end to end.

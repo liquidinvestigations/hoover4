@@ -36,6 +36,23 @@ pub fn DocumentPreviewForEmail(
         }
     };
 
+    // An email whose body was never extracted has no `email_parser` row to ask for, and
+    // asking anyway is what put the text endpoint's `document not found!` where the body
+    // belongs. Say what is true instead: the headers are here, the body is not. The other
+    // text variants — the raw MIME envelope among them — stay in the source selector.
+    if !source.read().has_body {
+        return rsx! {
+            div {
+                style: "padding: 10px; overflow: auto; height: 100%;",
+                {preamble}
+                div {
+                    style: "font-size: 14px; color: rgba(0, 0, 0, 0.6); font-style: italic; padding: 8px 2px;",
+                    "No body text was extracted from this email. Its headers are above; the message itself may be an attachment, may have carried no plain-text part, or may be too short to store."
+                }
+            }
+        };
+    }
+
     // `text_content.page_id` is 1-based, so page 0 matches no row and the body request
     // 404s. The range comes from the email source's own `email_parser` rows; the floor is
     // here as well because viewer state restored from an older URL carries no range.

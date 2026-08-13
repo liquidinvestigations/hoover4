@@ -137,8 +137,9 @@ async fn get_email_sources(
     let Some((subject, addresses, date_sent, raw_headers_json)) = result.into_iter().next() else {
         return Ok(None);
     };
-    // The body's page range is filled in by `get_document_sources`, which has the text
-    // sources; 1 is the smallest `page_id` that can exist.
+    // The body's page range and whether there is a body at all are filled in by
+    // `get_document_sources`, which has the text sources; 1 is the smallest `page_id`
+    // that can exist.
     Ok(Some(DocumentEmailSourceItem {
         subject,
         addresses,
@@ -146,6 +147,7 @@ async fn get_email_sources(
         raw_headers_json,
         min_page: 1,
         max_page: 1,
+        has_body: false,
     }))
 }
 
@@ -277,11 +279,17 @@ pub async fn get_document_sources(
     // The email preview renders the parsed body, which is an ordinary `text_content`
     // variant. Hand the email source that variant's page range so the viewer asks for a
     // page that exists; `page_id` is 1-based, so 1 is the floor and 0 is never valid.
-    let (body_min_page, body_max_page) = text_sources
+    //
+    // The variant's ABSENCE is reported just as carefully. Headers and body are stored
+    // independently, and a mail file can have the first without the second — a body of
+    // one character after stripping is dropped by the text writer, as is a message whose
+    // only body part is HTML. Guessing a range for a variant that has no rows is what
+    // makes the viewer render `document not found!` where the body belongs.
+    let body_range = text_sources
         .iter()
         .find(|s| s.extracted_by == EMAIL_TEXT_EXTRACTOR)
-        .map(|s| (s.min_page.max(1), s.max_page.max(1)))
-        .unwrap_or((1, 1));
+        .map(|s| (s.min_page.max(1), s.max_page.max(1)));
+    let (body_min_page, body_max_page) = body_range.unwrap_or((1, 1));
     for source in text_sources {
         sources.push(DocumentSourceItem::Text(source));
     }
@@ -291,6 +299,7 @@ pub async fn get_document_sources(
     for mut source in email.unwrap_or_default() {
         source.min_page = body_min_page;
         source.max_page = body_max_page;
+        source.has_body = body_range.is_some();
         sources.push(DocumentSourceItem::Email(source));
     }
     for source in img.unwrap_or_default() {

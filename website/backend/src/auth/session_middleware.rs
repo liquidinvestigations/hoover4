@@ -118,6 +118,13 @@ fn is_admin_from_groups(groups: &[String]) -> bool {
 /// read; everything downstream (the frontend `AdminGuard` and every backend
 /// `require_admin` call) keys off the resulting `CurrentUser::is_admin`.
 ///
+/// The grant is applied to the REQUEST, never written to the account: a guest's `users`
+/// row keeps `is_admin = false` while `whoami` reports true for the same session, and
+/// that disagreement is the design. The elevation belongs to the deployment and lasts
+/// exactly as long as the switch does — persisting it would leave real administrators
+/// behind the day the switch is turned off. `/admin/users` says so on the page, because
+/// the two readings sit side by side there.
+///
 /// Wired up in Docker via the `HOOVER4_DEMO_MODE` environment variable on the
 /// `hoover4-website` service. Accepts `1`, `true`, `yes`, or `on`
 /// (case-insensitive); anything else — including unset — means normal auth.

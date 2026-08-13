@@ -34,6 +34,15 @@ This stage parses downloaded files by type and writes structured content and met
 - `split_text_segments(...)` segments without inserting, for callers assembling one page
   sequence from several sources (`parse_email.py` and its MIME parts).
 
+**A page whose stripped text is under two characters is not stored**, so a variant can be
+absent rather than empty. Mail is where that shows: `parse_email.py` writes
+`email_headers` whenever the file parses, but writes no `email_parser` row at all when the
+message's whole `text/plain` part is a single `,` — which Enron's export produces by the
+dozen — or when the only body part is HTML. Every reader must treat the variant as
+optional; the document viewer carries an explicit "this email has no parsed body" flag for
+exactly this, and NER falls back to the `raw_text` envelope for these files rather than
+losing their entities (`tasks/text_sources.ner_reads_variant`).
+
 PDF text comes from a single `pdftotext` call split on the form feed it writes after
 every page, so per-page storage costs no extra subprocesses. The label is
 `extracted_by = 'pdftotext'` (it was `'qpdf'`, which named the wrong tool).

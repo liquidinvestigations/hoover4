@@ -121,6 +121,7 @@ mod tests {
             raw_headers_json: String::new(),
             min_page: 1,
             max_page: 1,
+            has_body: true,
         };
         // The two shapes "we do not know" arrives in: the epoch the DateTime column
         // falls back to, and the empty string the query emits once it has consulted
@@ -166,6 +167,28 @@ mod tests {
         let a = TextSource::parse("ocr_tesseract_eng+ron");
         let b = TextSource::parse("ocr_tesseract_ron+eng");
         assert_ne!(a, b);
+    }
+
+    /// Viewer state is URL-encoded and outlives the build that wrote it, so every field
+    /// added to it has to decide what an absent value means. For `has_body` that is
+    /// "present": a bookmark written before the field existed describes a document the
+    /// server re-describes on load anyway, and the alternative default would tell a
+    /// reader an ordinary email has no body until the fetch returns.
+    #[test]
+    fn an_email_source_without_a_stored_body_flag_still_reads_as_having_one() {
+        use super::DocumentEmailSourceItem;
+        let old: DocumentEmailSourceItem = serde_json::from_str(
+            r#"{"subject":"s","addresses":"a","date_sent":"","raw_headers_json":"{}"}"#,
+        )
+        .expect("state written before the field existed must still parse");
+        assert!(old.has_body);
+        assert_eq!((old.min_page, old.max_page), (0, 0));
+
+        let stated: DocumentEmailSourceItem = serde_json::from_str(
+            r#"{"subject":"s","addresses":"a","date_sent":"","raw_headers_json":"{}","has_body":false}"#,
+        )
+        .unwrap();
+        assert!(!stated.has_body);
     }
 }
 
@@ -259,10 +282,34 @@ pub struct DocumentEmailSourceItem {
     /// has to ask for a page that exists: `page_id` is 1-based and a request for page 0
     /// matches nothing at all. Defaulted for URL-encoded viewer state written without it,
     /// and every reader floors it at 1 rather than trusting the default.
+    ///
+    /// Meaningless when [`DocumentEmailSourceItem::has_body`] is false — there is no row
+    /// to name a page of.
     #[serde(default)]
     pub min_page: u32,
     #[serde(default)]
     pub max_page: u32,
+    /// Whether this email has any parsed body text at all.
+    ///
+    /// A mail file gets an `emails` row for its headers and a separate `email_parser`
+    /// text variant for its body, and the second is not implied by the first: the text
+    /// writer drops a page whose stripped text is shorter than two characters, so mail
+    /// whose whole `text/plain` part is a single `,` — Enron's export is full of them —
+    /// stores headers and no body, exactly like mail whose only body part is HTML.
+    /// Without this flag the viewer offers the Email source, asks for a body page that
+    /// does not exist, and renders the text endpoint's 404 where the body belongs.
+    ///
+    /// Defaults to TRUE for URL-encoded viewer state written before the field existed:
+    /// that state describes a document the server is about to re-describe anyway, and
+    /// the old behaviour is the safer default of the two.
+    #[serde(default = "email_body_present_by_default")]
+    pub has_body: bool,
+}
+
+/// See [`DocumentEmailSourceItem::has_body`]: absent means "written before the field
+/// existed", not "no body".
+fn email_body_present_by_default() -> bool {
+    true
 }
 
 /// `date_sent` as it arrives for an email whose `Date:` header never parsed.

@@ -10,6 +10,9 @@ use crate::components::admin_components::{
     TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+// Shadows the prelude's element table so `svg_title` exists — see its module docs. The
+// bar tooltip is the only place the exact bucket timestamp and count are readable.
+use crate::components::svg_title::dioxus_elements;
 
 #[component]
 pub fn AdminMetricsPage() -> Element {
@@ -121,6 +124,32 @@ fn hour_of_day(bucket: &str) -> String {
         .to_string()
 }
 
+/// `MM-DD HH:MM`, for the ends of an axis whose two ends print the same clock time.
+///
+/// The window is `now() - INTERVAL 24 HOUR` grouped by hour, which spans **25** buckets
+/// as soon as the partial first hour holds an event — so the first and last bars are the
+/// same hour of two different days, and `HH:MM` alone labels them identically.
+fn day_and_hour(bucket: &str) -> String {
+    let Some((date, time)) = bucket.split_once('T') else {
+        return bucket.to_string();
+    };
+    let day = date.get(5..).unwrap_or(date);
+    let clock = time.get(..5).unwrap_or(time);
+    format!("{day} {clock}")
+}
+
+/// The top of the count axis for a series whose largest bar is `max_count`.
+///
+/// Even, and never zero: the axis draws a tick at half height, and a half that rounds is
+/// a rule drawn in one place and labelled with the value of another — at `max_count = 3`
+/// the rule sits at 1.5 and says `2`. Rounding the top up instead moves the rule, which
+/// is free, rather than the label, which lies. It also keeps the three tick values
+/// distinct, so they can never collide into one repeated label.
+fn count_axis_max(max_count: u64) -> u64 {
+    let at_least_one = max_count.max(1);
+    at_least_one + (at_least_one % 2)
+}
+
 /// One bar per hour over the rolling 24 h, with the axes that make it readable.
 ///
 /// Bare bars answer "was there a spike" and nothing else. The count axis says how big,
@@ -146,21 +175,39 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
     // A 2 px surface gap between bars, and never a bar so thin it vanishes.
     let bar_w = (slot - 2.0).max(1.0);
 
-    // Three ticks: zero, half, full. More than three on a 150 px plot is noise.
+    // Three ticks: zero, half, full. More than three on a 150 px plot is noise. The top
+    // is [`count_axis_max`] rather than the largest bar, so the middle rule sits exactly
+    // on the value it is labelled with and the bars scale against the axis they are read
+    // against.
+    let axis_max = count_axis_max(max_count);
     let ticks: Vec<(f64, u64)> = (0..=2)
         .map(|i| {
             let fraction = i as f64 / 2.0;
-            (baseline - fraction * plot_h, (max_count as f64 * fraction).round() as u64)
+            (baseline - fraction * plot_h, (axis_max as f64 * fraction) as u64)
         })
         .collect();
 
     // First, middle and last hour. The middle one is dropped when the series is short
-    // enough that it would sit on top of one of the ends.
+    // enough that it would sit on top of one of the ends. Whenever the two ends fall in
+    // the same hour of two different days — the 25-bucket window does this — every tick
+    // carries its date, because labelling one end differently from the other is what
+    // makes a reader think the axis is broken rather than long.
+    let ends_share_a_clock_time = match (series.first(), series.last()) {
+        (Some(first), Some(last)) => {
+            series.len() > 1 && hour_of_day(&first.bucket) == hour_of_day(&last.bucket)
+        }
+        _ => false,
+    };
     let time_ticks: Vec<(f64, String)> = {
         let mut out = Vec::new();
         let mut push = |index: usize| {
             if let Some(point) = series.get(index) {
-                out.push((LEFT + (index as f64 + 0.5) * slot, hour_of_day(&point.bucket)));
+                let label = if ends_share_a_clock_time {
+                    day_and_hour(&point.bucket)
+                } else {
+                    hour_of_day(&point.bucket)
+                };
+                out.push((LEFT + (index as f64 + 0.5) * slot, label));
             }
         };
         push(0);
@@ -180,9 +227,12 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
             "viewBox": "0 0 {W} {H}",
             style: "max-width: 720px; display: block; margin-bottom: 20px;",
 
-            for (y, value) in ticks {
+            // Keyed by position on the axis, never by the label: two ticks can carry the
+            // same text, and duplicate keys among siblings are a dioxus-core assertion on
+            // a debug build and an undefined re-association on a release one.
+            for (tick, (y, value)) in ticks.into_iter().enumerate() {
                 g {
-                    key: "y-{value}",
+                    key: "y-{tick}",
                     line {
                         x1: "{LEFT}", y1: "{y}", x2: "{W - RIGHT}", y2: "{y}",
                         "stroke": "#e5e5e5", "stroke-width": "1",
@@ -200,7 +250,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                 {
                     // An hour with no events keeps a hairline, so a gap in the series
                     // reads as a gap rather than as the axis running out.
-                    let height = (point.count as f64 / max_count as f64 * plot_h).max(1.0);
+                    let height = (point.count as f64 / axis_max as f64 * plot_h).max(1.0);
                     let x = LEFT + index as f64 * slot + (slot - bar_w) / 2.0;
                     rsx! {
                         rect {
@@ -209,7 +259,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                             width: "{bar_w}", height: "{height}",
                             rx: "2",
                             fill: "#79aec8",
-                            title { "{point.bucket} — {point.count} events" }
+                            svgtitle { "{point.bucket} — {point.count} events" }
                         }
                     }
                 }
@@ -219,9 +269,9 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                 x1: "{LEFT}", y1: "{baseline}", x2: "{W - RIGHT}", y2: "{baseline}",
                 "stroke": "#bbb", "stroke-width": "1",
             }
-            for (x, label) in time_ticks {
+            for (tick, (x, label)) in time_ticks.into_iter().enumerate() {
                 text {
-                    key: "x-{label}",
+                    key: "x-{tick}",
                     x: "{x}", y: "{H - 7.0}",
                     "text-anchor": "middle",
                     style: "font-size: 10px; fill: #666;",
