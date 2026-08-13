@@ -48,12 +48,22 @@ fn AiStatusContent() -> Element {
 
 #[component]
 fn FingerprintPanel(status: AdminAiStatus) -> Element {
-    let match_label = if status.fingerprint_match {
+    // A deployment with no GPU tier has no second fingerprint to compare, which is a
+    // complete answer rather than an incomplete comparison. Saying "incomplete" there
+    // put a permanent unexplained defect on the page of every CPU-only host.
+    let match_label = if !status.ai_server_present {
+        "n/a - no AI server on this deployment"
+    } else if status.fingerprint_match {
         "match"
     } else if status.fingerprint_local.is_empty() || status.fingerprint_ai_server.is_empty() {
         "incomplete"
     } else {
         "MISMATCH"
+    };
+    let ai_fingerprint = if status.ai_server_present {
+        status.fingerprint_ai_server.clone()
+    } else {
+        "not deployed".to_string()
     };
     rsx! {
         div { style: MODULE,
@@ -67,7 +77,7 @@ fn FingerprintPanel(status: AdminAiStatus) -> Element {
                         }
                         tr {
                             td { style: "{TD} font-weight: 600;", "AI server" }
-                            td { style: TD, "{status.fingerprint_ai_server}" }
+                            td { style: TD, "{ai_fingerprint}" }
                         }
                         tr {
                             td { style: "{TD} font-weight: 600;", "Match" }

@@ -55,10 +55,10 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await
         && let Ok(response) = serde_json::from_str::<RawSarchResult<T>>(&cached_response)
     {
-        println!("SEARCH CACHE HIT: {}", query_hash);
+        tracing::debug!("search cache HIT: {query_hash}");
         return Ok(response);
     }
-    println!("SEARCH CACHE MISS: {}", query_hash);
+    tracing::debug!("search cache MISS: {query_hash}");
     let t0 = std::time::Instant::now();
     let database_url =
         std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
@@ -71,19 +71,18 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     if status.is_client_error() || status.is_server_error() {
         anyhow::bail!("Error: {}: {}", status, response_txt);
     }
-    println!("SEARCH RESPONSE: len = {}", response_txt.len());
+    tracing::debug!("search response: {} bytes", response_txt.len());
     let t1 = std::time::Instant::now();
     let dt_ms = t1.duration_since(t0).as_millis() as u32;
     if insert_cache(&query_hash, &sql, &response_txt, dt_ms)
         .await
         .is_ok()
     {
-        println!(
-            "SEARCH CACHE INSERTED: {} (searched in {}ms)",
-            query_hash, dt_ms
-        );
+        tracing::debug!("search cache INSERTED: {query_hash} (searched in {dt_ms}ms)");
     } else {
-        println!("SEARCH CACHE INSERT FAILED: {}", query_hash);
+        // Not an error path for the caller: the answer is already in hand and the next
+        // identical query simply pays for itself again.
+        tracing::debug!("search cache insert failed: {query_hash}");
     }
     // CACHE THE RESPONSE TEXT
     let response: RawSarchResult<T> = serde_json::from_str(&response_txt)?;

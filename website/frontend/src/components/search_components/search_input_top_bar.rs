@@ -55,13 +55,16 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
             "rgba(137,191,255,1.0)"
         }
     });
+    // `disabled` is not a cursor keyword, so the old value fell back to `auto` and the
+    // button pointed at a live control with nothing to apply.
     let apply_filter_button_cursor = use_memo(move || {
         if query_has_changed() {
             "pointer"
         } else {
-            "disabled"
+            "default"
         }
     });
+    let apply_filter_button_opacity = use_memo(move || if query_has_changed() { "1" } else { "0.6" });
     let search_oninput = move |event: Event<FormData>| {
         let new_q = event.value();
         modified_search_query.write().query_string = new_q;
@@ -129,6 +132,9 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                     }
                 }
 
+                // Enabled only when something is pending: the whole toolbar edits a
+                // pending query, so this is the one place that says whether anything is
+                // waiting to be applied.
                 button {
                     style: "
                         font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
@@ -136,7 +142,10 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                         color:white; border: none;
                         border-radius:100px; height: 42px; padding: 0 16px;
                         cursor: {apply_filter_button_cursor()};
+                        opacity: {apply_filter_button_opacity()};
                     ",
+                    disabled: !query_has_changed(),
+                    title: if query_has_changed() { "Apply the pending changes" } else { "Nothing to apply" },
                     onclick: move |event: Event<MouseData>| {
                         event.prevent_default();
                         event.stop_propagation();
@@ -159,7 +168,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                     }
                 }
 
-                SortControl { query: modified_search_query }
+                SortControl { original_query, query: modified_search_query }
             }
 
             FilterChips {

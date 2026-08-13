@@ -18,7 +18,7 @@ use dioxus_free_icons::{
 use std::collections::BTreeMap;
 
 use crate::components::{
-    error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator,
+    error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
 
 #[component]
@@ -62,7 +62,7 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
             }
         },
         Some(Err(e)) => rsx! {
-            div { ComponentErrorDisplay { error_txt: format!("{:#?}", e) } }
+            div { ServerErrorDisplay { error: e } }
         },
         None => rsx! {
             div { LoadingIndicator {} }

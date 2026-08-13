@@ -489,6 +489,7 @@ use common::search_query::{RangeFilter, SortKey, SortSpec};
 
 const TESTFILES: &str = "testdata_testfiles";
 const SHAPES: &str = "testdata_shapes";
+const EMAILS: &str = "other_emails";
 
 fn dated_query(min: Option<i64>, max: Option<i64>, include_unknown: bool) -> SearchQuery {
     let mut query = SearchQuery::default();
@@ -1077,5 +1078,637 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
         filtered.total_count(),
         unfiltered.total_count(),
         "the histogram counted its own date filter — the bars would collapse to the selection"
+    );
+}
+
+/// The Email source names a page that actually holds the parsed body.
+///
+/// `text_content.page_id` is 1-based and the email preview renders the body by asking
+/// `get_document_text_by_id_and_source` for a single page. A page number of 0 matches no
+/// row, so the whole body of every email comes back as "document not found!" — which is
+/// what a hardcoded 0 in the preview did. Asserting the range alone is not enough: the
+/// page the source names has to resolve to text, which is the half a unit test cannot see.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn email_source_names_a_page_that_holds_the_body() {
+    let _budget = Budget::start("email_source_names_a_page_that_holds_the_body");
+    use common::document_sources::{DocumentSourceItem, EMAIL_TEXT_EXTRACTOR};
+    use common::search_result::DocumentIdentifier;
+
+    let client = get_client_for_dataset(EMAILS).await.unwrap();
+    let file_hash: String = client
+        .query(
+            "SELECT file_hash FROM text_content \
+             WHERE collection_dataset = ? AND extracted_by = ? LIMIT 1",
+        )
+        .bind(EMAILS)
+        .bind(EMAIL_TEXT_EXTRACTOR)
+        .fetch_one()
+        .await
+        .expect("other_emails must hold at least one parsed email body");
+
+    let document = DocumentIdentifier {
+        collection_dataset: EMAILS.to_string(),
+        file_hash,
+    };
+    let sources = backend::api::documents::get_document_sources::get_document_sources(
+        &admin_user(),
+        document.clone(),
+    )
+    .await
+    .unwrap();
+    let email = sources
+        .iter()
+        .find_map(|source| match source {
+            DocumentSourceItem::Email(email) => Some(email.clone()),
+            _ => None,
+        })
+        .expect("a document with an email_parser body offers an Email source");
+
+    assert!(
+        email.min_page >= 1,
+        "page_id is 1-based, so {} names no row at all",
+        email.min_page
+    );
+    assert!(email.max_page >= email.min_page, "{email:?}");
+
+    let body = backend::api::documents::search_document_text::get_document_text_by_id_and_source(
+        &admin_user(),
+        document,
+        EMAIL_TEXT_EXTRACTOR.to_string(),
+        email.min_page,
+    )
+    .await
+    .expect("the page the Email source names must resolve to text");
+    assert!(!body.is_empty(), "the email body came back empty");
+}
+
+/// In-PDF search answers with real hits, through the sidecar, end to end.
+///
+/// Two separate things have to be true for a hit to come back and neither is visible from
+/// a unit test: the sidecar process is running, and the address this server sends the
+/// request to is the sidecar's. The sidecar is a CHILD of this server rather than a
+/// service of its own, so that address is loopback — and a deployment that starts the
+/// server from a different working directory loses the process entirely, which turns
+/// every in-PDF search into a 500 with nothing else affected.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn in_pdf_search_returns_hits_through_the_sidecar() {
+    let _budget = Budget::start("in_pdf_search_returns_hits_through_the_sidecar");
+    use common::search_result::DocumentIdentifier;
+
+    // A PDF picked by the property the test needs — it has a text layer — rather than by
+    // name, and a word taken out of that layer rather than guessed: the assertion is
+    // about the search path, not about the corpus.
+    let client = get_client_for_dataset(TESTFILES).await.unwrap();
+    let (file_hash, text): (String, String) = client
+        .query(
+            "SELECT file_hash, text FROM text_content \
+             WHERE collection_dataset = ? AND extracted_by = 'pdftotext' AND length(text) > 200 \
+             ORDER BY file_hash, page_id LIMIT 1",
+        )
+        .bind(TESTFILES)
+        .fetch_one()
+        .await
+        .expect("testdata_testfiles must hold a PDF with a text layer");
+    let keyword = text
+        .split_whitespace()
+        .find(|word| word.chars().all(|c| c.is_ascii_alphabetic()) && word.len() > 4)
+        .expect("the PDF's text layer must hold one plain word")
+        .to_string();
+
+    let results = backend::api::documents::search_document_pdf::search_document_pdf(
+        &admin_user(),
+        DocumentIdentifier {
+            collection_dataset: TESTFILES.to_string(),
+            file_hash,
+        },
+        keyword.clone(),
+    )
+    .await
+    .expect("in-PDF search must reach the sidecar");
+    assert!(
+        results.total > 0,
+        "{keyword:?} is in the PDF's text layer but the sidecar found it nowhere in the PDF"
+    );
+}
+
+/// The sidecar's address is configuration, not a literal, and defaults to the loopback
+/// the sidecar actually runs on.
+///
+/// There is no second address to check: the sidecar is handed the PDF's bytes, so nothing
+/// tells it a url to fetch them back from. Such a url points at this server's own HTTP
+/// port — a request the server makes to itself, carrying no session cookie, which
+/// requiring a session on the download route kills silently.
+#[test]
+fn pdf_search_endpoint_defaults_to_loopback() {
+    use backend::api::documents::search_document_pdf::pdf_search_endpoint;
+    // Nothing sets this in the test process, so this is the default path.
+    assert_eq!(pdf_search_endpoint(), "http://127.0.0.1:13500");
+}
+
+/// A hash nothing was ever ingested under is a 404, and a real one still downloads.
+///
+/// The route answered 500 for the missing hash. That is not a cosmetic difference: a
+/// crawler or a stale bookmark then reads as the server throwing, and `is_error` on the
+/// admin metrics page is derived from the status, so every such request was counted as
+/// breakage. The pair is asserted together — a handler that 404s everything would satisfy
+/// the first assertion on its own.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn downloading_an_unknown_hash_is_not_found() {
+    let _budget = Budget::start("downloading_an_unknown_hash_is_not_found");
+    use axum::extract::{Extension, Path};
+
+    let missing = backend::server_extra::download_document::download_document(
+        Extension(admin_user()),
+        Path((EMAILS.to_string(), "deadbeef".to_string())),
+    )
+    .await;
+    assert_eq!(missing.status(), axum::http::StatusCode::NOT_FOUND);
+
+    let client = get_client_for_dataset(EMAILS).await.unwrap();
+    let file_hash: String = client
+        .query("SELECT hash FROM vfs_files WHERE collection_dataset = ? ORDER BY hash LIMIT 1")
+        .bind(EMAILS)
+        .fetch_one()
+        .await
+        .expect("other_emails must hold a file");
+    let found = backend::server_extra::download_document::download_document(
+        Extension(admin_user()),
+        Path((EMAILS.to_string(), file_hash)),
+    )
+    .await;
+    assert_eq!(found.status(), axum::http::StatusCode::OK);
+}
+
+/// `/admin/ai_status` reports the hardware that answered, not the name of the slot.
+///
+/// This host has no GPU tier, so whichever NER endpoint serves is a CPU twin and the row
+/// must say so. The check is made against the serving endpoint's own `/health` rather
+/// than against a hardcoded expectation, so it stays true on a host that does have a GPU.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn ai_status_reports_the_hardware_that_actually_serves_ner() {
+    let _budget = Budget::start("ai_status_reports_the_hardware_that_actually_serves_ner");
+
+    let status = backend::api::admin::ai_status::admin_get_ai_status(&admin_user())
+        .await
+        .unwrap();
+    let ner = status
+        .capabilities
+        .iter()
+        .find(|c| c.name == "ner")
+        .expect("the capabilities table always carries a ner row");
+    assert!(
+        ner.reachable,
+        "NER must be serving for this assertion to mean anything: {ner:?}"
+    );
+    // The detail names the endpoint that answered, so the claim can be checked.
+    let endpoint = ner
+        .detail
+        .split_whitespace()
+        .find_map(|word| word.strip_prefix("http"))
+        .map(|rest| format!("http{rest}"))
+        .expect("the ner row must name the endpoint that served it");
+    let endpoint = endpoint.trim_end_matches(';').trim_end_matches("/v1");
+
+    let health: serde_json::Value = reqwest::get(format!("{endpoint}/health"))
+        .await
+        .expect("the endpoint the page named must answer")
+        .json()
+        .await
+        .unwrap();
+    let claims_gpu = health
+        .get("cuda_available")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    assert_eq!(
+        ner.serving_provider,
+        if claims_gpu { "gpu" } else { "cpu" },
+        "the row says {:?} while {endpoint} reports cuda_available={claims_gpu}",
+        ner.serving_provider
+    );
+}
+
+/// A document that is not an image answers "not an image", not an error.
+///
+/// Most documents are not images, so an error here is emitted on a large fraction of
+/// document opens. Under `err(Debug)` on the tracing attribute that is ERROR level, and it
+/// buried every real error in the website log — the log stopped being usable as a signal
+/// while nothing at all was failing. The positive half is asserted with it: a probe that
+/// answered `None` for everything would satisfy the first assertion by doing nothing.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_document_that_is_not_an_image_is_not_an_error() {
+    let _budget = Budget::start("a_document_that_is_not_an_image_is_not_an_error");
+    use common::document_sources::EMAIL_TEXT_EXTRACTOR;
+    use common::search_result::DocumentIdentifier;
+
+    let client = get_client_for_dataset(EMAILS).await.unwrap();
+    let not_an_image: String = client
+        .query(
+            "SELECT file_hash FROM text_content \
+             WHERE collection_dataset = ? AND extracted_by = ? LIMIT 1",
+        )
+        .bind(EMAILS)
+        .bind(EMAIL_TEXT_EXTRACTOR)
+        .fetch_one()
+        .await
+        .expect("other_emails must hold a parsed email");
+    let probed = backend::api::documents::get_document_sources::get_image_sources(
+        &admin_user(),
+        DocumentIdentifier {
+            collection_dataset: EMAILS.to_string(),
+            file_hash: not_an_image,
+        },
+    )
+    .await;
+    assert!(
+        matches!(probed, Ok(None)),
+        "an email is not an image, which is an answer: {probed:?}"
+    );
+
+    let an_image: String = client
+        .query("SELECT image_hash FROM image WHERE collection_dataset = ? LIMIT 1")
+        .bind(EMAILS)
+        .fetch_one()
+        .await
+        .expect("other_emails must hold an image");
+    let probed = backend::api::documents::get_document_sources::get_image_sources(
+        &admin_user(),
+        DocumentIdentifier {
+            collection_dataset: EMAILS.to_string(),
+            file_hash: an_image,
+        },
+    )
+    .await
+    .expect("an image with a metadata row must probe cleanly");
+    let dimensions = probed.expect("and it must report its dimensions");
+    assert!(dimensions.width > 0 && dimensions.height > 0, "{dimensions:?}");
+}
+
+/// The Entities facet must not offer MIME header names, encoding fragments or
+/// letter-spaced PDF headings.
+///
+/// The NLP stage stops these before `entity_hit` is written, but a rule applied at write
+/// time governs only rows written after it, and every collection ingested earlier keeps
+/// its junk until the stage is re-run. `testdata` is such a collection in the fixture
+/// stack — it carries single-letter and empty entity values from a PDF — so this asserts
+/// the read side filters what the write side would now have rejected.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn the_entities_facet_offers_no_extraction_debris() {
+    let _budget = Budget::start("the_entities_facet_offers_no_extraction_debris");
+    use common::entity_stoplist::{ENTITY_TERM_FIELD, is_stopped_entity};
+
+    let mut offered = 0;
+    for column in ["ner_per", "ner_org", "ner_loc", "ner_misc"] {
+        let facets = backend::api::search::search_string_facet(
+            &admin_user(),
+            SearchQuery {
+                query_string: "the".to_string(),
+                ..Default::default()
+            },
+            column.to_string(),
+            Some(ENTITY_TERM_FIELD.to_string()),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{column} facet failed: {e}"));
+        offered += facets.facet_values.len();
+        for item in &facets.facet_values {
+            assert!(
+                !is_stopped_entity(&item.display_string),
+                "{column} offers {:?} ({} documents), which is extraction debris",
+                item.display_string,
+                item.count
+            );
+        }
+    }
+    assert!(
+        offered > 0,
+        "the fixture corpus has entities; an empty facet would pass this vacuously"
+    );
+}
+
+/// D3: the Collections facet must never offer a value that is not a registered dataset.
+///
+/// Manticore keeps whatever was written under a dataset name until something deletes it,
+/// so an abandoned ingest (or a re-ingest under a new name) goes on producing buckets
+/// with real counts long after its registry row is gone — and ticking one applies a
+/// filter that matches nothing. `dataset` is the authority; this asserts the facet
+/// agrees with it in both directions, against the live index rather than against a
+/// hand-built list of values.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn the_collections_facet_offers_exactly_the_registered_datasets() {
+    let _budget = Budget::start("the_collections_facet_offers_exactly_the_registered_datasets");
+    let registered: std::collections::BTreeSet<String> =
+        backend::api::list_datasets::list_dataset_ids()
+            .await
+            .unwrap()
+            .into_iter()
+            .collect();
+    assert!(
+        !registered.is_empty(),
+        "the fixture corpus has datasets; an empty registry would pass this vacuously"
+    );
+
+    let facets = backend::api::search::search_string_facet(
+        &admin_user(),
+        SearchQuery {
+            query_string: "the".to_string(),
+            ..Default::default()
+        },
+        "collection_dataset".to_string(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let offered: std::collections::BTreeSet<String> = facets
+        .facet_values
+        .iter()
+        .map(|item| item.display_string.clone())
+        .collect();
+    let ghosts: Vec<&String> = offered.difference(&registered).collect();
+    assert!(
+        ghosts.is_empty(),
+        "the Collections facet offers {ghosts:?}, which name no dataset — \
+         ticking one returns 0 documents"
+    );
+    // The other direction: a dataset with no hits for this query is still offered, at
+    // zero, so the pane lists the same datasets as the file-location tree beside it.
+    assert_eq!(offered, registered);
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint authentication, over real HTTP
+// ---------------------------------------------------------------------------
+//
+// Everything above this line calls backend functions directly, which is the right shape
+// for a query and the wrong shape entirely for an auth rule: the refusal these assert
+// lives in the axum middleware, so only a request that actually crosses it can see it.
+//
+// The rule under test: **exactly one route may create a session**. A fresh `set-cookie` on
+// every response lets a client that stores none — a crawler, a `curl` loop — mint a
+// `guest-<hex>` user and a `user_login` row per request.
+//
+// These run inside the website container (`run-stack-tests.sh`), where the site is on
+// loopback. They read `HOOVER4_DEMO_MODE` the same way the server does, so the same
+// assertions describe both deployment modes rather than one of them being untested.
+
+/// The site, as seen from inside its own container.
+fn site_url() -> String {
+    std::env::var("HOOVER4_SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
+}
+
+/// The two server-function URLs these tests need.
+///
+/// Discovered from the served WASM bundle, never written down: Dioxus mounts a server
+/// function at `/api/<name><decimal hash>` and the hash changes whenever the function's
+/// signature does, so a literal path here would rot into a 404 that reads as a missing
+/// refusal. Fetched once for the whole suite — the bundle is megabytes.
+struct ServerFnPaths {
+    whoami: String,
+    search_hit_count: String,
+}
+
+static SERVER_FN_PATHS: tokio::sync::OnceCell<ServerFnPaths> = tokio::sync::OnceCell::const_new();
+
+async fn server_fn_paths() -> &'static ServerFnPaths {
+    SERVER_FN_PATHS
+        .get_or_init(|| async {
+            let client = reqwest::Client::new();
+            let index = client.get(site_url()).send().await.unwrap().text().await.unwrap();
+            let js = first_match(&index, "/wasm/frontend").unwrap_or("/wasm/frontend.js".to_string());
+            let glue = client
+                .get(format!("{}{}", site_url(), js.trim_start_matches('.')))
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap();
+            let wasm_href = first_match(&glue, "frontend_bg").unwrap_or("frontend_bg.wasm".to_string());
+            let wasm_url = if wasm_href.starts_with('/') {
+                format!("{}{}", site_url(), wasm_href)
+            } else {
+                format!("{}/wasm/{}", site_url(), wasm_href)
+            };
+            let bytes = client.get(&wasm_url).send().await.unwrap().bytes().await.unwrap();
+            assert_eq!(
+                &bytes[..4],
+                b"\0asm",
+                "{wasm_url} did not serve a WASM module — the site answers its SPA shell for \
+                 any unknown path, so a 200 proves nothing about what came back"
+            );
+            let text = String::from_utf8_lossy(&bytes);
+            ServerFnPaths {
+                whoami: hashed_path(&text, "/api/whoami").expect("whoami is in the bundle"),
+                search_hit_count: hashed_path(&text, "/api/search_for_results_hit_count")
+                    .expect("search_for_results_hit_count is in the bundle"),
+            }
+        })
+        .await
+}
+
+/// The first `<prefix>…` token in `haystack`, up to the first quote or whitespace.
+fn first_match(haystack: &str, needle: &str) -> Option<String> {
+    let start = haystack.find(needle)?;
+    let head = &haystack[start..];
+    let end = head
+        .find(['"', '\'', ' ', '\n', ')', '?'])
+        .unwrap_or(head.len());
+    Some(head[..end].to_string())
+}
+
+/// `<prefix><digits>` — the hash suffix is decimal, so the match stops at the first
+/// non-digit and cannot run into whatever the bundle stores next to it.
+fn hashed_path(haystack: &str, prefix: &str) -> Option<String> {
+    let start = haystack.find(prefix)?;
+    let rest = &haystack[start + prefix.len()..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some(format!("{prefix}{digits}"))
+}
+
+/// Every `set-cookie` on a response, so "did this route mint" is a count and not a guess.
+fn set_cookies(response: &reqwest::Response) -> Vec<String> {
+    response
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok().map(str::to_string))
+        .collect()
+}
+
+fn session_cookie(response: &reqwest::Response) -> Option<String> {
+    set_cookies(response)
+        .into_iter()
+        .find(|c| c.starts_with("hoover4_session="))
+        .and_then(|c| c.split(';').next().map(str::to_string))
+}
+
+/// Every path a request can reach that is not a page or a static asset, with the method it
+/// takes. Written out rather than derived so that a route added to `main.rs` and forgotten
+/// here is a gap somebody can see, not a silently untested endpoint.
+fn protected_endpoints(paths: &ServerFnPaths) -> Vec<(&'static str, String)> {
+    vec![
+        ("POST", paths.search_hit_count.clone()),
+        ("GET", "/_download_document/testdata_testfiles/deadbeef".to_string()),
+        (
+            "GET",
+            "/_download_ocr_pdf/testdata_testfiles/deadbeef/tesseract/eng".to_string(),
+        ),
+        ("GET", "/_chat_artifact/deadbeef/thumb.webp".to_string()),
+    ]
+}
+
+async fn request_without_session(method: &str, path: &str) -> reqwest::Response {
+    let client = reqwest::Client::new();
+    let url = format!("{}{}", site_url(), path);
+    match method {
+        "POST" => client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body("[]")
+            .send()
+            .await
+            .unwrap(),
+        _ => client.get(url).send().await.unwrap(),
+    }
+}
+
+/// The defect itself: a request with no cookie must not be given a user.
+///
+/// Before this, `/`, `/_download_document/…` and every server function each answered a
+/// fresh `set-cookie`, so 106 `guest-<hex>` users and 106 `user_login` events accumulated
+/// on the demo in a day and both the user list and the metrics page became unreadable.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn only_the_sign_in_route_hands_out_a_session() {
+    let paths = server_fn_paths().await;
+    let _budget = Budget::start("only_the_sign_in_route_hands_out_a_session");
+
+    // The app shell is public — the browser has to load the code that signs in — but it
+    // is not an identity.
+    for path in ["/", "/search/x/0/9g==/9g==", "/admin"] {
+        let response = request_without_session("GET", path).await;
+        assert!(
+            set_cookies(&response).is_empty(),
+            "{path} handed out {:?}; only the sign-in route may",
+            set_cookies(&response)
+        );
+    }
+
+    for (method, path) in protected_endpoints(paths) {
+        let response = request_without_session(method, &path).await;
+        assert!(
+            set_cookies(&response).is_empty(),
+            "{path} handed out {:?}; only the sign-in route may",
+            set_cookies(&response)
+        );
+    }
+
+    // And the one route that does. With guests disabled it refuses instead — the same
+    // rule, the other deployment mode.
+    let response = request_without_session("POST", &paths.whoami).await;
+    if backend::auth::session_middleware::guest_sessions_allowed() {
+        assert_eq!(response.status(), 200);
+        assert!(
+            session_cookie(&response).is_some(),
+            "the sign-in route issued no session in demo mode"
+        );
+    } else {
+        assert!(
+            session_cookie(&response).is_none(),
+            "guests are disabled, so nothing may be minted for an anonymous visitor"
+        );
+    }
+}
+
+/// Every endpoint refuses a request that carries no session, and says so as a 401.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn every_endpoint_refuses_a_request_with_no_session() {
+    let paths = server_fn_paths().await;
+    let _budget = Budget::start("every_endpoint_refuses_a_request_with_no_session");
+
+    for (method, path) in protected_endpoints(paths) {
+        let response = request_without_session(method, &path).await;
+        assert_eq!(
+            response.status(),
+            401,
+            "{path} answered {} without a session",
+            response.status()
+        );
+        let body = response.text().await.unwrap_or_default();
+        assert!(
+            body.contains("no session"),
+            "{path} refused without saying why: {body:?}"
+        );
+    }
+}
+
+/// The other half: with a session, the same endpoints work. A refusal that refuses
+/// everybody is not an access control, it is an outage.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
+    let paths = server_fn_paths().await;
+    let _budget = Budget::start("a_session_from_the_sign_in_route_opens_the_endpoints");
+    if !backend::auth::session_middleware::guest_sessions_allowed() {
+        eprintln!("[stack] guests are disabled here; nothing anonymous can sign in");
+        return;
+    }
+
+    let signin = request_without_session("POST", &paths.whoami).await;
+    let cookie = session_cookie(&signin).expect("the sign-in route issues a session");
+    let client = reqwest::Client::new();
+
+    // Signing in again with the session already held mints nothing: the cookie is the
+    // anchor, so a reload is not a new user.
+    let again = client
+        .post(format!("{}{}", site_url(), paths.whoami))
+        .header("Cookie", &cookie)
+        .header("Content-Type", "application/json")
+        .body("[]")
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        set_cookies(&again).is_empty(),
+        "signing in with a session already held minted another one: {:?}",
+        set_cookies(&again)
+    );
+
+    let search = client
+        .post(format!("{}{}", site_url(), paths.search_hit_count))
+        .header("Cookie", &cookie)
+        .header("Content-Type", "application/json")
+        .body(r#"[{"collection_datasets":[],"query_string":"the","facet_filters":{}}]"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(search.status(), 200, "a signed-in search must work");
+
+    // A dataset that is in no registry row is a complete answer about something that is
+    // not there, exactly like an unknown hash — not a 500.
+    let unknown = client
+        .get(format!(
+            "{}/_download_document/no_such_dataset/deadbeef",
+            site_url()
+        ))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        unknown.status(),
+        404,
+        "an unknown dataset must be a 404, not a server error"
     );
 }

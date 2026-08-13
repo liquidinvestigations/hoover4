@@ -13,6 +13,8 @@ and worker, and so NER results are reusable when indexing is re-run.
   each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`,
   `spacy → ner-spacy-xx`), not the configured one — under fallback the two
   differ, and that difference is the only evidence an outage happened.
+- Send only the variants worth reading (below) and drop the values that are
+  debris rather than entities (`tasks/entity_stoplist.py`).
 - Call the remote NER service in batches of `NLP_BATCH_TEXTS = 64` texts per
   request, via `tasks.remote.post_json` over an ordered endpoint list
   (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin).
@@ -23,6 +25,46 @@ and worker, and so NER results are reusable when indexing is re-run.
   entity row carries the `nlp_model` that served its text**, and `nlp_model` is
   part of `entity_hit`'s `ORDER BY`, so two providers' hits for the same
   `(file, variant, page, type)` coexist instead of one replacing the other.
+
+## What the model is allowed to read, and what it is allowed to return
+
+A model labels whatever it is handed, so both of these are correctness questions about
+the Entities facet rather than tuning.
+
+**Which variant.** `text_sources.ner_reads_variant` drops a stored variant that is a
+worse copy of another variant of the same document. Today that is exactly one case: a
+mail file has both `raw_text` (its MIME envelope — header block, boundaries, base64
+payloads) and `email_parser` (the body alone), and running the model over the envelope
+makes every header name an entity on every message in the corpus. The predicate is
+structural — a file HAS a parsed body or it does not — so mail whose only body part is
+HTML produces no `email_parser` rows and keeps its `raw_text` entities instead of
+silently losing all of them.
+
+Skipped segments still get an `nlp_processed` watermark, carrying the **configured**
+model (no service saw them to claim it). Without it the stage would re-read them every
+run, P6 would warn `no nlp_processed watermark` for each one, and the stage's progress
+bar would never reach its own segment count.
+
+Deliberately *not* used here: `text_quality.non_linguistic_reason`, which P5 applies to
+chunks. Its unit is a chunk; this stage's unit is a whole page or a 256 KB segment, and
+one mostly-base64 page whose remaining fifth is prose would lose that prose's entities
+entirely — the failure mode this stage exists to avoid.
+
+**Which values.** `tasks/entity_stoplist.py` rejects what cannot be an entity: mail and
+MIME header names (`X-` extension headers by shape, so no corpus's private ones need
+enumerating), day and month names, SMTP/MIME protocol words, quoted-printable soft-break
+fragments (`of=`), long case-shuffled base64 runs, single latin characters, four or more
+single-character tokens (letter-spaced PDF headings such as `F O N T Y S`), and anything
+long enough to be a paragraph. Every rule matches the **whole** value, which is what
+makes dropping `May` safe while `May Chen` stays.
+
+`Mr`, `Inc`, `NA` and `Rights Reserved` are deliberately kept. A list that guesses at
+what is uninteresting removes real names; one that removes only what cannot be an entity
+does not.
+
+The website applies the same rules again when it renders entities
+(`website/common/src/entity_stoplist.rs`), because rows written before a rule existed
+keep their values until this stage is re-run over the collection.
 
 ## Two providers, and the two places they collide
 

@@ -639,6 +639,24 @@ impl TurnState {
     fn answer_seq(&self) -> u32 {
         self.first_tool_seq + self.tool_count
     }
+
+    /// Move the visible answer so far into the reasoning trace.
+    ///
+    /// Prose is only an *answer* if nothing follows it. Content produced before a tool
+    /// call is narration about that call, and content produced by an attempt that then
+    /// broke is narration about a run that did not finish — in both cases keeping it in
+    /// the answer body would splice two halves of different thoughts into one bubble.
+    fn fold_answer_into_reasoning(&mut self) {
+        if self.answer.trim().is_empty() {
+            self.answer.clear();
+            return;
+        }
+        if !self.reasoning.is_empty() {
+            self.reasoning.push_str("\n\n");
+        }
+        self.reasoning.push_str(self.answer.trim());
+        self.answer.clear();
+    }
 }
 
 /// How often the growing assistant partial is rewritten at most. Each rewrite is a
@@ -760,6 +778,8 @@ async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::R
 
     let attempts = agent_client::agent_attempts();
     let base = agent_client::agent_retry_base();
+    let max_resumes = agent_client::agent_stream_resumes();
+    let mut resumes_used = 0u32;
     let mut attempt_errors: Vec<String> = Vec::new();
     let mut outcome: anyhow::Result<()> = Err(anyhow::anyhow!("no attempt ran"));
 
@@ -798,12 +818,39 @@ async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::R
             }
             Err(e) => {
                 attempt_errors.push(format!("attempt {attempt}/{attempts}: {e}"));
-                outcome = Err(e);
-                // A mid-stream failure must not be retried: the model may already have
-                // produced visible content, and a second attempt would duplicate it.
-                if saw_event {
+                // The turn is already part-told. Replaying it repeats every tool call and
+                // every provider call the agent has made, so it is worth doing only for a
+                // connection that broke under a run that was otherwise healthy, and only
+                // `max_resumes` times — a deadline or a refusal lands in the same place on
+                // the replay and would turn a slow turn into a multiple of itself.
+                let resumable = saw_event
+                    && resumes_used < max_resumes
+                    && agent_client::is_resumable_break(&e);
+                if saw_event && !resumable {
+                    tracing::error!(
+                        "chat turn {turn_uuid} in {session_id} failed mid-stream after \
+                         {} tool call(s), attempt {attempt}/{attempts}, \
+                         {resumes_used}/{max_resumes} replays used: {e:#}",
+                        state.tool_count,
+                    );
+                    outcome = Err(e);
                     break;
                 }
+                if resumable {
+                    resumes_used += 1;
+                    tracing::error!(
+                        "chat turn {turn_uuid} in {session_id} broke mid-stream after {} \
+                         tool call(s) — replaying it ({resumes_used}/{max_resumes}): {e:#}",
+                        state.tool_count,
+                    );
+                    // Whatever prose the broken attempt produced is demoted to reasoning
+                    // rather than carried into the answer, or the replay's answer would
+                    // be appended to half of the previous one. Tool rows already written
+                    // keep their seqs; the replay's rows follow them, so the transcript
+                    // records both runs instead of overwriting one with the other.
+                    state.fold_answer_into_reasoning();
+                }
+                outcome = Err(e);
             }
         }
     }
@@ -898,6 +945,15 @@ async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
         .await?;
         telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat_stopped");
     } else if let Err(e) = outcome {
+        // Logged as well as written to the transcript. Without this line a failed turn
+        // leaves nothing in `docker logs` at all — the only record is an `error` row in
+        // `chat_messages`, which nobody looks at while a user is asking why the assistant
+        // stopped answering.
+        tracing::error!(
+            "chat turn {turn_uuid} in session {session_id} for {username} failed after \
+             {agent_duration_ms} ms and {} attempt(s): {e:#}",
+            attempt_errors.len().max(1),
+        );
         // A failed agent call belongs in the transcript: the user asked something and
         // deserves to see what went wrong in place, not a toast that vanishes. The
         // partial answer, if any, is NOT promoted — an interrupted transcript must not
@@ -1076,13 +1132,7 @@ async fn handle_stream_event(
         }
         Ev::StartTool(payload) => {
             // Content before a tool call is narration about the call, not the answer.
-            if !state.answer.trim().is_empty() {
-                if !state.reasoning.is_empty() {
-                    state.reasoning.push_str("\n\n");
-                }
-                state.reasoning.push_str(state.answer.trim());
-                state.answer.clear();
-            }
+            state.fold_answer_into_reasoning();
             // The running tool takes the seq the assistant partial occupied (if any);
             // the assistant row resumes one seq later. Ordering stays user, tools,
             // answer — identical between the live stream and the finalised transcript.

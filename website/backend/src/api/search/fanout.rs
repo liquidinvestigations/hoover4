@@ -199,7 +199,15 @@ where
         match outcome {
             Ok(value) => results.push((target, value)),
             Err(e) => {
-                tracing::warn!("fan_out: target {} failed, dropping it from results: {e:#}", target.label());
+                // A query the caller malformed fails identically on every target, so it
+                // is one 400 and not N broken shards. Logged at WARN it produced a burst
+                // of shard-failure lines per keystroke — the exact signal this level is
+                // reserved for, spent on a normal outcome.
+                if crate::auth::guard::is_bad_request(&e) {
+                    tracing::debug!("fan_out: target {} cannot run this query: {e:#}", target.label());
+                } else {
+                    tracing::warn!("fan_out: target {} failed, dropping it from results: {e:#}", target.label());
+                }
                 if first_error.is_none() {
                     first_error = Some(e);
                 }

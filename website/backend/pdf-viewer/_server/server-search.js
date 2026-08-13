@@ -22,12 +22,23 @@ async function initPdfium() {
 }
 
 
-async function searchPdfMultipleKeywords(pdf_url, keywords) {
+// The PDF arrives as the request body and the keywords as a query parameter.
+//
+// Passing a URL for this process to fetch instead points it back at the website's own
+// HTTP port: the server asking itself for a document it already knows how to read. Such a
+// request is not a browser's — it carries no session cookie — so a download route that
+// requires one silently kills in-document search. The bytes travel over the connection
+// that asked for the search, and nothing here reaches back into the caller.
+async function searchPdfMultipleKeywords(pdfBytes, keywords) {
   var results = [];
 
   var engine = await initPdfium();
   try {
-    var doc = await engine.openDocumentUrl({ id: pdf_url, url: pdf_url }).toPromise();
+    // `id` only labels the document inside the engine's worker queue; nothing fetches it.
+    const doc = await engine.openDocumentBuffer({
+      id: `pdf-${pdfBytes.byteLength}-${keywords.length}`,
+      content: pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength),
+    }).toPromise();
     for (const keyword of keywords) {
       const result_set = await engine.searchAllPages(doc, keyword, {
         flags: [MatchFlag.MatchWholeWord, MatchFlag.MatchConsecutive]
@@ -41,22 +52,29 @@ async function searchPdfMultipleKeywords(pdf_url, keywords) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'GET') {
-    let body = '';
+  if (req.method === 'POST') {
+    const chunks = [];
     req.on('data', chunk => {
-      body += chunk.toString();
+      chunks.push(chunk);
     });
     req.on('end', async () => {
       try {
-        const { url, keywords } = JSON.parse(body || '{}');
-        if (!url || !keywords || !Array.isArray(keywords)) {
+        const params = new URL(req.url, 'http://localhost').searchParams;
+        let keywords;
+        try {
+          keywords = JSON.parse(params.get('keywords') || 'null');
+        } catch (e) {
+          keywords = null;
+        }
+        const pdfBytes = Buffer.concat(chunks);
+        if (!Array.isArray(keywords) || pdfBytes.length === 0) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Missing url or keywords list in JSON body' }));
+          res.end(JSON.stringify({ error: 'Need a ?keywords=<json array> and a PDF body' }));
           return;
         }
 
-        console.log(`Searching PDF: ${url} for keywords: ${keywords.join(', ')}`);
-        const results = await searchPdfMultipleKeywords(url, keywords);
+        console.log(`Searching ${pdfBytes.length} bytes of PDF for keywords: ${keywords.join(', ')}`);
+        const results = await searchPdfMultipleKeywords(pdfBytes, keywords);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(results));
@@ -68,7 +86,7 @@ const server = http.createServer(async (req, res) => {
     });
   } else {
     res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Method Not Allowed. Use GET with JSON body.' }));
+    res.end(JSON.stringify({ error: 'Method Not Allowed. POST the PDF bytes with ?keywords=' }));
   }
 });
 

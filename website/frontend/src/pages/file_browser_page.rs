@@ -15,6 +15,7 @@ use dioxus_free_icons::icons::md_file_icons::MdFolder;
 use dioxus_free_icons::icons::md_navigation_icons::MdClose;
 
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
+use crate::components::resizable_sidebar::ResizableSidebar;
 use crate::api::storage_api::{collection_overview, list_storage_tree};
 use crate::api::vfs_api::{vfs_node_term_id, vfs_search_in_folder};
 use crate::components::search_components::card_action_buttons::{
@@ -43,10 +44,11 @@ const PAGE_STYLE: &str = "
     overflow: hidden;
 ";
 
+/// The inside of the storage pane. Its WIDTH belongs to [`ResizableSidebar`], which owns
+/// the drag handle and the remembered value; putting a width here as well would fight it.
 const SIDEBAR_STYLE: &str = "
-    width: 240px;
-    flex-shrink: 0;
-    border-right: 1px solid #E5E7EB;
+    flex: 1 1 auto;
+    min-width: 0;
     background: #FAFBFC;
     display: flex;
     flex-direction: column;
@@ -164,6 +166,15 @@ const TD_SIZE_STYLE: &str = "
     border-bottom: 1px solid #E5E7EB;
     color: #6B7280;
     font-size: 13px;
+    vertical-align: middle;
+";
+
+/// The mid-row cell holding `View Details`. It carries the row's rule like every other
+/// cell: with `border-collapse: collapse` the rule is drawn per cell, so one styleless
+/// cell punches a hole in it — and under the last row of a listing the remaining segments
+/// read as the top edge of an empty row that is not there.
+const TD_DETAILS_STYLE: &str = "
+    border-bottom: 1px solid #E5E7EB;
     vertical-align: middle;
 ";
 
@@ -561,6 +572,10 @@ fn FileBrowserContent(
 /// It replaced a COLLECTIONS list stacked on a FOLDERS tree of whichever dataset the URL
 /// happened to name. That arrangement showed the same data as two unrelated widgets and
 /// could not say which collection a dataset belonged to at all.
+///
+/// The pane is resizable and remembers its width. That is not cosmetic here: a corpus with
+/// a 42-level chain in it spends most of a narrow pane on indent, chevron, icon and depth
+/// badge, and the width the tree needs is a property of the corpus rather than of the app.
 #[component]
 fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<String>) -> Element {
     // The picker's selection set. Unused by the sidebar skin, which highlights the node
@@ -568,33 +583,35 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
     let selected = use_signal(std::collections::BTreeSet::<String>::new);
 
     rsx! {
-        div {
-            style: SIDEBAR_STYLE,
-            div { style: SIDEBAR_HEADER_STYLE, "Storage" }
+        ResizableSidebar {
             div {
-                // `overflow-x: hidden` here as well as inside the tree: the sidebar is a
-                // fixed 240 px and nothing in it may make the page scroll sideways,
-                // however long a folder name is.
-                style: "flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 2px;",
-                StorageTree {
-                    skin: TreeSkin::Sidebar,
-                    selected,
-                    current_dataset,
-                    focus_key,
-                    on_activate: Callback::new(move |row: StorageRow| {
-                        let target = match row {
-                            StorageRow::Collection(name) => {
-                                Route::FileBrowserCollectionPage { collectionname: name }
-                            }
-                            StorageRow::Dataset(dataset) => {
-                                Route::file_browser_page(dataset, PathDescriptor::root(), None)
-                            }
-                            StorageRow::Folder(dataset, node) => {
-                                Route::file_browser_page(dataset, node.descriptor(), None)
-                            }
-                        };
-                        navigator().push(target);
-                    }),
+                style: SIDEBAR_STYLE,
+                div { style: SIDEBAR_HEADER_STYLE, "Storage" }
+                div {
+                    // `overflow-x: hidden` here as well as inside the tree: nothing in the
+                    // pane may make the page scroll sideways, however long a folder name
+                    // is and however narrow the user has dragged it.
+                    style: "flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 2px;",
+                    StorageTree {
+                        skin: TreeSkin::Sidebar,
+                        selected,
+                        current_dataset,
+                        focus_key,
+                        on_activate: Callback::new(move |row: StorageRow| {
+                            let target = match row {
+                                StorageRow::Collection(name) => {
+                                    Route::FileBrowserCollectionPage { collectionname: name }
+                                }
+                                StorageRow::Dataset(dataset) => {
+                                    Route::file_browser_page(dataset, PathDescriptor::root(), None)
+                                }
+                                StorageRow::Folder(dataset, node) => {
+                                    Route::file_browser_page(dataset, node.descriptor(), None)
+                                }
+                            };
+                            navigator().push(target);
+                        }),
+                    }
                 }
             }
         }
@@ -907,6 +924,7 @@ fn DirRow(collection: String, name: String, path: PathDescriptor) -> Element {
             }
             td {
                 // no container for dir
+                style: TD_DETAILS_STYLE,
             }
             td { style: TD_SIZE_STYLE, "" }
             td { style: TD_ACTIONS_STYLE, "" }
@@ -999,6 +1017,7 @@ fn FileRow(
                 }
             }
             td {
+                style: TD_DETAILS_STYLE,
                 if is_container {
                     ViewDetailsButton {
                         doc_id: click_doc_id,
@@ -1113,7 +1132,7 @@ fn FolderToolbar(
         }
     });
 
-    let open_in_search_href = use_memo(move || {
+    let open_in_search_route = use_memo(move || {
         let mut query = SearchQuery {
             query_string: needle.read().clone(),
             ..Default::default()
@@ -1124,7 +1143,7 @@ fn FolderToolbar(
                 std::collections::BTreeSet::from([FacetOriginalValue::Int(*id)]),
             );
         }
-        Route::search_page_from_query(query).to_string()
+        Route::search_page_from_query(query)
     });
 
     let match_count = use_memo(move || matches.read().as_ref().map(|m| m.len()));
@@ -1162,12 +1181,12 @@ fn FolderToolbar(
                 }
             }
 
-            // A real link, not a button: middle-click and "open in new tab" work, and the
-            // URL is visible on hover — the honest thing for something that navigates away.
-            a {
-                href: "{open_in_search_href}",
-                target: "_blank",
-                rel: "noopener",
+            // A real link, not a button: middle-click and "open in new tab" still work and
+            // the URL is visible on hover. It navigates in place, like every other link
+            // here — a plain left click that only ever opened a background tab read as a
+            // control that did nothing.
+            Link {
+                to: open_in_search_route(),
                 style: "
                     display: inline-flex; align-items: center; gap: 6px;
                     padding: 5px 12px; border: 1px solid rgba(0,0,0,0.35); border-radius: 100px;

@@ -49,6 +49,29 @@ struct StageCounts {
     /// Rows completed inside the trailing rate window; `None` when the stage has no
     /// completion timestamp.
     recent_done: Option<u64>,
+    /// Documents `processing_errors` records a failure of this stage for.
+    failed_documents: u64,
+}
+
+/// Which stage bar a `processing_errors.task_name` belongs under.
+///
+/// The error rows name the *task* that failed, and a task is finer-grained than a bar:
+/// four different index writers and a dozen parse tasks report separately. Mapping them
+/// onto the five bars is what lets a failure be shown next to the work it belongs to
+/// instead of only as a dataset-wide total. The default is the execute bar because the
+/// parse tasks are per-file children of plan execution and they are the long tail;
+/// mirrored on the processing side by `tasks/P_admin/failed_file_retry.py`, which
+/// decides what a retry of each task has to re-run.
+fn stage_for_task(task_name: &str) -> &'static str {
+    match task_name {
+        "archive_scan" => STAGE_SCAN,
+        "P4_ExtractEntities" => STAGE_NLP,
+        // P5 has no bar of its own: chunk+embed feeds the index, and its failures show
+        // up as documents that are indexed without vectors.
+        "P5_ChunkEmbed" => STAGE_INDEX,
+        other if other.starts_with("P6_") => STAGE_INDEX,
+        _ => STAGE_EXECUTE,
+    }
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
@@ -101,6 +124,7 @@ fn stage_progress(
         total: counts.total,
         rate_per_minute,
         eta_seconds,
+        failed_documents: counts.failed_documents,
     }
 }
 
@@ -253,6 +277,30 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
+    // Failures per (dataset, stage), counting DOCUMENTS rather than error rows: a
+    // document that failed three times is one document missing from the corpus, and the
+    // bar it sits next to counts documents too. Dataset-level rows carry no hash and
+    // are excluded here — they are in `errors` above, which is the dataset's own total.
+    let failure_rows = client
+        .query(
+            "SELECT collection_dataset, task_name, uniqExact(hash) AS value \
+             FROM processing_errors WHERE hash != '' GROUP BY collection_dataset, task_name",
+        )
+        .fetch_all::<(String, String, u64)>()
+        .await?;
+    let mut failed_by_stage: BTreeMap<(String, &'static str), u64> = BTreeMap::new();
+    for (ds, task_name, count) in failure_rows {
+        *failed_by_stage
+            .entry((ds, stage_for_task(&task_name)))
+            .or_default() += count;
+    }
+    let failed = |ds: &str, stage: &'static str| -> u64 {
+        failed_by_stage
+            .get(&(ds.to_string(), stage))
+            .copied()
+            .unwrap_or(0)
+    };
+
     let mut datasets = Vec::with_capacity(dataset_links.len());
     for link in dataset_links {
         let ds = link.collection_dataset;
@@ -265,6 +313,7 @@ pub async fn admin_collection_processing(
                     done: pick(&scanned, &ds),
                     total: None,
                     recent_done: None,
+                    failed_documents: failed(&ds, STAGE_SCAN),
                 },
             ),
             stage_progress(
@@ -275,6 +324,7 @@ pub async fn admin_collection_processing(
                     done: pick(&planned, &ds),
                     total: Some(pick(&scanned, &ds)),
                     recent_done: Some(pick(&planned_recent, &ds)),
+                    failed_documents: failed(&ds, STAGE_PLAN),
                 },
             ),
             stage_progress(
@@ -285,6 +335,7 @@ pub async fn admin_collection_processing(
                     done: pick(&plans_done, &ds),
                     total: Some(pick(&plans_total, &ds)),
                     recent_done: Some(pick(&plans_recent, &ds)),
+                    failed_documents: failed(&ds, STAGE_EXECUTE),
                 },
             ),
             stage_progress(
@@ -295,6 +346,7 @@ pub async fn admin_collection_processing(
                     done: pick(&segments_nlp, &ds),
                     total: Some(pick(&segments_total, &ds)),
                     recent_done: Some(pick(&segments_nlp_recent, &ds)),
+                    failed_documents: failed(&ds, STAGE_NLP),
                 },
             ),
             stage_progress(
@@ -305,6 +357,7 @@ pub async fn admin_collection_processing(
                     done: pick(&docs_indexed, &ds),
                     total: Some(pick(&docs_total, &ds)),
                     recent_done: Some(pick(&docs_indexed_recent, &ds)),
+                    failed_documents: failed(&ds, STAGE_INDEX),
                 },
             ),
         ];
@@ -1128,6 +1181,39 @@ pub async fn admin_retry_document(
 mod tests {
     use super::*;
 
+    /// D4: a stage whose documents failed must not read as finished, and the failure
+    /// must land on the bar it happened at.
+    #[test]
+    fn every_error_task_lands_on_a_stage() {
+        assert_eq!(stage_for_task("P4_ExtractEntities"), STAGE_NLP);
+        assert_eq!(stage_for_task("archive_scan"), STAGE_SCAN);
+        assert_eq!(stage_for_task("P6_IndexTextPages"), STAGE_INDEX);
+        assert_eq!(stage_for_task("P6_IndexMetadata"), STAGE_INDEX);
+        assert_eq!(stage_for_task("P5_ChunkEmbed"), STAGE_INDEX);
+        // The parse tasks and anything new default to the execute bar.
+        for task in ["detector_error_tika", "run_ocr_and_store", "pdf_process", ""] {
+            assert_eq!(stage_for_task(task), STAGE_EXECUTE, "{task}");
+        }
+    }
+
+    #[test]
+    fn a_stage_with_failed_documents_is_not_complete() {
+        let mut stage = stage_progress(
+            STAGE_NLP,
+            "P4",
+            "text pages",
+            &StageCounts {
+                done: 5970,
+                total: Some(5970),
+                recent_done: None,
+                failed_documents: 200,
+            },
+        );
+        assert!(!stage.is_complete());
+        stage.failed_documents = 0;
+        assert!(stage.is_complete());
+    }
+
     #[test]
     fn short_status_strips_the_prefix() {
         assert_eq!(short_status("WORKFLOW_EXECUTION_STATUS_RUNNING"), "RUNNING");
@@ -1204,6 +1290,7 @@ mod tests {
             done,
             total,
             recent_done: recent,
+            failed_documents: 0,
         }
     }
 

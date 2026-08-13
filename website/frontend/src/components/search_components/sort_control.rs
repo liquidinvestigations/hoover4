@@ -1,9 +1,18 @@
-//! The result-order control: a button that names the current key and a glyph that flips
+//! The result-order control: a button that names the applied key and a glyph that flips
 //! the direction without opening anything.
 //!
 //! The direction glyph is a control, not a decoration. The menu has four keys and no
 //! direction affordance, so if the glyph did not toggle there would be no way to ask for
 //! "oldest first" at all.
+//!
+//! Like every other control in this toolbar it edits the PENDING query and nothing
+//! reaches the URL until `Apply Filters`. So the button names the order the results on
+//! screen are actually in, and a choice that has not been applied yet is drawn after it
+//! as `applied → pending` in the accent colour. Relabelling straight to the new key was
+//! the whole of the defect: it claimed an order the list was not in. Applying on
+//! selection is not the alternative it looks like — the apply path pushes the whole
+//! pending query, so a sort click would also commit filter edits the user had not
+//! confirmed.
 
 use common::search_query::{SearchQuery, SortKey, SortSpec};
 use dioxus::prelude::*;
@@ -11,9 +20,12 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         md_content_icons::MdSort,
-        md_navigation_icons::{MdArrowDownward, MdArrowUpward, MdCheck},
+        md_navigation_icons::{MdArrowDownward, MdArrowForward, MdArrowUpward, MdCheck},
     },
 };
+
+/// The accent the filter modal marks pending/active state with.
+const ACCENT: &str = "rgba(243,140,104,0.95)";
 
 const MENU_STYLE: &str = "
     position: absolute;
@@ -57,33 +69,70 @@ const BUTTON_STYLE: &str = "
 ";
 
 #[component]
-pub fn SortControl(query: Signal<SearchQuery>) -> Element {
+pub fn SortControl(
+    /// The applied query — the order the results on screen are in.
+    original_query: ReadSignal<SearchQuery>,
+    /// The pending query every control in this toolbar edits.
+    query: Signal<SearchQuery>,
+) -> Element {
     let mut menu_open = use_signal(|| false);
 
     // The spec the UI shows is the RESOLVED one: with no query string, Relevance is not
     // a valid order and the server would silently sort by date anyway. Showing "Sort"
     // while the results come back date-ordered is the confusing half of that.
+    let applied = use_memo(move || {
+        let q = original_query.read();
+        q.sort.resolved(&q.query_string)
+    });
     let effective = use_memo(move || {
         let q = query.read();
         q.sort.resolved(&q.query_string)
     });
     let relevance_available = use_memo(move || !query.read().query_string.trim().is_empty());
-    let is_default = use_memo(move || query.read().sort == SortSpec::default());
+    let applied_is_default = use_memo(move || original_query.read().sort == SortSpec::default());
+
+    // Compared after resolution, so a spec that only differs in a field the server would
+    // ignore anyway does not advertise a change nobody would see.
+    let key_pending = use_memo(move || effective().key != applied().key);
+    let direction_pending = use_memo(move || effective().desc != applied().desc);
+    let is_pending = use_memo(move || key_pending() || direction_pending());
 
     let label = use_memo(move || {
-        if is_default() {
+        if applied_is_default() {
             "Sort".to_string()
         } else {
-            format!("Sort: {}", effective().key.label())
+            format!("Sort: {}", applied().key.label())
+        }
+    });
+
+    let button_tooltip = use_memo(move || {
+        if is_pending() {
+            format!(
+                "Results are ordered by {}. Press Apply Filters to switch to {}.",
+                applied().key.label(),
+                effective().key.label()
+            )
+        } else {
+            "Change the order of the results".to_string()
         }
     });
 
     let direction_tooltip = use_memo(move || {
-        if effective().desc {
+        let base = if effective().desc {
             "Descending — click for ascending"
         } else {
             "Ascending — click for descending"
+        };
+        if direction_pending() {
+            format!("{base}. Not applied yet — press Apply Filters.")
+        } else {
+            base.to_string()
         }
+    });
+    // The glyph follows what this button EDITS, which is the pending query; the accent
+    // says the results are not in that direction yet.
+    let direction_colour = use_memo(move || {
+        if direction_pending() { ACCENT } else { "rgba(0,0,0,0.8)" }
     });
 
     let mut set_key = move |key: SortKey| {
@@ -101,13 +150,20 @@ pub fn SortControl(query: Signal<SearchQuery>) -> Element {
             button {
                 style: "{BUTTON_STYLE} border: 1px solid rgba(0,0,0,0.35);",
                 class: "hoover4-hover-shadow-background",
-                title: "Change the order of the results",
+                title: "{button_tooltip()}",
                 onclick: move |_| {
                     let open = *menu_open.read();
                     menu_open.set(!open);
                 },
                 Icon { icon: MdSort, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.8);" }
                 "{label()}"
+                // The unapplied choice, drawn as the transition it is. Absent while the
+                // control and the result list agree, so the button only grows when there
+                // is something to apply.
+                if key_pending() {
+                    Icon { icon: MdArrowForward, style: "width: 16px; height: 16px; color: {ACCENT};" }
+                    span { style: "color: {ACCENT};", "{effective().key.label()}" }
+                }
             }
 
             // Direction toggle. Separate button so a click here never opens the menu.
@@ -122,9 +178,9 @@ pub fn SortControl(query: Signal<SearchQuery>) -> Element {
                     q.sort = SortSpec { key: current.key, desc: !current.desc };
                 },
                 if effective().desc {
-                    Icon { icon: MdArrowDownward, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.8);" }
+                    Icon { icon: MdArrowDownward, style: "width: 18px; height: 18px; color: {direction_colour()};" }
                 } else {
-                    Icon { icon: MdArrowUpward, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.8);" }
+                    Icon { icon: MdArrowUpward, style: "width: 18px; height: 18px; color: {direction_colour()};" }
                 }
             }
 

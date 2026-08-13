@@ -77,6 +77,11 @@ search is the right tool for a name, a title or a quoted string. Read a promisin
 full with `get_document_text` before you cite it, and use `list_document_entities` to
 find names worth searching for next.
 
+Leave `max_results` alone. Its default already returns a broad view of the collections,
+and a bigger number does not return more text — the same budget is divided over more
+hits, so every passage gets shorter and the answer gets harder to find. If a search
+brings back too much, make the query narrower, not the result set bigger.
+
 Then STOP and write the answer. Specifically:
 
 * Once your searches have turned up documents that answer the question, stop searching

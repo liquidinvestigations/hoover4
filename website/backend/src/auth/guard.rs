@@ -31,6 +31,23 @@ pub fn is_not_found(err: &anyhow::Error) -> bool {
     err.to_string().contains(NOT_FOUND)
 }
 
+/// Is this something the caller asked for wrongly, rather than something that broke?
+///
+/// Only one shape qualifies today: a query string the Manticore parser cannot be given
+/// at all, which [`crate::db_utils::manticore_match::prepare_match_query`] refuses with a
+/// sentence written for the person who typed it. Reported as 500 it reads as the site
+/// falling over on a legal keystroke, and it is counted as breakage in the telemetry;
+/// the caller can fix it, so it is a 400.
+///
+/// Matched by TYPE, not by message text: the message is user-facing prose and will be
+/// reworded, and a substring test over prose is how an unrelated error starts answering
+/// 400. That is also why the search path must propagate the error rather than restate it
+/// with `anyhow!("{e}")`.
+pub fn is_bad_request(err: &anyhow::Error) -> bool {
+    err.chain()
+        .any(|cause| cause.is::<crate::db_utils::manticore_match::MatchQueryError>())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,6 +19,7 @@ use crate::{
 };
 use common::{
     current_user::CurrentUser,
+    entity_stoplist::{ENTITY_TERM_FIELD, is_stopped_entity},
     search_query::SearchQuery,
     search_result::{FacetOriginalValue, SearchResultFacetItem, SearchResultFacets},
 };
@@ -43,23 +44,57 @@ pub async fn search_string_facet(
 
 async fn _search_enrich_collection_list(
     user: &CurrentUser,
-    mut x: SearchResultFacets,
+    x: SearchResultFacets,
 ) -> anyhow::Result<SearchResultFacets> {
-    let collection_list = crate::api::list_datasets::list_permitted_dataset_ids(user).await?;
-    let mut collection_list
-    : BTreeSet<_> = collection_list.into_iter().collect();
+    let registered: BTreeSet<String> = crate::api::list_datasets::list_permitted_dataset_ids(user)
+        .await?
+        .into_iter()
+        .collect();
+    Ok(reconcile_dataset_facets(x, &registered))
+}
 
-    for z in &x.facet_values {
-        if let FacetOriginalValue::String(z) = &z.original_value {
-            let _r = collection_list.remove(z);
+/// Make the Collections facet agree with the dataset registry, in both directions.
+///
+/// The index is not the authority on which datasets exist — `dataset` is. Manticore
+/// keeps whatever was written under a name until something deletes it, so a dataset
+/// that was abandoned (a failed ingest, a re-ingest under a new name) goes on producing
+/// buckets with real counts long after its registry row is gone. Offering one is worse
+/// than merely untidy: ticking it applies a filter no document can match, so the UI
+/// hands the user a control whose only outcome is `0 documents found`.
+///
+/// So a value that names no readable dataset is **dropped**, and a readable dataset the
+/// index returned no bucket for is **added with a count of 0** — the pane then lists
+/// exactly the datasets the file-location tree lists, which is the other half of the
+/// same modal.
+///
+/// This is a display guard, not a repair: the orphan rows are still in the index and
+/// still inflate unfiltered hit counts. `main.py purge-dataset` is what removes them.
+fn reconcile_dataset_facets(
+    mut facets: SearchResultFacets,
+    registered: &BTreeSet<String>,
+) -> SearchResultFacets {
+    facets.facet_values.retain(|item| match &item.original_value {
+        FacetOriginalValue::String(value) => registered.contains(value),
+        // A non-string bucket cannot name a dataset; leave it to the generic path
+        // rather than silently dropping something this function does not understand.
+        _ => true,
+    });
+
+    let mut missing: BTreeSet<&String> = registered.iter().collect();
+    for item in &facets.facet_values {
+        if let FacetOriginalValue::String(value) = &item.original_value {
+            missing.remove(value);
         }
     }
-    for z in collection_list {
-        x.facet_values.push(SearchResultFacetItem { display_string: z.clone(), original_value: FacetOriginalValue::String(z.clone()), count: 0 });
+    for value in missing {
+        facets.facet_values.push(SearchResultFacetItem {
+            display_string: value.clone(),
+            original_value: FacetOriginalValue::String(value.clone()),
+            count: 0,
+        });
     }
 
-
-    Ok(x)
+    facets
 }
 
 /// Turn merged `(key, count)` facet pairs into UI items.
@@ -298,7 +333,17 @@ pub async fn search_mva_facet(
     result.facet_values = facet_items_from_pairs(merged)?;
 
     if let Some(map_string_terms) = map_string_terms {
+        let is_entity_facet = map_string_terms == ENTITY_TERM_FIELD;
         map_term_display_strings(user, &mut result.facet_values, map_string_terms).await?;
+        if is_entity_facet {
+            // Header names, encoding fragments and letter-spaced PDF headings. The
+            // pipeline stops these before they are stored, so this only has work to do on
+            // rows the NLP stage wrote without that rule — but on a mail corpus those
+            // outrank every real entity, which is the whole facet.
+            result
+                .facet_values
+                .retain(|item| !is_stopped_entity(&item.display_string));
+        }
     }
     result
         .facet_values
@@ -378,4 +423,80 @@ pub async fn fetch_db_terms_for_ints(
         }
     }
     Ok(merged)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::search_query::SearchQuery;
+
+    fn facets(values: &[(&str, u64)]) -> SearchResultFacets {
+        SearchResultFacets {
+            query: SearchQuery::default(),
+            facet_field: "collection_dataset".to_string(),
+            facet_values: values
+                .iter()
+                .map(|(value, count)| SearchResultFacetItem {
+                    display_string: value.to_string(),
+                    original_value: FacetOriginalValue::String(value.to_string()),
+                    count: *count,
+                })
+                .collect(),
+            partial: false,
+        }
+    }
+
+    fn offered(facets: &SearchResultFacets) -> Vec<(String, u64)> {
+        facets
+            .facet_values
+            .iter()
+            .map(|item| match &item.original_value {
+                FacetOriginalValue::String(value) => (value.clone(), item.count),
+                other => (format!("{other:?}"), item.count),
+            })
+            .collect()
+    }
+
+    /// D3: `epstein_epstein` is still in the index with a count of 2 888, and is not a
+    /// dataset. Offering it hands the user a filter that returns nothing.
+    #[test]
+    fn a_facet_value_that_is_not_a_registered_dataset_is_not_offered() {
+        let registered: BTreeSet<String> = ["epstein_docs".to_string()].into_iter().collect();
+        let result = reconcile_dataset_facets(
+            facets(&[("epstein_docs", 2888), ("epstein_epstein", 2888)]),
+            &registered,
+        );
+        assert_eq!(offered(&result), vec![("epstein_docs".to_string(), 2888)]);
+    }
+
+    #[test]
+    fn a_registered_dataset_with_no_bucket_is_offered_at_zero() {
+        let registered: BTreeSet<String> = ["a_one".to_string(), "a_two".to_string()]
+            .into_iter()
+            .collect();
+        let result = reconcile_dataset_facets(facets(&[("a_one", 5)]), &registered);
+        assert_eq!(
+            offered(&result),
+            vec![("a_one".to_string(), 5), ("a_two".to_string(), 0)]
+        );
+    }
+
+    /// The permission set is the same list, so a dataset the user may not read is not
+    /// registered as far as this function is concerned — and must not be advertised by
+    /// a facet either.
+    #[test]
+    fn an_unreadable_dataset_is_dropped_like_a_ghost_one() {
+        let registered: BTreeSet<String> = ["ok_one".to_string()].into_iter().collect();
+        let result = reconcile_dataset_facets(
+            facets(&[("ok_one", 3), ("secret_two", 99)]),
+            &registered,
+        );
+        assert_eq!(offered(&result), vec![("ok_one".to_string(), 3)]);
+    }
+
+    #[test]
+    fn nothing_registered_means_nothing_offered() {
+        let result = reconcile_dataset_facets(facets(&[("gone_one", 7)]), &BTreeSet::new());
+        assert!(result.facet_values.is_empty());
+    }
 }

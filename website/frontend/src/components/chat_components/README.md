@@ -87,6 +87,13 @@ text and one turn can surface a dozen, so `ChatDocRefCard` renders
 full text stays in the payload and the card links to the document, which is where reading
 it belongs.
 
+**The cards are collapsed behind `DocRefsDisclosure` by default**, one disclosure per tool
+row, labelled `<n> documents from <tool> — show`. A result set is evidence for the answer,
+not the answer: rendered open, a single search put 46 cards between the question and a
+one-line reply and made the page 22 168 characters of which 31 were the answer. The
+summary line carries the tool name and the count because a bare chevron makes the reader
+open the list to find out whether it is worth opening.
+
 The clamp counts **characters, never bytes** — the text is arbitrary extracted content
 (Romanian diacritics, CJK, an attachment's base64) and slicing a `&str` mid-codepoint
 panics. The worst offenders were exactly the hits least worth reading: extraction indexes

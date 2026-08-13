@@ -16,9 +16,19 @@ conventions from drifting.
 Language codes are joined with `+`, which is Tesseract's own convention, for both
 engines. Nothing else in the string may contain `_` before the engine name, which is why
 the parser splits from the left exactly twice.
+
+`ner_reads_variant` is the one rule here with no Rust counterpart: which variants the NLP
+stage reads is a pipeline decision and nothing in the website depends on it.
 """
 
-from typing import List, Optional, Tuple
+from typing import Collection, List, Optional, Tuple
+
+#: The file's own bytes, decoded and segmented, with nothing interpreted. For a mail file
+#: that is the MIME envelope: header block, boundaries, base64 attachment payloads.
+RAW_TEXT = "raw_text"
+
+#: The `text/plain` parts of a mail file, decoded. Same document, none of the envelope.
+EMAIL_PARSER = "email_parser"
 
 #: Engine identifiers. These appear inside `extracted_by`, so changing one invalidates
 #: every stored row that used it.
@@ -28,6 +38,28 @@ OCR_ENGINES = (ENGINE_TESSERACT, ENGINE_EASYOCR)
 
 #: Prefix marking an OCR variant. Native extractors have no prefix.
 OCR_PREFIX = "ocr_"
+
+
+def ner_reads_variant(extracted_by: str, variants_present: Collection[str]) -> bool:
+    """Is this text variant worth running named-entity recognition over?
+
+    Every variant is stored, indexed and offered in the viewer's source selector; this
+    decides only which of them the NLP stage reads.
+
+    A mail file that parsed produces both `raw_text` (the MIME envelope: header names,
+    boundaries, base64 payloads) and `email_parser` (the body alone). They are the same
+    document, so NER over both doubles the work and the entities of the second copy are
+    the envelope -- `Content-Transfer-Encoding`, `Message-ID`, every `X-` header the
+    mailer wrote -- which then outnumber every real entity in the facet.
+
+    The predicate is structural rather than a file-type check: a file HAS a parsed body,
+    or it does not. Mail whose only body part is HTML produces no `email_parser` rows, and
+    that file keeps its `raw_text` entities rather than silently losing all of them --
+    which is also why the stop-list exists, since those envelopes still reach the model.
+    """
+    if extracted_by == RAW_TEXT and EMAIL_PARSER in variants_present:
+        return False
+    return True
 
 
 def ocr_extracted_by(engine: str, languages: str) -> str:

@@ -94,6 +94,14 @@ pub struct AdminAiStatus {
     pub fingerprint_local: String,
     pub fingerprint_ai_server: String,
     pub fingerprint_match: bool,
+    /// Did the GPU AI server answer its `/health` at all?
+    ///
+    /// Separates the two reasons the AI-server fingerprint is blank. A deployment that
+    /// runs without the GPU tier has no fingerprint to compare and nothing is wrong;
+    /// a deployment that expects one and cannot reach it is a fault. Reporting both as
+    /// an incomplete match made the normal state of a CPU-only host read as breakage.
+    #[serde(default)]
+    pub ai_server_present: bool,
     pub shard_dims: Vec<AiShardDimCheck>,
     pub browser_live_sessions: u32,
     pub browser_max_sessions: u32,

@@ -84,11 +84,25 @@ Two things the panels deliberately do **not** do:
   live in the worker and inside each MCP server's process; the website has no channel to
   any of them. It is not rendered for that reason.
 
-Reachability is probed **per capability**. The NER row used to fall back to `|| ai_ok` —
-"the main AI server answered `/health`" — which is a different question: that server hosts
-three capabilities behind independent model loads, so `ner_model_loaded` can be false while
-the process is perfectly healthy, and the panel reported NER up in exactly the case it
-exists to report it down.
+Reachability is probed **per capability**, never widened to "the main AI server answered
+`/health`": that server hosts three capabilities behind independent model loads, so
+`ner_model_loaded` can be false while the process is perfectly healthy, and a row deriving
+its state from the server's liveness reports NER up in exactly the case it exists to report
+it down.
+
+**The `serving` column names the hardware that answered, never the slot it sits in.**
+`serving_hardware` reads `cuda_available` out of the health body the endpoint returned; the
+CPU twins do not publish that field and are not credited with a GPU for its absence.
+`NER_URL` is a url and not a promise — a deployment with no GPU points it straight at
+`hoover4-ner-spacy` — so a row printing the name of its own variable claims a GPU on a host
+that has none, on the one page whose whole job is noticing that. For the same reason the
+NER row's model and detail come from whichever endpoint actually served, not from the main
+AI server's body.
+
+`ai_server_present` separates the two reasons the AI-server config fingerprint is blank. A
+deployment running without the GPU tier has no second fingerprint to compare and nothing is
+wrong; one that expects a fingerprint and cannot reach it is a fault. Collapsing both into
+an incomplete match put a permanent unexplained defect on the page of every CPU-only host.
 
 ## Telemetry (usage_events / api_events)
 
@@ -111,6 +125,16 @@ metrics table that accumulates search queries is a surveillance log.
 
 The TTL is applied by background merges, so rows can outlive 24 h briefly; every read
 query filters `event_ts >= now() - INTERVAL 24 HOUR` itself.
+
+`user_login` counts **sign-ins, not requests**: only `/api/whoami` creates a session, so
+only it records one. A fresh `set-cookie` on every response instead makes this page count
+one login per cookie-less request, which a single crawler can run into the hundreds in a
+24 h window.
+
+A request that identified nobody is recorded under the constant username `anonymous`, and
+**not** as an error — a 401 is a correct, complete answer to a request that proved nothing,
+the same reasoning as the 404 rule below. Without the row a flood of refusals would be
+invisible; with `is_error` set it would read as the site breaking.
 
 Instrumentation points: logins in `auth/session_middleware.rs`, searches in
 `api/search/`, document fetches in `api/documents/`, the `user_other_request` catch-all
@@ -163,14 +187,32 @@ documents why a bare `ExecutePlans` restart is a no-op. The accompanying
 `ALTER TABLE processing_errors DELETE` is an asynchronous ClickHouse mutation, so a
 row can briefly still appear in the failure list after a retry. Accepted, not a bug.
 
+The button here is the coarse form: it re-runs whole plans, which for thousands of
+failed documents means re-downloading and re-parsing the corpus. The cheap form is
+`main.py retry-failed-files`, which re-runs only the stage that failed, only for the
+hashes that failed it.
+
+## A finished plan is not a successful one
+
+`processing_plan_finished` records that a plan's stages ran, not that every document
+survived them — the stages record per-document errors and carry on, deliberately, so one
+unparseable file cannot stop a dataset. So the stage bars carry a per-stage
+`failed_documents` count (`stage_for_task` maps a `processing_errors.task_name` onto the
+bar it belongs to) and `StageProgress::is_complete` is false while any document failed.
+Without that, a stage reads `done` over documents it never processed, which is how 4 792
+documents lost their entities to an NER outage without a single bar changing colour.
+
 ## TODO — deferred, with the reason
 
 ### Verify the artifact ACL with two real users, outside demo mode
 
 **Deferred deliberately: this stack stays in demo mode for now.**
 
-`guest_permissions_mode = all` makes every visitor an admin, so an unauthenticated request
-with a fresh guest cookie gets `200` on **any** chat artifact. The code-level rule is
+`guest_permissions_mode = all` makes every visitor an admin, so a *signed-in* guest gets
+`200` on **any** chat artifact. (An unauthenticated request gets nowhere: the
+route requires a session and answers 401 without one. That closes the drive-by case and
+changes nothing about the case below, which is one signed-in user reading another's.) The
+code-level rule is
 correct and was reviewed — `/_chat_artifact/{id}/{asset}` resolves the id to its
 `session_id`/`username` and enforces owner-or-admin, returning **403 for someone else's
 artifact and 404 only for one that does not exist** (collapsing those two would hide a real

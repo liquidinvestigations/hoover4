@@ -1,10 +1,39 @@
 //! Extract the current user in server functions.
 
+/// The caller's identity, or a `401` if the request carried none.
+///
+/// The session middleware attaches a `CurrentUser` only when a cookie or a proxy-set
+/// header resolved one, and it refuses every endpoint except the mint route outright when
+/// it cannot — so the missing-extension case reaches here from exactly two places: the
+/// mint route itself (`whoami`, before anything has minted, which is how a deployment with
+/// guests disabled refuses a visitor) and a server function invoked during server-side
+/// rendering of the app shell, which the browser re-runs with a session moments later.
+///
+/// The message is written for a reader, and the code is `401` rather than the default
+/// `500`: nothing broke, the request simply proved nothing.
 #[cfg(feature = "server")]
 pub async fn extract_user() -> Result<common::current_user::CurrentUser, dioxus::prelude::ServerFnError> {
     use axum::Extension;
     use dioxus::fullstack::FullstackContext;
-    let Extension(user): Extension<common::current_user::CurrentUser> =
-        FullstackContext::extract().await?;
-    Ok(user)
+    use dioxus::prelude::ServerFnError;
+
+    let extension: Result<Extension<common::current_user::CurrentUser>, _> =
+        FullstackContext::extract().await;
+    match extension {
+        Ok(Extension(user)) => Ok(user),
+        Err(_) => Err(ServerFnError::ServerError {
+            message: NOT_SIGNED_IN.to_string(),
+            code: 401,
+            details: None,
+        }),
+    }
 }
+
+/// Shown to a visitor a deployment will not let in. Kept next to the code that produces
+/// it so the wording cannot drift from the condition; the client renders whatever the
+/// server sent rather than a second copy of this sentence.
+#[cfg(feature = "server")]
+pub const NOT_SIGNED_IN: &str =
+    "Not signed in. This deployment requires an authenticated session and does not issue \
+     anonymous ones — sign in through your organisation's proxy, or ask an administrator \
+     for access.";

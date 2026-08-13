@@ -10,6 +10,7 @@ pub mod document_entities;
 pub mod document_metadata;
 pub mod document_provenance;
 pub mod document_sources;
+pub mod entity_stoplist;
 pub mod filter_summary;
 pub mod llm_types;
 pub mod metrics_types;

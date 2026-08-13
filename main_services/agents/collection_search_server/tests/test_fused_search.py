@@ -4,6 +4,7 @@ import pytest
 
 from agent_common import rerank as rerank_client
 from collection_search_server import server
+from collection_search_server.server import SearchHit
 from collection_search_server.vectors import VectorCandidate
 
 H1 = "a" * 32
@@ -157,3 +158,67 @@ class TestPartialRerank:
         )
         hits = server._fused_pipeline("q", keyword, [], limit=10, notes=[])
         assert [h.snippet for h in hits] == ["third", "first", "second"]
+
+
+class TestResultBudget:
+    """What a result set *weighs*, not only how many results are in it."""
+
+    def test_a_huge_max_results_is_clamped_to_the_cap(self):
+        # The model really does ask for 10 000: one turn spent 27 809 prompt tokens on a
+        # single search because nothing between the tool call and the prompt said no.
+        assert max(1, min(10000, server.MAX_ALLOWED_RESULTS)) == 200
+
+    def test_the_default_is_well_under_the_cap(self):
+        assert server.DEFAULT_MAX_RESULTS < server.MAX_ALLOWED_RESULTS
+
+    def test_the_tool_description_names_the_default_it_wants_left_alone(self):
+        # The description is the only text a model reads before its first call; if it
+        # does not say what the default is, "more" is always the safe-looking choice.
+        description = server.search_collections.description
+        assert str(server.DEFAULT_MAX_RESULTS) in description
+        assert "max_results" in description
+
+    def test_a_small_result_set_keeps_the_full_snippet(self):
+        hits = [
+            SearchHit(
+                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=1,
+                snippet="x" * 1500,
+            )
+            for _ in range(8)
+        ]
+        server._apply_snippet_budget(hits)
+        assert all(len(h.snippet) <= server.SNIPPET_CHARS + 1 for h in hits)
+        assert all(len(h.snippet) > 1000 for h in hits)
+
+    def test_a_full_result_set_stays_inside_the_budget(self):
+        hits = [
+            SearchHit(
+                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=i,
+                snippet="x" * 1500,
+            )
+            for i in range(server.MAX_ALLOWED_RESULTS)
+        ]
+        server._apply_snippet_budget(hits)
+        total = sum(len(h.snippet) for h in hits)
+        # The floor buys each hit a readable line, so the bound is the budget plus the
+        # ellipsis per hit -- not the 300 000 characters 200 raw snippets would be.
+        assert total <= server.SNIPPET_BUDGET_CHARS + len(hits)
+        assert all(len(h.snippet) >= server.MIN_SNIPPET_CHARS for h in hits)
+
+    def test_a_short_snippet_is_never_padded_or_marked_truncated(self):
+        hits = [
+            SearchHit(
+                collectionname="c", collection_dataset="c_d", file_hash=H1, page_id=1,
+                snippet="short",
+            )
+        ]
+        server._apply_snippet_budget(hits)
+        assert hits[0].snippet == "short"
+
+    def test_the_per_kind_guard_cannot_undercut_a_large_max_results(self, monkeypatch):
+        # Two kinds x MAX_PER_KIND was the real cap on a hybrid search: a caller asking
+        # for 50 got 30, and the tool's own limit never applied.
+        keyword = [_keyword("%032d" % i, 1, 100.0 - i, f"hit {i}") for i in range(40)]
+        _identity_rerank(monkeypatch)
+        hits = server._fused_pipeline("q", keyword, [], limit=40, notes=[])
+        assert len(hits) == 40

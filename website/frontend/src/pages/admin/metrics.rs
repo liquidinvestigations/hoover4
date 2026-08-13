@@ -1,7 +1,7 @@
 //! Admin page: `/admin/metrics` — usage counters and per-function API stats
 //! over the rolling last 24 h.
 
-use common::metrics_types::{ApiFunctionStats, UsageMetrics};
+use common::metrics_types::{ApiFunctionStats, UsageMetrics, UsageTimePoint};
 use dioxus::prelude::*;
 
 use crate::api::admin_api::admin_get_metrics;
@@ -85,15 +85,7 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
                 if usage.series.is_empty() {
                     p { style: HELP_TEXT, "No events recorded yet." }
                 } else {
-                    div { style: "display: flex; align-items: flex-end; gap: 2px; height: 80px; margin-bottom: 20px;",
-                        for p in usage.series {
-                            div {
-                                key: "{p.bucket}",
-                                title: "{p.bucket} — {p.count}",
-                                style: "flex: 1; min-width: 4px; background: #79aec8; height: {p.count * 100 / max_series}%;",
-                            }
-                        }
-                    }
+                    HourlyEventsChart { series: usage.series, max_count: max_series }
                 }
 
                 h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Busiest users" }
@@ -113,6 +105,134 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// `HH:MM` from an RFC 3339 bucket, for an axis tick. The date is redundant on a
+/// 24-hour axis and doubles the label width, so it stays in the per-bar tooltip.
+fn hour_of_day(bucket: &str) -> String {
+    bucket
+        .split('T')
+        .nth(1)
+        .and_then(|time| time.get(..5))
+        .unwrap_or(bucket)
+        .to_string()
+}
+
+/// One bar per hour over the rolling 24 h, with the axes that make it readable.
+///
+/// Bare bars answer "was there a spike" and nothing else. The count axis says how big,
+/// the time axis says when, and the gridlines let a bar be read against them instead of
+/// against its neighbours. Everything structural is recessive: grey rules behind grey
+/// text, one accent for the data.
+#[component]
+fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
+    // A fixed coordinate system scaled by the viewBox, so the geometry below is written
+    // in one unit and the chart still fits whatever width the panel gives it.
+    const W: f64 = 720.0;
+    const H: f64 = 160.0;
+    const LEFT: f64 = 46.0;
+    const RIGHT: f64 = 8.0;
+    const TOP: f64 = 10.0;
+    const BOTTOM: f64 = 22.0;
+
+    let plot_w = W - LEFT - RIGHT;
+    let plot_h = H - TOP - BOTTOM;
+    let baseline = TOP + plot_h;
+    let count = series.len().max(1) as f64;
+    let slot = plot_w / count;
+    // A 2 px surface gap between bars, and never a bar so thin it vanishes.
+    let bar_w = (slot - 2.0).max(1.0);
+
+    // Three ticks: zero, half, full. More than three on a 150 px plot is noise.
+    let ticks: Vec<(f64, u64)> = (0..=2)
+        .map(|i| {
+            let fraction = i as f64 / 2.0;
+            (baseline - fraction * plot_h, (max_count as f64 * fraction).round() as u64)
+        })
+        .collect();
+
+    // First, middle and last hour. The middle one is dropped when the series is short
+    // enough that it would sit on top of one of the ends.
+    let time_ticks: Vec<(f64, String)> = {
+        let mut out = Vec::new();
+        let mut push = |index: usize| {
+            if let Some(point) = series.get(index) {
+                out.push((LEFT + (index as f64 + 0.5) * slot, hour_of_day(&point.bucket)));
+            }
+        };
+        push(0);
+        if series.len() >= 5 {
+            push(series.len() / 2);
+        }
+        if series.len() > 1 {
+            push(series.len() - 1);
+        }
+        out
+    };
+
+    rsx! {
+        svg {
+            width: "100%",
+            height: "{H}",
+            "viewBox": "0 0 {W} {H}",
+            style: "max-width: 720px; display: block; margin-bottom: 20px;",
+
+            for (y, value) in ticks {
+                g {
+                    key: "y-{value}",
+                    line {
+                        x1: "{LEFT}", y1: "{y}", x2: "{W - RIGHT}", y2: "{y}",
+                        "stroke": "#e5e5e5", "stroke-width": "1",
+                    }
+                    text {
+                        x: "{LEFT - 6.0}", y: "{y + 3.5}",
+                        "text-anchor": "end",
+                        style: "font-size: 10px; fill: #666;",
+                        "{value}"
+                    }
+                }
+            }
+
+            for (index, point) in series.iter().enumerate() {
+                {
+                    // An hour with no events keeps a hairline, so a gap in the series
+                    // reads as a gap rather than as the axis running out.
+                    let height = (point.count as f64 / max_count as f64 * plot_h).max(1.0);
+                    let x = LEFT + index as f64 * slot + (slot - bar_w) / 2.0;
+                    rsx! {
+                        rect {
+                            key: "{point.bucket}",
+                            x: "{x}", y: "{baseline - height}",
+                            width: "{bar_w}", height: "{height}",
+                            rx: "2",
+                            fill: "#79aec8",
+                            title { "{point.bucket} — {point.count} events" }
+                        }
+                    }
+                }
+            }
+
+            line {
+                x1: "{LEFT}", y1: "{baseline}", x2: "{W - RIGHT}", y2: "{baseline}",
+                "stroke": "#bbb", "stroke-width": "1",
+            }
+            for (x, label) in time_ticks {
+                text {
+                    key: "x-{label}",
+                    x: "{x}", y: "{H - 7.0}",
+                    "text-anchor": "middle",
+                    style: "font-size: 10px; fill: #666;",
+                    "{label}"
+                }
+            }
+            text {
+                x: "{LEFT - 6.0}", y: "{H - 7.0}",
+                "text-anchor": "end",
+                style: "font-size: 10px; fill: #999;",
+                "UTC"
             }
         }
     }

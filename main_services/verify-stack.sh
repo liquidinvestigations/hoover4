@@ -674,6 +674,7 @@ resolve_url() {  # an asset href as written in the markup -> a path off the site
     local href="${1#.}"; href="${href#/}"; href="${href#./}"; printf '/%s' "$href"
 }
 api_path=""
+whoami_path=""
 js_href=$(WEB "$WEBSITE_URL/" | grep_first '[a-zA-Z0-9_./-]*frontend[a-zA-Z0-9_-]*\.js')
 if [ -n "$js_href" ]; then
     wasm_href=$(WEB "$WEBSITE_URL$(resolve_url "$js_href")" \
@@ -686,6 +687,9 @@ if [ -n "$js_href" ]; then
         # "no such server function" rather than "wrong URL".
         if [ "$(head -c 4 "$wasm_tmp" | tr -d '\0')" = "asm" ]; then
             api_path=$(grep_first '/api/search_for_results_hit_count[0-9]+' < "$wasm_tmp")
+            # The sign-in route, discovered the same way and for the same reason: its URL
+            # carries a build hash too.
+            whoami_path=$(grep_first '/api/whoami[0-9]+' < "$wasm_tmp")
         else
             fail "$(resolve_url "$wasm_href") did not serve a WASM module (got $(wc -c < "$wasm_tmp") bytes of something else)"
         fi
@@ -695,8 +699,26 @@ fi
 if [ -z "$api_path" ]; then
     fail "could not discover the search server-function URL from the WASM bundle"
 else
+    # Every endpoint but the sign-in route refuses a request with no session cookie, so
+    # this probe has to hold one. `whoami` is that route and the only one that answers a
+    # `set-cookie`; a deployment with HOOVER4_DEMO_MODE off issues no anonymous session at
+    # all, and the search check below then reports the refusal rather than a search bug.
+    cookie_jar=$(mktemp)
+    if [ -z "$whoami_path" ]; then
+        fail "could not discover the /api/whoami URL from the WASM bundle"
+    else
+        identity=$(WEB -c "$cookie_jar" -X POST "$WEBSITE_URL$whoami_path" \
+            -H 'Content-Type: application/json' -d '[]')
+        if grep -q hoover4_session "$cookie_jar" 2>/dev/null; then
+            ok "the site issued a session at $whoami_path ($(printf '%s' "$identity" | head -c 60))"
+        else
+            fail "no session issued at $whoami_path — with HOOVER4_DEMO_MODE off that is expected, and every API check below is refused: $identity"
+        fi
+    fi
+
     body='[{"collection_datasets":[],"query_string":"'"$SEARCH_WORD"'","facet_filters":{}}]'
-    response=$(WEB -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
+    response=$(WEB -b "$cookie_jar" -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
+    rm -f "$cookie_jar"
     # SearchResultHitCount serialises as {"total":N,"partial":bool}.
     hits=$(printf '%s' "$response" | grep -oE '"total":[0-9]+' | grep -oE '[0-9]+' | head -1)
     if [ -n "$hits" ] && [ "$hits" -gt 0 ]; then

@@ -7,7 +7,7 @@ use dioxus::{logger::tracing, prelude::*};
 
 use crate::{
     components::{
-        document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore, error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator
+        document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore, error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator
     },
 };
 
@@ -137,9 +137,7 @@ fn TextDataFallback(
             v
         }
         Some(Err(e)) =>{ return rsx!{
-            ComponentErrorDisplay {
-                error_txt: "{e:#?}",
-            }
+            ServerErrorDisplay { error: e.clone() }
         }}
         None => {return rsx!{
             LoadingIndicator {  }

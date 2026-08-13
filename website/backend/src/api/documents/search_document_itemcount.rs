@@ -24,8 +24,8 @@ pub async fn search_document_item_count(
     if sources.is_empty() {
         return Ok(ItemHitCounts(Vec::new()));
     }
-    tracing::info!(
-        "SEARCHING FOR ITEM HIT COUNTS FOR DOCUMENT: {:?} FIND={} , {} sources",
+    tracing::debug!(
+        "item hit counts for {:?}, find={:?}, {} sources",
         document_identifier,
         &find_query,
         sources.len()

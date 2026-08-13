@@ -23,7 +23,6 @@ use crate::pages::file_browser_page::{
 };
 use crate::pages::home_page::HomePage;
 use crate::pages::not_found_page::NotFoundPage;
-use crate::pages::pdfdemo_page::PdfDemoPage;
 use crate::pages::search_page::SearchPage;
 use crate::pages::view_document_page::ViewDocumentPage;
 
@@ -83,9 +82,6 @@ pub enum Route {
         selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
-
-    #[route("/pdfdemo")]
-    PdfDemoPage {  },
 
     #[route("/admin")]
     AdminDashboardPage {},

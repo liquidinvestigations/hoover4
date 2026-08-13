@@ -30,15 +30,31 @@ fn agent_base_url(use_internet_tools: bool) -> String {
     }
 }
 
-/// An agent run can involve several LLM turns and several searches, so the timeout is
-/// minutes rather than seconds. Still bounded: a hung agent must surface as an error
-/// message in the transcript, not as a browser tab that spins forever.
-fn agent_timeout() -> Duration {
+/// How long the agent may stay **silent** before the run is called dead.
+///
+/// This bounds the gap between two bytes, not the length of the run. A total-request
+/// timeout is the wrong bound for a streamed agent: a healthy turn that calls a slow
+/// provider a dozen times outlives any total worth setting, and cutting it produces a
+/// `reqwest` body error — `error decoding response body` — that reads like a corrupt
+/// stream and hides the fact that a deadline was hit. Silence is the real symptom of a
+/// hung agent, and the longest legitimate gap is one LLM call.
+fn agent_idle_timeout() -> Duration {
     let secs = std::env::var("HOOVER4_AGENT_TIMEOUT_SECONDS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(300);
     Duration::from_secs(secs.clamp(10, 3600))
+}
+
+/// Absolute ceiling on one agent call, however chatty it stays. The idle timeout cannot
+/// catch an agent that loops forever while emitting events, so this is the backstop —
+/// the same half hour the ingest side gives a research run.
+fn agent_total_timeout() -> Duration {
+    let secs = std::env::var("HOOVER4_AGENT_TOTAL_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(1_800);
+    Duration::from_secs(secs.clamp(60, 21_600))
 }
 
 /// Total attempts per turn, including the first. Retries cover the whole class of
@@ -52,6 +68,21 @@ pub fn agent_attempts() -> u32 {
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(4)
         .clamp(1, 8)
+}
+
+/// How many times a turn may be replayed **after** the agent has already streamed
+/// events to the user. Bounded much harder than [`agent_attempts`] because the unit of
+/// waste is different: a pre-event failure costs a connection, while a mid-stream break
+/// throws away everything the agent has done — the D22 turn was thirteen provider calls
+/// and eighteen minutes of work — and the replay repeats all of it. One is the most
+/// that can be spent without turning a slow turn into an unbounded one; `0` disables
+/// mid-stream replay entirely.
+pub fn agent_stream_resumes() -> u32 {
+    std::env::var("HOOVER4_AGENT_STREAM_RESUMES")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1)
+        .clamp(0, 2)
 }
 
 /// Delay before the first retry. Doubles each time: 2s, 4s, 8s by default.
@@ -260,6 +291,56 @@ pub enum AgentStreamEvent {
     End,
 }
 
+/// The connection carrying an in-flight agent run failed.
+///
+/// Carried as its own type so the caller can tell a transport break from an `error`
+/// chunk the agent deliberately sent: the first may be worth replaying, the second
+/// never is. `timeout` separates the two transport breaks that need opposite handling —
+/// a deadline the website itself imposed will fire again on a replay, a dropped
+/// connection may not.
+#[derive(Debug, Clone)]
+pub struct StreamTransportError {
+    pub message: String,
+    pub timeout: bool,
+}
+
+impl std::fmt::Display for StreamTransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for StreamTransportError {}
+
+/// True when replaying the turn has any chance of a different outcome.
+pub fn is_resumable_break(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<StreamTransportError>()
+        .is_some_and(|e| !e.timeout)
+}
+
+/// Every message in an error's `source` chain, outermost first.
+///
+/// `reqwest::Error`'s own `Display` is a category — "error decoding response body" is
+/// what a *timeout* mid-body prints, and what a truncated stream prints, and what a
+/// genuine decode failure prints. The chain is where the three become distinguishable,
+/// so nothing here logs `{e}` alone.
+fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut source = err.source();
+    while let Some(inner) = source {
+        parts.push(inner.to_string());
+        source = inner.source();
+    }
+    parts.join(" <- ")
+}
+
+/// The last `max_chars` characters of `text`. Characters, not bytes: the buffer holds
+/// arbitrary extracted content and a byte slice can land mid-codepoint.
+fn tail_chars(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    text.chars().skip(total.saturating_sub(max_chars)).collect()
+}
+
 fn parse_stream_event(chunk: &serde_json::Value) -> Option<AgentStreamEvent> {
     let kind = chunk.get("type")?.as_str()?;
     let content = chunk.get("content").cloned().unwrap_or(serde_json::Value::Null);
@@ -284,8 +365,10 @@ fn parse_stream_event(chunk: &serde_json::Value) -> Option<AgentStreamEvent> {
 /// the in-flight HTTP request.
 ///
 /// An `error` chunk is delivered as `Err` from this function; transport errors mid-
-/// stream likewise. A caller that has already received events must NOT retry — the
-/// model may have produced visible content and a retry would duplicate it.
+/// stream likewise, as a [`StreamTransportError`]. A caller that has already received
+/// events may replay the turn only for a transport break the connection caused
+/// ([`is_resumable_break`]), and must fold the prose it already collected out of the
+/// answer first — the model may have produced visible content and a replay repeats it.
 pub async fn ask_agent_stream_once(
     username: &str,
     session_id: &str,
@@ -313,8 +396,10 @@ pub async fn ask_agent_stream_once(
 
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .timeout(agent_timeout())
+        .read_timeout(agent_idle_timeout())
+        .timeout(agent_total_timeout())
         .build()?;
+    let started = std::time::Instant::now();
     let response = client
         .post(format!("{base}/chat/stream"))
         .json(&body)
@@ -327,28 +412,100 @@ pub async fn ask_agent_stream_once(
         anyhow::bail!("AI agent returned {status}: {}", text.chars().take(500).collect::<String>());
     }
 
-    // The feed is SSE-shaped (`data: {json}\n\n`) over text/plain. Buffer and split on
-    // the blank line; a chunk boundary can fall anywhere.
-    let mut stream = response.bytes_stream();
+    // The feed is SSE-shaped (`data: {json}\n\n`) over text/plain. The classification and
+    // the logging happen here, where the `reqwest::Error` still exists; the consumer below
+    // only ever sees a [`StreamTransportError`], which is what makes it testable without
+    // a socket.
+    let stream = response.bytes_stream().map(move |item| {
+        item.map_err(|e| {
+            // The one place that knows what actually failed. A turn that dies here leaves
+            // nothing else behind — the agent keeps running, its own log says the run went
+            // fine, and every `llm_call_events` row says `ok`. Without the source chain and
+            // the elapsed time, the next reader cannot tell a deadline from a truncated
+            // stream from a bad frame, which is exactly the position D22 was reported from.
+            let timeout = e.is_timeout();
+            let elapsed = started.elapsed().as_secs_f64();
+            tracing::error!(
+                "agent stream broke after {elapsed:.1}s: timeout={timeout} body={body} \
+                 decode={decode} connect={connect} chain=[{chain}]",
+                body = e.is_body(),
+                decode = e.is_decode(),
+                connect = e.is_connect(),
+                chain = error_chain(&e),
+            );
+            let message = if timeout {
+                format!("agent stream timed out after {elapsed:.0}s of silence")
+            } else {
+                format!("agent stream broke: {}", error_chain(&e))
+            };
+            StreamTransportError { message, timeout }
+        })
+    });
+    consume_event_stream(stream, on_event).await
+}
+
+/// Split an SSE-shaped byte stream into events, invoking `on_event` per chunk.
+///
+/// Separate from the HTTP call so a broken stream can be exercised in a test: the only
+/// way this loop failed in production was mid-stream, and reconstructing that with a real
+/// socket costs more than it proves.
+async fn consume_event_stream<B, S>(
+    stream: S,
+    on_event: &mut (impl FnMut(AgentStreamEvent) + Send),
+) -> anyhow::Result<()>
+where
+    B: AsRef<[u8]>,
+    S: futures::Stream<Item = Result<B, StreamTransportError>>,
+{
+    use futures::StreamExt;
+
+    let mut stream = std::pin::pin!(stream);
     let mut buffer = String::new();
+    let mut bytes_seen: usize = 0;
+    let mut frames_seen: usize = 0;
     while let Some(item) = stream.next().await {
-        let bytes = item.map_err(|e| anyhow::anyhow!("agent stream broke: {e}"))?;
-        buffer.push_str(&String::from_utf8_lossy(&bytes));
+        let bytes = match item {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                // Logged again from here with what the *consumer* knows — how much of the
+                // answer had arrived and what the half-frame on the wire looked like. A
+                // stream cut cleanly between frames and one cut inside a payload are
+                // different faults and print differently.
+                tracing::error!(
+                    "agent stream ended early after {bytes_seen} bytes and {frames_seen} \
+                     frames: {e} undecoded_tail={tail:?}",
+                    tail = tail_chars(&buffer, 400),
+                );
+                return Err(anyhow::Error::new(e));
+            }
+        };
+        let bytes = bytes.as_ref();
+        bytes_seen += bytes.len();
+        buffer.push_str(&String::from_utf8_lossy(bytes));
         while let Some(pos) = buffer.find("\n\n") {
+            frames_seen += 1;
             let frame = buffer[..pos].to_string();
             buffer = buffer[pos + 2..].to_string();
             for line in frame.lines() {
                 let Some(payload) = line.strip_prefix("data: ") else {
                     continue;
                 };
-                let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
-                    // `.chars()`, not a byte slice: cutting at byte 200 lands inside a
-                    // multi-byte character on any non-ASCII payload and panics — in the
-                    // spawned stream task, where the turn simply stops with no answer.
-                    // The one thing this line exists to do is report a bad frame.
-                    let head: String = payload.chars().take(200).collect();
-                    tracing::warn!("unparseable agent stream frame: {head}");
-                    continue;
+                let json = match serde_json::from_str::<serde_json::Value>(payload) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        // ERROR, not WARN: a frame the website cannot read is a step of
+                        // the answer silently dropped, and the payload is the only
+                        // evidence of what the agent sent. `.chars()`, not a byte slice:
+                        // cutting at byte 400 lands inside a multi-byte character on any
+                        // non-ASCII payload and panics — in the spawned stream task,
+                        // where the turn simply stops with no answer.
+                        let head: String = payload.chars().take(400).collect();
+                        tracing::error!(
+                            "unparseable agent stream frame ({} bytes) at {e}: {head:?}",
+                            payload.len(),
+                        );
+                        continue;
+                    }
                 };
                 if let Some(kind) = json.get("type").and_then(|t| t.as_str()) {
                     if kind == "error" {
@@ -467,7 +624,102 @@ mod tests {
 
     #[test]
     fn timeout_is_clamped_into_a_sane_range() {
-        assert!(agent_timeout() >= Duration::from_secs(10));
-        assert!(agent_timeout() <= Duration::from_secs(3600));
+        assert!(agent_idle_timeout() >= Duration::from_secs(10));
+        assert!(agent_idle_timeout() <= Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn the_absolute_cap_outlasts_the_silence_bound() {
+        // If the total were the shorter of the two it would fire first on every long
+        // turn, and the idle bound — the one that describes a hung agent — would never
+        // be reached. That inversion is what cut a healthy 18-minute turn at 300 s.
+        assert!(
+            agent_total_timeout() > agent_idle_timeout(),
+            "total {:?} must outlast idle {:?}",
+            agent_total_timeout(),
+            agent_idle_timeout(),
+        );
+    }
+
+    #[test]
+    fn mid_stream_replays_are_bounded_to_at_most_one_by_default() {
+        // A replay repeats every provider call the turn has made. The bound is what
+        // keeps a six-minute turn from becoming a half-hour one.
+        assert!(agent_stream_resumes() <= 2);
+    }
+
+    #[test]
+    fn a_deadline_is_not_replayed_but_a_dropped_connection_is() {
+        let dropped = anyhow::Error::new(StreamTransportError {
+            message: "agent stream broke: connection reset".to_string(),
+            timeout: false,
+        });
+        let deadline = anyhow::Error::new(StreamTransportError {
+            message: "agent stream timed out after 300s of silence".to_string(),
+            timeout: true,
+        });
+        assert!(is_resumable_break(&dropped));
+        // Replaying a deadline spends the whole turn again to hit the same deadline.
+        assert!(!is_resumable_break(&deadline));
+        // An `error` chunk the agent sent deliberately is not a transport failure.
+        assert!(!is_resumable_break(&anyhow::anyhow!("tool refused the call")));
+    }
+
+    #[test]
+    fn the_tail_is_cut_by_characters_so_a_diacritic_cannot_panic() {
+        assert_eq!(tail_chars("abcdef", 3), "def");
+        assert_eq!(tail_chars("ăîș", 2), "îș");
+        assert_eq!(tail_chars("ab", 10), "ab");
+    }
+
+    #[tokio::test]
+    async fn a_break_mid_stream_keeps_the_events_that_already_arrived() {
+        // The failure D22 records: frames are delivered, then the connection dies. The
+        // events before the break are real work and must reach the caller, and the error
+        // must arrive classified so the caller can decide whether to replay.
+        let chunks: Vec<Result<&[u8], StreamTransportError>> = vec![
+            Ok(b"data: {\"type\": \"start\"}\n\n"),
+            Ok(b"data: {\"type\": \"response\", \"content\": \"partial\"}\n\n"),
+            Ok(b"data: {\"type\": \"resp"),
+            Err(StreamTransportError {
+                message: "agent stream broke: connection closed before message completed"
+                    .to_string(),
+                timeout: false,
+            }),
+        ];
+        let mut seen = Vec::new();
+        let err = consume_event_stream(futures::stream::iter(chunks), &mut |e| seen.push(e))
+            .await
+            .expect_err("a broken stream must fail the attempt");
+
+        assert_eq!(seen.len(), 2, "events before the break are kept");
+        assert!(matches!(seen[1], AgentStreamEvent::Response(ref s) if s == "partial"));
+        assert!(is_resumable_break(&err), "a dropped connection is replayable");
+    }
+
+    #[tokio::test]
+    async fn an_error_chunk_ends_the_stream_without_being_replayable() {
+        let chunks: Vec<Result<&[u8], StreamTransportError>> = vec![Ok(
+            b"data: {\"type\": \"error\", \"content\": \"the model refused\"}\n\n",
+        )];
+        let err = consume_event_stream(futures::stream::iter(chunks), &mut |_| {})
+            .await
+            .expect_err("an error chunk fails the attempt");
+        assert_eq!(err.to_string(), "the model refused");
+        assert!(!is_resumable_break(&err));
+    }
+
+    #[tokio::test]
+    async fn a_frame_split_across_chunks_is_reassembled() {
+        let chunks: Vec<Result<&[u8], StreamTransportError>> = vec![
+            Ok(b"data: {\"type\": \"resp"),
+            Ok(b"onse\", \"content\": \"hello\"}\n\ndata: {\"type\": \"end\"}\n\n"),
+        ];
+        let mut seen = Vec::new();
+        consume_event_stream(futures::stream::iter(chunks), &mut |e| seen.push(e))
+            .await
+            .expect("a complete stream succeeds");
+        assert_eq!(seen.len(), 2);
+        assert!(matches!(seen[0], AgentStreamEvent::Response(ref s) if s == "hello"));
     }
 }

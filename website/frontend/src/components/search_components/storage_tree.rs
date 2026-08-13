@@ -11,10 +11,11 @@
 //! by an embedded [`VfsTree`] only once its row is expanded. A corpus of N collections x
 //! M datasets therefore costs one request on mount, not N x M.
 //!
-//! Everything below a dataset row — ancestor elision, sibling capping, the indent cap,
+//! Everything below a dataset row — ancestor elision, sibling capping, the indent ladder,
 //! the tri-state checkbox — is the existing per-dataset tree, unchanged. The only thing
-//! this level hands it is [`SYNTHETIC_LEVELS`], so the two rows above a folder are paid
-//! for out of the same indent budget rather than being added on top of it.
+//! this level hands it is [`SYNTHETIC_LEVELS`], which is the ladder rung its folders start
+//! on, so the two rows above a folder are paid for out of the same indent budget rather
+//! than being added on top of it.
 
 use std::collections::BTreeSet;
 
@@ -32,8 +33,8 @@ use dioxus_free_icons::{
 
 use crate::api::storage_api::list_storage_tree;
 use crate::components::search_components::vfs_tree::{
-    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, TreeSkin, TriState, VfsTree, indent_px,
-    tri_state_icon, window_siblings,
+    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, TreeSkin, TriState, VfsTree,
+    indent_style, tri_state_icon, window_siblings,
 };
 
 /// Rows above a folder: the collection and the dataset. Folders indent from here.
@@ -53,8 +54,8 @@ pub enum StorageRow {
 /// One synthetic level's rows: the window plus what it hides either side.
 ///
 /// The same cap the folder levels obey ([`window_siblings`]) — a deployment with two
-/// hundred datasets in a collection is not a reason to put two hundred rows in a 240 px
-/// sidebar, and the overflow rows say exactly how many are hidden and reveal them.
+/// hundred datasets in a collection is not a reason to put two hundred rows in a sidebar,
+/// and the overflow rows say exactly how many are hidden and reveal them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SyntheticLevel<T> {
     pub hidden_before: usize,
@@ -266,7 +267,7 @@ pub fn StorageTree(
             // document-wide search clicks straight through the overlay.
             id: "x-storage-tree",
             // Vertical scrolling only, like the folder tree it contains: a long dataset
-            // name may not make a 240 px sidebar scroll sideways.
+            // name may not make the sidebar scroll sideways, at any width.
             style: "width: 100%; min-width: 0; overflow-x: hidden;",
             {body}
         }
@@ -461,7 +462,7 @@ fn SyntheticRow(
     icon: SyntheticIcon,
     on_click: Callback<()>,
 ) -> Element {
-    let indent = indent_px(depth);
+    let indent = indent_style(depth);
     // Named so a script can expand exactly this row. Clicking the row itself ticks it in
     // the picker, which is not the same gesture — the disclosure is the only way to open
     // a row without also selecting it, and a test that cannot tell them apart tests
@@ -491,7 +492,7 @@ fn SyntheticRow(
 
     rsx! {
         div {
-            style: "{ROW_STYLE} padding-left: {indent}px; background: {background};",
+            style: "{ROW_STYLE} padding-left: {indent}; background: {background};",
             class: "x-facet-list-item",
             title: "{title}",
             onclick: move |_| on_click.call(()),
@@ -544,12 +545,12 @@ fn MoreRow(
     if hidden == 0 {
         return rsx! {};
     }
-    let indent = indent_px(depth);
+    let indent = indent_style(depth);
     let mut unfolded_set = unfolded;
     let direction = if above { "above" } else { "below" };
     rsx! {
         button {
-            style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {indent}px;",
+            style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {indent};",
             class: "x-facet-list-item",
             title: "Show all {label} here",
             onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },

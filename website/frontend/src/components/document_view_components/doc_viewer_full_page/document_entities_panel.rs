@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 
 use crate::components::{
     document_view_components::doc_viewer_full_page::ViewerPageControls,
-    error_boundary::ComponentErrorDisplay, suspend_boundary::LoadingIndicator,
+    error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
 
 #[component]
@@ -24,7 +24,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
     let items: Vec<DocumentEntityItem> = match entities_res.read().clone() {
         Some(Ok(r)) => r.items,
         Some(Err(e)) => {
-            return rsx! { ComponentErrorDisplay { error_txt: format!("{:#?}", e) } };
+            return rsx! { ServerErrorDisplay { error: e } };
         }
         None => {
             return rsx! { LoadingIndicator {} };

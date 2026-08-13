@@ -243,8 +243,11 @@ fn match_argument(query_string: &str) -> anyhow::Result<String> {
     if query_string.is_empty() {
         return Ok("''".to_string());
     }
+    // `Error::from`, not `anyhow!("{e}")`: the concrete `MatchQueryError` is what tells
+    // the HTTP layer this is a malformed *request* rather than a failing server, and
+    // re-wrapping it as a string throws that away and leaves only a 500.
     Ok(prepare_match_query(&query_string)
-        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .map_err(anyhow::Error::from)?
         .quoted())
 }
 
@@ -615,6 +618,28 @@ mod tests {
         assert_eq!(
             sort_order_by(&SortSpec { key: SortKey::FileSize, desc: true }, "testdata_1_meta"),
             "ORDER BY testdata_1_meta.file_size_bytes DESC, collection_dataset ASC, file_hash ASC"
+        );
+    }
+
+    /// A query the parser cannot be given is the CALLER's mistake, and the classification
+    /// has to survive the trip out of the SQL builder for the endpoint to say so.
+    ///
+    /// It is carried by the error's TYPE. Restating it as `anyhow!("{e}")` anywhere along
+    /// the way leaves a bare string, every such query is reported as a 500, and a rejected
+    /// keystroke reads as the site falling over — while the telemetry counts it as
+    /// breakage.
+    #[test]
+    fn a_query_with_only_negations_is_a_bad_request_all_the_way_out() {
+        let query = SearchQuery { query_string: "!a".to_string(), ..Default::default() };
+        let error = build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta")
+            .expect_err("a negation-only query has no MATCH() argument");
+        assert!(
+            crate::auth::guard::is_bad_request(&error),
+            "classified as a server failure instead: {error:#}"
+        );
+        assert!(
+            error.to_string().contains("Add at least one word to search for"),
+            "and the advice the reader sees must survive too: {error}"
         );
     }
 }

@@ -34,6 +34,16 @@ class _FakeCHClient:
         self.inserts = {}
 
     def query_arrow(self, query, parameters=None):
+        # Two reads: the segments to process, then the variants each file has (which is
+        # the whole table, not the anti-joined subset).
+        if "groupUniqArray" in query:
+            variants = {}
+            for row in self._text_rows:
+                variants.setdefault(row["file_hash"], set()).add(row["extracted_by"])
+            return _FakeQueryResult([
+                {"file_hash": file_hash, "variants": sorted(values)}
+                for file_hash, values in variants.items()
+            ])
         return _FakeQueryResult(self._text_rows)
 
     def insert_arrow(self, table, tbl):
@@ -152,6 +162,99 @@ def test_ner_failure_propagates_and_writes_nothing(monkeypatch):
         nlp_activities.extract_entities_for_hashes(_params(3))
 
     assert fake_client.inserts == {}
+
+
+MIME_ENVELOPE = """Message-ID: <30795064.1075845@thyme.enron.com>
+Date: Mon, 14 May 2001 16:39:00 -0700 (PDT)
+From: kay.mann@enron.com
+Mime-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: quoted-printable
+X-Folder: \\Kay_Mann_June2001\\Notes Folders\\Sent
+X-Origin: MANN-K
+X-FileName: kmann.nsf
+
+Kay Mann called about the Enron contract on the 14th of=
+ May."""
+
+EMAIL_BODY = "Kay Mann called about the Enron contract on the 14th of May."
+
+# What the model actually returned for those two texts, as stored in entity_hit.
+_STUB_ENTITIES = {
+    MIME_ENVELOPE: [
+        ("MISC", "Message-ID"), ("MISC", "Content-Transfer-Encoding"),
+        ("MISC", "Mime-Version"), ("MISC", "X-Folder"), ("MISC", "X-Origin"),
+        ("MISC", "X-FileName"), ("MISC", "Date: Mon"), ("PER", "of="),
+        ("PER", "Kay Mann"), ("ORG", "Enron"),
+    ],
+    EMAIL_BODY: [("PER", "Kay Mann"), ("ORG", "Enron"), ("MISC", "May")],
+}
+
+
+def _email_text_rows():
+    """One mail file parsed both ways, and one plain file that has only raw_text."""
+    return [
+        {"collection_dataset": "coll_ds", "file_hash": "mail-1",
+         "extracted_by": "raw_text", "page_id": 1, "text": MIME_ENVELOPE},
+        {"collection_dataset": "coll_ds", "file_hash": "mail-1",
+         "extracted_by": "email_parser", "page_id": 1, "text": EMAIL_BODY},
+        {"collection_dataset": "coll_ds", "file_hash": "html-only-1",
+         "extracted_by": "raw_text", "page_id": 1, "text": MIME_ENVELOPE},
+    ]
+
+
+def _stub_ner_post(url, json=None, **kwargs):
+    entities = []
+    for index, text in enumerate(json["input"]):
+        for label, value in _STUB_ENTITIES[text.strip()]:
+            entities.append({"text_index": index, "label": label, "text": value})
+    return _FakeResponse({"data": entities})
+
+
+class TestEmailEnvelopesDoNotBecomeEntities:
+    """A mail file stores its MIME envelope (`raw_text`) next to its parsed body
+    (`email_parser`). Running the model over both makes every header name an entity on
+    every message in the corpus, and the facet then ranks `Content-Transfer-Encoding`
+    above every person in it."""
+
+    def _run(self, monkeypatch):
+        rows = _email_text_rows()
+        client = _install_fakes(monkeypatch, rows, _stub_ner_post)
+        nlp_activities.extract_entities_for_hashes(_params(0))
+        entity_rows = client.inserts["entity_hit"][0].to_pylist()
+        processed_rows = client.inserts["nlp_processed"][0].to_pylist()
+        return rows, entity_rows, processed_rows
+
+    def test_the_envelope_of_a_parsed_mail_is_not_sent_to_the_model(self, monkeypatch):
+        _, entity_rows, _ = self._run(monkeypatch)
+        assert not [
+            r for r in entity_rows
+            if r["file_hash"] == "mail-1" and r["extracted_by"] == "raw_text"
+        ]
+
+    def test_no_header_name_survives_anywhere(self, monkeypatch):
+        _, entity_rows, _ = self._run(monkeypatch)
+        values = {v for r in entity_rows for v in r["entity_values"]}
+        assert values == {"Kay Mann", "Enron"}
+
+    def test_a_mail_with_no_parsed_body_keeps_its_raw_text_entities(self, monkeypatch):
+        """The fallback that must not silently produce a document with no entities."""
+        _, entity_rows, _ = self._run(monkeypatch)
+        values = {
+            v for r in entity_rows if r["file_hash"] == "html-only-1"
+            for v in r["entity_values"]
+        }
+        assert values == {"Kay Mann", "Enron"}
+
+    def test_every_segment_still_gets_a_watermark(self, monkeypatch):
+        """A segment with no `nlp_processed` row is re-read on every run, warns in P6 and
+        holds the stage's progress short of complete."""
+        rows, _, processed_rows = self._run(monkeypatch)
+        assert len(processed_rows) == len(rows)
+        assert {r["text_bytes"] for r in processed_rows} == {
+            len(r["text"].strip().encode("utf-8")) for r in rows
+        }
+        assert all(r["nlp_model"] for r in processed_rows)
 
 
 class TestBatchCharacterBudget:

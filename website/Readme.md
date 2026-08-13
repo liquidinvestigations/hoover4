@@ -21,6 +21,42 @@ The workspace contains three Rust crates: `backend` exposes HTTP APIs for datase
 
 Code is arranged by feature area: backend API modules under `backend/src/api`, database helpers under `backend/src/db_utils`, and frontend UI components under `frontend/src/components` with pages in `frontend/src/pages`.
 
+### Sessions: one route mints, every other endpoint requires
+
+`/api/whoami` is the only route that creates a session — a `web_sessions` row, a `guest-*`
+user, a `user_login` event and the `hoover4_session` cookie. Every other server function
+and every custom route (`/_download_document/…`, `/_download_ocr_pdf/…`,
+`/_chat_artifact/…`) answers **401** when nothing resolved an identity. The policy is one
+file, `backend/src/auth/route_policy.rs`, and its tests enumerate the custom routes
+literally so a route added to `main.rs` and forgotten there fails a test rather than
+shipping open.
+
+The app shell — page routes, `/assets/…`, the wasm bundle — stays open, because the browser
+has to load the code that signs in. It carries no collection data; everything it renders
+arrives through a checked route.
+
+**The frontend blocks on it.** `components/session_gate.rs` wraps the router: no page
+renders until `whoami` resolves. Rendering pages first and letting each page's resources
+race the sign-in would hand every one of them a 401 to display on first paint.
+
+**Why it matters that only one route mints.** A response that attaches a fresh
+`set-cookie` on any route lets every client that stores no cookies — a crawler, a `curl`
+loop, a link checker — create a `guest-<hex>` user and a `user_login` row *per request*,
+so the user list and the metrics page grow without bound and stop being readable. A guest name is derived
+from the session id rather than randomised, so a browser holding a cookie whose session row
+has expired re-anchors to the identity it already had instead of becoming a second user.
+
+**`HOOVER4_DEMO_MODE` decides whether anonymous visitors exist at all.** With it on, the
+mint route provisions a guest and treats them as an administrator — the public demo. With
+it off, nothing is provisioned: `whoami` refuses, the session gate renders *Sign-in
+required*, and the only way in is a reverse proxy setting `X-Forwarded-User`. A
+proxy-authenticated identity is honoured on every route, because the proxy is what
+authenticated it; what is confined to the mint route is writing a session for it.
+
+A non-browser client must therefore hold a cookie jar and call `whoami` first. That is what
+`main_services/verify-stack.sh` does, discovering both URLs from the served WASM bundle
+because a server function's path carries a build hash.
+
 ### ClickHouse database routing
 
 ClickHouse is split into the global database `Hoover4_Processing` (users, groups,
@@ -59,8 +95,11 @@ QuotedData` gets both wrong for this database and **must never be used to build 
   ordinary things to type into a search box. `prepare_match_query` repairs the first
   three, passes the real operators (`"exact phrase"`, `-exclude`, `term*`, `a | b`,
   `NEAR/3`) through untouched, and returns a typed error for the two shapes with no
-  searchable reading, so the message reaches the search bar instead of a 500 reaching
-  the user.
+  searchable reading. That error is `MatchQueryError` and it is carried out by TYPE:
+  `auth::guard::is_bad_request` matches on it, so the endpoint answers **400** and the
+  page renders the sentence it contains. Restating it anywhere along the way with
+  `anyhow!("{e}")` leaves a bare string, and a rejected keystroke goes back to reading
+  as the site falling over.
 
 A pure string assertion is how this last reached production: the unit test asserted the
 doubled form, so it passed while every search containing an apostrophe failed. Tests for
@@ -99,11 +138,98 @@ What is exact, and what is approximate:
   them); the **total hit count** (a sum of per-shard `count(distinct file_hash)`,
   which is an upper bound because the same file can exist in two collections).
 
+The **Collections facet is intersected with the dataset registry** before it is offered
+(`search_facets.rs::reconcile_dataset_facets`): a value that names no readable dataset is
+dropped, and a readable dataset the index returned no bucket for is added at zero. The
+index is not the authority on which datasets exist — `dataset` is — and Manticore keeps
+whatever was written under a name until something deletes it, so an abandoned ingest goes
+on producing buckets with real counts. Offering one hands the user a filter whose only
+possible outcome is `0 documents found`. The guard is display-only: the orphan rows still
+inflate unfiltered hit counts, and `main.py purge-dataset` is what removes them.
+
+The four Entities facets (`ner_per`, `ner_org`, `ner_loc`, `ner_misc`) and the document
+viewer's entities panel are filtered through `common/src/entity_stoplist.rs`, which
+rejects mail header names, encoding fragments and letter-spaced PDF headings. The
+pipeline drops the same values before storing them
+(`main_services/processing/tasks/entity_stoplist.py`), so on freshly extracted data this
+finds nothing; it exists because a write-time rule governs only rows written after it,
+and on a mail corpus the rows written earlier put `Content-Transfer-Encoding` at the top
+of the facet. The duplication is deliberate and mirrors `document_sources.rs`: neither
+runtime may depend on the other being right.
+
 Search responses are cached per sub-query in the global `search_manticore_cache`
 table; the cache key includes the collection's shard-ledger generation
 (`max(updated_at)` of its `manticore_shards` table, cached in-process for 30 s), so a
 newly opened shard invalidates that collection's cached searches without touching the
 others.
+
+### Showing a failed server call
+
+`ServerFnError` never reaches the DOM. `api::error_util::user_facing_message` extracts the
+`message` the backend wrote for a person — both derived renderings are unusable, `Debug`
+prints the struct and `Display` wraps the message in *error running server function: …
+(details: …)* — and the `ServerErrorDisplay` component is the one place that renders it.
+Formatting the error at the call site instead is how a Rust struct ends up printed across
+a search page's pagination.
+
+The status picks the presentation: a **4xx** is something the caller can fix and is shown
+as a plain message, anything else is a failure of ours and is shown as the red component
+error. Both carry `x-error-display`, which is how `tools/capture_screenshots.py` finds a
+surfaced error structurally rather than by matching words.
+
+A slot with no value has no error to report either: the hit-count position renders nothing
+when the search failed, because the results panel below it already shows the message and
+printing it in both put it across the pager and the page numbers.
+
+### In-document PDF search
+
+`/api/search_document_pdf` collects the matching words out of Manticore and asks a
+**pdfium sidecar** where they sit on the page, so hits can be highlighted in the rendered
+PDF. The sidecar is `backend/pdf-viewer/_server/server-search.js`, a node process this
+server starts and supervises (`server_extra::run_pdf_search_server`) rather than a service
+of its own, which is why `PDF_SEARCH_ENDPOINT` is loopback.
+
+**The sidecar is handed the PDF's bytes** — `POST` the document as the body, keywords as a
+`?keywords=<json array>` parameter — and never a URL. It cannot reach back into anything.
+A sidecar told to fetch `http://127.0.0.1:<PORT>/_download_document/…` is this server
+asking itself for a document it already knows how to read, over a request that carries no
+session cookie; requiring a session on the download route kills it silently. The bytes are
+read straight out of the blob store instead
+(`api::documents::download_document::read_blob_bytes`), which also bounds the document by
+its registered size before a byte is fetched — the whole PDF is buffered here, on the wire
+and inside pdfium's wasm heap. Over that ceiling, the document still opens, downloads and
+searches by text; only the in-page highlight overlay is unavailable.
+
+That blob read runs on the server's multi-threaded runtime through
+`startup::on_multi_thread_runtime`. The MinIO SDK blocks internally under
+`to_segmented_bytes`, and Dioxus server functions do not run on the runtime the axum routes
+do — a bare `tokio::spawn` inherits the same context rather than escaping it.
+
+Its directory is found by walking **up** from the working directory, never joined to it:
+the built release binary serves from `target/dx/<pkg>/release/web/`, so a relative path
+resolves inside the build output, the spawn fails with `No such file or directory`, and
+in-PDF search is dead for the whole deployment while every other route looks healthy.
+`PDF_SEARCH_SERVER_DIR` overrides the search outright.
+
+The pid file at `/tmp/pdf-search-server.pid` outlives the process it names — it is on the
+container's filesystem and a restart does not clear it — and pids are handed out from a
+small range at boot. So "a process exists at this number" is never evidence that it is the
+sidecar, and the supervisor reads `/proc/<pid>/cmdline` before signalling anything. Killing
+on liveness alone SIGKILLs a stranger: it has killed *this server's own binary* seconds
+after start, after which `dx serve` believes the app is running, every route answers 500
+with nothing else in the log, and each restart reproduces it because the same pid is
+issued again.
+
+This is not `PDF_TO_HTML_ENDPOINT`. That names `hoover4-processing-pdf-to-html`, a
+separate container that takes a POST of raw PDF bytes and returns HTML; it answers
+`GET requests are not supported` to anything the search path sends.
+
+The viewer's own bundle is vendored under `frontend/assets/embed-pdf/_viewer/` and is
+pulled into the build by a `#[used] static … asset!(…folder…)` in
+`components/pdf_viewer/mod.rs`. Nothing reads that binding, and the `<script>` tag loads
+the entry point by literal URL — so the `with_hash_suffix(false)` option and the
+`/assets/_viewer/…` path in the tag have to be changed together, and dropping the
+declaration silently ships a site with no PDF viewer.
 
 Usage:
 - Build the frontend crate with `cargo serve ---package frontend`, and follow `frontend/README.md` for Dioxus-specific dev commands.
@@ -215,6 +341,22 @@ stream row when it accepts the task (the only thing that tells the poller a turn
 before the worker picks the activity up) and the activity rewrites that seq, keepalive
 included.
 
+### Timeouts
+
+The agent connection is bounded by **silence**, not by duration:
+`HOOVER4_AGENT_TIMEOUT_SECONDS` (default 300) is a `read_timeout` — the longest gap
+between two bytes — and `HOOVER4_AGENT_TOTAL_TIMEOUT_SECONDS` (default 1800) is the
+absolute ceiling for an agent that loops forever while still emitting events.
+
+**A total-request timeout is the wrong bound for a streamed run**, and getting this wrong
+is expensive to diagnose. A healthy internet-tools turn is a dozen provider calls at
+50–120 s each; cutting it at a total makes `reqwest` report a body error whose `Display`
+is `error decoding response body` — indistinguishable from a corrupt stream — while the
+agent, which never learns the reader left, keeps working for another quarter of an hour
+and writes a full set of `ok = 1` rows into `llm_call_events`. Every log line about a
+broken stream therefore prints the error's whole `source` chain and its `is_timeout()`
+flag, never `{e}` alone.
+
 ### Retries
 
 Each turn gets `HOOVER4_AGENT_ATTEMPTS` attempts (default 4) with exponential backoff from
@@ -222,9 +364,25 @@ Each turn gets `HOOVER4_AGENT_ATTEMPTS` attempts (default 4) with exponential ba
 class rather than a curated list — unreachable, 5xx, timeout, malformed body are one thing
 from the user's seat, and this stack fails transiently in all four ways.
 
+**Once the agent has streamed anything, an attempt is worth much more.** A replay repeats
+every tool call and every provider call the turn has already made, so at most
+`HOOVER4_AGENT_STREAM_RESUMES` (default 1, max 2) of the attempts may be spent after the
+first event, and only for a transport break the connection caused — a deadline lands in
+the same place on the replay and is never retried
+(`agent_client::is_resumable_break`). Before a replay the prose already collected is
+folded into the reasoning trace, so the second attempt's answer is not appended to half of
+the first one's; tool rows keep their seqs and the replay's rows follow them, so the
+transcript records both runs.
+
 Failed attempts are kept in `chat_messages.retry_errors` even when the turn eventually
 succeeds, and the transcript shows them behind a disclosure. A turn that only worked on
 the third try is a healthy answer over an unhealthy agent tier, and that is worth seeing.
+The list holds **one entry per attempt including the one that ended the turn**, so it is
+labelled by its length and not as "earlier" attempts.
+
+A turn that ends in an error also logs at ERROR with the session, the turn uuid and the
+attempt count. A failure whose only record is a row in `chat_messages` is a failure nobody
+finds while the user is asking why the assistant stopped answering.
 
 ### Admin: live chats
 
@@ -315,6 +473,14 @@ A document has a SET of dates, not one, and `document_dates` keeps each with the
 came from. The viewer's **Dates** section shows all of them with provenance — that is
 where a user finds out why a date filter did or did not match.
 
+**`email_headers.date_sent` is a `DateTime` whose fallback is the epoch, and the epoch is
+also a real instant**, so nothing but `date_sent_known` separates "sent 1970-01-01" from
+"never parsed". Every reader must consult the flag: the email source query emits an empty
+string for an unknown date and `DocumentEmailSourceItem::sent_date` rejects the epoch
+again on the client, because viewer state restored from a URL carries whatever was written
+into it. Printing the sentinel puts a sent date on the preview of a document the Metadata
+tab reports as having no confirmed date at all.
+
 **Archive-mtime limitation.** An archive member's mtime is only as good as the archive.
 Many archives store the extraction machine's clock rather than the document's, and nothing
 in the file distinguishes the two. Those dates are indexed because a wrong-ish date is
@@ -380,6 +546,26 @@ Sorting is cross-shard, so the per-shard `ORDER BY` and the merge comparator mus
 exactly — the sort column is SELECTed for that reason alone. `merge_hits_sorted` is tested
 over every key in both directions for page disjointness.
 
+**The Sort control edits the PENDING query, like everything else in the search toolbar.**
+It therefore names the order the results on screen are actually in, and draws an
+unapplied choice after it as `applied → pending` in the accent colour; `Apply Filters` is
+the one control that says whether anything is waiting, and it is disabled when nothing
+is. Applying the sort on selection instead is not the small change it looks like: the
+apply path pushes the whole pending query, so a sort click would commit filter edits the
+user had not confirmed.
+
+### Only the first 1 000 results are reachable
+
+`MAX_PAGINATION_DOCUMENT_LIMIT` (`common/src/search_const.rs`) caps how deep the pager
+and the next/previous-result buttons go. The hit count above them is the whole match, so
+a corpus-wide query says "6 379 documents found" over a pager that ends at `1000` — two
+numbers on one line that legitimately disagree. The `i` beside the count explains it
+whenever the count exceeds the cap (`search_result_list_controls.rs::PaginationCapNotice`).
+
+The cap is a property of the UI, not of the index: search itself will count and rank the
+whole match. Deep paging over a merged, cross-shard result set costs a full re-merge per
+page, and past a thousand hits refining the query is the answer rather than paging.
+
 ### Filename search
 
 One synthetic pages row per document (`extracted_by = 'filename_index'`, `page_id = -1`)
@@ -416,6 +602,28 @@ the fetch limit would not reveal anything the window is hiding. `elide_ancestors
 `window_siblings` are pure functions with unit tests; the fixture that exercises them on
 screen is `many-children` (a 42-level chain and a folder of 334 siblings), ingested by
 `verify-stack.sh` as `testdata_shapes`.
+
+**The indent counts ladder RUNGS, not tree depth**, and the third cap is what makes that
+affordable. A row's rung is its position in the ladder on screen; ancestor elision hides
+whole levels without spending rungs, so the deepest folder of a 43-row chain renders on
+rung 11 rather than rung 45. Every visible row is therefore indented strictly more than the
+row it hangs off, at any depth, which is the thing a tree has to show. `indent_px` spends
+16 px on the first four rungs and 8 px on every rung after them, bounded by a pixel ceiling
+and — through a CSS `min()` — by a share of the pane, so dragging the sidebar narrow
+tightens the ladder with no re-render. The 8 px step is small because the app lays out at a
+1920 px design width and `zoom`s it to the window (`assets/main.css`): a 4 px step would be
+2.5 device pixels at a 1280 px window, which is not a step anyone can see. Past four rungs
+the row also states its true depth in a badge, because the ladder does not count it.
+
+**The storage sidebar is resizable and remembers its width**
+(`components/resizable_sidebar.rs`). The unit is CSS pixels — a percentage or `vw` would
+re-scale the pane on every window change, and the width a folder name needs is a number of
+pixels, not a share of a screen. Those are LAYOUT pixels, before the app's scale, so the
+drag divides the cursor's travel by the scale it measures off `#x-nav-container`; the
+scale is a media-query ladder and cannot be a constant on the Rust side. A remembered
+width is clamped to 240–720 px on the way in and on the way out, anything that is not a
+plain positive integer falls back to the default, and `max-width: 50%` backstops both. The
+720 px ceiling is 37 % of the design width, so no window size can put the pane off screen.
 
 Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
 crosses container boundaries — `PathDescriptor` carries a single `container_hash`, so an

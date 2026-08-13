@@ -13,7 +13,7 @@ use dioxus_free_icons::{
 };
 
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
-use crate::components::error_boundary::ComponentErrorDisplay;
+use crate::components::error_boundary::ServerErrorDisplay;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::file_browser_page::{
     CRUMB_LINK_STYLE, CRUMB_SEP_STYLE, Crumb, collapse_duplicate_crumbs, path_segments,
@@ -55,7 +55,7 @@ pub fn DocumentFileLocationsPanel(
             return rsx! {
                 PreviewWrapper {
                     controls: rsx! { "File locations" },
-                    page: rsx! { ComponentErrorDisplay { error_txt: format!("{error:#?}") } }
+                    page: rsx! { ServerErrorDisplay { error: error.clone() } }
                 }
             };
         }

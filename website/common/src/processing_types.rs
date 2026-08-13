@@ -32,6 +32,17 @@ pub struct StageProgress {
     /// Seconds until `done == total` at the current rate. `None` when the stage is
     /// finished, has no denominator, or is not currently making progress.
     pub eta_seconds: Option<u64>,
+    /// Documents this stage recorded an error for, from `processing_errors`.
+    ///
+    /// A plan is marked finished when its stages have *run*, not when every document
+    /// succeeded: the stages record per-document failures and carry on, deliberately,
+    /// so that one unparseable file does not stop a dataset. The consequence is that a
+    /// bar can read `done` over documents that were never processed, which is how 4 792
+    /// documents lost their entities to an NER outage and still looked complete. The
+    /// count is carried per stage so the failure is shown where it happened rather than
+    /// only as a dataset-wide total.
+    #[serde(default)]
+    pub failed_documents: u64,
 }
 
 impl StageProgress {
@@ -46,8 +57,14 @@ impl StageProgress {
         Some((self.done as f64 / total as f64 * 100.0).clamp(0.0, 100.0))
     }
 
+    /// True when the stage has reached its denominator AND lost nothing on the way.
+    ///
+    /// A stage with failed documents is never "complete": the work it did not do is
+    /// invisible in `done / total` (a document whose NER failed writes no watermark, so
+    /// it leaves the numerator *and* stays in the denominator only until the corpus is
+    /// re-counted), and reporting it as finished is what left the failures unnoticed.
     pub fn is_complete(&self) -> bool {
-        self.total.is_some_and(|t| self.done >= t)
+        self.failed_documents == 0 && self.total.is_some_and(|t| self.done >= t)
     }
 }
 

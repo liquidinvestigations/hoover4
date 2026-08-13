@@ -28,8 +28,15 @@ services:
       # Shared bearer token as a bind-mounted file (deploy.py); acl.py falls back to
       # it when MCP_SHARED_SECRET is unset.
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
-      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-8}
+      # The default result count and the hard cap the model's `max_results` is clamped to.
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-50}
+      - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS:-200}
+      # What the result set WEIGHS. The per-hit ceiling alone is not a bound: 46 hits at
+      # 1200 characters is a 27 800-token prompt. The budget is divided over the hits, so
+      # a big result set returns a line each instead of a page each.
       - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
+      - SEARCH_SNIPPET_BUDGET_CHARS=${SEARCH_SNIPPET_BUDGET_CHARS:-24000}
+      - SEARCH_MIN_SNIPPET_CHARS=${SEARCH_MIN_SNIPPET_CHARS:-120}
       # Per-kind floor over the keyword/vector rankings. Kept well below SEARCH_MAX_RESULTS
       # on purpose: a floor of 10 per kind reserves 20 slots and max_results stops meaning
       # anything, which is how an 8-result search returned 20.

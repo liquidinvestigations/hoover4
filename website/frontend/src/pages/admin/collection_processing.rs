@@ -273,6 +273,15 @@ fn StageBar(stage: StageProgress) -> Element {
                     None => rsx! { "\u{2014}" },
                 }
             }
+            // A stage that lost documents must not read as finished. The pipeline
+            // records per-document failures and carries on by design, so `done / total`
+            // alone hides them — this is the column that says so, next to the bar the
+            // failure happened at rather than only in the panels further down.
+            div { style: "width: 110px; font-size: 12px; flex-shrink: 0;",
+                if stage.failed_documents > 0 {
+                    span { style: "color: #ba2121;", "{stage.failed_documents} failed" }
+                }
+            }
         }
     }
 }
@@ -292,9 +301,13 @@ const ETA_STAGE_STYLES: &[(&str, &str, &str)] = &[
 /// Per-dataset ETA: the current best-effort deadline and a chart of the last
 /// 100 stored estimates per stage.
 ///
-/// The chart plots the *estimated deadline* (absolute time) against sample
-/// time: a converging estimate reads as a flattening line, a sawtooth means
-/// the estimate is wandering and should not be trusted.
+/// The chart plots the *time remaining* against sample time: a converging estimate
+/// falls towards zero, a sawtooth means the estimate is wandering and should not be
+/// trusted, and a flat line means no progress is being made.
+///
+/// It must not plot the absolute deadline instead. `deadline = sampled_at + eta`, so a
+/// steady pipeline draws `y = x`: every stage lands on the same 45° line and the chart
+/// says nothing at all. The interesting quantity is the offset, so plot the offset.
 #[component]
 fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
     if samples.is_empty() {
@@ -347,48 +360,78 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
 
 #[component]
 fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
-    const W: f64 = 700.0;
-    const H: f64 = 160.0;
-    const PAD: f64 = 8.0;
+    const W: f64 = 720.0;
+    const H: f64 = 180.0;
+    // Gutters, not padding: the axis labels live outside the plot area, which is what
+    // keeps the two time labels from landing on top of each other in the corner.
+    const LEFT: f64 = 56.0;
+    const RIGHT: f64 = 10.0;
+    const TOP: f64 = 12.0;
+    const BOTTOM: f64 = 22.0;
+
+    let plot_w = W - LEFT - RIGHT;
+    let plot_h = H - TOP - BOTTOM;
+    let baseline = TOP + plot_h;
 
     let (min_x, max_x) = samples
         .iter()
         .fold((i64::MAX, i64::MIN), |(lo, hi), s| {
             (lo.min(s.sampled_at_unix), hi.max(s.sampled_at_unix))
         });
-    let (min_y, max_y) = samples
-        .iter()
-        .fold((i64::MAX, i64::MIN), |(lo, hi), s| {
-            (lo.min(s.deadline_unix), hi.max(s.deadline_unix))
-        });
+    // The axis starts at zero: "how much is left" is a magnitude, and a remaining-time
+    // axis that does not include zero hides how close the finish is.
+    let max_eta = samples.iter().map(|s| s.eta_seconds).max().unwrap_or(0);
     // Degenerate ranges (one sample, or a perfectly stable estimate) still
     // need a span to scale against.
     let span_x = (max_x - min_x).max(1) as f64;
-    let span_y = (max_y - min_y).max(1) as f64;
+    let span_y = max_eta.max(1) as f64;
 
-    let px = move |t: i64| PAD + (t - min_x) as f64 / span_x * (W - 2.0 * PAD);
-    let py = move |d: i64| H - PAD - (d - min_y) as f64 / span_y * (H - 2.0 * PAD);
+    let px = move |t: i64| LEFT + (t - min_x) as f64 / span_x * plot_w;
+    let py = move |eta: u64| baseline - eta as f64 / span_y * plot_h;
+
+    let ticks: Vec<(f64, String)> = (0..=2)
+        .map(|i| {
+            let fraction = i as f64 / 2.0;
+            (
+                baseline - fraction * plot_h,
+                humanize_seconds((max_eta as f64 * fraction).round() as u64),
+            )
+        })
+        .collect();
 
     let first = samples.iter().min_by_key(|s| s.sampled_at_unix);
     let last = samples.iter().max_by_key(|s| s.sampled_at_unix);
 
     rsx! {
         svg {
-            width: "{W}",
+            width: "100%",
             height: "{H}",
-            style: "background: white; border: 1px solid #eee; max-width: 100%;",
-            // Y bounds: the lowest and highest deadline any sample predicted.
-            text {
-                x: "2", y: "12",
-                style: "font-size: 9px; fill: #999;",
-                "{samples.iter().max_by_key(|s| s.deadline_unix).map(|s| s.deadline.clone()).unwrap_or_default()}"
+            "viewBox": "0 0 {W} {H}",
+            style: "background: white; border: 1px solid #eee; max-width: 720px; display: block;",
+
+            for (y, label) in ticks {
+                g {
+                    key: "y-{label}",
+                    line {
+                        x1: "{LEFT}", y1: "{y}", x2: "{W - RIGHT}", y2: "{y}",
+                        "stroke": "#e5e5e5", "stroke-width": "1",
+                    }
+                    text {
+                        x: "{LEFT - 6.0}", y: "{y + 3.5}",
+                        "text-anchor": "end",
+                        style: "font-size: 10px; fill: #666;",
+                        "{label}"
+                    }
+                }
             }
             text {
-                x: "2", y: "{H - 2.0}",
-                style: "font-size: 9px; fill: #999;",
-                "{samples.iter().min_by_key(|s| s.deadline_unix).map(|s| s.deadline.clone()).unwrap_or_default()}"
+                x: "{LEFT - 6.0}", y: "{TOP - 3.0}",
+                "text-anchor": "end",
+                style: "font-size: 10px; fill: #999;",
+                "left"
             }
-            for (stage, _label, color) in ETA_STAGE_STYLES {
+
+            for (stage, label, color) in ETA_STAGE_STYLES {
                 {
                     let mut pts: Vec<&EtaSamplePoint> =
                         samples.iter().filter(|s| s.stage == *stage).collect();
@@ -396,7 +439,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                     pts.reverse();
                     let points = pts
                         .iter()
-                        .map(|s| format!("{:.1},{:.1}", px(s.sampled_at_unix), py(s.deadline_unix)))
+                        .map(|s| format!("{:.1},{:.1}", px(s.sampled_at_unix), py(s.eta_seconds)))
                         .collect::<Vec<_>>()
                         .join(" ");
                     rsx! {
@@ -405,22 +448,34 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                             points: "{points}",
                             fill: "none",
                             "stroke": "{color}",
-                            "stroke-width": "1.5",
+                            "stroke-width": "2",
+                            "stroke-linejoin": "round",
+                            title { "{label}" }
                         }
                     }
                 }
             }
-            // X bounds: the sample window.
+
+            line {
+                x1: "{LEFT}", y1: "{baseline}", x2: "{W - RIGHT}", y2: "{baseline}",
+                "stroke": "#bbb", "stroke-width": "1",
+            }
+            // The sample window, anchored to opposite ends of the plot. Left-anchoring
+            // both inside it prints one timestamp over the other.
             if let (Some(f), Some(l)) = (first, last) {
                 text {
-                    x: "2", y: "{H - 12.0}",
-                    style: "font-size: 9px; fill: #bbb;",
+                    x: "{LEFT}", y: "{H - 7.0}",
+                    "text-anchor": "start",
+                    style: "font-size: 10px; fill: #666;",
                     "{f.sampled_at}"
                 }
-                text {
-                    x: "{W - 150.0}", y: "{H - 12.0}",
-                    style: "font-size: 9px; fill: #bbb;",
-                    "{l.sampled_at}"
+                if l.sampled_at_unix != f.sampled_at_unix {
+                    text {
+                        x: "{W - RIGHT}", y: "{H - 7.0}",
+                        "text-anchor": "end",
+                        style: "font-size: 10px; fill: #666;",
+                        "{l.sampled_at}"
+                    }
                 }
             }
         }

@@ -120,7 +120,12 @@ pub async fn resolve_collection(collection_dataset: &str) -> anyhow::Result<Stri
         .fetch_all()
         .await?;
     let Some(collectionname) = rows.into_iter().next() else {
-        anyhow::bail!("unknown collection_dataset: {collection_dataset}");
+        // Carries the `not found` marker (`auth::guard::NOT_FOUND`) on purpose: a dataset
+        // that is not in the registry is a complete answer about something that is not
+        // there — a stale bookmark, a purged dataset, a crawler guessing names — and the
+        // routes above it turn the marker into a 404. Without it every such request is a
+        // 500, which reads as the site falling over and is counted as breakage.
+        anyhow::bail!("unknown collection_dataset, not found: {collection_dataset}");
     };
     // The name leaves the process as a database name; never trust the registry row
     // blindly.

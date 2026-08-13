@@ -4,7 +4,10 @@ use common::search_const::{MAX_PAGINATION_DOCUMENT_LIMIT, PAGE_SIZE};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::md_navigation_icons::{MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward},
+    icons::{
+        md_action_icons::MdInfoOutline,
+        md_navigation_icons::{MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward},
+    },
 };
 use dioxus_primitives::{ContentAlign, ContentSide};
 
@@ -31,6 +34,7 @@ pub fn SearchResultListControls() -> Element {
                 style: "font-size: 20px; font-weight: 300; color:rgb(75, 87, 112);  border-bottom: 1px solid rgb(75, 87, 112);",
                 SearchForResultsHitCountString { }
             }
+            PaginationCapNotice {}
             // empty space
             div {
                 style: "
@@ -38,6 +42,58 @@ pub fn SearchResultListControls() -> Element {
             }
             // pagination buttons
             PaginationControls {}
+        }
+    }
+}
+
+/// Why the pager stops short of the count beside it.
+///
+/// Only the first [`MAX_PAGINATION_DOCUMENT_LIMIT`] hits are reachable, so a corpus-wide
+/// query says "6379 documents found" over a pager that ends at 1000. Two numbers on one
+/// line that disagree read as a bug; this says which one is the limit and what to do
+/// about it.
+///
+/// One template in every state, hidden with CSS rather than by returning early: a
+/// component whose structure changes between renders takes the hooks with it, and this
+/// one's visibility flips whenever a count arrives.
+#[component]
+fn PaginationCapNotice() -> Element {
+    let search_results_state = use_context::<SearchResultsState>();
+    let hit_count = search_results_state.hit_count;
+    let over_cap = use_memo(move || {
+        hit_count
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .is_some_and(|h| h.total > MAX_PAGINATION_DOCUMENT_LIMIT)
+    });
+    let display = if over_cap() { "inline-flex" } else { "none" };
+
+    rsx! {
+        div {
+            style: "display: {display}; align-items: center; margin-left: 6px;",
+            HoverCard {
+                HoverCardTrigger {
+                    div {
+                        style: "display: flex; align-items: center; cursor: help; color: rgb(75, 87, 112);",
+                        Icon { icon: MdInfoOutline, style: "width: 20px; height: 20px;" }
+                    }
+                }
+                HoverCardContent {
+                    side: ContentSide::Bottom,
+                    align: ContentAlign::Center,
+                    div {
+                        style: "
+                            background-color: white; padding: 12px 14px; width: 320px;
+                            font-size: 15px; line-height: 21px; color: rgb(30, 35, 45);
+                        ",
+                        div { style: "font-weight: 600; margin-bottom: 4px;", "Only the first {MAX_PAGINATION_DOCUMENT_LIMIT} results can be opened" }
+                        "The count beside this icon is the whole match; the pager stops at "
+                        "{MAX_PAGINATION_DOCUMENT_LIMIT}. Add words to the query, or narrow it with a "
+                        "filter, to bring what you are after inside that window."
+                    }
+                }
+            }
         }
     }
 }
@@ -463,7 +519,15 @@ fn SearchForResultsHitCountString(
     let hit_count = search_results_state.hit_count;
 
     match hit_count.read().cloned() {
-        Some(Err(e)) => return rsx! { span { class: "x-error-display", "! error: {e:?}" } },
+        // A placeholder, not the error. This slot is a count, and a search that failed has
+        // no count; the results panel below renders the same failure as a message anyone
+        // can act on, so printing it here as well put it twice on screen and laid it
+        // across the pager and the page numbers.
+        //
+        // A *node*, though — never an empty `rsx! {}`. Every other arm here returns a text
+        // node, and returning nothing from one of them panics the render with "Unable to
+        // retrieve the hook that was initialized at this index" when the arm changes.
+        Some(Err(_)) => return rsx! { "—" },
         // partial: the total is a lower bound — some shards could not be searched.
         Some(Ok(s)) if s.partial => return rsx! { "≥ {s.total} documents found (some collections could not be searched)" },
         Some(Ok(s)) => return rsx! { "{s.total} documents found" },

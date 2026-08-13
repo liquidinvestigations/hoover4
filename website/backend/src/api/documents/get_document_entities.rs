@@ -4,6 +4,7 @@ use clickhouse::Row;
 use common::{
     current_user::CurrentUser,
     document_entities::{DocumentEntitiesResponse, DocumentEntityItem, DocumentEntityType},
+    entity_stoplist::is_stopped_entity,
     search_result::DocumentIdentifier,
 };
 use futures::{StreamExt, stream};
@@ -128,6 +129,11 @@ async fn _get_document_entities(
     for r in rows {
         let value = r.value.trim().to_string();
         if value.is_empty() {
+            continue;
+        }
+        // Header names, encoding fragments and letter-spaced PDF headings. The pipeline
+        // stops these before they are stored; this catches what older rows kept.
+        if is_stopped_entity(&value) {
             continue;
         }
         let entity_type = normalize_entity_type(&r.entity_type);

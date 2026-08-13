@@ -1,6 +1,6 @@
 //! Transcript of a chat session: user bubbles, assistant markdown, tools, doc cards.
 
-use common::chat_types::{ChatMessageItem, ChatRole, StreamTurn};
+use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn};
 use dioxus::prelude::*;
 
 use crate::components::chat_components::{
@@ -158,8 +158,8 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                         tool_output: message.tool_output.clone(),
                         content_summary: message.content.clone(),
                     }
-                    for (i, doc) in refs.into_iter().enumerate() {
-                        ChatDocRefCard { key: "{doc.file_hash}-{i}", doc, index: i as u64 }
+                    if !refs.is_empty() {
+                        DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
                     }
                 }
             }
@@ -174,10 +174,13 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                     div { "{message.content}" }
                     // The final error is often the least informative of the set — a
                     // timeout that followed a real 500 says much less than the 500 did.
+                    // The list is every attempt including the one quoted above, so it is
+                    // labelled by what it holds: reading it as "earlier" attempts turned
+                    // one failure into a report of a turn that failed twice.
                     if !retries.is_empty() {
                         AttemptDisclosure {
                             summary: format!(
-                                "{} earlier attempt{} also failed",
+                                "{} failed attempt{}",
                                 retries.len(),
                                 if retries.len() == 1 { "" } else { "s" },
                             ),
@@ -214,6 +217,50 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
                             background: #F1F5F9; padding: 8px 10px; border-radius: 8px; \
                             max-height: 260px; overflow: auto;",
                     "{reasoning}"
+                }
+            }
+        }
+    }
+}
+
+/// The documents one tool call surfaced, collapsed behind a line that counts them.
+///
+/// Collapsed by default because a search result set is *evidence for* the answer, not
+/// the answer: one `search_collections` call rendered 46 document cards with a 400-
+/// character preview each, so a page holding a 31-character answer was 22 168 characters
+/// of scrolling. The summary line carries the two facts worth having without opening it —
+/// which tool ran and how many documents it found — because a bare chevron makes the
+/// reader open every one of them to find out whether it is worth opening.
+#[component]
+fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
+    let mut open = use_signal(|| false);
+    let count = refs.len();
+    let noun = if count == 1 { "document" } else { "documents" };
+    let tool = if tool_name.is_empty() || tool_name == "tool" {
+        "the tool".to_string()
+    } else {
+        tool_name
+    };
+    rsx! {
+        div { style: "display: flex; flex-direction: column; gap: 8px;",
+            button {
+                class: "x-chat-docrefs-toggle",
+                style: "align-self: flex-start; background: none; border: none; padding: 0; \
+                        cursor: pointer; font-size: 12px; color: #4F46E5; \
+                        text-decoration: underline;",
+                onclick: move |_| {
+                    let next = !*open.peek();
+                    open.set(next);
+                },
+                if *open.read() {
+                    "{count} {noun} from {tool} \u{2014} hide"
+                } else {
+                    "{count} {noun} from {tool} \u{2014} show"
+                }
+            }
+            if *open.read() {
+                for (i, doc) in refs.into_iter().enumerate() {
+                    ChatDocRefCard { key: "{doc.file_hash}-{i}", doc, index: i as u64 }
                 }
             }
         }

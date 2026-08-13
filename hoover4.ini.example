@@ -113,7 +113,10 @@ serena_enabled     = true
 serena_port        = 21940
 
 # ---- demo / data ----------------------------------------------------------------
-; demo mode treats anonymous guest-* sessions as admins. true only for public demos.
+; demo mode provisions an anonymous guest-* session for any visitor and treats it as an
+; admin. true only for public demos. With it false nothing anonymous is provisioned:
+; /api/whoami refuses, the site renders "Sign-in required" and every endpoint answers 401,
+; so the only way in is a reverse proxy setting X-Forwarded-User.
 demo_mode          = false
 ; host dir mounted at /testdata in the worker (must exist). Empty = in-repo testdata.
 testdata_dir       =
@@ -128,8 +131,8 @@ mcp_shared_secret_file =
 
 # ---- which interfaces the published ports answer on ------------------------------
 ; Address the website's 12345 is published on. 0.0.0.0 = every interface. Set this to a
-; single private address on a host with a public IP: the website carries no
-; authentication of its own, and demo_mode makes anonymous guests admins.
+; single private address on a host with a public IP: the website's only own way in is a
+; proxy-set X-Forwarded-User, and demo_mode makes anonymous guests admins.
 website_bind_ip    = 0.0.0.0
 ; Address the infrastructure ports (ClickHouse, Manticore, MinIO, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default

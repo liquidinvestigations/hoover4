@@ -25,11 +25,12 @@ use axum::{
 };
 
 /// Path prefixes that serve bytes behind a per-request permission check.
-const PRIVATE_PREFIXES: [&str; 3] = [
-    "/_chat_artifact/",
-    "/_download_document/",
-    "/_download_ocr_pdf/",
-];
+///
+/// The same list the session middleware refuses without a session
+/// ([`crate::auth::route_policy::CUSTOM_ROUTE_PREFIXES`]), read from there rather than
+/// restated: a route that is private enough to need an ACL is private enough to need a
+/// session, and two copies of the list would eventually disagree about one of them.
+use crate::auth::route_policy::CUSTOM_ROUTE_PREFIXES as PRIVATE_PREFIXES;
 
 pub fn is_private_path(path: &str) -> bool {
     PRIVATE_PREFIXES.iter().any(|p| path.starts_with(p))

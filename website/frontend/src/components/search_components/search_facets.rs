@@ -20,7 +20,7 @@ use dioxus_free_icons::{
 
 use crate::{
     api::search_api::{fetch_db_terms_for_ints, search_string_facet},
-    components::error_boundary::ComponentErrorDisplay,
+    components::error_boundary::ServerErrorDisplay,
 };
 
 #[component]
@@ -47,7 +47,7 @@ pub fn FacetSelectorList(
     .suspend()?
     .cloned();
     let search_result = match search_result {
-        Err(e) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
+        Err(e) => return rsx! {ServerErrorDisplay { error: e }},
         Ok(s) => s,
     };
     let originally_filtered_values = original_query

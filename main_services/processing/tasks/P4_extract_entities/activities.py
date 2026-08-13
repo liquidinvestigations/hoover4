@@ -15,8 +15,10 @@ import pyarrow as pa
 from temporalio import activity
 
 from database.clickhouse import get_collection_client
+from tasks.entity_stoplist import filter_entity_values
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.plan_utils import clean_text
+from tasks.text_sources import ner_reads_variant
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids
 
 from .extract_ner_from_text import NLP_MODEL_BY_PROVIDER, extract_ner_from_texts
@@ -85,6 +87,13 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
 
     Segments already present in ``nlp_processed`` for this ``nlp_model`` are
     skipped (left-anti join), which makes the stage cheaply re-runnable.
+
+    Not every stored segment is worth reading: ``text_sources.ner_reads_variant``
+    drops a variant that is a worse copy of another variant of the same document
+    (a mail file's MIME envelope beside its parsed body). What survives is
+    filtered again by ``entity_stoplist``, which rejects the debris the model
+    labels as confidently as a name. Both are write-time decisions, so every
+    reader of ``entity_hit`` sees the same thing.
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
@@ -115,36 +124,82 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "nlp_model": nlp_model,
         }).to_pylist()
 
-    if not text_content:
-        log.info(f"{collection_dataset} (plan {plan_hash[:8]}): nothing to NER-process")
-        return ExtractEntitiesResult(text_segments=0, entity_groups=0)
+        if not text_content:
+            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): nothing to NER-process")
+            return ExtractEntitiesResult(text_segments=0, entity_groups=0)
+
+        # Which variants each file HAS, from the whole table rather than from the rows
+        # above: the anti-join has already removed everything a previous run processed, so
+        # a file whose `email_parser` pages were done last time would otherwise look like
+        # a file that has none -- and its envelope would be sent to the model after all.
+        variants_present: dict[str, set[str]] = {}
+        for row in client.query_arrow("""
+            SELECT file_hash, groupUniqArray(extracted_by) AS variants
+            FROM text_content FINAL
+            WHERE collection_dataset = {collection_dataset:String}
+            AND file_hash IN {item_hashes:Array(String)}
+            GROUP BY file_hash
+        """, {
+            "collection_dataset": collection_dataset,
+            "item_hashes": item_hashes,
+        }).to_pylist():
+            variants_present[row['file_hash']] = set(row['variants'])
 
     cleaned_texts = [clean_text(t['text']) for t in text_content]
 
+    # Segments the model actually sees. The rest are duplicates of a better variant of the
+    # same document (a mail envelope beside its parsed body); they still get a watermark
+    # below, because the stage HAS decided about them and a segment with no watermark is
+    # re-read on every run, warns in P6 and holds the stage's progress bar short of 100%.
+    ner_indices = [
+        i for i, row in enumerate(text_content)
+        if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))
+    ]
+    skipped = len(text_content) - len(ner_indices)
+    if skipped:
+        log.info(
+            f"{collection_dataset} (plan {plan_hash[:8]}): {skipped}/{len(text_content)} "
+            f"text segments are a redundant variant, not sending them to NER"
+        )
+
+    ner_texts = [cleaned_texts[i] for i in ner_indices]
     ner_results: list[dict[str, list[str]]] = []
     # One model per text, not one per activity: the circuit breaker can open
     # part-way through, so batch 1 may be served by the GPU and batch 2 by the
     # CPU twin. Recording a single activity-wide model would attribute rows to a
     # provider that never saw them.
     served_models: list[str] = []
-    for batch in batch_texts_by_chars(cleaned_texts):
+    for batch in batch_texts_by_chars(ner_texts):
         batch_results, batch_model = extract_ner_from_texts(batch)
         ner_results.extend(batch_results)
         served_models.extend([batch_model] * len(batch))
         # In-loop heartbeat: evidence of forward progress, not merely of a live
         # thread. This is the loop whose stalls are measured in tens of minutes
         # when only start_to_close_timeout guards it.
-        heartbeat.beat(f"NER {len(ner_results)}/{len(cleaned_texts)} texts")
+        heartbeat.beat(f"NER {len(ner_results)}/{len(ner_texts)} texts")
         log.info(
             f"{collection_dataset} (plan {plan_hash[:8]}): "
-            f"NER processed {len(ner_results)}/{len(cleaned_texts)} texts "
+            f"NER processed {len(ner_results)}/{len(ner_texts)} texts "
             f"via {batch_model}"
         )
 
+    # Back onto the full segment list. A skipped segment gets no entity rows and is
+    # watermarked with the CONFIGURED model, which is exactly what keeps it skipped: the
+    # anti-join above asks for that model, and no service saw the text to claim it.
+    result_by_index: dict[int, dict[str, list[str]]] = dict(zip(ner_indices, ner_results))
+    model_by_index: dict[int, str] = dict(zip(ner_indices, served_models))
+    segment_models = [model_by_index.get(i, nlp_model) for i in range(len(text_content))]
+
     clickhouse_ner_rows = []
     ner_values = set()
-    for text_row, ner_result, served_model in zip(text_content, ner_results, served_models):
-        for entity_type, entity_values in ner_result.items():
+    stopped_values = 0
+    for i, (text_row, served_model) in enumerate(zip(text_content, segment_models)):
+        for entity_type, raw_values in result_by_index.get(i, {}).items():
+            # The stop-list runs here rather than in either NER server: both providers
+            # produce the same debris, and a rule that lives at the call site cannot be
+            # bypassed by whichever one served the batch.
+            entity_values = filter_entity_values(raw_values)
+            stopped_values += len(raw_values) - len(entity_values)
             clickhouse_ner_rows.append({
                 "collection_dataset": text_row['collection_dataset'],
                 "file_hash": text_row['file_hash'],
@@ -190,8 +245,9 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "page_id": pa.array([row['page_id'] for row in text_content], type=pa.uint32()),
             # The provider that ACTUALLY served each text, never the configured
             # one -- under fallback they differ, and that difference is the only
-            # record that a GPU outage happened at all.
-            "nlp_model": pa.array(served_models, type=pa.string()),
+            # record that a GPU outage happened at all. Segments no provider saw
+            # carry the configured model; see segment_models.
+            "nlp_model": pa.array(segment_models, type=pa.string()),
             "text_bytes": pa.array([len(text.encode('utf-8')) for text in cleaned_texts], type=pa.uint64()),
             "processed_at": pa.array([now] * len(text_content), type=pa.timestamp("s")),
         })
@@ -199,6 +255,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
 
     log.info(
         f"{collection_dataset} (plan {plan_hash[:8]}): extracted "
-        f"{len(clickhouse_ner_rows)} entity groups from {len(text_content)} text segments"
+        f"{len(clickhouse_ner_rows)} entity groups from {len(ner_texts)} of "
+        f"{len(text_content)} text segments, dropping {stopped_values} stop-listed values"
     )
     return ExtractEntitiesResult(text_segments=len(text_content), entity_groups=len(clickhouse_ner_rows))

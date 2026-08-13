@@ -11,59 +11,27 @@ use common::search_result::DocumentIdentifier;
 use futures::TryStreamExt;
 use minio::s3::types::S3Api;
 use reqwest::StatusCode;
-use tracing::info;
+use tracing::debug;
 
 use crate::{
-    api::documents::download_document::{BlobInfo, BlobValue, get_blob_filename},
+    api::documents::download_document::{
+        blob_bucket_client, get_blob_filename, get_blob_info, get_blob_value_from_clickhouse,
+    },
     auth::{guard, permissions},
-    db_utils::clickhouse_utils::get_client_for_dataset,
 };
 
-async fn get_document_s3_blob_download_path(
-    document_identifier: DocumentIdentifier,
-) -> anyhow::Result<BlobInfo> {
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
-    let query = "SELECT blob_size_bytes, s3_path, stored_in_clickhouse FROM blobs WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1";
-    let query = client
-        .query(query)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash);
-    let result = query.fetch_all::<BlobInfo>().await?;
-    if let Some(blob_info) = result.into_iter().next() {
-        Ok(blob_info)
-    } else {
-        anyhow::bail!("get_blob_filename: File hash not found");
-    }
-}
-
-async fn get_document_blob_content_from_clickhouse(
-    document_identifier: DocumentIdentifier,
-) -> anyhow::Result<BlobValue> {
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
-    let query = "SELECT blob_value, blob_length FROM blob_values WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1";
-    let query = client
-        .query(query)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash);
-    let result = query.fetch_all::<BlobValue>().await?;
-    if let Some(blob_value) = result.into_iter().next() {
-        Ok(blob_value)
-    } else {
-        anyhow::bail!("get_blob_filename: File hash not found");
-    }
-}
-
+/// The response body, streamed rather than buffered: this route serves whole documents,
+/// which have no useful upper bound.
 async fn get_document_content_stream(
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<(
     usize,
     Pin<Box<dyn futures::Stream<Item = anyhow::Result<bytes::Bytes>> + Send + 'static>>,
 )> {
-    let blob_info = get_document_s3_blob_download_path(document_identifier.clone()).await?;
+    let blob_info = get_blob_info(&document_identifier).await?;
     if blob_info.stored_in_clickhouse {
-        tracing::info!("Downloading document from clickhouse");
-        let blob_value =
-            get_document_blob_content_from_clickhouse(document_identifier.clone()).await?;
+        tracing::debug!("serving blob from clickhouse");
+        let blob_value = get_blob_value_from_clickhouse(&document_identifier).await?;
         let data = blob_value.blob_value;
         let data = anyhow::Ok(bytes::Bytes::from(data));
         return Ok((
@@ -72,18 +40,10 @@ async fn get_document_content_stream(
         ));
     }
 
-    tracing::info!("Downloading document from s3");
     let s3_path = blob_info.s3_path.replace("s3://hoover4-blobs/", "");
-    tracing::info!("S3 path: {}", s3_path);
+    tracing::debug!("serving blob from s3: {s3_path}");
     let s3_bucket = "hoover4-blobs";
-    let s3_endpoint = std::env::var("S3_ENDPOINT").context("S3_ENDPOINT is not set")?;
-    let base_url = s3_endpoint
-        .parse::<minio::s3::http::BaseUrl>()
-        .context("Failed to parse s3 endpoint")?;
-    let (access, secret) = crate::db_utils::s3_credentials();
-    let static_provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
-    let client = minio::s3::Client::new(base_url, Some(Box::new(static_provider)), None, None)
-        .context("Failed to create s3 client")?;
+    let client = blob_bucket_client()?;
     let object = client
         .get_object(s3_bucket, s3_path)
         .send()
@@ -106,7 +66,7 @@ async fn _download_document(
     user: &CurrentUser,
     Path((collection_dataset, file_hash)): Path<(String, String)>,
 ) -> anyhow::Result<impl IntoResponse> {
-    info!("Downloading document: {}/{}", collection_dataset, file_hash);
+    debug!("download requested: {collection_dataset}/{file_hash}");
 
     let document_identifier = DocumentIdentifier {
         collection_dataset: collection_dataset.clone(),
@@ -142,6 +102,14 @@ pub async fn download_document(
         Err(e) => {
             if guard::is_forbidden(&e) {
                 return (StatusCode::FORBIDDEN, Body::from(e.to_string())).into_response();
+            }
+            // A hash that is in no `vfs_files` row is a question with a complete answer,
+            // not a failure: a stale bookmark, a purged dataset or a crawler guessing
+            // hashes all land here. Answering 500 makes the site look like it is throwing
+            // and — because `is_error` is derived from the status — counts every one of
+            // them as breakage on the admin metrics page.
+            if guard::is_not_found(&e) {
+                return (StatusCode::NOT_FOUND, Body::from(e.to_string())).into_response();
             }
             tracing::error!("download_document: request failed: {:#?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Body::from(e.to_string())).into_response()

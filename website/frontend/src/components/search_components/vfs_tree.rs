@@ -6,9 +6,8 @@
 //! **No horizontal scrolling, ever.** These corpora contain a folder named `A`×200 and
 //! trees forty levels deep. A row that lays out at its natural width turns the sidebar
 //! into a horizontal scroller and the labels into something you have to drag to read. So
-//! every row is `flex; min-width: 0` with a single-line ellipsised label, the indent is
-//! `padding-left` capped at [`MAX_VISUAL_DEPTH`] (past which a depth badge carries the
-//! information the indent no longer can), and the full path is always in `title`.
+//! every row is `flex; min-width: 0` with a single-line ellipsised label, the full path is
+//! always in `title`, and the indent is bounded — see [`indent_style`].
 //!
 //! **No unbounded row counts, ever, either.** The same corpora contain
 //! `many-children/deep-stuff`, a 42-level chain, and `many-children/the-directory`, 334
@@ -26,6 +25,15 @@
 //! Only one of the first two ever shows at a time: while a sibling window is active the
 //! fetch row is suppressed, so "34 more…" never sits next to "126 more…" meaning two
 //! different things.
+//!
+//! **The indent counts RUNGS, not depth**, and that is what lets the two rules above pay
+//! for each other. A row's `rung` is its position in the ladder actually on screen; its
+//! `depth` is its position in the tree. Ancestor elision makes the first much smaller than
+//! the second — the deepest folder in a 42-level chain sits on rung 11 — so indenting by
+//! rung means every visible row is indented strictly more than the row it hangs off,
+//! however deep the folder is, in a total the sidebar can afford. Indenting by depth is
+//! what forced the old flat cap: it had to stop at four levels or spend the whole pane,
+//! and once it stopped, ten nested folders rendered as ten siblings.
 
 use std::collections::BTreeSet;
 
@@ -47,15 +55,16 @@ use crate::api::vfs_api::{vfs_tree_children, vfs_tree_path_to};
 /// rendering forty thousand siblings and freezing the tab.
 pub const MAX_CHILDREN_PER_NODE: u64 = 500;
 
-/// Indent stops growing here, and the depth badge takes over.
+/// Rungs that get the full [`INDENT_PX`] step. Past this the step shrinks to
+/// [`DEEP_INDENT_PX`]; it never stops.
 ///
-/// The arithmetic is against the 240 px storage sidebar, which is the narrowest place
-/// this tree lives: 4 levels x 16 px of indent, ~40 px of chevron and folder icon and
-/// ~60 px of depth badge leaves about 76 px for the label. At the previous value of 12
-/// the indent alone was 192 px and every row past depth 12 rendered as a chevron, a
-/// folder icon and nothing else -- visible the moment a 42-level fixture existed to
-/// render, and invisible before that.
-pub const MAX_VISUAL_DEPTH: usize = 4;
+/// The arithmetic is against the narrowest pane this tree lives in: four rungs at 16 px is
+/// 64 px, and with ~40 px of chevron and folder icon and ~56 px of depth badge that is
+/// most of a 240 px sidebar already. A tree forty levels deep cannot spend 16 px a level —
+/// but stopping the indent outright made ten nested folders render as ten siblings
+/// distinguishable only by a badge you have to read, which is the defect this shape
+/// replaces.
+pub const FULL_STEP_RUNGS: usize = 4;
 
 /// Ancestor rows rendered on the path to the focused node before the middle is elided.
 /// `deep-stuff` is 42 levels; all 42 rendered is a scrollbar in which the thing you are
@@ -72,8 +81,32 @@ pub const ANCESTORS_SHOWN_AT_TOP: usize = 2;
 /// Siblings rendered either side of the focused node in one level.
 pub const MAX_SIBLINGS_EACH_SIDE: usize = 10;
 
-/// Pixels of indent per level, below the cap.
+/// Pixels of indent per rung, for the first [`FULL_STEP_RUNGS`] of them.
 const INDENT_PX: usize = 16;
+
+/// Pixels of indent per rung past [`FULL_STEP_RUNGS`].
+///
+/// Small, but not as small as it looks: the app lays out at a 1920 px design width and
+/// `zoom`s to the window (`assets/main.css`), so at a 1280 px window this is 5 device
+/// pixels. 4 px would be 2.5, which is not a step anyone can see, and an indent nobody can
+/// see is the flat cap again under another name.
+const DEEP_INDENT_PX: usize = 8;
+
+/// The indent may never grow past this, however many rungs there are.
+///
+/// Ancestor elision bounds the rungs on the path to the focused node, but a user
+/// disclosing rows by chevron alone is not on any focus path and can nest as far as the
+/// corpus goes. This is the backstop for that, and past it the depth badge is the only
+/// thing still carrying the number.
+const MAX_INDENT_PX: usize = 160;
+
+/// The share of the pane the indent may take before it stops growing.
+///
+/// The pixel ceiling above is chosen against a comfortable pane; this one holds when the
+/// pane is not, and it is the only guard that follows the user dragging the sidebar
+/// narrower. Expressed as a CSS `min()` so the browser re-evaluates it on every resize
+/// rather than the tree re-rendering to keep up.
+const MAX_INDENT_PERCENT: usize = 40;
 
 pub(crate) const ROW_STYLE: &str = "
     display: flex;
@@ -117,13 +150,14 @@ pub enum TreeSkin {
 pub struct TreeContext {
     pub skin: TreeSkin,
     pub collection_dataset: String,
-    /// Levels this tree is nested under, for indent purposes only.
+    /// Rows rendered above this tree by whoever mounted it — the collection and dataset
+    /// rows of the unified storage tree. It seeds the root level's rung and it is what the
+    /// depth badge adds, so the number a row states is its depth in the tree on screen
+    /// rather than in the dataset's own.
     ///
-    /// The unified storage tree puts two synthetic rows (the collection and the dataset)
-    /// above every folder, and their indent has to come out of the same budget — see
-    /// [`MAX_VISUAL_DEPTH`]. It is deliberately NOT added to `depth`, which is an index
-    /// into the focus chain: ancestor elision and sibling capping are defined in terms of
-    /// the dataset's own tree and must not shift because of what is above it.
+    /// Deliberately NOT added to `depth`, which is an index into the focus chain: ancestor
+    /// elision and sibling capping are defined in terms of the dataset's own tree and must
+    /// not shift because of what is above it.
     pub indent_offset: usize,
     /// Selected node keys. The `Picker` filter. Unused by `Sidebar`, which highlights
     /// [`TreeContext::focus_key`] instead — one node, always the one the URL names.
@@ -219,7 +253,7 @@ pub fn VfsTree(
             // half of the no-horizontal-scrolling rule: without it a row that somehow
             // overflows makes the whole panel scrollable sideways.
             style: "width: 100%; min-width: 0; overflow-x: hidden; overflow-y: auto;",
-            VfsTreeLevel { parent_key: root_key, depth: 0 }
+            VfsTreeLevel { parent_key: root_key, depth: 0, rung: indent_offset }
         }
     }
 }
@@ -231,7 +265,14 @@ pub fn VfsTree(
 /// that sometimes runs and sometimes does not, which is a hook-order violation and also
 /// a wasted query against a level nobody is going to see.
 #[component]
-fn VfsTreeLevel(parent_key: String, depth: usize) -> Element {
+fn VfsTreeLevel(
+    parent_key: String,
+    depth: usize,
+    /// The ladder rung this level's rows render on. Not `depth`: ancestor elision skips
+    /// tree levels without skipping ladder rungs, which is what keeps a 42-deep chain
+    /// stepping inside a sidebar. See the module docs.
+    rung: usize,
+) -> Element {
     let context = use_context::<TreeContext>();
     let mut unfolded = context.unfolded;
 
@@ -252,23 +293,31 @@ fn VfsTreeLevel(parent_key: String, depth: usize) -> Element {
     {
         let resume_key = chain[elision.resume_depth].clone();
         let hidden = elision.hidden;
-        let gap_indent = indent_px(depth + context.indent_offset);
+        let gap_indent = indent_style(rung);
         let unfold_key = parent_key.clone();
         return rsx! {
             button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {gap_indent}px;",
+                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {gap_indent};",
                 class: "x-facet-list-item",
                 title: "Show the {hidden} folder levels between here and the one you are in",
                 onclick: move |_| { unfolded.write().insert(unfold_key.clone()); },
                 Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
                 div { style: "{LABEL_STYLE}", "{hidden} more levels…" }
             }
-            VfsTreeLevel { parent_key: resume_key, depth: elision.resume_depth }
+            // One rung on, not `elision.hidden + 1`: the gap row stands in for the whole
+            // hidden run, so the ladder steps once for it and keeps its budget.
+            VfsTreeLevel { parent_key: resume_key, depth: elision.resume_depth, rung: rung + 1 }
         };
     }
 
     rsx! {
-        VfsTreeLevelBody { parent_key, depth, focus_child: next_on_path, unfolded: is_unfolded }
+        VfsTreeLevelBody {
+            parent_key,
+            depth,
+            rung,
+            focus_child: next_on_path,
+            unfolded: is_unfolded,
+        }
     }
 }
 
@@ -276,6 +325,8 @@ fn VfsTreeLevel(parent_key: String, depth: usize) -> Element {
 fn VfsTreeLevelBody(
     parent_key: String,
     depth: usize,
+    /// See [`VfsTreeLevel`]'s `rung`.
+    rung: usize,
     /// The child of this level that lies on the path to the focused node, if any. The
     /// sibling window is centred on it.
     focus_child: Option<String>,
@@ -287,12 +338,20 @@ fn VfsTreeLevelBody(
     let mut unfolded_set = context.unfolded;
     let mut limit = use_signal(|| MAX_CHILDREN_PER_NODE);
 
+    // `parent_key` through a memo, not captured directly. Dioxus props are not reactive:
+    // this component keeps its identity while its `parent_key` changes, because the level
+    // the elided chain resumes at moves whenever the focus moves. Capturing the prop by
+    // clone meant the resource kept the children of the parent it first had — so
+    // navigating UP one folder in-app left the tail of the ladder showing the folders you
+    // came FROM, correctly indented, under freshly recomputed depth badges. A page reload
+    // on the same URL rendered perfectly, which is what made it look like a data bug.
+    let parent = use_memo(use_reactive!(|parent_key| parent_key));
     let children = use_resource({
         let dataset = context.collection_dataset.clone();
-        let parent = parent_key.clone();
         move || {
             let dataset = dataset.clone();
-            let parent = parent.clone();
+            // Read OUTSIDE the async block: that read is the subscription.
+            let parent = parent();
             let limit = *limit.read();
             async move { vfs_tree_children(dataset, parent, limit, 0).await }
         }
@@ -351,7 +410,7 @@ fn VfsTreeLevelBody(
     // ever on screen. While the window is capping, the window's own row is the honest
     // one: raising the fetch limit would not reveal anything the window is hiding.
     let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(shown) };
-    let more_indent = indent_px(depth + context.indent_offset);
+    let more_indent = indent_style(rung);
     let visible: Vec<VfsTreeNode> = nodes[window.start..window.end].to_vec();
     let unfold_before = parent_key.clone();
     let unfold_after = parent_key.clone();
@@ -359,7 +418,7 @@ fn VfsTreeLevelBody(
     rsx! {
         if window.hidden_before > 0 {
             button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent}px;",
+                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                 class: "x-facet-list-item",
                 title: "Show all {nodes.len()} folders here",
                 onclick: move |_| { unfolded_set.write().insert(unfold_before.clone()); },
@@ -374,9 +433,13 @@ fn VfsTreeLevelBody(
                 rsx! {
                     div {
                         key: "{node_key}",
-                        VfsTreeRow { node: node.clone(), depth, is_expanded }
+                        VfsTreeRow { node: node.clone(), depth, rung, is_expanded }
                         if is_expanded {
-                            VfsTreeLevel { parent_key: node_key.clone(), depth: depth + 1 }
+                            VfsTreeLevel {
+                                parent_key: node_key.clone(),
+                                depth: depth + 1,
+                                rung: rung + 1,
+                            }
                         }
                     }
                 }
@@ -384,7 +447,7 @@ fn VfsTreeLevelBody(
         }
         if window.hidden_after > 0 {
             button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent}px;",
+                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                 class: "x-facet-list-item",
                 title: "Show all {nodes.len()} folders here",
                 onclick: move |_| { unfolded_set.write().insert(unfold_after.clone()); },
@@ -394,7 +457,7 @@ fn VfsTreeLevelBody(
         }
         if more > 0 {
             button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent}px;",
+                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                 class: "x-facet-list-item",
                 onclick: move |_| {
                     let current = *limit.read();
@@ -406,9 +469,25 @@ fn VfsTreeLevelBody(
     }
 }
 
-/// Indent in pixels, capped. See [`MAX_VISUAL_DEPTH`].
-pub(crate) fn indent_px(depth: usize) -> usize {
-    depth.min(MAX_VISUAL_DEPTH) * INDENT_PX
+/// Indent in pixels for a row on ladder rung `rung`. See the module docs for `rung`.
+///
+/// Full steps for the first few rungs, a reduced step for every rung after them, and a
+/// ceiling. The reduced step is the point: a ladder that keeps stepping stays a ladder,
+/// and the alternative — an indent that stops — turns a chain into a list.
+pub(crate) fn indent_px(rung: usize) -> usize {
+    let full = rung.min(FULL_STEP_RUNGS) * INDENT_PX;
+    let deep = rung.saturating_sub(FULL_STEP_RUNGS).saturating_mul(DEEP_INDENT_PX);
+    full.saturating_add(deep).min(MAX_INDENT_PX)
+}
+
+/// The `padding-left` value for a row on rung `rung`.
+///
+/// Two ceilings, because they guard different things: [`indent_px`] is what the layout was
+/// designed against, and [`MAX_INDENT_PERCENT`] is what keeps a row readable in a pane the
+/// user has dragged narrow — the percentage resolves against the pane, so it tracks the
+/// drag with no re-render.
+pub(crate) fn indent_style(rung: usize) -> String {
+    format!("min({}px, {MAX_INDENT_PERCENT}%)", indent_px(rung))
 }
 
 /// Where the middle of a deep ancestor chain is replaced by one row.
@@ -480,7 +559,7 @@ pub fn window_siblings(len: usize, focus_index: Option<usize>) -> SiblingWindow 
 }
 
 #[component]
-fn VfsTreeRow(node: VfsTreeNode, depth: usize, is_expanded: bool) -> Element {
+fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -> Element {
     let context = use_context::<TreeContext>();
     let mut expanded = use_context::<Signal<BTreeSet<String>>>();
     let node_key = node.node_key.clone();
@@ -492,8 +571,10 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, is_expanded: bool) -> Element {
         TreeSkin::Sidebar => *context.focus_key.read() == node_key,
         TreeSkin::Picker => check_state == TriState::Checked,
     };
-    let visual_depth = depth + context.indent_offset;
-    let indent = indent_px(visual_depth);
+    // Two different numbers on purpose: the ladder position the row is drawn at, and the
+    // depth in the tree it actually has. Elision is what pulls them apart.
+    let tree_depth = depth + context.indent_offset;
+    let indent = indent_style(rung);
     let row_background = if is_selected { "rgba(243,140,104,0.16)" } else { "transparent" };
     let label = if node.name.is_empty() {
         node.path.clone()
@@ -520,7 +601,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, is_expanded: bool) -> Element {
 
     rsx! {
         div {
-            style: "{ROW_STYLE} padding-left: {indent}px; background: {row_background};",
+            style: "{ROW_STYLE} padding-left: {indent}; background: {row_background};",
             class: "x-facet-list-item",
             // The full path, always. It is the only place a truncated label can be read
             // in full, and truncation is the normal case here rather than the exception.
@@ -564,14 +645,15 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, is_expanded: bool) -> Element {
 
             div { style: "{LABEL_STYLE}", "{label}" }
 
-            // Past the indent cap the depth is no longer legible from the layout, so it
-            // is stated. Below the cap this is absent rather than always-on noise. The
-            // number is the row's depth in the tree on screen — which now starts at the
-            // collection, so it counts the two synthetic levels the indent also spends.
-            if visual_depth > MAX_VISUAL_DEPTH {
+            // Past the full-step rungs the indent still steps but no longer counts, and
+            // once ancestors are elided the ladder is shorter than the path anyway — so
+            // the depth is stated. Above the shallow rows it is absent rather than
+            // always-on noise. The number is the row's depth in the tree on screen, which
+            // starts at the collection, so it counts the synthetic levels too.
+            if tree_depth > FULL_STEP_RUNGS {
                 div {
                     style: "flex-shrink: 0; font-size: 11px; color: rgba(0,0,0,0.45); border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; padding: 0 5px;",
-                    "depth {visual_depth}"
+                    "depth {tree_depth}"
                 }
             }
         }
@@ -656,30 +738,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_indent_stops_growing_at_the_cap() {
+    fn the_indent_keeps_stepping_past_the_full_step_rungs() {
         assert_eq!(indent_px(0), 0);
         assert_eq!(indent_px(2), 2 * INDENT_PX);
-        assert_eq!(indent_px(MAX_VISUAL_DEPTH), MAX_VISUAL_DEPTH * INDENT_PX);
-        // A 40-deep tree indents no further than one at the cap, or the label has no
-        // width left at all. The sidebar is 240 px; this has to leave room for a name.
-        assert_eq!(indent_px(40), indent_px(MAX_VISUAL_DEPTH));
-        assert!(indent_px(usize::MAX) + 100 < 240, "the deepest indent must leave room for a label");
+        assert_eq!(indent_px(FULL_STEP_RUNGS), FULL_STEP_RUNGS * INDENT_PX);
+        // The defect this guards: an indent that stops past the fourth rung renders a
+        // deep chain as a flat list. Every rung up to the ceiling must be wider than
+        // the one above it, or the parent-child relationship is not on screen at all.
+        let ceiling_rung = (0..)
+            .find(|rung| indent_px(*rung) == MAX_INDENT_PX)
+            .expect("the indent reaches its ceiling");
+        for rung in 1..ceiling_rung {
+            assert!(
+                indent_px(rung) > indent_px(rung - 1),
+                "rung {rung} must be indented past rung {}",
+                rung - 1
+            );
+        }
+        // And it is bounded, so no depth can spend the pane.
+        assert_eq!(indent_px(usize::MAX), MAX_INDENT_PX);
+        assert!(ceiling_rung > 12, "the ceiling must be past any elided ladder");
+    }
+
+    /// The rung the deepest row of a `chain_rows`-long path renders on, once ancestor
+    /// elision has trimmed the middle out of it. This is the number the indent budget is
+    /// actually spent against — the tree's depth is not.
+    fn deepest_visible_rung(chain_rows: usize) -> usize {
+        use crate::components::search_components::storage_tree::SYNTHETIC_LEVELS;
+        let Some(elision) = elide_ancestors(chain_rows) else {
+            return SYNTHETIC_LEVELS + chain_rows;
+        };
+        // Rung by rung: the synthetic rows, the ancestors kept at the top, one rung for
+        // the gap row, the tail, and then the level of children below the focused node.
+        let tail = chain_rows - elision.resume_depth;
+        SYNTHETIC_LEVELS + elision.head + 1 + tail
     }
 
     #[test]
-    fn the_synthetic_levels_do_not_eat_the_indent_budget() {
-        // The unified tree renders folders under two synthetic rows, so every folder's
-        // indent is computed at `depth + 2`. The cap is what keeps that from spending
-        // the label's width, and it has to bind at the OFFSET depth, not the raw one.
-        use crate::components::search_components::storage_tree::SYNTHETIC_LEVELS;
-        for depth in 0..64 {
-            assert!(
-                indent_px(depth + SYNTHETIC_LEVELS) <= MAX_VISUAL_DEPTH * INDENT_PX,
-                "depth {depth} under the synthetic levels must still be capped"
-            );
-        }
-        // Deepest possible row in the 240 px sidebar, with room left for a name.
-        assert!(indent_px(usize::MAX) + 100 < 240);
+    fn trimming_the_ancestors_is_what_pays_for_the_indent() {
+        // `deep-stuff` is 42 numbered folders under `/deep-stuff`, so the deepest path is
+        // 43 rows below the dataset root and reaches depth 45 on screen. Elision renders
+        // it on a rung in the low teens, which is the entire reason the ladder can keep
+        // stepping at all.
+        let rung = deepest_visible_rung(43);
+        assert!(rung <= 12, "a 43-row path must fit a short ladder, not a 43-rung one");
+        assert!(
+            indent_px(rung) < MAX_INDENT_PX,
+            "the deep fixture must be inside the ceiling, not sitting on it"
+        );
+
+        // At the default pane width the deepest row still has a real label. The row also
+        // spends a chevron, a folder icon, their gaps and the depth badge.
+        let furniture = 18 + 18 + 24 + 56;
+        let label = crate::components::resizable_sidebar::DEFAULT_SIDEBAR_PX as usize
+            - indent_px(rung)
+            - furniture;
+        assert!(label >= 90, "the deepest visible row has only {label} px of label");
+    }
+
+    #[test]
+    fn the_indent_never_takes_most_of_a_narrow_pane() {
+        // The pixel ceiling is chosen against a comfortable pane; the percentage is what
+        // holds when the user drags the sidebar in, and the browser re-evaluates it with
+        // no re-render. It has to bind at the narrowest pane the drag allows, or the
+        // ceiling is the only guard there and it is the wrong one.
+        assert_eq!(indent_style(0), format!("min(0px, {MAX_INDENT_PERCENT}%)"));
+        assert_eq!(
+            indent_style(usize::MAX),
+            format!("min({MAX_INDENT_PX}px, {MAX_INDENT_PERCENT}%)")
+        );
+        assert!(MAX_INDENT_PERCENT < 50, "the indent may never outweigh the label");
+        let narrowest = crate::components::resizable_sidebar::MIN_SIDEBAR_PX as usize;
+        assert!(
+            narrowest * MAX_INDENT_PERCENT / 100 < MAX_INDENT_PX,
+            "at the narrowest pane the percentage must be the binding guard"
+        );
     }
 
     #[test]

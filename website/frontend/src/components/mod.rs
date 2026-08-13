@@ -8,6 +8,8 @@ pub mod hover_card;
 pub mod navbar;
 pub mod pdf_viewer;
 pub mod popover;
+pub mod resizable_sidebar;
 pub mod search_components;
+pub mod session_gate;
 pub mod suspend_boundary;
 pub mod toast;

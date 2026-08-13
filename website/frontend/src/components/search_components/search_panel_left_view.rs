@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use crate::{
     api::search_api::{search_for_results, search_for_results_hit_count},
     components::{
-        error_boundary::ComponentErrorDisplay,
+        error_boundary::ServerErrorDisplay,
         search_components::{
             search_result_item_card::SearchResultItemCard,
             search_result_list_controls::SearchResultListControls,
@@ -141,7 +141,7 @@ fn SearchResultsView() -> Element {
     // .suspend()?.cloned();
     let search_result = search_result.read();
     let search_result = match search_result.as_ref() {
-        Some(Err(e)) => return rsx! {ComponentErrorDisplay { error_txt: format!("{:#?}", e) }},
+        Some(Err(e)) => return rsx! {ServerErrorDisplay { error: e.clone() }},
         Some(Ok(s)) => s,
         None => return rsx! { LoadingIndicator{} },
     };

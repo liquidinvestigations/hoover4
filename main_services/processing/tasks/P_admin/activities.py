@@ -61,6 +61,46 @@ def drop_collection_database(params: CollectionDatabaseParams) -> str:
     return db_name
 
 
+def count_dataset_rows(collectionname: str, collection_dataset: str) -> dict[str, dict[str, int]]:
+    """What a purge of `collection_dataset` would delete, per store and table.
+
+    Read-only. It walks exactly the table lists the two purge activities below walk, so
+    the report and the deletion can never disagree about what is in scope — a table the
+    purge would miss is missing from the report too, rather than the operator being told
+    a number nothing acts on.
+
+    Counts are physical rows, not `FINAL` rows: `FINAL` over a large collection is
+    expensive, and the honest answer to "what will this delete" is the row count.
+    """
+    from database.clickhouse import get_collection_client
+    from database.manticore import get_manticore_client, list_collection_tables
+
+    manticore: dict[str, int] = {}
+    for table in list_collection_tables(collectionname):
+        with get_manticore_client() as cnx:
+            cursor = cnx.cursor()
+            cursor.execute(
+                f"SELECT count(*) FROM {table} WHERE collection_dataset = %s",
+                (collection_dataset,),
+            )
+            row = cursor.fetchone()
+        manticore[table] = int(row[0]) if row else 0
+
+    clickhouse: dict[str, int] = {}
+    with get_collection_client(collectionname) as client:
+        for (table,) in client.query("SHOW TABLES").result_rows:
+            columns = {row[0] for row in client.query(f"DESCRIBE TABLE `{table}`").result_rows}
+            if 'collection_dataset' not in columns:
+                continue
+            count = client.query(
+                f"SELECT count() FROM `{table}` WHERE collection_dataset = {{cd:String}}",
+                parameters={"cd": collection_dataset},
+            ).result_rows
+            clickhouse[table] = int(count[0][0]) if count else 0
+
+    return {"manticore": manticore, "clickhouse": clickhouse}
+
+
 @activity.defn
 @with_heartbeat
 def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:

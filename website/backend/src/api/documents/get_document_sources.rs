@@ -6,6 +6,7 @@ use common::{
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
         DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
+        EMAIL_TEXT_EXTRACTOR,
     },
     search_result::DocumentIdentifier,
 };
@@ -115,7 +116,12 @@ async fn get_email_sources(
         SELECT
             subject,
             addresses,
-            formatDateTime(date_sent, '%FT%TZ') AS date_sent,
+            -- `date_sent` falls back to the epoch when the `Date:` header did not parse,
+            -- and the epoch is also a real instant, so `date_sent_known` is the only
+            -- thing that separates them. An unknown date leaves as an empty string
+            -- rather than as 1970-01-01, which the viewer would print as a sent date
+            -- while the Metadata tab says the document has no confirmed date.
+            if(date_sent_known = 1, formatDateTime(date_sent, '%FT%TZ'), '') AS date_sent,
             raw_headers_json
         FROM email_headers
         WHERE collection_dataset = ? AND email_hash = ?
@@ -131,16 +137,28 @@ async fn get_email_sources(
     let Some((subject, addresses, date_sent, raw_headers_json)) = result.into_iter().next() else {
         return Ok(None);
     };
+    // The body's page range is filled in by `get_document_sources`, which has the text
+    // sources; 1 is the smallest `page_id` that can exist.
     Ok(Some(DocumentEmailSourceItem {
         subject,
         addresses,
         date_sent,
         raw_headers_json,
+        min_page: 1,
+        max_page: 1,
     }))
 }
 
-#[tracing::instrument(level = "debug", err(Debug))]
-async fn get_image_sources(
+/// The image dimensions, or `None` for a document that is not an image.
+///
+/// **Absence is the ordinary answer here, not a failure.** Most documents are not images,
+/// so returning an error for "no `image` row" puts an ERROR line in the log on a large
+/// fraction of document opens with nothing wrong — enough to make the log useless as a
+/// signal, because every real error is buried among them. `err(Debug)` on the instrument
+/// attribute logs at ERROR level by default, which is what turns that last resort into
+/// the common case.
+#[tracing::instrument(level = "debug", err(level = "debug", Debug))]
+pub async fn get_image_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentImageSourceItem>> {
@@ -150,11 +168,12 @@ async fn get_image_sources(
         DocumentMetadataTableInfo::new3("image", "image_hash", vec!["image_metadata"]),
     )
     .await?;
-    let obj = meta.first().context("No image metadata found")?;
-    let metadata = obj
-        .get("image_metadata")
-        .and_then(|v| v.as_object())
-        .context("No image metadata found")?;
+    let Some(obj) = meta.first() else {
+        return Ok(None);
+    };
+    let Some(metadata) = obj.get("image_metadata").and_then(|v| v.as_object()) else {
+        return Ok(None);
+    };
 
     let streams = metadata
         .get("streams")
@@ -254,13 +273,24 @@ pub async fn get_document_sources(
     );
 
     let mut sources = vec![];
-    for source in txt.unwrap_or_default() {
+    let text_sources = txt.unwrap_or_default();
+    // The email preview renders the parsed body, which is an ordinary `text_content`
+    // variant. Hand the email source that variant's page range so the viewer asks for a
+    // page that exists; `page_id` is 1-based, so 1 is the floor and 0 is never valid.
+    let (body_min_page, body_max_page) = text_sources
+        .iter()
+        .find(|s| s.extracted_by == EMAIL_TEXT_EXTRACTOR)
+        .map(|s| (s.min_page.max(1), s.max_page.max(1)))
+        .unwrap_or((1, 1));
+    for source in text_sources {
         sources.push(DocumentSourceItem::Text(source));
     }
     for source in pdf.unwrap_or_default() {
         sources.push(DocumentSourceItem::Pdf(source));
     }
-    for source in email.unwrap_or_default() {
+    for mut source in email.unwrap_or_default() {
+        source.min_page = body_min_page;
+        source.max_page = body_max_page;
         sources.push(DocumentSourceItem::Email(source));
     }
     for source in img.unwrap_or_default() {

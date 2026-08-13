@@ -53,12 +53,33 @@ log = logging.getLogger(__name__)
 
 #: Default and hard cap on results. The cap exists because every hit carries a text
 #: snippet into the agent's context window; an unbounded search would blow the context
-#: long before it blew any database.
-DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "8"))
-MAX_ALLOWED_RESULTS = int(os.getenv("SEARCH_MAX_ALLOWED_RESULTS", "50"))
+#: long before it blew any database. A model that asks for 10 000 gets 200.
+#:
+#: The default is deliberately most of the cap. Latency here is one provider round trip
+#: per tool call and is almost independent of how much comes back, so a search that has
+#: to be run four times to see what one run could have shown costs four times as much
+#: wall clock for the same answer — the weight of a result set is bounded by
+#: `SNIPPET_BUDGET_CHARS` below, not by counting it.
+DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "50"))
+MAX_ALLOWED_RESULTS = int(os.getenv("SEARCH_MAX_ALLOWED_RESULTS", "200"))
 
 #: How much page text one hit may contribute, in characters.
 SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
+
+#: Total snippet text one search may return, across every hit.
+#:
+#: **A result count is not a size.** 46 hits of 1 200 characters is a 27 800-token prompt
+#: and a 22 KB transcript page, and neither number is visible in `max_results`, so the cap
+#: on the count cannot be the only bound — it is why the website truncates a stored
+#: `tool_output` at the same 24 000 characters (`common/src/chat_types.rs`). The per-hit
+#: allowance is this budget divided by the number of hits, clamped between
+#: `MIN_SNIPPET_CHARS` and `SNIPPET_CHARS`: a handful of hits still get the full 1 200
+#: each, and a 200-hit survey gets a line apiece, which is what a survey is for. Reading
+#: one properly is `get_document_text`.
+SNIPPET_BUDGET_CHARS = int(os.getenv("SEARCH_SNIPPET_BUDGET_CHARS", "24000"))
+
+#: Floor on the per-hit snippet, so a large result set still says why each hit matched.
+MIN_SNIPPET_CHARS = int(os.getenv("SEARCH_MIN_SNIPPET_CHARS", "120"))
 
 #: How much text `get_document_text` may return in one call.
 MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "40000"))
@@ -76,6 +97,11 @@ FUSION_CANDIDATES = int(os.getenv("COLLECTION_SEARCH_FUSION_CANDIDATES", "60"))
 #: results and the caller's `max_results=8` did nothing at all — `search_collections` was
 #: returning 20 hits to a model that asked for 8, at 1200 snippet characters each. Three
 #: is enough to keep a minority ranking visible without overriding the cap.
+#:
+#: `MAX_PER_KIND` is a diversity guard for small result sets and is raised to `max_results`
+#: when that is larger: left at a constant it becomes the real cap on a hybrid search (two
+#: kinds x 15 = 30 hits, whatever was asked for), and a tool that advertises 200 must be
+#: able to return them when the embeddings stack happens to be up.
 MIN_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MIN_PER_KIND", "3"))
 MAX_PER_KIND = int(os.getenv("COLLECTION_SEARCH_MAX_PER_KIND", "15"))
 
@@ -269,12 +295,36 @@ def list_collections() -> list[CollectionInfo]:
     return infos
 
 
+def _snippet_chars_for(hit_count: int) -> int:
+    """The per-hit snippet allowance for a result set of `hit_count` hits."""
+    if hit_count <= 0:
+        return SNIPPET_CHARS
+    share = SNIPPET_BUDGET_CHARS // hit_count
+    return max(MIN_SNIPPET_CHARS, min(SNIPPET_CHARS, share))
+
+
+def _apply_snippet_budget(hits: list[SearchHit]) -> None:
+    """Trim snippets in place so the whole result set fits the budget.
+
+    Applied after ranking, never before: the fused order and the cross-encoder both score
+    the full passage, and scoring a truncated one would change which documents come back,
+    not only how much of them does.
+    """
+    allowance = _snippet_chars_for(len(hits))
+    for hit in hits:
+        if len(hit.snippet) > allowance:
+            hit.snippet = hit.snippet[:allowance].rstrip() + "…"
+
+
 @mcp.tool(
     name="search_collections",
     description=(
         "Full-text search across the user's document collections. Returns matching "
         "text passages with the document id needed to read the full document. Phrase "
-        "the query as a sentence or several descriptive words rather than one keyword."
+        "the query as a sentence or several descriptive words rather than one keyword. "
+        f"Leave max_results at the default of {DEFAULT_MAX_RESULTS}: it is already a "
+        "broad look at the collections, and asking for more returns a shorter passage "
+        "from each rather than more to read. Use get_document_text to read a hit in full."
     ),
 )
 def search_collections(
@@ -332,7 +382,7 @@ def search_collections(
         except Exception as exc:  # noqa: BLE001 - degrade to keyword-only, say so
             log.warning("could not read embeddings_serving_model: %s", exc)
             notes.append(f"vector search unavailable: could not read the serving model ({exc})")
-    per_shard_limit = FUSION_CANDIDATES if vector_model else limit
+    per_shard_limit = max(FUSION_CANDIDATES, limit) if vector_model else limit
 
     candidates: list[_Candidate] = []
     failed_targets: list[str] = []
@@ -412,6 +462,7 @@ def search_collections(
             for c in keyword_list[:limit]
         ]
     _attach_paths(hits)
+    _apply_snippet_budget(hits)
 
     if failed_targets:
         notes.append(
@@ -480,7 +531,9 @@ def _fused_pipeline(
     fused = fusion.fuse_ranked_lists(
         {"keyword": keyword_list, "vector": vector_candidates},
         key_of=lambda c: c.key(),
-        max_results=FUSION_CANDIDATES,
+        # Never fewer candidates than the caller asked for results, or the pool decides
+        # the answer size instead of `max_results`.
+        max_results=max(FUSION_CANDIDATES, limit),
     )
 
     ordered = fused
@@ -510,7 +563,7 @@ def _fused_pipeline(
         max_results=limit,
         kind_of=lambda f: "vector" if "vector" in f.source_ranks else "keyword",
         min_per_kind=MIN_PER_KIND,
-        max_per_kind=MAX_PER_KIND,
+        max_per_kind=max(MAX_PER_KIND, limit),
     )
     notes.append(
         f"{len(keyword_list)} keyword + {len(vector_list)} vector candidates, "

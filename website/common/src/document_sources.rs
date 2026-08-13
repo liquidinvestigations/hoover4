@@ -13,6 +13,9 @@ use crate::text_highlight::HighlightTextSpan;
 /// Prefix marking an OCR variant. Native extractors carry no prefix.
 pub const OCR_PREFIX: &str = "ocr_";
 
+/// The `extracted_by` value under which an email's parsed body is stored.
+pub const EMAIL_TEXT_EXTRACTOR: &str = "email_parser";
+
 /// OCR engines that may appear inside an `extracted_by` value.
 pub const OCR_ENGINES: [&str; 2] = ["tesseract", "easyocr"];
 
@@ -106,6 +109,27 @@ mod tests {
                 engine: "easyocr".into(),
                 languages: "en".into()
             }
+        );
+    }
+
+    #[test]
+    fn an_email_with_no_parsed_date_has_no_sent_date() {
+        let email = |date_sent: &str| DocumentEmailSourceItem {
+            subject: String::new(),
+            addresses: String::new(),
+            date_sent: date_sent.to_string(),
+            raw_headers_json: String::new(),
+            min_page: 1,
+            max_page: 1,
+        };
+        // The two shapes "we do not know" arrives in: the epoch the DateTime column
+        // falls back to, and the empty string the query emits once it has consulted
+        // `date_sent_known`.
+        assert_eq!(email(EMAIL_DATE_UNKNOWN).sent_date(), None);
+        assert_eq!(email("").sent_date(), None);
+        assert_eq!(
+            email("2013-10-10T17:04:49Z").sent_date(),
+            Some("2013-10-10T17:04:49Z")
         );
     }
 
@@ -230,6 +254,37 @@ pub struct DocumentEmailSourceItem {
     pub addresses: String,
     pub date_sent: String,
     pub raw_headers_json: String,
+    /// Page range of this email's parsed body in `text_content`, i.e. of its
+    /// `email_parser` rows. Carried here because the email preview renders that text and
+    /// has to ask for a page that exists: `page_id` is 1-based and a request for page 0
+    /// matches nothing at all. Defaulted for URL-encoded viewer state written without it,
+    /// and every reader floors it at 1 rather than trusting the default.
+    #[serde(default)]
+    pub min_page: u32,
+    #[serde(default)]
+    pub max_page: u32,
+}
+
+/// `date_sent` as it arrives for an email whose `Date:` header never parsed.
+///
+/// `email_headers.date_sent` is a `DateTime` whose fallback is the epoch, so the epoch
+/// and "no date" are the same value in storage — `date_sent_known` is the column that
+/// separates them.
+pub const EMAIL_DATE_UNKNOWN: &str = "1970-01-01T00:00:00Z";
+
+impl DocumentEmailSourceItem {
+    /// The `Date:` header as sent, or `None` when the document has none.
+    ///
+    /// The epoch is rejected here as well as at the query that fills the field: viewer
+    /// state restored from a URL carries whatever was written into it, and printing
+    /// `1970-01-01T00:00:00Z` as a sent date contradicts the Metadata tab, which reports
+    /// the same document as having no confirmed date.
+    pub fn sent_date(&self) -> Option<&str> {
+        match self.date_sent.trim() {
+            "" | EMAIL_DATE_UNKNOWN => None,
+            date => Some(date),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]

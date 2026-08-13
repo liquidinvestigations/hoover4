@@ -193,7 +193,8 @@ pub struct ChatMessageItem {
     /// Wall time the agent took to produce this row. 0 for user turns.
     #[serde(default)]
     pub agent_duration_ms: u32,
-    /// JSON array of the errors from earlier attempts (role = error).
+    /// JSON array of one error per attempt the turn made, oldest first, including the
+    /// attempt whose error is in `content` (role = error).
     #[serde(default)]
     pub retry_errors: String,
     /// Reasoning trace + pre-tool narration (role = assistant). Rendered behind a

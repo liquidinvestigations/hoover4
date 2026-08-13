@@ -11,6 +11,10 @@ singleton, rather than as part of ingestion.
 - Drop a collection database when the collection is deleted.
 - Purge a soft-deleted dataset's rows from its collection (Manticore shards and every
   collection-DB table with a `collection_dataset` column), then recompute the shard ledger.
+- Report what such a purge would delete, per store and per table (`count_dataset_rows`),
+  so a destructive command can say what it is about to do before it does it.
+- Re-run a failed stage for the file hashes in `processing_errors`
+  (`failed_file_retry.py`), which is the only recovery that does not re-ingest.
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
 - Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
@@ -30,8 +34,12 @@ exactly one source of truth in Python.
 - OCR language job: `ocr_languages.py` (the variant diff, the purge, and the
   `dataset_jobs` row the admin form polls)
 - ETA logic: `eta_collector.py` (SQL, rates, throttle — documented in its module docstring)
+- File-level retry: `failed_file_retry.py` (which re-run recovers which task, and the
+  ClickHouse reads and deletes it needs)
 - Queue: `processing-common-queue`
-- CLI: `main.py ensure-collection <collectionname>`
+- CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
+  <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
+  <collectionname> [--dataset X] [--task T] [--apply]`
 - Website: `api/admin/temporal_trigger.rs` kinds `ensure_collection` /
   `drop_collection_database` / `purge_dataset`, plus `start_ocr_language_job` — which,
   unlike those three, uses a **timestamped** workflow id: reusing an id makes a second
@@ -94,6 +102,25 @@ The retry deletes `processing_errors` rows with `ALTER TABLE ... DELETE`. ClickH
 mutations are **asynchronous**, so a row can still appear in the failure list for a few
 seconds after a retry. Accepted: it is the only way to remove rows from a plain
 MergeTree. Do not re-file this as a bug.
+
+`failed_file_retry.py` is the same recovery without the whole-plan cost, and it is what
+`main.py retry-failed-files` drives. It re-runs the **stage** that failed for the
+**hashes** that failed it: NER clears those hashes' `nlp_processed` watermarks (the only
+reason P4 skips a page it has seen) and re-runs P4 + P6 for their plans, so the re-run
+touches the failed documents and nothing else; index failures re-run P6; embedding
+failures re-run P5 + P6; parse failures still need the whole plan, because they have no
+per-file entry point that does not start by downloading the plan's blobs. Deletion order
+is watermarks, then rows — a crash between the two leaves a page that is simply
+re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
+for the documents it can show are fixed.
+
+## A finished plan is not a successful one
+
+`processing_plan_finished` records that a plan's stages ran, not that every document
+survived them. The admin processing page therefore counts failed documents per stage
+(`api/admin/processing.rs::stage_for_task`) and a stage with any failures never renders
+as complete — otherwise 4 792 documents can lose their entities to an NER outage while
+every bar reads done.
 
 ## Technical Details
 

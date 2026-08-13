@@ -19,10 +19,13 @@ a host reachable from the internet must not have.
 | `website_bind_ip` | the website's `12345` | `0.0.0.0` | the private address a reverse proxy reaches it on |
 | `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, MinIO API + console, CH-UI, ClickHouse monitoring, pdf-to-html | `0.0.0.0` | `127.0.0.1` |
 
-**Neither of these is hardening in the abstract.** The website carries no authentication
-of its own: an HTTP front end in front of it does, and `demo_mode = true` additionally
-makes every anonymous `guest-*` session an admin. Anyone who types the host's IP and port
-skips the front end entirely and gets an admin panel. The infrastructure ports are worse
+**Neither of these is hardening in the abstract.** The website has one way in of its own —
+a reverse proxy setting `X-Forwarded-User` — and `demo_mode = true` additionally hands
+every anonymous visitor a `guest-*` session and makes it an admin. Anyone who types the
+host's IP and port skips the front end entirely and gets an admin panel. With `demo_mode`
+off nothing anonymous is provisioned at all: `/api/whoami` refuses, the site renders
+*Sign-in required*, and every endpoint answers 401 — so a deployment behind a proxy that
+sets no identity header serves nobody, which is the intended failure. The infrastructure ports are worse
 and simpler — Manticore has no authentication at all, and ClickHouse, MinIO and the two
 admin UIs ship with the compose file's default credentials. Published on `0.0.0.0` on a
 public host, each one is a full read of the corpus.
@@ -303,7 +306,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to MinIO under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
-| **`demo_mode` = anonymous admin** | Every guest session is an admin. Acceptable only behind an authenticating front end — which is what `website_bind_ip` enforces. |
+| **`demo_mode` = anonymous admin** | Every guest session is an admin, and it is what provisions guests at all. Acceptable only behind an authenticating front end — which is what `website_bind_ip` enforces. |
 | **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
 
 ## Navigation
