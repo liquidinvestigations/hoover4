@@ -232,7 +232,7 @@ the injection barrier.
 
 ### Infix indexing: what it cost
 
-`min_infix_len='3'` is set on both `pages_table_ddl` and `meta_table_ddl` in
+`min_infix_len='3'` is set on `pages_table_ddl` in
 `main_services/processing/database/manticore.py`. Changing it requires a full reindex of
 every collection. Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
 

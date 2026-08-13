@@ -175,15 +175,14 @@ async fn probe_domain(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let meta_table = &parts.meta_table;
             let options_clause = sql_options_clause(1000);
             let bound = |direction: &str| {
                 format!(
                     "
-                    SELECT {meta_table}.date_min AS bound
+                    SELECT date_min AS bound
                     {from_clause}
                     {where_clause}
-                    AND {meta_table}.date_min != {DATE_UNKNOWN}
+                    AND date_min != {DATE_UNKNOWN}
                     GROUP BY bound
                     ORDER BY bound {direction}
                     LIMIT 1
@@ -196,10 +195,10 @@ async fn probe_domain(
             // 2007 would leave its own bar off the end.
             let upper = format!(
                 "
-                SELECT {meta_table}.date_max AS bound
+                SELECT date_max AS bound
                 {from_clause}
                 {where_clause}
-                AND {meta_table}.date_min != {DATE_UNKNOWN}
+                AND date_min != {DATE_UNKNOWN}
                 GROUP BY bound
                 ORDER BY bound DESC
                 LIMIT 1
@@ -211,7 +210,7 @@ async fn probe_domain(
                 SELECT count(distinct file_hash) AS doc_count, 0 AS bucket
                 {from_clause}
                 {where_clause}
-                AND {meta_table}.date_min = {DATE_UNKNOWN}
+                AND date_min = {DATE_UNKNOWN}
                 {options_clause}
                 ;"
             );
@@ -270,15 +269,14 @@ async fn count_buckets(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let meta_table = &parts.meta_table;
             let options_clause = sql_options_clause(1000);
             let sql = format!(
                 "
-                SELECT INTERVAL({meta_table}.date_min, {edge_list}) AS bucket,
+                SELECT INTERVAL(date_min, {edge_list}) AS bucket,
                        count(distinct file_hash) AS doc_count
                 {from_clause}
                 {where_clause}
-                AND {meta_table}.date_min != {DATE_UNKNOWN}
+                AND date_min != {DATE_UNKNOWN}
                 GROUP BY bucket
                 ORDER BY bucket ASC
                 LIMIT {}

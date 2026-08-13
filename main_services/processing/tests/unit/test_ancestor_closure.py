@@ -308,7 +308,7 @@ def test_kind_survives_the_round_trip_through_clickhouse():
 
 
 def test_container_parents_are_found_from_ordinal_kinds():
-    """The exact shape `index_metadata` reads: dict rows whose `kind` is an int."""
+    """The exact shape `document_metadata` reads: dict rows whose `kind` is an int."""
     rows = [
         {"kind": KIND_TO_INT[KIND_CONTAINER], "file_hash": "ziphash",
          "container_hash": "", "path": "/location-1/parent.zip"},

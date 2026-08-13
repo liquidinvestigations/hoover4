@@ -8,15 +8,14 @@ import pytest
 
 from database.manticore import (
     DATE_UNKNOWN,
+    DOCUMENT_COLUMNS,
     SIZE_UNKNOWN,
-    meta_table_ddl,
     pages_table_ddl,
     vectors_table_ddl,
     vfs_table_ddl,
     vfs_table_name,
 )
 from tasks.P6_index_data.activities import (
-    metadata_row_id,
     pages_row_id,
     repr_manticore_tuple,
     repr_manticore_vector,
@@ -39,16 +38,7 @@ def test_pages_table_ddl_golden():
             ner_per multi64,
             ner_org multi64,
             ner_loc multi64,
-            ner_misc multi64
-        ) engine='columnar' min_infix_len='3'
-    """)
-
-
-def test_meta_table_ddl_golden():
-    assert _normalize(meta_table_ddl("testdata_1_meta")) == _normalize("""
-        create table if not exists testdata_1_meta(
-            collection_dataset string,
-            file_hash string,
+            ner_misc multi64,
             file_types multi64,
             file_mime_types multi64,
             file_extensions multi64,
@@ -61,30 +51,32 @@ def test_meta_table_ddl_golden():
             primary_filename string,
             email_from multi64,
             email_to multi64
-        ) engine='columnar'
+        ) engine='columnar' min_infix_len='3'
     """)
 
 
-def test_meta_table_is_attribute_only():
-    """No full-text field at all, verified against the live Manticore 14.1.0 before the
-    schema was written. `filenames` was the last one and it is now covered by the
-    `filename_index` pages row plus `primary_filename`; `metadata_values` was written as
-    "" since the day it was created.
+def test_the_shard_table_carries_every_document_column():
+    """One table per shard, so a document column missing from the DDL is not a JOIN that
+    returns nothing — it is a Manticore error on every query that names it."""
+    ddl = pages_table_ddl("testdata_1_pages")
+    for column in DOCUMENT_COLUMNS:
+        assert f"{column} " in ddl, column
 
-    Consequences worth pinning: `min_infix_len` on a table with no text field is
-    meaningless, and `primary_filename` must be a string ATTRIBUTE — Manticore can
-    ORDER BY an attribute and cannot ORDER BY a text field.
-    """
-    ddl = meta_table_ddl("testdata_1_meta")
-    assert " text" not in ddl
-    assert "min_infix_len" not in ddl
+
+def test_page_text_is_the_only_full_text_field():
+    """`primary_filename` must be a string ATTRIBUTE — Manticore can ORDER BY an
+    attribute and cannot ORDER BY a text field, and the name sort is what needs it.
+    Filename MATCHING goes through the `filename_index` row's `page_text` instead."""
+    ddl = pages_table_ddl("testdata_1_pages")
+    assert ddl.count(" text") == 1
+    assert "page_text text" in ddl
     assert "primary_filename string" in ddl
 
 
-def test_meta_table_carries_signed_columns_for_dates_and_sizes():
+def test_the_shard_table_carries_signed_columns_for_dates_and_sizes():
     """Manticore's own `timestamp` is 32-bit UNSIGNED (1970..2106), useless for a corpus
     with pre-1970 material — hence bigint seconds and a multi64 MVA."""
-    ddl = meta_table_ddl("testdata_1_meta")
+    ddl = pages_table_ddl("testdata_1_pages")
     for signed in ("dates multi64", "date_min bigint", "date_max bigint",
                    "file_size_bytes bigint"):
         assert signed in ddl
@@ -147,8 +139,6 @@ def test_row_ids_are_deterministic_and_distinct():
     # overwrite rather than a duplicate.
     assert pages_row_id("testdata_testfiles", "h1", "tika", 1) == \
         pages_row_id("testdata_testfiles", "h1", "tika", 1)
-    assert metadata_row_id("testdata_testfiles", "h1") == \
-        metadata_row_id("testdata_testfiles", "h1")
 
     ids = {
         pages_row_id("testdata_testfiles", "h1", "tika", 1),
@@ -156,9 +146,8 @@ def test_row_ids_are_deterministic_and_distinct():
         pages_row_id("testdata_testfiles", "h1", "pdf", 1),    # other extractor
         pages_row_id("testdata_testfiles", "h2", "tika", 1),   # other document
         pages_row_id("other_testfiles", "h1", "tika", 1),      # other dataset
-        metadata_row_id("testdata_testfiles", "h1"),
     }
-    assert len(ids) == 6
+    assert len(ids) == 5
     # Manticore ids must be positive signed 64-bit integers.
     assert all(0 < i < 2**63 for i in ids)
 

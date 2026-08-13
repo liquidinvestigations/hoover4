@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 
 def _manticore_doc_counts_by_shard_table(collectionname: str) -> dict[str, int]:
-    """Distinct ``(collection_dataset, file_hash)`` pairs per ``<shard>_meta`` table.
+    """Distinct ``(collection_dataset, file_hash)`` pairs per ``<shard>_pages`` table.
 
     Manticore has no ``count(distinct concat(...))``: GROUP BY the pair and count
     the rows. Document identity is the pair, not file_hash alone."""
@@ -39,7 +39,7 @@ def _manticore_doc_counts_by_shard_table(collectionname: str) -> dict[str, int]:
     with get_manticore_client() as cnx:
         cursor = cnx.cursor()
         for table in list_shard_tables(collectionname):
-            if not table.endswith("_meta"):
+            if not table.endswith("_pages"):
                 continue
             cursor.execute(
                 f"SELECT collection_dataset, file_hash FROM {table} "
@@ -82,7 +82,7 @@ def test_shard_ledger_consistency(temp_collection, tiny_dataset, monkeypatch):
     assert sum(int(row[2]) for row in ledger) == len(pairs)
     assert int(index_state_count) == len(pairs), "index_state must record every indexed pair"
     manticore_counts = _manticore_doc_counts_by_shard_table(collectionname)
-    assert manticore_counts, "expected Manticore shard meta tables"
+    assert manticore_counts, "expected Manticore shard tables"
     assert sum(manticore_counts.values()) == len(pairs)
 
     # Step 2: re-plan with a tiny budget, in-process (monkeypatch only affects

@@ -60,10 +60,12 @@ Aggregates metadata and text content into search indexes, reading the entity row
 Search indexes are sharded: a single planner activity (`plan_shards`, on
 `processing-index-planner-queue`, exactly one worker process) assigns every document
 to a shard, persisting the `manticore_shards` ledger and `manticore_shard_assignments`
-in the collection database, and creates the Manticore tables `<collectionname>_<n>_pages`
-/ `<collectionname>_<n>_meta`. A shard stays open until the next document would push it
-over `MAX_SHARD_TEXT_BYTES = 1_000_000_000` (1 GB of extracted text), then it is sealed
-and a new shard opens. Re-indexing overwrites documents in place — a document never
+in the collection database, and creates the Manticore table `<collectionname>_<n>_pages`.
+A shard stays open until the next document would push it over
+`MAX_SHARD_TEXT_BYTES = 4_000_000_000` (4 GB of extracted text) or
+`MAX_SHARD_ROWS = 2_500_000` — two budgets because bytes per row vary by two orders of
+magnitude across the corpus while facet cost tracks rows — then it is sealed and a new
+shard opens. Re-indexing overwrites documents in place — a document never
 moves between shards and never appears in two shards.
 
 ## Administrative Workflows

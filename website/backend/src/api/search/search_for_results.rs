@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 struct SearchForResultsResponse {
     collection_dataset: String,
     file_hash: String,
-    /// The result-card title. A string ATTRIBUTE on meta since the `filenames` text
-    /// field was dropped — see `database/manticore.py::meta_table_ddl`.
+    /// The result-card title. A string ATTRIBUTE rather than a text field, because
+    /// Manticore can ORDER BY the former and not the latter.
     primary_filename: String,
 
     highlight_text: String,
@@ -81,13 +81,12 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
     let options_clause = sql_options_clause(fetch_limit);
     let from_clause = &parts.from_clause;
     let sql_where_clause = &parts.where_clause;
-    let meta_table = &parts.meta_table;
-    let order_by = sort_order_by(&sort, meta_table);
+    let order_by = sort_order_by(&sort);
     format!(
         "
     SELECT collection_dataset,
         file_hash,
-        {meta_table}.primary_filename as primary_filename,
+        primary_filename,
 
         HIGHLIGHT({{
             limit=400,
@@ -99,10 +98,10 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
             around=50
         }}, page_text) as highlight_text,
 
-        {meta_table}.file_types as file_types,
-        {meta_table}.date_min as date_min,
-        {meta_table}.date_max as date_max,
-        {meta_table}.file_size_bytes as file_size_bytes,
+        file_types,
+        date_min,
+        date_max,
+        file_size_bytes,
 
         MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match
 
@@ -121,10 +120,10 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
 
 /// Highlight the query's terms inside the result title, client-side.
 ///
-/// Route (b) of the two the plan allows. With `meta.filenames` gone the filename
-/// highlight can no longer come from a `HIGHLIGHT()` over a meta text field, and the
-/// alternative — a second `HIGHLIGHT` scoped to the `filename_index` pages row — needs a
-/// per-result subquery for a decoration. Matching the query's whitespace-separated terms
+/// `primary_filename` is a string attribute rather than a text field, so the title
+/// highlight cannot come from `HIGHLIGHT()`, and the alternative — a second `HIGHLIGHT`
+/// scoped to the `filename_index` pages row — needs a per-result subquery for a
+/// decoration. Matching the query's whitespace-separated terms
 /// against the title is simpler, has no extra round trip, and is honest about what it is:
 /// a visual aid, not the thing that decided the document matched.
 ///
@@ -317,19 +316,17 @@ mod tests {
             facet_filters,
             ..Default::default()
         };
-        let (pages_table, meta_table) =
-            crate::api::search::search_sql::shard_table_names("testdata_1").unwrap();
+        let pages_table =
+            crate::api::search::search_sql::shard_table_name("testdata_1").unwrap();
         ShardQueryParts {
             shard_name: "testdata_1".to_string(),
             from_clause: crate::api::search::search_sql::sql_from_clause("testdata_1").unwrap(),
             where_clause: crate::api::search::search_sql::build_sql_where_clause(
                 &query,
                 &pages_table,
-                &meta_table,
             )
             .unwrap(),
             pages_table,
-            meta_table,
             salt: "testdata@1-2026".to_string(),
         }
     }
@@ -350,30 +347,28 @@ mod tests {
     #[test]
     fn build_results_sql_golden() {
         let sql = build_results_sql(&parts_for("easychair", &[]), relevance(), 21);
-        let expected = "
+        let options = crate::api::search::search_sql::sql_options_clause(21);
+        let expected = format!("
             SELECT collection_dataset,
                 file_hash,
-                testdata_1_meta.primary_filename as primary_filename,
-                HIGHLIGHT({ limit=400, limit_words=100, limit_snippets=1, html_strip_mode=strip,
-                    before_match='<hoover4_strong>', after_match='</hoover4_strong>', around=50 },
+                primary_filename,
+                HIGHLIGHT({{ limit=400, limit_words=100, limit_snippets=1, html_strip_mode=strip,
+                    before_match='<hoover4_strong>', after_match='</hoover4_strong>', around=50 }},
                     page_text) as highlight_text,
-                testdata_1_meta.file_types as file_types,
-                testdata_1_meta.date_min as date_min,
-                testdata_1_meta.date_max as date_max,
-                testdata_1_meta.file_size_bytes as file_size_bytes,
+                file_types,
+                date_min,
+                date_max,
+                file_size_bytes,
                 MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match
             FROM testdata_1_pages
-            LEFT JOIN testdata_1_meta
-            ON testdata_1_pages.collection_dataset = testdata_1_meta.collection_dataset
-            AND testdata_1_pages.file_hash = testdata_1_meta.file_hash
             WHERE MATCH('easychair', testdata_1_pages)
             GROUP BY file_hash
             ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC
             LIMIT 21 OFFSET 0
-            OPTION agent_query_timeout=60000,max_query_time=60000,max_matches=21
+            {options}
             ;
-        ";
-        assert_eq!(normalize(&sql), normalize(expected));
+        ");
+        assert_eq!(normalize(&sql), normalize(&expected));
     }
 
     #[test]
@@ -399,13 +394,13 @@ mod tests {
     fn every_sort_key_orders_and_selects_its_column() {
         for (sort, expected_order, expected_select) in [
             (SortSpec { key: SortKey::Date, desc: true },
-             "ORDER BY testdata_1_meta.date_max DESC", "date_max as date_max"),
+             "ORDER BY date_max DESC", "date_max,"),
             (SortSpec { key: SortKey::Date, desc: false },
-             "ORDER BY testdata_1_meta.date_min ASC", "date_min as date_min"),
+             "ORDER BY date_min ASC", "date_min,"),
             (SortSpec { key: SortKey::FileSize, desc: true },
-             "ORDER BY testdata_1_meta.file_size_bytes DESC", "file_size_bytes as file_size_bytes"),
+             "ORDER BY file_size_bytes DESC", "file_size_bytes,"),
             (SortSpec { key: SortKey::Name, desc: false },
-             "ORDER BY testdata_1_meta.primary_filename ASC", "primary_filename as primary_filename"),
+             "ORDER BY primary_filename ASC", "primary_filename,"),
         ] {
             let sql = normalize(&build_results_sql(&parts_for("word", &[]), sort, 5));
             assert!(sql.contains(expected_order), "{sort:?} -> {sql}");

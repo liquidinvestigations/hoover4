@@ -450,8 +450,12 @@ services:
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
       - OCR_PDF_URL=${OCR_PDF_URL:-}
-      # Max concurrent Manticore queries during search fan-out (default 8).
-      # - HOOVER4_SEARCH_MAX_PARALLELISM=8
+      # Search limits, both optional (ini: search_max_parallelism /
+      # search_timeout_seconds). Unset = the backend's defaults: 8 Manticore queries in
+      # flight process-wide, 30 s per shard query. The empty default is deliberate —
+      # `${VAR:-}` renders an empty string, which the backend treats as unset.
+      - HOOVER4_SEARCH_MAX_PARALLELISM=${HOOVER4_SEARCH_MAX_PARALLELISM:-}
+      - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-}
       # AI Chat: the research agent from compose/agents.yaml (same stack, same
       # `hoover4` network). Chat returns an error message in the transcript
       # when this is unreachable, so the site works fine without the agents running.

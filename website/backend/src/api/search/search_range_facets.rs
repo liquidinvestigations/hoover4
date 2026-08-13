@@ -95,15 +95,14 @@ pub async fn search_numeric_facet(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let meta_table = &parts.meta_table;
             let options_clause = sql_options_clause(1000);
             let sql = format!(
                 "
-                SELECT INTERVAL({meta_table}.file_size_bytes, {edges}) AS bucket,
+                SELECT INTERVAL(file_size_bytes, {edges}) AS bucket,
                        count(distinct file_hash) AS doc_count
                 {from_clause}
                 {where_clause}
-                AND {meta_table}.file_size_bytes >= 0
+                AND file_size_bytes >= 0
                 GROUP BY bucket
                 ORDER BY bucket ASC
                 LIMIT 16

@@ -5,14 +5,21 @@ the P4_extract_entities stage, which runs strictly before this one. This stage
 reads the ``entity_hit`` rows and ``nlp_processed`` watermarks P4 wrote, and the
 ``text_chunk_vectors`` rows P5 wrote.
 
-All three writers target the shard tables assigned by the shard planner
+Both writers target the shard tables assigned by the shard planner
 (``shard_planner.plan_shards``) and use ``REPLACE INTO`` with deterministic row
 ids, so re-indexing a document overwrites its rows in place instead of
 duplicating them:
 
 * pages id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}")``
-* metadata id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}")``
 * vectors id: ``hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}|{chunk_index}|{embedding_model}")``
+
+**One writer owns the pages table, because every row of a document has to carry the
+same metadata.** The document's attributes are denormalized onto each of its rows
+(``manticore.pages_table_ddl``), and the result list reads them from whichever row of a
+``GROUP BY file_hash`` Manticore returns - so a page written with different values than
+its siblings is a document with a non-deterministic date and size. Splitting text rows
+and filename rows across two activities would also mean computing the same metadata
+twice per chunk.
 """
 
 from typing import List
@@ -22,8 +29,8 @@ import os
 from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
-from database.manticore import manticore_execute, shard_tables_from_name
-from .params import BuildVfsNodesParams, IndexShardParams
+from database.manticore import DOCUMENT_COLUMNS, manticore_execute, shard_table_from_name
+from .params import BuildVfsNodesParams, IndexShardParams, OptimizeShardsParams
 from tasks.heartbeat import with_heartbeat
 log = logging.getLogger(__name__)
 
@@ -64,96 +71,46 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 
+#: The MVA columns of a pages row, in the order :func:`pages_replace_sql` writes them.
+#: Manticore cannot bind an MVA, so each one is interpolated as a literal tuple built by
+#: :func:`repr_manticore_tuple` — which is why they are listed apart from the scalars.
+_MVA_COLUMNS = (
+    'ner_per', 'ner_org', 'ner_loc', 'ner_misc',
+    'file_types', 'file_mime_types', 'file_extensions', 'file_paths', 'dates',
+    'email_from', 'email_to',
+)
+
+#: The bound (non-MVA) columns of a pages row, in the same order.
+_SCALAR_COLUMNS = (
+    'collection_dataset', 'file_hash', 'extracted_by', 'page_id', 'page_text',
+    'date_min', 'date_max', 'file_size_bytes', 'struct_flags', 'primary_filename',
+)
+
+
 def pages_replace_sql(pages_table: str, row: dict) -> str:
     """REPLACE INTO statement for one pages row.
 
-    The four NER MVA values are interpolated as Manticore tuples (they cannot be
-    bound parameters); ``repr_manticore_tuple([])`` renders the empty MVA as ``()``.
-    Everything else is a bound parameter. ``pages_table`` comes from
-    ``shard_tables_from_name`` (validated).
+    MVA values are interpolated as Manticore tuples (they cannot be bound parameters);
+    a missing one renders as the empty MVA ``()`` rather than as ``None``. Every scalar
+    is a bound parameter, in the order :func:`pages_replace_params` returns them.
+    ``pages_table`` comes from ``shard_table_from_name`` (validated).
     """
-    return f"""REPLACE INTO {pages_table} (
-                        id,
-                        collection_dataset,
-                        file_hash,
-                        extracted_by,
-                        page_id,
-                        page_text,
-                        ner_per,
-                        ner_org,
-                        ner_loc,
-                        ner_misc
-                    ) VALUES (
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        {row.get('ner_per') or '()'},
-                        {row.get('ner_org') or '()'},
-                        {row.get('ner_loc') or '()'},
-                        {row.get('ner_misc') or '()'}
-                    )"""
+    columns = ', '.join(('id',) + _SCALAR_COLUMNS + _MVA_COLUMNS)
+    placeholders = ', '.join(['%s'] * (1 + len(_SCALAR_COLUMNS)))
+    mvas = ', '.join(row.get(name) or '()' for name in _MVA_COLUMNS)
+    return f"""REPLACE INTO {pages_table} ({columns}) VALUES ({placeholders}, {mvas})"""
 
 
-def meta_replace_sql(meta_table: str, row: dict) -> str:
-    """REPLACE INTO statement for one metadata row.
+def pages_replace_params(collection_dataset: str, row: dict) -> tuple:
+    """Bound parameters for :func:`pages_replace_sql`, in its column order.
 
-    Every MVA is interpolated as a Manticore tuple (they cannot be bound parameters);
-    every scalar is a bound parameter, in the order :func:`meta_replace_params` returns
-    them. ``meta_table`` comes from ``shard_tables_from_name`` (validated).
-
-    The two old text columns (``filenames``, ``metadata_values``) are gone — see
-    ``manticore.meta_table_ddl``.
+    The placeholder list and the parameters are two halves of one statement written in
+    two places; getting them out of step swaps ``file_size_bytes`` and ``struct_flags``,
+    which is the same type, no error, and wrong data.
     """
-    return f"""REPLACE INTO {meta_table} (
-                        id,
-                        collection_dataset,
-                        file_hash,
-                        date_min,
-                        date_max,
-                        file_size_bytes,
-                        struct_flags,
-                        primary_filename,
-                        file_types,
-                        file_mime_types,
-                        file_extensions,
-                        file_paths,
-                        dates,
-                        email_from,
-                        email_to
-                    ) VALUES (
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        %s,
-                        {row['file_types']},
-                        {row['file_mime_types']},
-                        {row['file_extensions']},
-                        {row['file_paths']},
-                        {row['dates']},
-                        {row['email_from']},
-                        {row['email_to']}
-                    )"""
-
-
-def meta_replace_params(collection_dataset: str, row: dict) -> tuple:
-    """Bound parameters for :func:`meta_replace_sql`, in its column order."""
     return (
-        metadata_row_id(collection_dataset, row['file_hash']),
-        row['collection_dataset'],
-        row['file_hash'],
-        row['date_min'],
-        row['date_max'],
-        row['file_size_bytes'],
-        row['struct_flags'],
-        row['primary_filename'],
-    )
+        pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id']),
+    ) + tuple(row[name] for name in _SCALAR_COLUMNS)
 
 
 def pages_row_id(collection_dataset: str, file_hash: str, extracted_by: str, page_id: int) -> int:
@@ -161,15 +118,20 @@ def pages_row_id(collection_dataset: str, file_hash: str, extracted_by: str, pag
     return hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}")
 
 
-def metadata_row_id(collection_dataset: str, file_hash: str) -> int:
-    """Deterministic Manticore row id for one metadata row. Enables REPLACE INTO."""
-    return hash_string_to_uint63(f"{collection_dataset}|{file_hash}")
-
-
 @activity.defn
 @with_heartbeat
 def index_text_pages(params: IndexShardParams) -> list[str]:
-    """Index the chunk's text segments into the shard's pages table.
+    """Index the chunk's documents into the shard's table: text rows and filename rows.
+
+    Every row carries its document's metadata (:func:`document_metadata`), so the
+    metadata is read once per chunk and both row kinds are written by one writer — see
+    the module docstring.
+
+    Rows are inserted grouped by ``(collection_dataset, file_hash, page_id)``. That
+    ordering is what makes the duplicated metadata nearly free: the columnar engine picks
+    a storage scheme per block, and a block whose rows all belong to one document holds
+    one repeated value per metadata column. Inserted in arrival order the same data costs
+    several times as much on disk.
 
     Returns the file_hashes actually written (committed). ``IndexDatasetPlan``
     records exactly these in ``index_state`` — a document whose writer failed
@@ -178,8 +140,11 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
     plan_hash: str = params.plan_hash
-    pages_table, _ = shard_tables_from_name(params.shard_name)
+    pages_table = shard_table_from_name(params.shard_name)
     from database.manticore import get_manticore_client
+
+    metadata = document_metadata(params)
+
     with get_collection_client(params.collectionname) as client:
         # FINAL: `text_content` is a ReplacingMergeTree, so a re-parse leaves two rows for
         # the same segment until the background merge runs. The Manticore row id is
@@ -195,8 +160,6 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
         }).to_pylist()
-        if not text_content:
-            return []
         entity_rows = client.query_arrow("""
             SELECT file_hash, extracted_by, page_id, entity_type, entity_values
             FROM entity_hit
@@ -227,6 +190,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     # with these values (ids are content-derived via hash_string_to_uint63).
     ner_ids = get_string_term_ids(params.collectionname, collection_dataset, 'ner', ner_values)
 
+    rows = []
     for row in text_content:
         key = (row['file_hash'], row['extracted_by'], row['page_id'])
         if key not in processed_keys:
@@ -240,30 +204,49 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             segment_entities = {}
         else:
             segment_entities = entities_by_segment.get(key, {})
+        page = dict(metadata.get(row['file_hash']) or empty_document_metadata())
+        page.update({
+            'collection_dataset': row['collection_dataset'],
+            'file_hash': row['file_hash'],
+            'extracted_by': row['extracted_by'],
+            'page_id': row['page_id'],
+            'page_text': clean_text(row['text']),
+        })
         for entity_type in ("PER", "ORG", "LOC", "MISC"):
             field_name = f"ner_{entity_type.lower()}"
             field_values = [ner_ids[value] for value in segment_entities.get(entity_type, [])]
-            row[field_name] = repr_manticore_tuple(field_values)
+            page[field_name] = repr_manticore_tuple(field_values)
+        rows.append(page)
+
+    for file_hash, document in metadata.items():
+        if not document['basenames']:
+            continue
+        filename_row = dict(document)
+        filename_row.update({
+            'collection_dataset': collection_dataset,
+            'file_hash': file_hash,
+            'extracted_by': FILENAME_EXTRACTED_BY,
+            'page_id': FILENAME_PAGE_ID,
+            'page_text': "\n".join(document['basenames']),
+        })
+        rows.append(filename_row)
+
+    # Grouped by document, filename row first (page_id -1). See the docstring.
+    rows.sort(key=lambda row: (row['collection_dataset'], row['file_hash'],
+                               row['page_id'], row['extracted_by']))
 
     with get_manticore_client() as client:
-        for chunk in chunks(text_content, INDEX_ROW_CHUNK_SIZE):
+        for chunk in chunks(rows, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
                 manticore_execute(
                     client,
                     pages_replace_sql(pages_table, row),
-                    (
-                        pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id']),
-                        row['collection_dataset'],
-                        row['file_hash'],
-                        row['extracted_by'],
-                        row['page_id'],
-                        clean_text(row['text'])
-                    )
+                    pages_replace_params(collection_dataset, row),
                 )
-            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} text content into {pages_table}")
+            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} rows into {pages_table}")
             client.commit()
         client.commit()
-    return sorted({row['file_hash'] for row in text_content})
+    return sorted({row['file_hash'] for row in rows})
 
 
 def primary_filename(basenames) -> str:
@@ -289,20 +272,44 @@ def primary_filename(basenames) -> str:
     return normalised[0] if normalised else ""
 
 
-@activity.defn
-@with_heartbeat
-def index_metadata(params: IndexShardParams) -> list[str]:
-    """Index the chunk's metadata rows into the shard's meta table.
+def empty_document_metadata() -> dict:
+    """The metadata of a document nothing is known about.
+
+    Every column is non-nullable in Manticore, so "nothing known" needs values rather
+    than omitted columns: empty MVAs, the two unknown sentinels, and an empty title. A
+    text segment whose document has no `file_types` row still has to be searchable, and
+    it must not carry a date or a size it does not have.
+    """
+    from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
+
+    row = {name: repr_manticore_tuple([]) for name in DOCUMENT_COLUMNS
+           if name not in ('date_min', 'date_max', 'file_size_bytes', 'struct_flags',
+                           'primary_filename')}
+    row.update({
+        'date_min': DATE_UNKNOWN,
+        'date_max': DATE_UNKNOWN,
+        'file_size_bytes': SIZE_UNKNOWN,
+        'struct_flags': 0,
+        'primary_filename': "",
+        'basenames': [],
+    })
+    return row
+
+
+def document_metadata(params: IndexShardParams) -> dict[str, dict]:
+    """The chunk's per-document metadata, keyed by ``file_hash``.
 
     One ClickHouse read per source, all FINAL, joined in Python rather than in one
     monster JOIN: the sources have wildly different cardinalities (one `file_types` row
     per document, N `vfs_files` rows, M `document_dates` rows, K `email_addresses` rows)
     and joining them server-side multiplies the rows before it groups them.
 
-    Returns the file_hashes actually written (committed), for ``index_state``
-    (see ``index_text_pages``).
+    Each value is a ready-to-write row fragment — MVAs already rendered as Manticore
+    tuples — plus ``basenames``, which is not a column: it is the text of the document's
+    ``filename_index`` row. Documents are keyed by hash and NOT restricted to those with
+    a `file_types` row, because a document known only to `vfs_files` still has a
+    filename, a size and a folder to be filtered by.
     """
-    from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN, get_manticore_client
     from .vfs_nodes import (
         STRUCT_FLAG_EMAIL_HAS_ATTACHMENTS,
         STRUCT_FLAG_TRUNCATED_ANCESTRY,
@@ -313,7 +320,6 @@ def index_metadata(params: IndexShardParams) -> list[str]:
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
     item_hashes: list[str] = params.hashes
-    _, meta_table = shard_tables_from_name(params.shard_name)
 
     with get_collection_client(params.collectionname) as client:
         raw_metadatas = client.query_arrow("""
@@ -406,14 +412,17 @@ def index_metadata(params: IndexShardParams) -> list[str]:
         bucket = from_by_hash if row['role'] == 'from' else to_by_hash
         bucket.setdefault(row['email_hash'], set()).add(row['address'])
 
+    file_types_by_hash = {item['hash']: item for item in raw_metadatas}
     items = []
     all_filetypes: set[str] = set()
     all_mime_types: set[str] = set()
     all_extensions: set[str] = set()
     all_node_keys: set[str] = set()
     all_addresses: set[str] = set()
-    for item in raw_metadatas:
-        file_hash = item['hash']
+    for file_hash in sorted(set(file_types_by_hash) | set(vfs_by_hash)):
+        item = file_types_by_hash.get(
+            file_hash, {'hash': file_hash, 'file_types': [], 'mime_types': [], 'extensions': []}
+        )
         rows = vfs_by_hash.get(file_hash, [])
         node_keys, truncated = ancestor_node_keys(
             collection_dataset,
@@ -441,7 +450,9 @@ def index_metadata(params: IndexShardParams) -> list[str]:
     node_key_ids = get_string_term_ids(params.collectionname, collection_dataset, 'vfs_node', all_node_keys)
     address_ids = get_string_term_ids(params.collectionname, collection_dataset, 'email_address', all_addresses)
 
-    search_rows = []
+    from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
+
+    metadata: dict[str, dict] = {}
     for item, rows, node_keys, truncated in items:
         file_hash = item['hash']
         dates = sorted(dates_by_hash.get(file_hash, ()))
@@ -453,9 +464,8 @@ def index_metadata(params: IndexShardParams) -> list[str]:
             struct_flags |= STRUCT_FLAG_TRUNCATED_ANCESTRY
         if file_hash in email_hashes and file_hash in container_hashes_in_use:
             struct_flags |= STRUCT_FLAG_EMAIL_HAS_ATTACHMENTS
-        search_rows.append({
-            "collection_dataset": collection_dataset,
-            "file_hash": file_hash,
+        basenames = sorted({os.path.basename(row['path']) for row in rows if row['path']})
+        metadata[file_hash] = {
             "file_types": repr_manticore_tuple([filetype_ids[ft] for ft in item['file_types']]),
             "file_mime_types": repr_manticore_tuple([mime_type_ids[mt] for mt in item['mime_types']]),
             "file_extensions": repr_manticore_tuple([extension_ids[ext] for ext in item['extensions']]),
@@ -465,29 +475,23 @@ def index_metadata(params: IndexShardParams) -> list[str]:
             "date_max": dates[-1] if dates else DATE_UNKNOWN,
             "file_size_bytes": max(sizes) if sizes else SIZE_UNKNOWN,
             "struct_flags": struct_flags,
-            "primary_filename": primary_filename(
-                {os.path.basename(row['path']) for row in rows}
-            ),
+            "primary_filename": primary_filename(basenames),
             "email_from": repr_manticore_tuple(
                 sorted(address_ids[a] for a in from_by_hash.get(file_hash, ()))
             ),
             "email_to": repr_manticore_tuple(
                 sorted(address_ids[a] for a in to_by_hash.get(file_hash, ()))
             ),
-        })
-
-    with get_manticore_client() as client:
-        for chunk in chunks(search_rows, INDEX_ROW_CHUNK_SIZE):
-            for row in chunk:
-                manticore_execute(
-                    client,
-                    meta_replace_sql(meta_table, row),
-                    meta_replace_params(collection_dataset, row),
-                )
-            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} metadata into {meta_table}")
-            client.commit()
-        client.commit()
-    return sorted({row['file_hash'] for row in search_rows})
+            # Not a column: the text of the document's `filename_index` row.
+            #
+            # **Only ever real basenames.** They come from `vfs_files` paths and never
+            # from `text_content`, which is what keeps the filename row immune to the
+            # base64/XPM junk that contaminated page text. Folder names are deliberately
+            # NOT in it: they go through the `<coll>_vfs` structure index, where a folder
+            # is one row rather than one row per document under it.
+            "basenames": basenames,
+        }
+    return metadata
 
 
 #: `extracted_by` of the synthetic pages row that carries a document's filenames, and
@@ -497,65 +501,88 @@ FILENAME_EXTRACTED_BY = 'filename_index'
 FILENAME_PAGE_ID = -1
 
 
+#: Compaction thresholds, read from ``SHOW TABLE <t> STATUS``. Re-ingesting a document
+#: leaves its old rows dead in place, and every write batch adds a chunk; both accumulate
+#: silently, and both are what compaction reclaims. Measured on a live corpus: a table at
+#: 75 % killed lost 58 % of its disk, one at 26 % lost 32 %.
+OPTIMIZE_KILLED_RATE_PERCENT = 20.0
+OPTIMIZE_DISK_CHUNKS = 12
+
+
+def should_optimize(status: dict) -> bool:
+    """Whether a shard table is worth compacting, from its ``SHOW TABLE … STATUS``.
+
+    ``killed_rate`` is reported as a percentage STRING (``'34.22%'``), which is why it
+    is parsed rather than compared: read as a fraction it is 34, and every table looks
+    like it needs compacting forever.
+    """
+    killed = str(status.get('killed_rate', '0')).strip().rstrip('%')
+    try:
+        killed_rate = float(killed)
+    except ValueError:
+        killed_rate = 0.0
+    try:
+        disk_chunks = int(status.get('disk_chunks', 0))
+    except (TypeError, ValueError):
+        disk_chunks = 0
+    return killed_rate > OPTIMIZE_KILLED_RATE_PERCENT or disk_chunks > OPTIMIZE_DISK_CHUNKS
+
+
 @activity.defn
 @with_heartbeat
-def index_filenames_row(params: IndexShardParams) -> list[str]:
-    """One synthetic pages row per document holding its distinct basenames.
+def optimize_shard_tables(params: OptimizeShardsParams) -> str:
+    """Compact the shards this plan wrote to, when they have accumulated enough waste.
 
-    This is what makes a query for a filename find the document, and it is the source of
-    the filename match-highlight. It lives in the pages table rather than as a text field
-    on meta because that is where the query already looks — the alternative was a second
-    infix-indexed text column carrying the same strings.
+    **A storage win, not a latency win** — say so rather than selling it as a speedup.
+    Killed rows are cheap to skip at query time; what compaction buys is the disk back,
+    plus a small consistent gain from merging chunks.
 
-    **Only ever real basenames.** It is built from `vfs_files` paths and never from
-    `text_content`, which is what keeps it immune to the base64/XPM junk that
-    contaminated page text. Folder names are deliberately NOT in it: they go
-    through the `<coll>_vfs` structure index, where a folder is one row rather than one
-    row per document under it.
+    ``OPTION cutoff=1`` is what actually compacts: `optimize_cutoff` defaults to 24, so a
+    plain OPTIMIZE barely moves a table sitting at 20 chunks. Never ``sync=1`` from an
+    activity — it blocks for the whole merge and Temporal times the activity out on a
+    large shard; the statement returns immediately and the daemon merges in the
+    background.
+
+    Skipped entirely while another plan of the same collection is still in flight: a
+    merge competing with a write batch for I/O is how a 2 GB table takes minutes instead
+    of seconds. The plan this activity belongs to is not counted — its own row reaches
+    `processing_plan_finished` only after indexing returns.
     """
-    from database.manticore import get_manticore_client
-
-    collection_dataset: str = params.collection_dataset
-    plan_hash: str = params.plan_hash
-    item_hashes: list[str] = params.hashes
-    pages_table, _ = shard_tables_from_name(params.shard_name)
+    from database.manticore import get_manticore_client, shard_table_from_name
 
     with get_collection_client(params.collectionname) as client:
-        rows = client.query_arrow("""
-            SELECT hash, groupUniqArray(path) AS paths
-            FROM vfs_files FINAL
-            WHERE collection_dataset = {collection_dataset:String}
-            AND hash IN {item_hashes:Array(String)}
-            GROUP BY hash
-        """, {
-            "collection_dataset": collection_dataset,
-            "item_hashes": item_hashes
-        }).to_pylist()
+        in_flight = client.query("""
+            SELECT count() FROM (
+                SELECT collection_dataset, plan_hash FROM processing_plans FINAL
+                WHERE plan_hash != {plan_hash:String}
+            ) AS p
+            WHERE (p.collection_dataset, p.plan_hash) NOT IN (
+                SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL
+            )
+        """, parameters={"plan_hash": params.plan_hash}).result_rows[0][0]
+    if in_flight:
+        log.info(
+            "[P6] optimize %s (plan %s): %d other plan(s) still in flight; skipping",
+            params.collectionname, params.plan_hash[:8], in_flight,
+        )
+        return "skipped: ingest in flight"
 
-    written = []
-    with get_manticore_client() as client:
-        for chunk in chunks(rows, INDEX_ROW_CHUNK_SIZE):
-            for row in chunk:
-                basenames = sorted({os.path.basename(p) for p in row['paths'] if p})
-                manticore_execute(
-                    client,
-                    pages_replace_sql(pages_table, {}),
-                    (
-                        pages_row_id(collection_dataset, row['hash'], FILENAME_EXTRACTED_BY, FILENAME_PAGE_ID),
-                        collection_dataset,
-                        row['hash'],
-                        FILENAME_EXTRACTED_BY,
-                        FILENAME_PAGE_ID,
-                        "\n".join(basenames),
-                    ),
-                )
-                written.append(row['hash'])
-            client.commit()
-        client.commit()
-    log.info(
-        f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(written)} filename rows into {pages_table}"
-    )
-    return sorted(set(written))
+    compacted = []
+    with get_manticore_client() as cnx:
+        for shard_name in sorted(set(params.shard_names)):
+            table = shard_table_from_name(shard_name)
+            cur = cnx.cursor()
+            cur.execute(f"SHOW TABLE {table} STATUS")
+            status = {row[0]: row[1] for row in cur.fetchall()}
+            if not should_optimize(status):
+                continue
+            log.info(
+                "[P6] optimize %s: killed_rate=%s disk_chunks=%s; compacting",
+                table, status.get('killed_rate'), status.get('disk_chunks'),
+            )
+            cur.execute(f"OPTIMIZE TABLE {table} OPTION cutoff=1")
+            compacted.append(table)
+    return f"compacted {len(compacted)}: {', '.join(compacted)}" if compacted else "nothing to compact"
 
 
 @activity.defn
@@ -568,8 +595,8 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
     holes wherever a parent arrived in a later plan than its child. It is cheap — one
     small row per node, no text.
 
-    Runs before the per-shard writers: `index_metadata` reads this table to build the
-    ancestor closure, and `index_vfs_structure` copies it into Manticore.
+    Runs before the per-shard writers: `document_metadata` reads this table to build
+    each document's ancestor closure, and `index_vfs_structure` copies it into Manticore.
     """
     import pyarrow as pa
 

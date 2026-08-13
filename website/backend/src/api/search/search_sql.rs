@@ -1,10 +1,22 @@
 //! SQL builder helpers for search queries.
 //!
 //! Search data is sharded per collection: logical shard `<collectionname>_<n>` (n is
-//! 1-based) consists of two physical Manticore tables, `<shard>_pages` and
-//! `<shard>_meta`. There are no global search tables and no distributed tables
-//! (Manticore 14.1.0 cannot JOIN over them), so every search query is built
-//! once per shard with the table names substituted and fanned out (see `fanout.rs`).
+//! 1-based) is ONE physical Manticore table, `<shard>_pages`. There are no global
+//! search tables and no distributed tables (Manticore 14.1.0 cannot run this query
+//! shape over them), so every search query is built once per shard with the table name
+//! substituted and fanned out (see `fanout.rs`).
+//!
+//! **The document's metadata is denormalized onto every one of its pages rows, and
+//! there is no JOIN here. Do not reintroduce one.** A `LEFT JOIN` over a second
+//! per-document table is a nested-loop lookup per left row (~9 µs) evaluated before any
+//! predicate, so it costs the same whether the query matches everything or nothing: it
+//! made an unfiltered entity facet on the largest shard take 13 s on its own and 100 s
+//! under the four-pane concurrency of the Entities tab, which is an HTTP 504. It is
+//! also silently WRONG — Manticore's `LEFT JOIN` drops left rows with no match, 0.28 %
+//! of documents on the corpus it was measured against, so every facet count served
+//! through it was short by that margin. The duplicated metadata costs ~15 % on disk
+//! because the columnar engine picks a storage scheme per block and a block of pages
+//! belonging to one document holds identical values.
 //!
 //! Table and field names are interpolated into SQL strings and cannot be bound
 //! parameters, so both are validated here: shard names against
@@ -18,6 +30,7 @@ use common::{
 
 use crate::api::admin::collections::collectionname_valid;
 use crate::db_utils::manticore_match::prepare_match_query;
+use crate::db_utils::manticore_utils::search_timeout_ms;
 
 /// `extracted_by` of the synthetic pages row that carries a document's filenames.
 ///
@@ -33,13 +46,24 @@ pub const FILENAME_INDEX_EXTRACTED_BY: &str = "filename_index";
 /// [`FILENAME_INDEX_EXTRACTED_BY`].
 pub const EXCLUDE_FILENAME_ROW: &str = "extracted_by != 'filename_index'";
 
-/// Columns that live on the `<shard>_meta` table. Frontend-facing field names are
-/// bare (`file_types`, never `<table>.file_types`); they are qualified with the
-/// shard's meta table here so the reference is unambiguous inside the JOIN.
+/// Every column a query may name. One whitelist, because one shard is one table:
+/// per-document metadata is denormalized onto the pages rows, so no name needs
+/// qualifying and none is ambiguous.
 ///
-/// `filenames` and `metadata_values` are gone with the meta table's text fields (see
-/// `database/manticore.py::meta_table_ddl`).
-const META_TABLE_FIELDS: &[&str] = &[
+/// Facet field names arrive over the wire and are interpolated into SQL, so the
+/// whitelist is the only thing between a request and the query text — hence the
+/// `&'static str` return: what reaches the SQL is this constant, never the caller's
+/// string.
+const SEARCH_FIELDS: &[&str] = &[
+    "collection_dataset",
+    "file_hash",
+    "extracted_by",
+    "page_id",
+    "page_text",
+    "ner_per",
+    "ner_org",
+    "ner_loc",
+    "ner_misc",
     "file_types",
     "file_mime_types",
     "file_extensions",
@@ -54,29 +78,13 @@ const META_TABLE_FIELDS: &[&str] = &[
     "email_to",
 ];
 
-/// Columns allowed to appear unqualified: pages-only attributes, plus the two
-/// columns present on both tables of the JOIN (`collection_dataset`, `file_hash`).
-/// Manticore 14.1.0 resolves the ambiguous ones — the pre-shard queries already
-/// relied on that behaviour against the retired global tables.
-const UNQUALIFIED_FIELDS: &[&str] = &[
-    "collection_dataset",
-    "file_hash",
-    "extracted_by",
-    "page_id",
-    "page_text",
-    "ner_per",
-    "ner_org",
-    "ner_loc",
-    "ner_misc",
-];
-
-/// Validate a logical shard name `<collectionname>_<n>` and return its two physical
-/// table names, `(<shard>_pages, <shard>_meta)`.
+/// Validate a logical shard name `<collectionname>_<n>` and return its physical
+/// table name, `<shard>_pages`.
 ///
 /// Shard names reach this crate from the `manticore_shards` ledger and from the
 /// search fan-out — never from user input — but they end up interpolated into SQL,
 /// so re-validate anyway.
-pub fn shard_table_names(shard_name: &str) -> anyhow::Result<(String, String)> {
+pub fn shard_table_name(shard_name: &str) -> anyhow::Result<String> {
     let (collectionname, index) = shard_name
         .rsplit_once('_')
         .with_context(|| format!("invalid shard name: {shard_name:?}"))?;
@@ -86,42 +94,44 @@ pub fn shard_table_names(shard_name: &str) -> anyhow::Result<(String, String)> {
     if !collectionname_valid(collectionname) {
         anyhow::bail!("invalid shard name: {shard_name:?} (bad collectionname)");
     }
-    Ok((format!("{shard_name}_pages"), format!("{shard_name}_meta")))
+    Ok(format!("{shard_name}_pages"))
 }
 
-/// FROM clause joining one shard's pages and meta tables.
+/// FROM clause for one shard. One table, no join — see the module doc.
 pub fn sql_from_clause(shard_name: &str) -> anyhow::Result<String> {
-    let (pages, meta) = shard_table_names(shard_name)?;
+    let pages = shard_table_name(shard_name)?;
     Ok(format!(
         "
     FROM {pages}
-    LEFT JOIN {meta}
-    ON {pages}.collection_dataset = {meta}.collection_dataset
-    AND {pages}.file_hash = {meta}.file_hash
 "
     ))
 }
 
-/// Qualify a frontend-facing field name for use in a per-shard query.
-///
-/// Meta-table columns become `<meta>.<field>`; pages/shared columns pass through
-/// unqualified. Anything else is rejected — facet field names arrive over the wire
-/// and are interpolated into SQL, so a whitelist is the only safe option.
-pub fn qualify_field_name(field_name: &str, meta_table: &str) -> anyhow::Result<String> {
-    if META_TABLE_FIELDS.contains(&field_name) {
-        return Ok(format!("{meta_table}.{field_name}"));
-    }
-    if UNQUALIFIED_FIELDS.contains(&field_name) {
-        return Ok(field_name.to_string());
-    }
-    anyhow::bail!("invalid search field name: {field_name:?}");
+/// Check a frontend-facing field name against [`SEARCH_FIELDS`] and return the
+/// whitelisted spelling. Anything else is rejected.
+pub fn search_field_name(field_name: &str) -> anyhow::Result<&'static str> {
+    SEARCH_FIELDS
+        .iter()
+        .find(|known| **known == field_name)
+        .copied()
+        .with_context(|| format!("invalid search field name: {field_name:?}"))
 }
 
-/// Timeout options for every search query. `max_matches` must cover the rows the
-/// caller wants back: Manticore silently caps result sets at `max_matches`
-/// (default 1000), which would corrupt deep pagination and large facet merges.
+/// Timeout options for every search query, on every path.
+///
+/// `max_matches` must cover the rows the caller wants back: Manticore silently caps
+/// result sets at `max_matches` (default 1000), which would corrupt deep pagination and
+/// large facet merges.
+///
+/// The budget is [`search_timeout_ms`] and is uniform — the MVA facet path once emitted
+/// no `OPTION` clause at all, which is how a query the proxy had already given up on
+/// went on burning daemon CPU. `max_query_time` is Manticore's own best-effort limit and
+/// does not cover a connect or read stall, so the client applies the same budget again
+/// (`manticore_search_sql`); this half is what stops the server working on an abandoned
+/// query.
 pub fn sql_options_clause(max_matches: u64) -> String {
-    format!("OPTION agent_query_timeout=60000,max_query_time=60000,max_matches={max_matches}")
+    let budget = search_timeout_ms();
+    format!("OPTION agent_query_timeout={budget},max_query_time={budget},max_matches={max_matches}")
 }
 
 /// The `ORDER BY` column for one sort key, already qualified.
@@ -133,18 +143,18 @@ pub fn sql_options_clause(max_matches: u64) -> String {
 ///
 /// `Relevance` is `weight()` and never a column, which is why this returns the whole
 /// key expression rather than a name.
-pub fn sort_column(sort: &SortSpec, meta_table: &str) -> String {
+pub fn sort_column(sort: &SortSpec) -> &'static str {
     match sort.key {
-        SortKey::Relevance => "weight()".to_string(),
+        SortKey::Relevance => "weight()",
         SortKey::Date => {
             if sort.desc {
-                format!("{meta_table}.date_max")
+                "date_max"
             } else {
-                format!("{meta_table}.date_min")
+                "date_min"
             }
         }
-        SortKey::FileSize => format!("{meta_table}.file_size_bytes"),
-        SortKey::Name => format!("{meta_table}.primary_filename"),
+        SortKey::FileSize => "file_size_bytes",
+        SortKey::Name => "primary_filename",
     }
 }
 
@@ -155,24 +165,20 @@ pub fn sort_column(sort: &SortSpec, meta_table: &str) -> String {
 /// queries with different `LIMIT`, and `fetch_limit` grows with the requested page, so
 /// without a total order a document tied at the truncation boundary appears on two pages
 /// or on none.
-pub fn sort_order_by(sort: &SortSpec, meta_table: &str) -> String {
-    let column = sort_column(sort, meta_table);
+pub fn sort_order_by(sort: &SortSpec) -> String {
+    let column = sort_column(sort);
     let direction = if sort.desc { "DESC" } else { "ASC" };
     format!("ORDER BY {column} {direction}, collection_dataset ASC, file_hash ASC")
 }
 
 /// A range predicate over one indexed field.
 ///
-/// **Dates are an interval-overlap test, not `ANY(dates) BETWEEN`, and that is a
-/// platform limit rather than a choice.** Manticore 14.1.0 cannot evaluate `ANY(mva)`
-/// inside this query shape at all: qualified (`ANY(m.dates)`) is a parse error
-/// (`unexpected SUBKEY`), unqualified resolves against the pages table and errors as an
-/// unknown column, and table aliases are not accepted in the JOIN either. `ANY(dates)`
-/// works only against `<shard>_meta` on its own — and the query cannot drop the JOIN,
-/// because `MATCH` lives on the pages side. (The JOIN itself is forced by the same
-/// version's inability to run this shape over distributed tables.)
+/// **Dates are an interval-overlap test, not `ANY(dates) BETWEEN`.** The predicate is
+/// the same shape the scalar bounds are stored for, and it is what every sort and every
+/// histogram bin already reads, so the filter and the picture of it agree by
+/// construction.
 ///
-/// So the predicate is `date_min <= hi AND date_max >= lo`: the document's date SPAN
+/// The predicate is `date_min <= hi AND date_max >= lo`: the document's date SPAN
 /// overlaps the requested range. For the ordinary document — one date, or several within
 /// a few days — this is exactly "any date in range". It differs only for a document whose
 /// dates STRADDLE the range with none inside it: a file created in 2007 and modified in
@@ -184,11 +190,7 @@ pub fn sort_order_by(sort: &SortSpec, meta_table: &str) -> String {
 /// The unknown sentinel is tested on `date_min` alone: an undated document has
 /// `date_min = date_max = DATE_UNKNOWN`, which is below every real bound, so the overlap
 /// test excludes it automatically.
-fn range_predicate(
-    field_name: &str,
-    filter: &RangeFilter,
-    meta_table: &str,
-) -> anyhow::Result<Option<String>> {
+fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Option<String>> {
     if !filter.is_active() {
         return Ok(None);
     }
@@ -206,20 +208,18 @@ fn range_predicate(
         // The DATE_UNKNOWN sentinel is i64::MIN, so an undated document fails
         // `date_max >= lo` for every real `lo` and drops out here rather than needing
         // an extra clause.
-        "dates" => Some(format!(
-            "{meta_table}.date_min <= {hi} AND {meta_table}.date_max >= {lo}"
-        )),
+        "dates" => Some(format!("date_min <= {hi} AND date_max >= {lo}")),
         "file_size_bytes" => {
             // A document with no vfs_files row carries SIZE_UNKNOWN (-1), which would
             // otherwise land inside any range whose lower bound is unset.
             let lo = lo.max(0);
-            Some(format!("{meta_table}.file_size_bytes BETWEEN {lo} AND {hi}"))
+            Some(format!("file_size_bytes BETWEEN {lo} AND {hi}"))
         }
         other => anyhow::bail!("invalid range filter field: {other:?}"),
     };
     let unknown = match field_name {
-        "dates" => format!("{meta_table}.date_min = {DATE_UNKNOWN}"),
-        "file_size_bytes" => format!("{meta_table}.file_size_bytes < 0"),
+        "dates" => format!("date_min = {DATE_UNKNOWN}"),
+        "file_size_bytes" => "file_size_bytes < 0".to_string(),
         _ => unreachable!("field validated above"),
     };
 
@@ -251,11 +251,7 @@ fn match_argument(query_string: &str) -> anyhow::Result<String> {
         .quoted())
 }
 
-pub fn build_sql_where_clause(
-    query: &SearchQuery,
-    pages_table: &str,
-    meta_table: &str,
-) -> anyhow::Result<String> {
+pub fn build_sql_where_clause(query: &SearchQuery, pages_table: &str) -> anyhow::Result<String> {
     let mut terms = vec![format!(
         "
         WHERE MATCH({}, {pages_table})
@@ -264,7 +260,7 @@ pub fn build_sql_where_clause(
     )];
 
     for (field_name, values) in query.facet_filters.iter() {
-        let field_name = qualify_field_name(field_name, meta_table)?;
+        let field_name = search_field_name(field_name)?;
         let values_str = values
             .iter()
             .map(|value| match value {
@@ -277,7 +273,7 @@ pub fn build_sql_where_clause(
     }
 
     for (field_name, filter) in query.active_range_filters() {
-        if let Some(predicate) = range_predicate(field_name, filter, meta_table)? {
+        if let Some(predicate) = range_predicate(field_name, filter)? {
             terms.push(predicate);
         }
     }
@@ -311,19 +307,13 @@ mod tests {
     }
 
     #[test]
-    fn shard_table_names_valid() {
-        assert_eq!(
-            shard_table_names("testdata_1").unwrap(),
-            ("testdata_1_pages".to_string(), "testdata_1_meta".to_string())
-        );
-        assert_eq!(
-            shard_table_names("mycollection_12").unwrap(),
-            ("mycollection_12_pages".to_string(), "mycollection_12_meta".to_string())
-        );
+    fn shard_table_name_valid() {
+        assert_eq!(shard_table_name("testdata_1").unwrap(), "testdata_1_pages");
+        assert_eq!(shard_table_name("mycollection_12").unwrap(), "mycollection_12_pages");
     }
 
     #[test]
-    fn shard_table_names_rejects_invalid() {
+    fn shard_table_name_rejects_invalid() {
         for bad in [
             "testdata",              // no shard index
             "testdata_",             // empty index
@@ -333,47 +323,37 @@ mod tests {
             "testdata_1_pages",      // reserved suffix -> invalid collectionname
             "_1",                    // empty collectionname
         ] {
-            assert!(shard_table_names(bad).is_err(), "should reject {bad:?}");
+            assert!(shard_table_name(bad).is_err(), "should reject {bad:?}");
         }
     }
 
+    /// One table, no JOIN. The JOIN this replaced cost ~9 µs per left row before any
+    /// predicate ran and dropped 0.28 % of documents; see the module doc.
     #[test]
     fn sql_from_clause_golden() {
-        assert_eq!(
-            normalize(&sql_from_clause("testdata_2").unwrap()),
-            normalize("
-                FROM testdata_2_pages
-                LEFT JOIN testdata_2_meta
-                ON testdata_2_pages.collection_dataset = testdata_2_meta.collection_dataset
-                AND testdata_2_pages.file_hash = testdata_2_meta.file_hash
-            ")
-        );
+        let from = sql_from_clause("testdata_2").unwrap();
+        assert_eq!(normalize(&from), "FROM testdata_2_pages");
+        assert!(!from.to_uppercase().contains("JOIN"), "{from}");
     }
 
     #[test]
-    fn qualify_field_name_meta_and_pages() {
-        assert_eq!(
-            qualify_field_name("file_types", "testdata_1_meta").unwrap(),
-            "testdata_1_meta.file_types"
-        );
-        assert_eq!(qualify_field_name("ner_per", "testdata_1_meta").unwrap(), "ner_per");
-        assert_eq!(
-            qualify_field_name("collection_dataset", "testdata_1_meta").unwrap(),
-            "collection_dataset"
-        );
+    fn search_field_name_accepts_pages_and_document_columns() {
+        assert_eq!(search_field_name("file_types").unwrap(), "file_types");
+        assert_eq!(search_field_name("ner_per").unwrap(), "ner_per");
+        assert_eq!(search_field_name("collection_dataset").unwrap(), "collection_dataset");
     }
 
     #[test]
-    fn qualify_field_name_rejects_unknown_and_injection() {
+    fn search_field_name_rejects_unknown_and_injection() {
         for bad in ["no_such_field", "file_types); DROP TABLE x", "meta.file_types", "FILE_TYPES"] {
-            assert!(qualify_field_name(bad, "testdata_1_meta").is_err(), "should reject {bad:?}");
+            assert!(search_field_name(bad).is_err(), "should reject {bad:?}");
         }
     }
 
     #[test]
     fn where_clause_plain_query_golden() {
         let q = query("hello world", &[]);
-        let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
+        let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('hello world', testdata_1_pages)");
     }
 
@@ -383,7 +363,7 @@ mod tests {
         // The escape pass then escapes the backslash itself, so the wire string is
         // `user\\@example.com`.
         let q = query("user@example.com", &[]);
-        let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
+        let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('user\\\\@example.com', testdata_1_pages)");
     }
 
@@ -394,7 +374,7 @@ mod tests {
         // doubled form passes in the test suite while every such search 500s in
         // production — which is exactly how this reached a live site.
         let q = query("  it's a test  ", &[]);
-        let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
+        let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('it\\'s a test', testdata_1_pages)");
     }
 
@@ -411,7 +391,7 @@ mod tests {
             ("computer", "WHERE MATCH('computer', testdata_1_pages)"),
         ] {
             let sql =
-                build_sql_where_clause(&query(input, &[]), "testdata_1_pages", "testdata_1_meta")
+                build_sql_where_clause(&query(input, &[]), "testdata_1_pages")
                     .unwrap();
             assert_eq!(normalize(&sql), expected, "for {input:?}");
         }
@@ -422,7 +402,7 @@ mod tests {
     #[test]
     fn where_clause_rejects_a_query_with_nothing_to_match() {
         assert!(
-            build_sql_where_clause(&query("!a", &[]), "testdata_1_pages", "testdata_1_meta")
+            build_sql_where_clause(&query("!a", &[]), "testdata_1_pages")
                 .is_err()
         );
     }
@@ -432,7 +412,7 @@ mod tests {
     #[test]
     fn where_clause_keeps_the_empty_query_matching_everything() {
         let sql =
-            build_sql_where_clause(&query("   ", &[]), "testdata_1_pages", "testdata_1_meta")
+            build_sql_where_clause(&query("   ", &[]), "testdata_1_pages")
                 .unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('', testdata_1_pages)");
     }
@@ -446,26 +426,30 @@ mod tests {
                 ("file_types", &[FacetOriginalValue::Int(7), FacetOriginalValue::Int(9)]),
             ],
         );
-        let sql = build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").unwrap();
+        let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
         assert_eq!(
             normalize(&sql),
             "WHERE MATCH('word', testdata_1_pages) \
              AND collection_dataset IN ('testdata_testfiles') \
-             AND testdata_1_meta.file_types IN (7, 9)"
+             AND file_types IN (7, 9)"
         );
     }
 
     #[test]
     fn where_clause_rejects_bad_field_name() {
         let q = query("word", &[("evil_field", &[FacetOriginalValue::Int(1)])]);
-        assert!(build_sql_where_clause(&q, "testdata_1_pages", "testdata_1_meta").is_err());
+        assert!(build_sql_where_clause(&q, "testdata_1_pages").is_err());
     }
 
+    /// One budget on every path, and it is the one the client backstop is derived from.
     #[test]
-    fn options_clause_includes_max_matches() {
+    fn options_clause_carries_the_search_budget_and_max_matches() {
         assert_eq!(
             sql_options_clause(42),
-            "OPTION agent_query_timeout=60000,max_query_time=60000,max_matches=42"
+            format!(
+                "OPTION agent_query_timeout={ms},max_query_time={ms},max_matches=42",
+                ms = search_timeout_ms()
+            )
         );
     }
 
@@ -473,7 +457,7 @@ mod tests {
     /// drifts from its caller list is a runtime 500. Keep in sync with the facet
     /// list in `frontend/src/components/search_components/search_facets.rs`.
     #[test]
-    fn qualify_field_name_accepts_every_frontend_facet_field() {
+    fn search_field_name_accepts_every_frontend_facet_field() {
         for field in [
             "collection_dataset",
             "file_types",
@@ -494,43 +478,42 @@ mod tests {
             "ner_misc",
         ] {
             assert!(
-                qualify_field_name(field, "testdata_1_meta").is_ok(),
+                search_field_name(field).is_ok(),
                 "frontend facet field {field:?} rejected by the whitelist"
             );
         }
     }
 
-    /// The dropped meta text columns must NOT come back through the whitelist: they no
-    /// longer exist on the table, so a filter naming one is a Manticore error on every
-    /// shard rather than an empty result.
+    /// The dropped text columns must NOT come back through the whitelist: they do not
+    /// exist on the table, so a filter naming one is a Manticore error on every shard
+    /// rather than an empty result.
     #[test]
-    fn qualify_field_name_rejects_the_dropped_text_columns() {
+    fn search_field_name_rejects_the_columns_that_are_not_there() {
         for gone in ["filenames", "metadata_values"] {
-            assert!(qualify_field_name(gone, "testdata_1_meta").is_err(), "{gone} is gone");
+            assert!(search_field_name(gone).is_err(), "{gone} is not a column");
         }
     }
 
     fn ranged(field: &str, filter: RangeFilter) -> String {
         let mut query = SearchQuery { query_string: "word".to_string(), ..Default::default() };
         query.range_filters.insert(field.to_string(), filter);
-        normalize(&build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").unwrap())
+        normalize(&build_sql_where_clause(&query, "testdata_1_pages").unwrap())
     }
 
-    /// The predicate is an interval-overlap test rather than `ANY(dates) BETWEEN`,
-    /// because Manticore 14.1.0 cannot evaluate `ANY(mva)` across this JOIN in any
-    /// spelling. See `range_predicate`'s doc comment; the substitution is deliberate and
-    /// one-sided (a superset), and this pins the shape so it is not "fixed" back into
-    /// something that 400s on every query.
+    /// The predicate is an interval-overlap test rather than `ANY(dates) BETWEEN`. See
+    /// `range_predicate`'s doc comment; the substitution is deliberate and one-sided
+    /// (a superset), and this pins the shape so it is not "fixed" into something that
+    /// disagrees with the histogram drawn over the same bounds.
     #[test]
     fn a_date_range_is_an_interval_overlap_over_the_scalar_bounds() {
         let sql = ranged("dates", RangeFilter { min: Some(1356998400), max: Some(1483228799), include_unknown: false });
         assert!(
             sql.contains(
-                "AND testdata_1_meta.date_min <= 1483228799 AND testdata_1_meta.date_max >= 1356998400"
+                "AND date_min <= 1483228799 AND date_max >= 1356998400"
             ),
             "{sql}"
         );
-        assert!(!sql.contains("ANY("), "ANY(mva) does not parse across the JOIN: {sql}");
+        assert!(!sql.contains("ANY("), "the bounds are scalars, not an MVA test: {sql}");
     }
 
     #[test]
@@ -545,7 +528,7 @@ mod tests {
     fn date_unknown_is_tested_on_the_scalar_not_the_mva() {
         // An undated document's `dates` is EMPTY, so no MVA predicate can reach it.
         let sql = ranged("dates", RangeFilter { min: None, max: None, include_unknown: true });
-        assert!(sql.contains(&format!("AND testdata_1_meta.date_min = {DATE_UNKNOWN}")), "{sql}");
+        assert!(sql.contains(&format!("AND date_min = {DATE_UNKNOWN}")), "{sql}");
         assert!(!sql.contains("ANY("), "unknown-only must not emit an MVA predicate: {sql}");
     }
 
@@ -554,7 +537,7 @@ mod tests {
         let sql = ranged("dates", RangeFilter { min: Some(0), max: Some(100), include_unknown: true });
         assert!(
             sql.contains(&format!(
-                "AND (testdata_1_meta.date_min <= 100 AND testdata_1_meta.date_max >= 0                  OR testdata_1_meta.date_min = {DATE_UNKNOWN})"
+                "AND (date_min <= 100 AND date_max >= 0                  OR date_min = {DATE_UNKNOWN})"
             ).replace("                 ", "")),
             "{sql}"
         );
@@ -565,7 +548,7 @@ mod tests {
         // SIZE_UNKNOWN is -1. Without the clamp, "under 1 MB" would sweep up every
         // document that has no vfs_files row.
         let sql = ranged("file_size_bytes", RangeFilter { min: None, max: Some(1048575), include_unknown: false });
-        assert!(sql.contains("AND testdata_1_meta.file_size_bytes BETWEEN 0 AND 1048575"), "{sql}");
+        assert!(sql.contains("AND file_size_bytes BETWEEN 0 AND 1048575"), "{sql}");
     }
 
     #[test]
@@ -575,7 +558,7 @@ mod tests {
             "dates".to_string(),
             RangeFilter { min: Some(100), max: Some(1), include_unknown: false },
         );
-        assert!(build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").is_err());
+        assert!(build_sql_where_clause(&query, "testdata_1_pages").is_err());
     }
 
     #[test]
@@ -591,7 +574,7 @@ mod tests {
             "page_text".to_string(),
             RangeFilter { min: Some(1), ..Default::default() },
         );
-        assert!(build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta").is_err());
+        assert!(build_sql_where_clause(&query, "testdata_1_pages").is_err());
     }
 
     #[test]
@@ -599,25 +582,25 @@ mod tests {
         let cases = [
             (SortKey::Relevance, true, "weight()"),
             (SortKey::Relevance, false, "weight()"),
-            (SortKey::Date, true, "testdata_1_meta.date_max"),
-            (SortKey::Date, false, "testdata_1_meta.date_min"),
-            (SortKey::FileSize, true, "testdata_1_meta.file_size_bytes"),
-            (SortKey::Name, false, "testdata_1_meta.primary_filename"),
+            (SortKey::Date, true, "date_max"),
+            (SortKey::Date, false, "date_min"),
+            (SortKey::FileSize, true, "file_size_bytes"),
+            (SortKey::Name, false, "primary_filename"),
         ];
         for (key, desc, expected) in cases {
-            assert_eq!(sort_column(&SortSpec { key, desc }, "testdata_1_meta"), expected);
+            assert_eq!(sort_column(&SortSpec { key, desc }), expected);
         }
     }
 
     #[test]
     fn sort_order_by_keeps_the_stable_tie_break() {
         assert_eq!(
-            sort_order_by(&SortSpec { key: SortKey::Name, desc: false }, "testdata_1_meta"),
-            "ORDER BY testdata_1_meta.primary_filename ASC, collection_dataset ASC, file_hash ASC"
+            sort_order_by(&SortSpec { key: SortKey::Name, desc: false }),
+            "ORDER BY primary_filename ASC, collection_dataset ASC, file_hash ASC"
         );
         assert_eq!(
-            sort_order_by(&SortSpec { key: SortKey::FileSize, desc: true }, "testdata_1_meta"),
-            "ORDER BY testdata_1_meta.file_size_bytes DESC, collection_dataset ASC, file_hash ASC"
+            sort_order_by(&SortSpec { key: SortKey::FileSize, desc: true }),
+            "ORDER BY file_size_bytes DESC, collection_dataset ASC, file_hash ASC"
         );
     }
 
@@ -631,7 +614,7 @@ mod tests {
     #[test]
     fn a_query_with_only_negations_is_a_bad_request_all_the_way_out() {
         let query = SearchQuery { query_string: "!a".to_string(), ..Default::default() };
-        let error = build_sql_where_clause(&query, "testdata_1_pages", "testdata_1_meta")
+        let error = build_sql_where_clause(&query, "testdata_1_pages")
             .expect_err("a negation-only query has no MATCH() argument");
         assert!(
             crate::auth::guard::is_bad_request(&error),

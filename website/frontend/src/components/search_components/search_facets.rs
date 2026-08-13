@@ -36,18 +36,38 @@ pub fn FacetSelectorList(
     tracing::info!("FacetSelectorList(facet_field_name={x})");
     });
 
-    let search_result = use_resource(move || {
+    let mut facet_request = use_resource(move || {
         let q = original_query.read().clone();
         search_string_facet(
             q,
             facet_field_name.read().clone(),
             map_string_terms.read().clone(),
         )
-    })
-    .suspend()?
-    .cloned();
+    });
+    let search_result = facet_request.suspend()?.cloned();
     let search_result = match search_result {
-        Err(e) => return rsx! {ServerErrorDisplay { error: e }},
+        // The retry is a BUTTON and never automatic. This pane is one of four rendered
+        // at once, and the failure it is most likely to show is the search running out
+        // of its time budget — retrying that by itself doubles the load on a Manticore
+        // that was already too slow to answer, four times over.
+        Err(e) => {
+            return rsx! {
+                ServerErrorDisplay { error: e }
+                div {
+                    style: "display: flex; justify-content: center; margin: 8px 0;",
+                    button {
+                        style: "
+                            border: 1px solid rgba(0,0,0,0.3); background: white;
+                            border-radius: 100px; padding: 6px 16px; cursor: pointer;
+                            font-size: 15px;
+                        ",
+                        class: "hoover4-hover-shadow-background",
+                        onclick: move |_| facet_request.restart(),
+                        "Retry"
+                    }
+                }
+            };
+        }
         Ok(s) => s,
     };
     let originally_filtered_values = original_query

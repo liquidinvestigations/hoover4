@@ -30,7 +30,7 @@ def _manticore_pair_count(collectionname: str) -> int:
     with get_manticore_client() as cnx:
         cursor = cnx.cursor()
         for table in list_shard_tables(collectionname):
-            if not table.endswith("_meta"):
+            if not table.endswith("_pages"):
                 continue
             cursor.execute(
                 f"SELECT collection_dataset, file_hash FROM {table} "

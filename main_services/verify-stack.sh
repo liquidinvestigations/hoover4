@@ -78,7 +78,8 @@ INGEST_ROOT_ZIPS="${INGEST_ROOT_ZIPS:-/testdata/hoover-testdata/data/zip-in-mult
 # `-` and not `:-`: setting it to the EMPTY string is how the root is switched off,
 # which is what the before/after ingest-cost measurement needs.
 INGEST_ROOT_SHAPES="${INGEST_ROOT_SHAPES-/testdata/hoover-testdata/data/many-children}"
-MAX_SHARD_TEXT_BYTES=1000000000
+MAX_SHARD_TEXT_BYTES=4000000000
+MAX_SHARD_ROWS=2500000
 
 CH() { docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 -q "$1"; }
 MC() { docker exec manticore mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
@@ -318,16 +319,16 @@ else
 fi
 
 # 4. Shard ledger matches Manticore's SHOW TABLES, and Manticore holds no
-#    non-shard tables (in particular no global doc_text_pages / doc_metadata).
+#    non-shard tables (in particular no global doc_text_pages / doc_metadata, and no
+#    leftover per-document `_meta` table).
 #    Manticore's mysql protocol always emits bordered output (it ignores -N -B),
 #    so the table names are the second |-delimited column. Take ALL of them, not
-#    just *_pages/_meta matches: a leftover non-shard table must fail this check.
+#    just *_pages matches: a leftover non-shard table must fail this check.
 #
-#    There are FOUR table families, not two. `<shard>_vectors` is the third: a check
-#    that expects exactly pages+meta fails on every live stack, and a gate that is red
-#    for a known reason stops being read at all. Whether `_vectors` is expected follows
-#    the probe, above.
-#    The fourth is `<collectionname>_vfs` — one table per collection
+#    There are THREE table families. `<shard>_pages` is one table per shard and holds
+#    everything the search queries; `<shard>_vectors` is the second, and whether it is
+#    expected follows the probe, above.
+#    The third is `<collectionname>_vfs` — one table per collection
 #    rather than per shard (it holds one small row per VFS node and is never sharded). It
 #    has no ledger row to derive from, so it is expected for every collection that has
 #    any shard at all: the same indexing run that opens a shard also creates it.
@@ -336,7 +337,7 @@ ledger_tables=""
 for coll in $COLLECTIONS; do
     shards=$(CH "SELECT shard_name FROM Hoover4_Collection_$coll.manticore_shards FINAL ORDER BY shard_index")
     for shard in $shards; do
-        ledger_tables="$ledger_tables${shard}_pages\n${shard}_meta\n"
+        ledger_tables="$ledger_tables${shard}_pages\n"
         [ "$EXPECT_VECTOR_SHARDS" = "1" ] && ledger_tables="$ledger_tables${shard}_vectors\n"
     done
     [ -n "$shards" ] && ledger_tables="$ledger_tables${coll}_vfs\n"
@@ -348,20 +349,21 @@ else
     fail "Manticore/ledger mismatch: manticore=[$(echo $manticore_tables)], ledger=[$(echo $ledger_tables)]"
 fi
 
-# 5. No shard over the 1 GB text budget (single-document shards may exceed it).
+# 5. No shard over either budget (single-document shards may exceed both).
 shard_union=""
 for coll in $COLLECTIONS; do
     [ -n "$shard_union" ] && shard_union="$shard_union UNION ALL "
-    shard_union="$shard_union SELECT shard_name, text_bytes, doc_count
+    shard_union="$shard_union SELECT shard_name, text_bytes, row_count, doc_count
                  FROM Hoover4_Collection_$coll.manticore_shards FINAL"
 done
 over_budget=$(CH "
     SELECT count() FROM ( $shard_union )
-    WHERE text_bytes > $MAX_SHARD_TEXT_BYTES AND doc_count > 1")
+    WHERE (text_bytes > $MAX_SHARD_TEXT_BYTES OR row_count > $MAX_SHARD_ROWS)
+      AND doc_count > 1")
 if [ "$over_budget" = "0" ]; then
-    ok "no shard over the 1 GB text budget"
+    ok "no shard over the text or row budget"
 else
-    fail "$over_budget shard(s) over the text budget"
+    fail "$over_budget shard(s) over a shard budget"
 fi
 
 # 6. Every (collection_dataset, file_hash) pair lives in exactly one shard, and the
@@ -377,7 +379,7 @@ for coll in $COLLECTIONS; do
         || fail "$coll: $multi (dataset, file_hash) pair(s) assigned to != 1 shard"
     recorded=$(CH "SELECT count() FROM $db.index_state FINAL")
     indexed=0
-    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_meta"); do
+    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_pages"); do
         # Manticore has no count(distinct concat(...)): GROUP BY the pair and
         # count the bordered result rows (each data line starts with '|').
         # `|| true`: an empty shard makes `grep -c` exit 1, which under `set -e` killed
@@ -423,18 +425,18 @@ for coll in $COLLECTIONS; do
         || fail "$coll: ${coll}_vfs has $mc_nodes rows but vfs_nodes has $ch_nodes"
 done
 
-# 6d. No meta row carries a size below the "unknown" sentinel. -1 means "this document
+# 6d. No row carries a size below the "unknown" sentinel. -1 means "this document
 #     exists in file_types but in no vfs_files row"; anything below it is a writer bug,
 #     and it would silently join the "under 1 MB" bucket.
 bad_sizes=0
 for coll in $COLLECTIONS; do
-    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_meta"); do
+    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_pages"); do
         n=$(MC "SELECT file_hash FROM $table WHERE file_size_bytes < -1 LIMIT 1000" | grep -c '^|' || true)
         bad_sizes=$((bad_sizes + n))
     done
 done
-[ "$bad_sizes" = "0" ] && ok "no meta row has file_size_bytes < -1" \
-    || fail "$bad_sizes meta row(s) have file_size_bytes < -1"
+[ "$bad_sizes" = "0" ] && ok "no row has file_size_bytes < -1" \
+    || fail "$bad_sizes row(s) have file_size_bytes < -1"
 
 # 6e. `zip-in-multiple-locations` is TWO copies of one archive. Because containers are
 #     content-addressed they share a container_hash, so a VFS model with a single parent
@@ -453,10 +455,11 @@ if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
             continue
         fi
         found=0
-        for table in $(MC "show tables" | grep -oE "testdata_[0-9]+_meta"); do
+        for table in $(MC "show tables" | grep -oE "testdata_[0-9]+_pages"); do
             n=$(MC "SELECT file_hash FROM $table
                     WHERE collection_dataset = 'testdata_zips' AND file_paths = $term_id
-                    LIMIT 1000" | grep -c '^|' || true)
+                    GROUP BY collection_dataset, file_hash
+                    LIMIT 1000 OPTION max_matches=1000" | grep -c '^|' || true)
             found=$((found + n))
         done
         # The archive itself plus the child.txt inside it: at least 2 documents are

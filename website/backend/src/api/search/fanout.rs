@@ -1,17 +1,29 @@
 //! Bounded fan-out of search queries across Manticore shard tables, with merging.
 //!
-//! Manticore 14.1.0 cannot run the website's JOIN/stored-field/FACET query shape over
+//! Manticore 14.1.0 cannot run the website's stored-field/FACET query shape over
 //! distributed tables — measured, and it fails by crashing the daemon or returning
 //! NULL stored fields rather than by erroring cleanly. So the
 //! backend fans out over **shards**: each permitted collection contributes one query
-//! target per entry of its `manticore_shards` ledger
-//! (`<collectionname>_<n>_pages LEFT JOIN <collectionname>_<n>_meta`, a plain local
-//! join). At most [`MAX_PARALLEL_INDEX_QUERIES`] requests are in flight at once.
+//! target per entry of its `manticore_shards` ledger (`<collectionname>_<n>_pages`, one
+//! table). At most [`max_parallelism`] requests are in flight at once, PROCESS-WIDE.
 //!
-//! **Partial-failure policy:** one slow or broken shard must not blank the whole
-//! result page. Per-target errors are logged as warnings and dropped, and callers
-//! mark the response as partial; an error is propagated only when *every* target
-//! failed.
+//! **The concurrency limit is global, not per call, and that is the point.** The
+//! Entities tab renders four facet panes at once, so it makes four fan-outs
+//! simultaneously; a per-call limit of 8 therefore put up to 32 queries on a daemon
+//! with a dozen worker threads, and a shard query that costs 13 s alone measured 100 s
+//! under that load. One global gate and no second per-call cap: two nested limits make
+//! the effective parallelism impossible to reason about. This is a fairness fix rather
+//! than a throughput one — the total work is unchanged, but no single panel can starve
+//! the others. Serialising the panes in the frontend instead would be strictly worse:
+//! it makes the tab as slow as the sum of its parts even when the daemon is idle.
+//!
+//! **Partial-failure policy — a dropped shard and a truncated shard are different.**
+//! One broken shard must not blank the whole result page: per-target errors are logged
+//! as warnings and dropped, callers mark the response as partial, and an error is
+//! propagated only when *every* target failed. A shard that ran out of its time budget
+//! is NOT covered by that rule and fails the whole request ([`is_search_timeout`]): a
+//! connection error is visible and honest, while a truncated count looks exactly like a
+//! correct one.
 //!
 //! **Known ranking limitation:** BM25 statistics are per-table, so `_score` values
 //! from different shards/collections are not strictly comparable and cross-shard
@@ -21,21 +33,25 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::sync::OnceLock;
 
 use futures::stream::{self, StreamExt};
+use tokio::sync::Semaphore;
 
 use common::current_user::CurrentUser;
 use common::search_query::{SearchQuery, SortSpec};
 use common::search_result::FacetOriginalValue;
 
-use crate::api::search::search_sql::{
-    build_sql_where_clause, shard_table_names, sql_from_clause,
-};
+use crate::api::search::search_sql::{build_sql_where_clause, shard_table_name, sql_from_clause};
 use crate::db_utils::clickhouse_utils;
-use crate::db_utils::manticore_utils::RawSarchResult;
+use crate::db_utils::manticore_utils::{RawSarchResult, is_search_timeout};
 
-/// Default cap on concurrent Manticore queries during fan-out.
-/// Override with `HOOVER4_SEARCH_MAX_PARALLELISM` (clamped to 1..=64).
+/// Default cap on concurrent Manticore queries across the whole process.
+///
+/// Size it to the DAEMON — roughly its worker-thread count — not to the shard count:
+/// more in-flight queries than Manticore has threads only deepens its queue. Override
+/// with `HOOVER4_SEARCH_MAX_PARALLELISM` (clamped to 1..=64), which is what a box with
+/// many more cores than this default assumes should set.
 pub const MAX_PARALLEL_INDEX_QUERIES: usize = 8;
 
 pub const PARALLELISM_ENV: &str = "HOOVER4_SEARCH_MAX_PARALLELISM";
@@ -56,6 +72,16 @@ pub fn parse_max_parallelism(raw: Option<&str>) -> usize {
 
 pub fn max_parallelism() -> usize {
     parse_max_parallelism(std::env::var(PARALLELISM_ENV).ok().as_deref())
+}
+
+/// The one gate every shard query passes through, sized on first use.
+///
+/// A `OnceLock` because the size must not change while permits are outstanding: a
+/// semaphore that grew between two acquisitions would let more queries through than
+/// either value allows. Restart the site to change the setting.
+fn query_permits() -> &'static Semaphore {
+    static PERMITS: OnceLock<Semaphore> = OnceLock::new();
+    PERMITS.get_or_init(|| Semaphore::new(max_parallelism()))
 }
 
 /// Per-shard facet bucket limit. A bucket that ranks low in one shard but high in
@@ -120,13 +146,12 @@ impl FanoutTarget {
 }
 
 /// Everything a per-shard Manticore query needs, built once per fan-out target:
-/// validated table names, the JOIN clause, the WHERE clause and the cache salt
+/// the validated table name, the FROM clause, the WHERE clause and the cache salt
 /// (shard-ledger generation, so an indexing run invalidates cached searches).
 /// The four search endpoints share this prologue instead of rebuilding it.
 pub struct ShardQueryParts {
     pub shard_name: String,
     pub pages_table: String,
-    pub meta_table: String,
     pub from_clause: String,
     pub where_clause: String,
     pub salt: String,
@@ -139,13 +164,12 @@ pub async fn shard_query_parts(
     let shard_name = target.shard_name()?.to_string();
     let generation = clickhouse_utils::shard_generation(target.collectionname()).await?;
     let salt = format!("{}@{generation}", target.collectionname());
-    let (pages_table, meta_table) = shard_table_names(&shard_name)?;
+    let pages_table = shard_table_name(&shard_name)?;
     let from_clause = sql_from_clause(&shard_name)?;
-    let where_clause = build_sql_where_clause(query, &pages_table, &meta_table)?;
+    let where_clause = build_sql_where_clause(query, &pages_table)?;
     Ok(ShardQueryParts {
         shard_name,
         pages_table,
-        meta_table,
         from_clause,
         where_clause,
         salt,
@@ -167,11 +191,13 @@ impl<T> FanoutOutcome<T> {
     }
 }
 
-/// Run `run(target)` for every target with at most [`max_parallelism`] futures in
-/// flight, collecting `(target, value)` pairs.
+/// Run `run(target)` for every target, holding a permit from the process-wide gate for
+/// the duration of each one, and collect `(target, value)` pairs.
 ///
 /// Per-target errors are logged and dropped unless ALL targets fail, in which case
-/// the first error is propagated.
+/// the first error is propagated. A **timeout is not dropped**: it fails the whole
+/// fan-out, because the alternative is showing a count that is short by an unknown
+/// amount and saying nothing about it.
 pub async fn fan_out<T, F, Fut>(
     targets: Vec<FanoutTarget>,
     run: F,
@@ -186,8 +212,15 @@ where
         .map(|target| {
             let label = target.clone();
             let fut = run(target);
-            async move { (label, fut.await) }
+            async move {
+                // Acquired INSIDE the per-target future, so a permit is held only while
+                // a query is actually running.
+                let _permit = query_permits().acquire().await;
+                (label, fut.await)
+            }
         })
+        // Still bounded here as well: this only decides how many futures are polled at
+        // once, and the permits above decide how many of them are talking to Manticore.
         .buffer_unordered(max_parallelism())
         .collect()
         .await;
@@ -199,6 +232,10 @@ where
         match outcome {
             Ok(value) => results.push((target, value)),
             Err(e) => {
+                if is_search_timeout(&e) {
+                    tracing::warn!("fan_out: target {} timed out: {e:#}", target.label());
+                    return Err(e.context(format!("shard {} timed out", target.label())));
+                }
                 // A query the caller malformed fails identically on every target, so it
                 // is one 400 and not N broken shards. Logged at WARN it produced a burst
                 // of shard-failure lines per keystroke — the exact signal this level is
@@ -863,6 +900,68 @@ mod tests {
         let result: anyhow::Result<FanoutOutcome<String>> =
             fan_out(targets, |_| async move { anyhow::bail!("down") }).await;
         assert!(result.is_err());
+    }
+
+    /// A shard that ran out of time fails the request even though the others answered.
+    /// Dropping it would render three shards' worth of counts as if they were all of
+    /// them — the failure mode this policy exists to prevent.
+    #[tokio::test]
+    async fn fan_out_propagates_a_timeout_instead_of_dropping_it() {
+        let targets = vec![
+            FanoutTarget::collection("a"),
+            FanoutTarget::collection("slow"),
+        ];
+        let result: anyhow::Result<FanoutOutcome<String>> = fan_out(targets, |t| async move {
+            if t.collectionname() == "slow" {
+                return Err(anyhow::Error::from(
+                    crate::db_utils::manticore_utils::SearchTimedOut("out of budget".to_string()),
+                ));
+            }
+            Ok(t.collectionname().to_string())
+        })
+        .await;
+        let error = match result {
+            Ok(_) => panic!("a timed-out shard must fail the whole fan-out"),
+            Err(e) => e,
+        };
+        assert!(is_search_timeout(&error), "{error:#}");
+    }
+
+    /// The gate is process-wide, so two concurrent fan-outs share it. Without that, the
+    /// four panes of the Entities tab multiply the limit by four.
+    #[tokio::test]
+    async fn the_query_gate_is_shared_across_concurrent_fan_outs() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let live = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let one_fan_out = |live: Arc<AtomicUsize>, peak: Arc<AtomicUsize>| async move {
+            let targets: Vec<FanoutTarget> =
+                (0..24).map(|i| FanoutTarget::collection(format!("c{i}"))).collect();
+            fan_out(targets, move |_| {
+                let (live, peak) = (live.clone(), peak.clone());
+                async move {
+                    let now = live.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    tokio::task::yield_now().await;
+                    live.fetch_sub(1, Ordering::SeqCst);
+                    Ok(0_u8)
+                }
+            })
+            .await
+            .unwrap();
+        };
+        tokio::join!(
+            one_fan_out(live.clone(), peak.clone()),
+            one_fan_out(live.clone(), peak.clone()),
+        );
+        assert!(
+            peak.load(Ordering::SeqCst) <= max_parallelism(),
+            "{} queries were in flight at once, over the global limit of {}",
+            peak.load(Ordering::SeqCst),
+            max_parallelism()
+        );
     }
 
     #[tokio::test]

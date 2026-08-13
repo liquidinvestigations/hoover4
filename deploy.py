@@ -96,6 +96,10 @@ DEFAULTS = {
         # visitor should get: no dev overlay, no rebuild-on-boot 500s. See
         # compose/website-release.yaml.
         "website_release_mode": "false",
+        # Search limits. Empty = unset in the rendered env, and the website backend
+        # falls back to its own defaults (8 concurrent shard queries, 30 s per query).
+        "search_max_parallelism": "",
+        "search_timeout_seconds": "",
         "ocr_pdf_enabled": "true",
         # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
@@ -447,6 +451,13 @@ def render_main_env(cfg):
         env["HOOVER4_TESTDATA_DIR"] = cfg.get(m, "testdata_dir")
     if cfg.get(m, "mcp_shared_secret_file"):
         env["MCP_SHARED_SECRET_FILE_HOST"] = cfg.get(m, "mcp_shared_secret_file")
+    # Rendered only when set: the website reads its own default when the variable is
+    # absent, and an empty value would parse as "0" on some paths and as garbage on
+    # others.
+    if cfg.get(m, "search_max_parallelism"):
+        env["HOOVER4_SEARCH_MAX_PARALLELISM"] = cfg.get(m, "search_max_parallelism")
+    if cfg.get(m, "search_timeout_seconds"):
+        env["HOOVER4_SEARCH_TIMEOUT_SECONDS"] = cfg.get(m, "search_timeout_seconds")
 
     # Pipeline switches, rendered unconditionally so the worker can pick up a new one
     # without a deploy.py change.

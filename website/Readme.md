@@ -129,20 +129,45 @@ and facet values — carry the same wrong quoting rule and are not yet converted
 ### Search fan-out
 
 Manticore holds no global search tables. Each collection's search data lives in a
-dynamic number of shard table pairs, `<collectionname>_<n>_pages` /
-`<collectionname>_<n>_meta` (capped at ~1 GB of text per shard by the indexing
-planner). Distributed tables are deliberately not used: Manticore 14.1.0 cannot run
-this site's JOIN/stored-field/FACET query shape over them — measured, not assumed, and
-it fails by returning NULL stored fields rather than by erroring.
+dynamic number of shard tables, `<collectionname>_<n>_pages` (capped by the indexing
+planner at 4 GB of text or 2.5 M rows, whichever binds first). Distributed tables are
+deliberately not used: Manticore 14.1.0 cannot run this site's stored-field/FACET query
+shape over them — measured, not assumed, and it fails by returning NULL stored fields
+rather than by erroring.
 
-Every search — result list, hit count, string facets, MVA facets — is therefore built
-once **per shard** (`backend/src/api/search/search_sql.rs`) and fanned out with at most
-`MAX_PARALLEL_INDEX_QUERIES = 8` requests in flight
-(`backend/src/api/search/fanout.rs`, override with `HOOVER4_SEARCH_MAX_PARALLELISM`,
-clamped to 1..=64). Selecting datasets in the `collection_dataset` facet prunes whole
-collections from the fan-out. One failing shard degrades the response to partial (the
-UI shows a "some collections could not be searched" notice); an error is returned only
-when every shard fails.
+**One table per shard, and no JOIN.** Each document's metadata is denormalized onto every
+one of its pages rows by the indexer. The JOIN this replaced was the single most expensive
+thing in the search path — a nested-loop lookup per left row, evaluated before any
+predicate, so an unfiltered entity facet on the largest shard cost 13 s alone and 100 s
+under the four-way concurrency of the Entities tab, which is what produced HTTP 504 there.
+It was also silently wrong: Manticore's `LEFT JOIN` drops unmatched left rows, 0.28% of
+documents on the corpus it was measured against. Denormalized, the same facet is ~1 s and
+a `file_types` facet is ~0.27 s, for about 15% more disk. Do not reintroduce a join.
+
+Every search — result list, hit count, string facets, MVA facets, the date histogram — is
+therefore built once **per shard** (`backend/src/api/search/search_sql.rs`) and fanned out
+through a PROCESS-WIDE gate of `MAX_PARALLEL_INDEX_QUERIES = 8` concurrent Manticore
+queries (`backend/src/api/search/fanout.rs`, override with
+`HOOVER4_SEARCH_MAX_PARALLELISM`, clamped to 1..=64; ini key `search_max_parallelism`).
+Process-wide rather than per request because the Entities tab opens four fan-outs at once,
+and a per-call limit multiplies by four against a daemon that has a dozen worker threads.
+Size it to the daemon, not to the shard count.
+
+Selecting datasets in the `collection_dataset` facet prunes whole collections from the
+fan-out. One failing shard degrades the response to partial (the UI shows a "some
+collections could not be searched" notice); an error is returned only when every shard
+fails.
+
+**A timeout is not a partial result.** Every query carries `max_query_time` and
+`agent_query_timeout` of 30 s (`HOOVER4_SEARCH_TIMEOUT_SECONDS`, ini key
+`search_timeout_seconds`), and the HTTP client applies the same budget plus five seconds
+of grace — Manticore's own limit is best-effort and covers neither a connect nor a read
+stall. A shard that hits either limit fails the whole request, is never written to the
+search cache, and the facet pane offers a Retry button. That is deliberate asymmetry: a
+shard that could not be reached is dropped with a visible amber notice, while a shard that
+timed out answers with counts that are short by an unknown amount in a response shaped
+exactly like a correct one. The retry is never automatic — retrying by itself doubles the
+load on a Manticore that was already too slow.
 
 What is exact, and what is approximate:
 

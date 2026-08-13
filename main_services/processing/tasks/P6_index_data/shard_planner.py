@@ -2,16 +2,24 @@
 
 Assigns every document of a processing plan to exactly one Manticore shard of its
 collection. Shards are filled append-only: the newest open shard takes documents until
-another one would push it over :data:`MAX_SHARD_TEXT_BYTES`, then it is sealed and the
-next shard is opened. A document that alone exceeds the budget gets its own shard
-(the same rule ``P1_compute_plans`` uses for oversized blobs).
+another one would push it over :data:`MAX_SHARD_TEXT_BYTES` **or**
+:data:`MAX_SHARD_ROWS`, then it is sealed and the next shard is opened. A document that
+alone exceeds a budget gets its own shard (the same rule ``P1_compute_plans`` uses for
+oversized blobs).
+
+**Two budgets, whichever binds first.** Bytes per row vary by two orders of magnitude
+across a mixed corpus — an email page averages ~1.5 kB and a document page ~57 kB — while
+the cost of a facet or a group-by is per ROW and independent of how much text each row
+holds. A byte-only budget therefore produces shards whose query cost differs by a factor
+of 35, and the largest-by-rows shard is the straggler every broad query waits for. The
+byte cap is what binds for document corpora and the row cap for mail.
 
 The durable state lives in the collection database:
 
 * ``manticore_shards`` — the ledger: one row per shard with its fill level
-  (``text_bytes`` / ``doc_count``) and ``is_open`` flag. ReplacingMergeTree keyed on
-  ``shard_name`` versioned by ``updated_at``: always read with ``FINAL`` and always
-  write complete rows, never partial ones.
+  (``text_bytes`` / ``row_count`` / ``doc_count``) and ``is_open`` flag.
+  ReplacingMergeTree keyed on ``shard_name`` versioned by ``updated_at``: always read
+  with ``FINAL`` and always write complete rows, never partial ones.
 * ``manticore_shard_assignments`` — ``(collection_dataset, file_hash) -> shard_name``.
   The shard *reservation*: a re-indexed document goes back to its existing shard (the
   writers overwrite in place with ``REPLACE INTO``); it is never duplicated across
@@ -22,7 +30,7 @@ The durable state lives in the collection database:
   never from the reservations.
 
 **Identity contract:** the whole indexing pipeline is keyed on
-``(collection_dataset, file_hash)`` — Manticore row ids, the pages/meta rows, the
+``(collection_dataset, file_hash)`` — Manticore row ids, the pages rows, the
 purge path. A (dataset, document) pair therefore lives in exactly one shard, and the
 same content ingested into two datasets of one collection is indexed twice (once per
 dataset). Never assume ``file_hash`` alone identifies a document.
@@ -50,9 +58,25 @@ from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
-# <= 1 GB of text per Manticore shard. Changing this only affects shards opened
-# afterwards; run `main.py reindex-collection` to redistribute existing shards.
-MAX_SHARD_TEXT_BYTES = 1_000_000_000
+# Per-shard budgets. Changing either only affects shards opened afterwards; run
+# `main.py reindex-collection` to redistribute existing shards.
+#
+# 4 GB of raw text is ~6.9 GB on disk at the measured 1.73x, which keeps a single
+# shard's worst-case unfiltered facet scan around 3.6 s — well inside the 30 s search
+# budget — and an OPTIMIZE merge down to minutes. Smaller shards are not free: Manticore
+# parallelises one table's query across worker threads by itself (`pseudo_sharding`), its
+# own benchmarks put the sweet spot at 4-8 physical shards on a 16-core box, and
+# throughput falls BELOW the unsharded baseline by 32. So shard size is an operational
+# choice — rebuild granularity, merge cost, straggler bound — not a parallelism one.
+MAX_SHARD_TEXT_BYTES = 4_000_000_000
+
+# 2.5 M rows is where the row cost of a facet scan is comparable to the byte budget's
+# for mail (4 GB of email is ~2.8 M rows) and binds first for anything smaller-grained.
+MAX_SHARD_ROWS = 2_500_000
+
+#: Rows a document adds to a shard when its page count is unknown: its filename row.
+#: Never 0 — a document with no text still occupies a row and still costs a group-by.
+MIN_DOCUMENT_ROWS = 1
 
 
 @dataclass
@@ -64,6 +88,7 @@ class ShardState:
     text_bytes: int
     doc_count: int
     is_open: bool
+    row_count: int = 0
 
 
 @dataclass
@@ -78,17 +103,22 @@ class ShardAssignment:
 def pack_into_shards(
     collectionname: str,
     ledger: list[ShardState],
-    candidates: list[tuple[str, int]],
+    candidates: list[tuple[str, int, int]],
     max_bytes: int = MAX_SHARD_TEXT_BYTES,
+    max_rows: int = MAX_SHARD_ROWS,
     existing_assignments: dict[str, str] | None = None,
 ) -> tuple[list[ShardAssignment], list[ShardState]]:
     """Pure shard packing. Returns ``(assignments, new_ledger)``; inputs are not mutated.
 
     * ``ledger`` — current shard states (from ``manticore_shards FINAL``).
-    * ``candidates`` — ``(file_hash, text_bytes)`` for documents with no assignment yet.
+    * ``candidates`` — ``(file_hash, text_bytes, row_count)`` for documents with no
+      assignment yet.
     * ``existing_assignments`` — ``file_hash -> shard_name`` for documents that already
-      have a shard: they keep it, and their bytes are already in the ledger (they are
-      not counted again).
+      have a shard: they keep it, and their bytes and rows are already in the ledger
+      (they are not counted again).
+
+    A shard is sealed when the next document would push it over EITHER budget; see the
+    module docstring for why one number is not enough.
 
     Deterministic: candidates are sorted by hash first, so the output does not depend
     on the order of the candidate list.
@@ -97,7 +127,8 @@ def pack_into_shards(
     validate_collectionname(collectionname)
 
     new_ledger = [
-        ShardState(s.shard_name, s.shard_index, s.text_bytes, s.doc_count, s.is_open)
+        ShardState(s.shard_name, s.shard_index, s.text_bytes, s.doc_count, s.is_open,
+                   s.row_count)
         for s in ledger
     ]
     by_index = {s.shard_index: s for s in new_ledger}
@@ -127,6 +158,7 @@ def pack_into_shards(
             text_bytes=0,
             doc_count=0,
             is_open=True,
+            row_count=0,
         )
         new_ledger.append(state)
         by_index[shard_index] = state
@@ -138,23 +170,28 @@ def pack_into_shards(
         key=lambda s: s.shard_index,
         default=None,
     )
-    for file_hash, text_bytes in sorted(candidates):
+    for file_hash, text_bytes, row_count in sorted(candidates):
         if existing_assignments and file_hash in existing_assignments:
             # Callers pre-filter candidates to unassigned hashes, but the packer
             # itself must stay total: an existing assignment always wins and the
             # bytes are already in the ledger.
             continue
         text_bytes = max(0, int(text_bytes))
+        row_count = max(MIN_DOCUMENT_ROWS, int(row_count))
         if open_shard is None:
             open_shard = _open_shard(max(by_index, default=0) + 1)
-        elif open_shard.doc_count > 0 and open_shard.text_bytes + text_bytes > max_bytes:
+        elif open_shard.doc_count > 0 and (
+            open_shard.text_bytes + text_bytes > max_bytes
+            or open_shard.row_count + row_count > max_rows
+        ):
             open_shard.is_open = False
             open_shard = _open_shard(open_shard.shard_index + 1)
         open_shard.text_bytes += text_bytes
+        open_shard.row_count += row_count
         open_shard.doc_count += 1
         new_hashes.setdefault(open_shard.shard_index, []).append(file_hash)
-        if open_shard.text_bytes > max_bytes:
-            # A document larger than the budget gets its own shard; seal it so the
+        if open_shard.text_bytes > max_bytes or open_shard.row_count > max_rows:
+            # A document larger than a budget gets its own shard; seal it so the
             # next candidate opens a fresh one instead of piling on.
             open_shard.is_open = False
             open_shard = None
@@ -175,51 +212,54 @@ def _write_ledger_rows(client, shard_states: list[ShardState]) -> None:
         return
     client.insert(
         'manticore_shards',
-        [[s.shard_name, s.shard_index, s.text_bytes, s.doc_count, 1 if s.is_open else 0]
+        [[s.shard_name, s.shard_index, s.text_bytes, s.doc_count, 1 if s.is_open else 0,
+          s.row_count]
          for s in shard_states],
-        column_names=['shard_name', 'shard_index', 'text_bytes', 'doc_count', 'is_open'],
+        column_names=['shard_name', 'shard_index', 'text_bytes', 'doc_count', 'is_open',
+                      'row_count'],
     )
 
 
 def merge_ledger_stats(
     ledger_rows: list[tuple[str, int, int]],
-    stats_rows: list[tuple[str, int, int]],
+    stats_rows: list[tuple[str, int, int, int]],
 ) -> list[ShardState]:
     """Pure join of the ledger skeleton with per-shard fill statistics.
 
     * ``ledger_rows`` — ``(shard_name, shard_index, is_open)`` from ``manticore_shards
       FINAL``; every ledger shard appears in the output, stats or no stats.
-    * ``stats_rows`` — ``(shard_name, text_bytes, doc_count)``; shards missing here
-      get zeros (nothing indexed into them yet).
+    * ``stats_rows`` — ``(shard_name, text_bytes, row_count, doc_count)``; shards
+      missing here get zeros (nothing indexed into them yet).
 
     ``is_open`` is preserved as-is: recomputation never re-opens a sealed shard and
     never compacts or renumbers shards.
     """
     stats = {
-        shard_name: (int(text_bytes), int(doc_count))
-        for shard_name, text_bytes, doc_count in stats_rows
+        shard_name: (int(text_bytes), int(row_count), int(doc_count))
+        for shard_name, text_bytes, row_count, doc_count in stats_rows
     }
     return [
         ShardState(
             shard_name=shard_name,
             shard_index=int(shard_index),
-            text_bytes=stats.get(shard_name, (0, 0))[0],
-            doc_count=stats.get(shard_name, (0, 0))[1],
+            text_bytes=stats.get(shard_name, (0, 0, 0))[0],
+            doc_count=stats.get(shard_name, (0, 0, 0))[2],
             is_open=bool(is_open),
+            row_count=stats.get(shard_name, (0, 0, 0))[1],
         )
         for shard_name, shard_index, is_open in ledger_rows
     ]
 
 
 def recompute_shard_ledger(collectionname: str) -> None:
-    """Rebuild ledger ``text_bytes``/``doc_count`` from ``index_state``.
+    """Rebuild ledger ``text_bytes``/``row_count``/``doc_count`` from ``index_state``.
 
     Single source of truth for fill levels: what actually reached a shard, not the
     reservations — a permanently failed writer chunk must not inflate the ledger.
-    ``text_bytes`` is taken from the assignments row of each indexed document (the
-    planner's own estimate at reservation time). Used by ``finalize_index_batch``
-    after the writers finish and by the dataset purge, where it shrinks the counters
-    of shards a deleted dataset contributed to.
+    ``text_bytes`` and ``row_count`` are taken from the assignments row of each indexed
+    document (the planner's own estimate at reservation time). Used by
+    ``finalize_index_batch`` after the writers finish and by the dataset purge, where it
+    shrinks the counters of shards a deleted dataset contributed to.
     """
     with get_collection_client(collectionname) as client:
         ledger_rows = client.query(
@@ -230,7 +270,7 @@ def recompute_shard_ledger(collectionname: str) -> None:
             return
         stats_rows = client.query(
             "SELECT i.shard_name AS shard_name, sum(a.text_bytes) AS text_bytes, "
-            "count() AS doc_count "
+            "sum(a.row_count) AS row_count, count() AS doc_count "
             "FROM index_state AS i FINAL "
             "INNER JOIN manticore_shard_assignments AS a FINAL "
             "ON a.collection_dataset = i.collection_dataset "
@@ -265,7 +305,22 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
 
         unassigned = [h for h in hashes if h not in existing]
         text_bytes_by_hash: dict[str, int] = {}
+        rows_by_hash: dict[str, int] = {}
         if unassigned:
+            # Manticore rows the document will occupy: one per text segment plus its
+            # filename row. Counted rather than derived from bytes — the ratio between
+            # the two is exactly what varies across the corpus, which is why there are
+            # two budgets.
+            rows_by_hash = {
+                row[0]: int(row[1]) + 1
+                for row in client.query(
+                    "SELECT file_hash, count() AS segments "
+                    "FROM text_content FINAL "
+                    "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
+                    "GROUP BY file_hash",
+                    parameters={"cd": collection_dataset, "hashes": unassigned},
+                ).result_rows
+            }
             nlp_sums = {
                 row[0]: int(row[1])
                 for row in client.query(
@@ -295,22 +350,26 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
                 text_bytes_by_hash[h] = max(nlp_sums.get(h, 0), text_sums.get(h, 0))
 
         ledger_rows = client.query(
-            "SELECT shard_name, shard_index, text_bytes, doc_count, is_open "
+            "SELECT shard_name, shard_index, text_bytes, doc_count, is_open, row_count "
             "FROM manticore_shards FINAL ORDER BY shard_index"
         ).result_rows
 
     ledger = [
         ShardState(shard_name=r[0], shard_index=int(r[1]), text_bytes=int(r[2]),
-                   doc_count=int(r[3]), is_open=bool(r[4]))
+                   doc_count=int(r[3]), is_open=bool(r[4]), row_count=int(r[5]))
         for r in ledger_rows
     ]
-    candidates = [(h, text_bytes_by_hash.get(h, 0)) for h in unassigned]
+    candidates = [
+        (h, text_bytes_by_hash.get(h, 0), rows_by_hash.get(h, MIN_DOCUMENT_ROWS))
+        for h in unassigned
+    ]
 
     assignments, new_ledger = pack_into_shards(
         collectionname,
         ledger,
         candidates,
         max_bytes=MAX_SHARD_TEXT_BYTES,
+        max_rows=MAX_SHARD_ROWS,
         existing_assignments=existing,
     )
 
@@ -337,7 +396,9 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
         # Only newly assigned hashes need rows; existing ones keep their row (and
         # thereby their shard) untouched.
         new_assignment_rows = [
-            [collection_dataset, file_hash, a.shard_name, text_bytes_by_hash.get(file_hash, 0)]
+            [collection_dataset, file_hash, a.shard_name,
+             text_bytes_by_hash.get(file_hash, 0),
+             rows_by_hash.get(file_hash, MIN_DOCUMENT_ROWS)]
             for a in assignments
             for file_hash in a.hashes
             if file_hash not in existing
@@ -346,7 +407,8 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
             client.insert(
                 'manticore_shard_assignments',
                 new_assignment_rows,
-                column_names=['collection_dataset', 'file_hash', 'shard_name', 'text_bytes'],
+                column_names=['collection_dataset', 'file_hash', 'shard_name', 'text_bytes',
+                              'row_count'],
             )
 
     total_new = sum(len(a.hashes) for a in assignments) - len(existing)

@@ -49,7 +49,7 @@ File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a sing
 
 ### Sharded full-text indexes.
 
-Manticore search indexes are sharded per collection: each shard is a `<collectionname>_<n>_pages` / `<collectionname>_<n>_meta` table pair that stays open until it would exceed `MAX_SHARD_TEXT_BYTES` (1 GB of extracted text), then seals. A ledger in the collection's ClickHouse database (`manticore_shards`, `manticore_shard_assignments`) records which shard owns each document, and the website fans searches out to the live shards and merges the results. See [tasks/Readme.md](main_services/processing/tasks/Readme.md).
+Manticore search indexes are sharded per collection: each shard is one `<collectionname>_<n>_pages` table, carrying each document's metadata on every one of its rows, that stays open until it would exceed `MAX_SHARD_TEXT_BYTES` (4 GB of extracted text) or `MAX_SHARD_ROWS` (2.5 M rows), then seals. A ledger in the collection's ClickHouse database (`manticore_shards`, `manticore_shard_assignments`) records which shard owns each document, and the website fans searches out to the live shards and merges the results. See [tasks/Readme.md](main_services/processing/tasks/Readme.md).
 
 ### Separation of compute concerns.
 

@@ -34,8 +34,8 @@ def test_manticore_migrate_recreates_missing_shard_table(temp_collection, tiny_d
     pages_tables = [t for t in list_shard_tables(collectionname) if t.endswith("_pages")]
     assert pages_tables, "fixture ingest must have created shard tables"
     victim = pages_tables[0]
-    meta_table = victim[:-len("_pages")] + "_meta"
-    meta_rows_before = _count(meta_table)
+    sibling = victim[:-len("_pages")] + "_vectors"
+    sibling_rows_before = _count(sibling) if sibling in list_shard_tables(collectionname) else None
     assert _count(victim) > 0
 
     with get_manticore_client() as cnx:
@@ -48,4 +48,5 @@ def test_manticore_migrate_recreates_missing_shard_table(temp_collection, tiny_d
 
     assert victim in list_shard_tables(collectionname), "migrate must recreate the missing table"
     assert _count(victim) == 0, "a self-healed table comes back EMPTY (reindex refills it)"
-    assert _count(meta_table) == meta_rows_before, "sibling tables must be untouched"
+    if sibling_rows_before is not None:
+        assert _count(sibling) == sibling_rows_before, "sibling tables must be untouched"

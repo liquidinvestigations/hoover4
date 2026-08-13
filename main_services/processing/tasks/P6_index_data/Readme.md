@@ -6,19 +6,25 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 
 - Load plan item hashes and fetch text content for indexing.
 - Read the `entity_hit` rows written by the P4 entity-extraction stage and map entity values to string-term ids (cache hits — P4 already populated the `ner` term dictionary; ids are content-derived via `hash_string_to_uint63`).
-- Build metadata indexes for file types, MIME types, extensions, and paths.
+- Resolve each document's metadata — file types, MIME types, extensions, folder closure, dates, sizes, email addresses — and write it onto every one of the document's rows.
 
 ## Entry Points
 
 - Workflow: `IndexDatasetPlan` in `workflows.py`
-- Activities: `index_text_content`, `index_metadatas` in `activities.py`
-- Helpers: `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
+- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `optimize_shard_tables` in `activities.py`
+- Helpers: `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 ## Technical Details
 
+A shard is ONE Manticore table, `<shard>_pages`, and the document's metadata is denormalized onto each of its rows. That is why `index_text_pages` writes both the text rows and the synthetic `filename_index` row: the result list reads the metadata off whichever row of a `GROUP BY file_hash` Manticore returns, so a row written with different values than its siblings is a document with a non-deterministic date and size. See [`../../database/Readme.md`](../../database/Readme.md) for why the alternative — a per-document table joined at query time — is both slower and wrong.
+
+Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The columnar engine picks a storage scheme per block, so a block whose rows all belong to one document stores one repeated value per metadata column; that ordering is the difference between paying ~15% for the duplication and paying several times over.
+
 Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch — so a single file can present as dozens of unindexable ones.
 
-Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit`; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
+Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit` and are per SEGMENT, not per document; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
+
+`optimize_shard_tables` runs once at the end of the workflow, per shard the plan wrote to, and compacts a table whose `killed_rate` is over 20% or whose `disk_chunks` is over 12 (`OPTIMIZE TABLE … OPTION cutoff=1`, asynchronous). It is a **storage** win — a re-ingested corpus reclaimed 32–58% of its disk — and not a latency one: killed rows are cheap to skip at query time. It skips itself entirely while another plan of the same collection is still in flight, because a merge competing with a write batch for I/O turns seconds into minutes.
 
 ## Usage
 

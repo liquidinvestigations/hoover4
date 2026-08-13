@@ -38,6 +38,14 @@ class FinalizeIndexBatchParams:
     plan_hash: str
 
 @dataclass
+class OptimizeShardsParams:
+    """The shards one plan wrote to, offered for compaction."""
+    collectionname: str
+    collection_dataset: str
+    plan_hash: str
+    shard_names: list[str]
+
+@dataclass
 class RecordIndexedParams:
     collectionname: str
     collection_dataset: str

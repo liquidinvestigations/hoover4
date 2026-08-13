@@ -1,7 +1,7 @@
 """Integration test: re-indexing a plan must not duplicate Manticore rows.
 
-The deterministic-id / REPLACE INTO design (pages/meta row ids derived from the
-(document, segment) identity) exists so that re-running the planner plus both
+The deterministic-id / REPLACE INTO design (row ids derived from the
+(document, segment) identity) exists so that re-running the planner plus the
 writers over the same plan overwrites rows in place. This pins it: row counts
 in every shard table, in index_state and in manticore_shard_assignments must be
 unchanged after a full second pass.
@@ -15,7 +15,7 @@ import pytest
 from database.clickhouse import get_collection_client
 from database.manticore import get_manticore_client, list_shard_tables
 from tasks.P6_index_data import shard_planner
-from tasks.P6_index_data.activities import index_metadata, index_text_pages
+from tasks.P6_index_data.activities import index_text_pages
 from tasks.P6_index_data.params import (
     FinalizeIndexBatchParams,
     IndexShardParams,
@@ -64,8 +64,6 @@ def _run_indexing_pass(collectionname: str, collection_dataset: str, hashes: lis
                 hashes=chunk_hashes,
             )
             for file_hash in index_text_pages(shard_params):
-                indexed_entries.add((assignment.shard_name, file_hash))
-            for file_hash in index_metadata(shard_params):
                 indexed_entries.add((assignment.shard_name, file_hash))
     shard_planner.record_indexed(
         RecordIndexedParams(

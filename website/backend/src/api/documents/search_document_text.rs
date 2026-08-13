@@ -17,7 +17,7 @@ use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::{
     find_shard_for_document, get_client_for_dataset, resolve_collection, shard_generation,
 };
-use crate::{api::search::search_sql::{shard_table_names, sql_options_clause}};
+use crate::api::search::search_sql::{shard_table_name, sql_options_clause};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_match::prepare_match_query,
     manticore_utils::manticore_search_sql,
@@ -45,7 +45,7 @@ async fn pages_table_for_document(
     else {
         return Ok(None);
     };
-    let (pages_table, _) = shard_table_names(&shard_name)?;
+    let pages_table = shard_table_name(&shard_name)?;
     let generation = shard_generation(&collectionname).await?;
     Ok(Some((pages_table, format!("{collectionname}@{generation}"))))
 }

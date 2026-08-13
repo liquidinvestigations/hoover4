@@ -75,11 +75,11 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
     assert sum(len(a.hashes) for a in assignments) == len(hashes)
 
     monkeypatch.setattr(p5_activities, "index_text_pages", _raising_writer)
-    monkeypatch.setattr(p5_activities, "index_metadata", _raising_writer)
+    monkeypatch.setattr(p5_activities, "index_vectors", _raising_writer)
     with pytest.raises(RuntimeError, match="simulated writer failure"):
         p5_activities.index_text_pages(None)
     with pytest.raises(RuntimeError, match="simulated writer failure"):
-        p5_activities.index_metadata(None)
+        p5_activities.index_vectors(None)
 
     # Both writers fail for every chunk (what the workflow sees after Temporal
     # retries are exhausted): one processing_errors row per hash per task.
@@ -93,7 +93,7 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
         }
         for assignment in assignments
         for item_hash in assignment.hashes
-        for task_name in ("P6_IndexTextPages", "P6_IndexMetadata")
+        for task_name in ("P6_IndexTextPages", "P6_IndexVectors")
     ]
     recorded = record_processing_errors(
         RecordProcessingErrorsParams(collectionname=collectionname, errors=errors)

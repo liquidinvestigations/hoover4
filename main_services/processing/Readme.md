@@ -76,10 +76,13 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   Dataset-scoped and idempotent, because a plan holds only a slice and a tree assembled
   slice by slice has holes.
 * `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table.
-* `index_filenames_row` — one synthetic pages row per document carrying its basenames.
-* a rewritten `index_metadata` emitting the typed attributes (`dates`, `date_min`,
-  `date_max`, `file_size_bytes`, `struct_flags`, `primary_filename`, `email_from`,
-  `email_to`) and the `vfs_node` closure term ids.
+* `index_text_pages` — one row per text segment plus one synthetic `filename_index` row
+  per document carrying its basenames, each row also carrying the document's typed
+  attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,
+  `primary_filename`, `email_from`, `email_to`) and its `vfs_node` closure term ids.
+  One writer, because every row of a document must carry the same metadata.
+* `optimize_shard_tables` — compacts a shard whose killed rows or chunk count have
+  built up. Storage, not latency.
 
 ### The ancestor closure, and its caps
 

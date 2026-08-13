@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::api::search::fanout::{self, FanoutTarget};
-use crate::api::search::search_sql::{qualify_field_name, sql_options_clause};
+use crate::api::search::search_sql::{search_field_name, sql_options_clause};
 use crate::{
     db_utils::{
         clickhouse_utils::get_collection_client,
@@ -202,7 +202,7 @@ async fn _search_string_facet(
             let from_clause = &parts.from_clause;
             let sql_where_clause = &parts.where_clause;
             let options_clause = sql_options_clause(1000);
-            let column = qualify_field_name(&column, &parts.meta_table)?;
+            let column = search_field_name(&column)?;
             let sql = format!(
                 "
                 SELECT file_hash
@@ -297,9 +297,8 @@ pub async fn search_mva_facet(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let sql_where_clause = &parts.where_clause;
-            // MVA grouping must be qualified: the attribute may live on either side
-            // of the join and an unqualified name errors when ambiguous.
-            let column = qualify_field_name(&column, &parts.meta_table)?;
+            let column = search_field_name(&column)?;
+            let options_clause = sql_options_clause(1000);
             let sql = format!(
                 "
                 SELECT groupby() term, count(distinct file_hash) as doc_count
@@ -308,6 +307,7 @@ pub async fn search_mva_facet(
 
                 GROUP BY {column}
                 ORDER BY doc_count DESC LIMIT {bucket_limit}
+                {options_clause}
                 ;",
             );
             manticore_search_sql::<SearchMvaFacetResponse>(sql, &parts.salt).await

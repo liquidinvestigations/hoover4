@@ -3,8 +3,8 @@
 import pytest
 
 from database.manticore import (
-    shard_table_names,
-    shard_tables_from_name,
+    shard_table_from_name,
+    shard_table_name,
     vectors_table_from_name,
     vectors_table_name,
 )
@@ -34,21 +34,20 @@ def test_list_shard_tables_regex_covers_vectors():
 
     pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll="testdata"))
     assert pattern.match("testdata_1_pages")
-    assert pattern.match("testdata_1_meta")
     assert pattern.match("testdata_12_vectors")
     assert not pattern.match("testdata_1_blobs")
     assert not pattern.match("testdata_x_1_pages")  # a different collection's shard
 
 
-def test_shard_table_names_canonical():
-    assert shard_table_names("testdata", 1) == ("testdata_1_pages", "testdata_1_meta")
-    assert shard_table_names("testdata", 2) == ("testdata_2_pages", "testdata_2_meta")
-    assert shard_table_names("mycollection", 12) == ("mycollection_12_pages", "mycollection_12_meta")
+def test_shard_table_name_canonical():
+    assert shard_table_name("testdata", 1) == "testdata_1_pages"
+    assert shard_table_name("testdata", 2) == "testdata_2_pages"
+    assert shard_table_name("mycollection", 12) == "mycollection_12_pages"
 
 
-def test_shard_tables_from_name_roundtrip():
-    assert shard_tables_from_name("testdata_1") == ("testdata_1_pages", "testdata_1_meta")
-    assert shard_tables_from_name("mycollection_12") == ("mycollection_12_pages", "mycollection_12_meta")
+def test_shard_table_from_name_roundtrip():
+    assert shard_table_from_name("testdata_1") == "testdata_1_pages"
+    assert shard_table_from_name("mycollection_12") == "mycollection_12_pages"
 
 
 @pytest.mark.parametrize(
@@ -71,9 +70,9 @@ def test_shard_tables_from_name_roundtrip():
         ("testdata", "1"), # no strings
     ],
 )
-def test_shard_table_names_rejects_invalid(name, index):
+def test_shard_table_name_rejects_invalid(name, index):
     with pytest.raises(ValueError):
-        shard_table_names(name, index)
+        shard_table_name(name, index)
 
 
 @pytest.mark.parametrize(
@@ -93,6 +92,6 @@ def test_shard_table_names_rejects_invalid(name, index):
         "testdata_-1",     # stray separator: not the canonical spelling
     ],
 )
-def test_shard_tables_from_name_rejects_invalid(shard_name):
+def test_shard_table_from_name_rejects_invalid(shard_name):
     with pytest.raises(ValueError):
-        shard_tables_from_name(shard_name)
+        shard_table_from_name(shard_name)

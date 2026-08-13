@@ -1,14 +1,24 @@
 """Manticore Search connection helpers and per-collection shard table management.
 
 Search data is sharded per collection: logical shard ``<collectionname>_<n>`` (n is
-1-based) consists of two physical tables, ``<collectionname>_<n>_pages`` and
-``<collectionname>_<n>_meta``, with schemas identical to the retired global
-``doc_text_pages`` / ``doc_metadata`` tables. Shard tables are created on demand by the
-indexing planner (``tasks/P6_index_data/shard_planner.py``); this module only owns the
-DDL and the lifecycle helpers.
+1-based) is ONE physical table, ``<collectionname>_<n>_pages``, holding one row per text
+segment with the document's metadata denormalized onto every one of them. Shard tables
+are created on demand by the indexing planner
+(``tasks/P6_index_data/shard_planner.py``); this module only owns the DDL and the
+lifecycle helpers.
+
+**The metadata is duplicated per page on purpose, and a per-document table joined at
+query time is not an option.** Manticore's ``LEFT JOIN`` is a nested-loop lookup per left
+row evaluated before any predicate, so it costs the same for a query matching one
+document as for one matching the corpus - it made an unfiltered facet on a 650 k-row
+shard take 13 s instead of 1 s - and it silently DROPS left rows that find no match, so
+the counts it produced were short as well as slow. The duplication costs ~15 % on disk
+because the columnar engine picks a storage scheme per block and a block of pages
+belonging to one document holds identical values. That saving only holds if the writer
+inserts rows grouped by document; see ``P6_index_data/activities.py``.
 
 There are deliberately **no distributed tables**. Manticore 14.1.0 (and 17.5.1 / 28.4.4)
-cannot run the website's JOIN + stored-field + FACET query shape over distributed tables -
+cannot run the website's stored-field + FACET query shape over distributed tables -
 the daemon crashes or returns NULL stored fields. Search therefore fans out per
 shard in the website backend.
 
@@ -23,18 +33,17 @@ import re
 
 log = logging.getLogger(__name__)
 
-# <collectionname>_<digits>_pages|_meta|_vectors — the SHARDED table families.
+# <collectionname>_<digits>_pages|_vectors — the SHARDED table families.
 #
 # `<collectionname>_vfs` is deliberately NOT matched by this: it is one table per
 # collection rather than per shard, and everything that iterates shards (the ledger
 # equality check, the per-shard search fan-out) must not see it. It still has to be
 # dropped and purged with the collection, which is why `drop_collection_tables` and
 # `purge_dataset_from_manticore` name it explicitly.
-_SHARD_TABLE_RE_TEMPLATE = r'^{coll}_[0-9]+_(pages|meta|vectors)$'
+_SHARD_TABLE_RE_TEMPLATE = r'^{coll}_[0-9]+_(pages|vectors)$'
 _SHARD_NAME_RE = re.compile(r'^([a-z0-9_]+)_([0-9]+)$')
 
 PAGES_TABLE_SUFFIX = 'pages'
-META_TABLE_SUFFIX = 'meta'
 VECTORS_TABLE_SUFFIX = 'vectors'
 VFS_TABLE_SUFFIX = 'vfs'
 
@@ -139,24 +148,23 @@ def _execute_ddl(sql):
         log.info("SQL Executed OK.")
 
 
-def shard_table_names(collectionname: str, shard_index: int) -> tuple[str, str]:
-    """Return the two physical table names of a logical shard.
+def shard_table_name(collectionname: str, shard_index: int) -> str:
+    """Return the physical table name of a logical shard.
 
-    ``('testdata_1_pages', 'testdata_1_meta')`` for ``('testdata', 1)``.
+    ``'testdata_1_pages'`` for ``('testdata', 1)``.
     Raises ``ValueError`` for an invalid collection name or shard index.
     """
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
     if not isinstance(shard_index, int) or isinstance(shard_index, bool) or shard_index < 1:
         raise ValueError(f'shard_index must be a positive integer, got {shard_index!r}')
-    shard_name = f'{collectionname}_{shard_index}'
-    return (f'{shard_name}_{PAGES_TABLE_SUFFIX}', f'{shard_name}_{META_TABLE_SUFFIX}')
+    return f'{collectionname}_{shard_index}_{PAGES_TABLE_SUFFIX}'
 
 
-def shard_tables_from_name(shard_name: str) -> tuple[str, str]:
-    """Return the two physical table names for a logical shard name like ``testdata_1``.
+def shard_table_from_name(shard_name: str) -> str:
+    """Return the physical table name for a logical shard name like ``testdata_1``.
 
-    Inverse of :func:`shard_table_names`; raises ``ValueError`` for anything that is
+    Inverse of :func:`shard_table_name`; raises ``ValueError`` for anything that is
     not the CANONICAL spelling of a validated collectionname plus a positive integer
     suffix — no leading zeros (``testdata_01``), no stray separators
     (``testdata_-1``): those would alias shard 1 while naming tables the ledger
@@ -169,7 +177,7 @@ def shard_tables_from_name(shard_name: str) -> tuple[str, str]:
     collectionname, index = m.group(1), int(m.group(2))
     if f'{collectionname}_{index}' != shard_name:
         raise ValueError(f'{shard_name!r} is not a canonical shard name (<collectionname>_<n>)')
-    return shard_table_names(collectionname, index)
+    return shard_table_name(collectionname, index)
 
 
 def vectors_table_name(collectionname: str, shard_index: int) -> str:
@@ -186,7 +194,7 @@ def vectors_table_from_name(shard_name: str) -> str:
     :func:`shard_tables_from_name`."""
     collectionname, index = shard_name.rsplit('_', 1)
     # Reuse the canonical-name validation rather than re-parsing here.
-    shard_tables_from_name(shard_name)
+    shard_table_from_name(shard_name)
     return vectors_table_name(collectionname, int(index))
 
 
@@ -219,26 +227,6 @@ def vectors_table_from_name(shard_name: str) -> str:
 _INFIX_SETTING = "min_infix_len='3'"
 
 
-def pages_table_ddl(table_name: str) -> str:
-    """CREATE TABLE statement for a shard pages table (one row per text segment).
-
-    Schema is identical to the retired global ``doc_text_pages``.
-    """
-    return f"""
-        create table if not exists {table_name}(
-            collection_dataset string,
-            file_hash string,
-            extracted_by string,
-            page_id int,
-            page_text text,
-            ner_per multi64,
-            ner_org multi64,
-            ner_loc multi64,
-            ner_misc multi64
-        ) engine='columnar' {_INFIX_SETTING}
-    """
-
-
 #: `date_min`/`date_max` for a document with no confirmed date. Manticore attributes are
 #: not nullable, so "unknown" needs a reserved value, and i64::MIN is the one no real
 #: date can collide with. A BETWEEN range can never match it, so undated documents drop
@@ -251,31 +239,50 @@ DATE_UNKNOWN = -9223372036854775808
 #: every size range excludes negatives.
 SIZE_UNKNOWN = -1
 
+#: The document-level columns, carried identically by every pages row of one document.
+#: Named here because two writers interpolate them and the website filters, facets and
+#: sorts on them; a column added to one list and not the other is a Manticore error on
+#: every query rather than an empty result.
+DOCUMENT_COLUMNS = (
+    'file_types',
+    'file_mime_types',
+    'file_extensions',
+    'file_paths',
+    'dates',
+    'date_min',
+    'date_max',
+    'file_size_bytes',
+    'struct_flags',
+    'primary_filename',
+    'email_from',
+    'email_to',
+)
 
-def meta_table_ddl(table_name: str) -> str:
-    """CREATE TABLE statement for a shard metadata table (one row per document).
+
+def pages_table_ddl(table_name: str) -> str:
+    """CREATE TABLE statement for a shard's table (one row per text segment).
 
     ``collection_dataset`` stays on the rows: one shard holds several datasets, and the
     website filters and facets on it.
 
-    **Attribute-only — no full-text fields.** The old ``filenames`` and
-    ``metadata_values`` text columns are gone: ``metadata_values`` was written as ``""``
-    unconditionally since the day it was created, and ``filenames`` is now covered twice
-    over by the ``filename_index`` pages row (match + highlight) and
-    ``primary_filename`` (title + name sort). Verified against the live Manticore
-    14.1.0 that a table with zero text fields is accepted rather than needing a dummy
-    field, and that ``min_infix_len`` on a table with no text field is pointless — hence
-    no infix setting here any more.
+    ``page_text`` is the only full-text field; everything else is a typed attribute,
+    which is what Manticore can group, sort and range-filter on. The document-level half
+    (:data:`DOCUMENT_COLUMNS`) repeats on every page of a document — see the module
+    docstring for why that is cheaper than joining it.
 
-    Typed attributes and what reads them:
+    Attributes and what reads them:
 
+    * ``ner_per`` / ``ner_org`` / ``ner_loc`` / ``ner_misc`` multi64 — term ids of the
+      entities found in THIS segment. Per segment rather than per document, which is
+      what lets a facet count documents while the extraction stays page-local.
     * ``dates`` multi64 — every confirmed historical date, SIGNED epoch seconds.
       Manticore's own ``timestamp`` is 32-bit unsigned (1970..2106), useless for a
       corpus with pre-1970 material. Verified empirically that multi64 stores negatives
       and that ``ANY(dates) BETWEEN lo AND hi`` matches across zero.
     * ``date_min`` / ``date_max`` bigint — Manticore cannot ORDER BY an MVA, so "oldest
-      first" sorts on one and "newest first" on the other. :data:`DATE_UNKNOWN` when the
-      document has no dates.
+      first" sorts on one and "newest first" on the other, and the date filter is an
+      interval-overlap test over the pair. :data:`DATE_UNKNOWN` when the document has no
+      dates.
     * ``file_size_bytes`` bigint — buckets are computed at query time with
       ``INTERVAL()``; pre-baking them would make adding a bucket a schema change.
       :data:`SIZE_UNKNOWN` when the document has no ``vfs_files`` row.
@@ -283,10 +290,10 @@ def meta_table_ddl(table_name: str) -> str:
       booleans that do not each deserve a column.
     * ``primary_filename`` string — a string ATTRIBUTE, not a text field: Manticore can
       ORDER BY the former and not the latter, and this is the result-card title and the
-      "sort by name" key.
-    * ``file_paths`` multi64 — repurposed from bare parent-path term ids to `vfs_node`
-      closure term ids, which are scoped by dataset AND container. The old ids were the
-      same integer for `/data` in every dataset and inside every archive.
+      "sort by name" key. Filename MATCHING goes through the ``filename_index`` row
+      instead.
+    * ``file_paths`` multi64 — `vfs_node` closure term ids, scoped by dataset AND
+      container, so the same folder name in two datasets or two archives is two ids.
     * ``email_from`` / ``email_to`` multi64 — term ids of normalised addresses;
       to+cc+bcc merge into ``email_to``.
     """
@@ -294,6 +301,13 @@ def meta_table_ddl(table_name: str) -> str:
         create table if not exists {table_name}(
             collection_dataset string,
             file_hash string,
+            extracted_by string,
+            page_id int,
+            page_text text,
+            ner_per multi64,
+            ner_org multi64,
+            ner_loc multi64,
+            ner_misc multi64,
             file_types multi64,
             file_mime_types multi64,
             file_extensions multi64,
@@ -306,7 +320,7 @@ def meta_table_ddl(table_name: str) -> str:
             primary_filename string,
             email_from multi64,
             email_to multi64
-        ) engine='columnar'
+        ) engine='columnar' {_INFIX_SETTING}
     """
 
 
@@ -409,7 +423,7 @@ def shard_knn_dims(vectors_table: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int | None = None) -> tuple[str, str]:
+def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int | None = None) -> str:
     """Create the tables of a logical shard if they do not exist. Idempotent.
 
     ``vector_dims`` is the PROBED serving dimension (``main.py probe-embeddings`` via
@@ -419,12 +433,11 @@ def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int 
     drops and rebuilds it. ``None`` creates no vectors table (embeddings not probed
     yet); the P6 vector indexer refuses loudly if it then finds vectors to write.
     """
-    pages_table, meta_table = shard_table_names(collectionname, shard_index)
+    pages_table = shard_table_name(collectionname, shard_index)
     _execute_ddl(pages_table_ddl(pages_table))
-    _execute_ddl(meta_table_ddl(meta_table))
     if vector_dims is not None:
         _execute_ddl(vectors_table_ddl(vectors_table_name(collectionname, shard_index), vector_dims))
-    return (pages_table, meta_table)
+    return pages_table
 
 
 def _list_all_tables() -> list[str]:
@@ -518,7 +531,7 @@ def manticore_migrate():
             create_shard_tables(collectionname, int(shard_index), vector_dims=vector_dims)
         if rows:
             log.info(
-                "Collection %s: ensured %d shard table pairs exist",
+                "Collection %s: ensured %d shard tables exist",
                 collectionname, len(rows),
             )
     log.info("ManticoreSearch migration OK.")

@@ -119,21 +119,25 @@ def test_the_clickhouse_side_never_sees_the_row():
     that the indexer did not start writing it to ClickHouse as well."""
     import ast
     import inspect
+    import textwrap
 
     from tasks.P6_index_data import activities as p6
 
     # The AST of the function alone, with its docstring dropped: the docstring
     # deliberately NAMES `text_content` to say the row never comes from there, and a
     # substring search over the source would read that promise as a violation of itself.
-    target = p6.index_filenames_row
+    # `document_metadata` is where the row's TEXT comes from — its `basenames` — which is
+    # what has to stay clear of the page store; the writer around it reads text_content
+    # for the real pages.
+    target = p6.document_metadata
     while hasattr(target, "__wrapped__"):
         target = target.__wrapped__
-    tree = ast.parse(inspect.cleandoc(inspect.getsource(target)))
+    tree = ast.parse(textwrap.dedent(inspect.getsource(target)))
     function = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
     body = ast.dump(ast.Module(body=function.body[1:], type_ignores=[]))
 
     assert "insert_arrow" not in body, (
-        "index_filenames_row must not write to ClickHouse; the row is a Manticore-only "
+        "the filename row must not be written to ClickHouse; it is a Manticore-only "
         "search artefact and P4/P5 are immune to it only because of that"
     )
     assert "text_content" not in body, (

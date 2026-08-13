@@ -20,10 +20,10 @@ ClickHouse storage is split across `1 + N` databases.
 | Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `collectionname` is a slug matching `[a-z0-9_]{1,48}` that may not end in `_<digits>`
-(collides with a Manticore shard name), may not end in `_pages` or `_meta` (reserved
-Manticore table suffixes) and may not be `processing`. `-` is not allowed: Manticore
-table names (`<name>_<n>_pages|_meta`) are interpolated unquoted in both runtimes, and
-a dashed identifier does not parse. The rule is enforced by
+(collides with a Manticore shard name), may not end in `_pages`, `_meta` or `_vectors`
+(reserved Manticore table suffixes) and may not be `processing`. `-` is not allowed:
+Manticore table names (`<name>_<n>_pages`) are interpolated unquoted in both runtimes,
+and a dashed identifier does not parse. The rule is enforced by
 `clickhouse.py::validate_collectionname` and, independently, by `collectionname_valid` in
 `website/backend/src/api/admin/collections.rs` - a database name cannot be bound as a SQL
 parameter, so both runtimes must refuse a bad name on their own.
@@ -105,8 +105,8 @@ be assumed:
 
 ## Manticore infix indexing (`min_infix_len='3'`)
 
-Both shard table DDLs in `manticore.py` — `pages_table_ddl` and `meta_table_ddl` — set
-`min_infix_len='3'`, so `MATCH('doc*')` and `MATCH('*ocument*')` work.
+`pages_table_ddl` in `manticore.py` sets `min_infix_len='3'`, so `MATCH('doc*')` and
+`MATCH('*ocument*')` work.
 
 ### Why, and what "before" actually looked like
 
@@ -122,10 +122,9 @@ answer that nobody notices**. Measured on the real `testdata` shard (156 pages, 
 | `doc*` | **7 — wrong, not zero** | 34 |
 | `te*t` | **3 — wrong, not zero** | 28 |
 
-`meta_table_ddl` gets it too. Its text fields are `filenames` and `metadata_values`, and a
-filename fragment (`*report*` finding `annual_report_2024.pdf`) is the best fuzzy-match
-case in the schema. That table is ~0.25% the size of the pages table — 168 KB against
-65 MB on `testdata` — so the same percentage cost is close to free in absolute terms.
+The `filename_index` row is a pages row like any other, so a filename fragment
+(`*report*` finding `annual_report_2024.pdf`) is infix-matched by the same setting — the
+best fuzzy-match case in the schema.
 
 ### The value is a statement of intent, not a tuning knob
 
@@ -196,7 +195,7 @@ returns without infix indexing, not equal to it.
 
 `COLLAPSED_BASELINE` is `{global: 20, collection: 31}`. Files at or below those numbers
 are the collapsed baseline and must never be edited. Above them the collection set carries
-five appended tables:
+five appended tables and one column-adding migration:
 
 | | |
 |---|---|
@@ -205,6 +204,7 @@ five appended tables:
 | `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
 | `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only records failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
 | `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters — read the newest per worker and sum those. TTL 2 days. |
+| `00037_shard_row_budget.sql` | `row_count` on `manticore_shards` and `manticore_shard_assignments`: the shard planner caps a shard on Manticore rows as well as on text bytes. An `ALTER`, because both tables are in the collapsed baseline. |
 
 The last two are written by `tasks/task_timing.py` (a Temporal activity interceptor,
 batched, best-effort but never silent) and read by the admin processing page and
