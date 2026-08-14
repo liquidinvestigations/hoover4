@@ -134,9 +134,13 @@ pub fn ResolveMissingItems(
     facet_field_name: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
 ) -> Element {
-    if missing_values.read().is_empty() {
-        return rsx! {};
-    }
+    // **Every hook runs before the first early return, unconditionally.** Dioxus
+    // identifies a hook by its call ORDER, so a `use_memo` behind an `if` panics with
+    // "Unable to retrieve the hook that was initialized at this index" the first time
+    // that condition flips — and it flips constantly here, because whether a filtered
+    // value is missing from the returned buckets changes with every query the user
+    // narrows. The nothing-to-do cases are handled by returning early BELOW, and by the
+    // resource declining to make a round trip for an empty list.
     let ints = use_memo(move || {
         let mut ints = Vec::new();
         for value in missing_values.read().clone() {
@@ -146,25 +150,24 @@ pub fn ResolveMissingItems(
         }
         ints
     });
-    let ints = ints();
-    if ints.is_empty() {
-        return rsx! {};
-    }
-    tracing::info!("ints: {:?}", ints);
-    tracing::info!("facet_field_name: {:?}", facet_field_name());
-    tracing::info!("map_string_terms: {:?}", map_string_terms());
     let map = use_resource(move || {
-        let ints = ints.clone();
+        let ints = ints();
         let field_name = map_string_terms().unwrap_or_default();
 
         async move {
+            if ints.is_empty() {
+                return std::collections::HashMap::new();
+            }
             fetch_db_terms_for_ints(ints, field_name)
                 .await
                 .unwrap_or_default()
         }
     });
+
+    if missing_values.read().is_empty() || ints().is_empty() {
+        return rsx! {};
+    }
     let map = map().unwrap_or_default();
-    tracing::info!("map: {:?}", map);
 
     let mut facet_values = Vec::new();
     for value in missing_values.read().clone() {
