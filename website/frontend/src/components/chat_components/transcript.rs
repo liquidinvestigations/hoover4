@@ -259,8 +259,12 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
                 }
             }
             if *open.read() {
+                // Keyed on the hash alone. Appending the loop index made two rows for the
+                // same document distinct nodes, so any duplicate that reached here was
+                // guaranteed to render twice; `extract_doc_refs` now collapses them, and
+                // the key no longer hides it if that ever stops being true.
                 for (i, doc) in refs.into_iter().enumerate() {
-                    ChatDocRefCard { key: "{doc.file_hash}-{i}", doc, index: i as u64 }
+                    ChatDocRefCard { key: "{doc.file_hash}", doc, index: i as u64 }
                 }
             }
         }

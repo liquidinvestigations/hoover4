@@ -205,6 +205,10 @@ fn CollectionIcon() -> Element {
 #[component]
 fn ComponentNameSection(collection_dataset: String) -> Element {
     rsx! {
+        // Bounded, like the title beside it. A chat card can name several datasets for
+        // one document, and at 20px italic an unbounded comma-joined list pushes the
+        // card's header out of shape; the full value stays in `title`, which is the only
+        // place a truncated label can be read whole.
         span {
             style: "
                 font-size: 20px;
@@ -213,7 +217,13 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
                 color: rgba(0, 0, 0, 0.5);
                 font-family: Roboto, sans-serif;
                 font-style: italic;
+                max-width: min(260px, 24ch);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                flex-shrink: 1;
             ",
+            title: "{collection_dataset}",
             "{collection_dataset}"
         }
     }

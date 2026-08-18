@@ -46,7 +46,16 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
             index: 0,
         }],
         file_hash: doc.file_hash.clone(),
-        collection_dataset: doc.collection_dataset.clone(),
+        // Every dataset the document was found in, not just the one whose row won the
+        // collapse. `ComponentNameSection` clamps and ellipsises this, with the full list
+        // in its tooltip.
+        collection_dataset: if doc.also_in.is_empty() {
+            doc.collection_dataset.clone()
+        } else {
+            let mut all = vec![doc.collection_dataset.clone()];
+            all.extend(doc.also_in.iter().cloned());
+            all.join(", ")
+        },
         result_index_in_page: index,
         // The chat tool hands back a snippet it chose; whether the underlying hit was
         // filename-only is not part of that contract, so the card shows the snippet.

@@ -110,6 +110,15 @@ pub struct ChatDocRef {
     pub score: Option<f64>,
     #[serde(default)]
     pub snippet: String,
+    /// Every dataset this document was found in, when it was found in more than one.
+    ///
+    /// A search returns one hit per PAGE, and the same bytes can be ingested into several
+    /// collections, so a single document can arrive as a dozen rows. They are collapsed
+    /// to one card and the datasets they came from are collected here; empty means the
+    /// card's own `collection_dataset` is the whole story. Defaulted so rows stored
+    /// before the field existed still deserialise.
+    #[serde(default)]
+    pub also_in: Vec<String>,
 }
 
 impl ChatDocRef {
@@ -611,7 +620,58 @@ fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    results.iter().filter_map(doc_ref_from_value).collect()
+    collapse_by_document(results.iter().filter_map(doc_ref_from_value).collect())
+}
+
+/// One card per document, however many rows the tool returned for it.
+///
+/// `search_collections` answers with one hit per PAGE — `page_id` is part of the search
+/// server's own dedup key, deliberately, because two pages of one document are two pieces
+/// of evidence — and the same bytes can also be ingested into more than one collection. A
+/// reader wants neither of those as repetition: the transcript showed the same title three
+/// times over, and the disclosure counted page-hits while calling them "documents".
+///
+/// Rows are keyed on `file_hash` alone, so the cross-collection case collapses too, and
+/// the surviving row is the best-scoring one — the same argument the search server's
+/// fusion step makes for keeping the nearest chunk's snippet rather than the last one.
+/// Input order is otherwise preserved, because it is rank order.
+fn collapse_by_document(refs: Vec<ChatDocRef>) -> Vec<ChatDocRef> {
+    let mut order: Vec<String> = Vec::new();
+    let mut best: std::collections::HashMap<String, ChatDocRef> = std::collections::HashMap::new();
+    for item in refs {
+        match best.get_mut(&item.file_hash) {
+            None => {
+                order.push(item.file_hash.clone());
+                best.insert(item.file_hash.clone(), item);
+            }
+            Some(kept) => {
+                if !item.collection_dataset.is_empty()
+                    && item.collection_dataset != kept.collection_dataset
+                    && !kept.also_in.contains(&item.collection_dataset)
+                {
+                    kept.also_in.push(item.collection_dataset.clone());
+                }
+                // A missing score sorts below any score rather than winning by accident.
+                if item.score.unwrap_or(f64::MIN) > kept.score.unwrap_or(f64::MIN) {
+                    let also_in = std::mem::take(&mut kept.also_in);
+                    let previous = kept.collection_dataset.clone();
+                    *kept = item;
+                    kept.also_in = also_in;
+                    if !previous.is_empty()
+                        && previous != kept.collection_dataset
+                        && !kept.also_in.contains(&previous)
+                    {
+                        kept.also_in.push(previous);
+                    }
+                    kept.also_in.retain(|d| d != &kept.collection_dataset);
+                }
+            }
+        }
+    }
+    order
+        .into_iter()
+        .filter_map(|hash| best.remove(&hash))
+        .collect()
 }
 
 fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
@@ -646,6 +706,7 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
             .and_then(|x| x.as_str())
             .unwrap_or("")
             .to_string(),
+        also_in: Vec::new(),
     })
 }
 
@@ -703,6 +764,7 @@ mod tests {
             page_id: Some(4),
             score: Some(0.5),
             snippet: snippet.into(),
+            also_in: Vec::new(),
         }
     }
 
@@ -760,6 +822,40 @@ mod tests {
     fn title_of_exactly_the_limit_is_not_truncated() {
         let exact = "y".repeat(TITLE_CHARS);
         assert_eq!(title_from_message(&exact), exact);
+    }
+
+    /// One card per document, however many page-hits the tool returned for it.
+    #[test]
+    fn search_results_collapse_to_one_ref_per_document() {
+        let row = |hash: &str, dataset: &str, page: u32, score: f64| {
+            serde_json::json!({
+                "collection_dataset": dataset,
+                "collectionname": "c",
+                "file_hash": hash,
+                "path": "/a.txt",
+                "page_id": page,
+                "score": score,
+                "snippet": format!("page {page}"),
+            })
+        };
+        let content = serde_json::json!({"results": [
+            row("aaa", "textfiles_extra", 1, 0.4),
+            row("aaa", "textfiles_extra", 7, 0.9),
+            row("bbb", "enron_maildir", 1, 0.5),
+            row("aaa", "enron_maildir", 3, 0.2),
+        ]});
+        let refs = extract_from_search_results(&content);
+
+        assert_eq!(refs.len(), 2, "three hits for `aaa` are one document");
+        assert_eq!(refs[0].file_hash, "aaa", "rank order is preserved");
+        assert_eq!(refs[1].file_hash, "bbb");
+        // The best-scoring row survives, so the snippet is the passage worth reading.
+        assert_eq!(refs[0].page_id, Some(7));
+        assert_eq!(refs[0].snippet, "page 7");
+        assert_eq!(refs[0].collection_dataset, "textfiles_extra");
+        // The other dataset the same document was found in is kept, once.
+        assert_eq!(refs[0].also_in, vec!["enron_maildir".to_string()]);
+        assert!(refs[1].also_in.is_empty());
     }
 
     #[test]
