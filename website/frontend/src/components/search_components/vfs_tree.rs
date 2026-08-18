@@ -390,6 +390,14 @@ fn VfsTreeLevelBody(
 
     // Only folder-like nodes are navigable, in both skins: you filter by folder and you
     // browse into folders. Plain files are listed in the content pane, not the tree.
+    //
+    // `fetched` is counted BEFORE that filter, because it is only ever compared against
+    // `listing.total`, which the server also counts before it. Subtracting the filtered
+    // count from the unfiltered total is how every folder that merely contained files
+    // grew a "N more…" row for rows the tree was never going to draw — and the row's
+    // handler raises the FETCH limit, so re-fetching returned the same children, dropped
+    // the same files, and left the same number sitting there. It could not resolve.
+    let fetched = listing.nodes.len() as u64;
     let nodes: Vec<VfsTreeNode> = listing
         .nodes
         .into_iter()
@@ -414,11 +422,10 @@ fn VfsTreeLevelBody(
         window_siblings(nodes.len(), focus_index)
     };
 
-    let shown = nodes.len() as u64;
     // The fetch row and the window rows both mean "more siblings", so only one of them is
     // ever on screen. While the window is capping, the window's own row is the honest
     // one: raising the fetch limit would not reveal anything the window is hiding.
-    let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(shown) };
+    let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(fetched) };
     let more_indent = indent_style(rung);
     let visible: Vec<VfsTreeNode> = nodes[window.start..window.end].to_vec();
     let unfold_before = parent_key.clone();
