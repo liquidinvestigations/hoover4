@@ -10,6 +10,7 @@
 
 use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
 use dioxus::prelude::*;
+use dioxus_free_icons::{Icon, icons::md_av_icons::MdStop};
 
 #[component]
 pub fn ChatComposer(
@@ -97,13 +98,19 @@ pub fn ChatComposer(
                 }
                 if *sending.read() {
                     if let Some(stop) = on_stop {
+                        // An SVG with an explicit box, not a `■` glyph at a smaller
+                        // font-size than the send arrow it replaces: the glyph's ink is
+                        // a fraction of its em, so a 14px `■` inside a 40px disc read as
+                        // a dot in a circle. Stopping a generation is also an ordinary
+                        // action rather than a destructive one, so it takes the
+                        // composer's own indigo instead of the alert red.
                         button {
                             style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                    background: #DC2626; color: white; cursor: pointer; font-size: 14px; \
+                                    background: #4F46E5; color: white; cursor: pointer; \
                                     display: flex; align-items: center; justify-content: center;",
                             title: "Stop the answer (the partial is kept)",
                             onclick: move |_| stop.call(()),
-                            "\u{25A0}"
+                            Icon { icon: MdStop, style: "width: 20px; height: 20px; color: white;" }
                         }
                     } else {
                         // No `on_stop` means there is nothing to stop yet — the homepage

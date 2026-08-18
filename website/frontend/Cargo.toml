@@ -20,6 +20,8 @@ dioxus-free-icons={version="0.10.0", features=[
     # naming only the icon, which reads like a typo.
     "material-design-icons-content",
     "material-design-icons-device",
+    # MdStop, for the chat composer's stop button.
+    "material-design-icons-av",
     "octicons",
 ]}
 dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
