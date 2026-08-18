@@ -605,8 +605,19 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
                                 StorageRow::Dataset(dataset) => {
                                     Route::file_browser_page(dataset, PathDescriptor::root(), None)
                                 }
+                                // A container is a file as well as a folder — a PDF or an
+                                // archive — so entering it selects it too. Without that,
+                                // a container whose children are not indexed (most PDFs)
+                                // browsed to an `(empty folder)` and the document the
+                                // row names was nowhere on the page.
                                 StorageRow::Folder(dataset, node) => {
-                                    Route::file_browser_page(dataset, node.descriptor(), None)
+                                    let selected = (node.kind == VfsNodeKind::Container
+                                        && !node.file_hash.is_empty())
+                                    .then(|| DocumentIdentifier {
+                                        collection_dataset: dataset.clone(),
+                                        file_hash: node.file_hash.clone(),
+                                    });
+                                    Route::file_browser_page(dataset, node.descriptor(), selected)
                                 }
                             };
                             navigator().push(target);
