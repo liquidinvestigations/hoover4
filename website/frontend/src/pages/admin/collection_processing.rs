@@ -9,6 +9,7 @@ use common::processing_types::{
 };
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_collection_processing, admin_list_document_failures, admin_list_eta_samples,
     admin_list_task_failures, admin_list_workflows, admin_retry_document, admin_retry_failed_task,
@@ -47,7 +48,7 @@ fn load_state<T: Clone + 'static>(res: Resource<Result<T, ServerFnError>>) -> Lo
     match &*res.read() {
         None => Load::Pending,
         Some(Ok(value)) => Load::Ready(value.clone()),
-        Some(Err(e)) => Load::Failed(e.to_string()),
+        Some(Err(e)) => Load::Failed(user_facing_message(&e)),
     }
 }
 
@@ -889,7 +890,7 @@ fn TaskFailuresPanel(
                                                             match admin_retry_failed_task(cname, ds, task).await {
                                                                 Ok(run) => msg.set(Some(format!("Retry started (run {run}).")))
                                                                 ,
-                                                                Err(e) => error_msg.set(Some(e.to_string())),
+                                                                Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                                             }
                                                             on_retry.call(());
                                                         });
@@ -977,7 +978,7 @@ fn DocumentFailuresPanel(
                                                                 error_msg.set(None);
                                                                 match admin_retry_document(cname, ds, hash).await {
                                                                     Ok(run) => msg.set(Some(format!("Document retry started (run {run})."))),
-                                                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                                                 }
                                                                 on_retry.call(());
                                                             });

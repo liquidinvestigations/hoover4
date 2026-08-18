@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_add_member, admin_delete_user, admin_get_user, admin_list_groups, admin_remove_member,
     admin_set_group_admin, admin_update_user,
@@ -174,7 +175,7 @@ fn UserDetailContent(username: String) -> Element {
                                                 let gname = gname.clone();
                                                 spawn(async move {
                                                     if let Err(e) = admin_set_group_admin(gname, uname, val).await {
-                                                        error_msg.set(Some(e.to_string()));
+                                                        error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     detail_res.restart();
                                                 });
@@ -193,7 +194,7 @@ fn UserDetailContent(username: String) -> Element {
                                                 let gname = gname.clone();
                                                 spawn(async move {
                                                     if let Err(e) = admin_remove_member(gname, uname).await {
-                                                        error_msg.set(Some(e.to_string()));
+                                                        error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     detail_res.restart();
                                                 });
@@ -230,7 +231,7 @@ fn UserDetailContent(username: String) -> Element {
                                     }
                                     spawn(async move {
                                         if let Err(e) = admin_add_member(g, uname, false).await {
-                                            error_msg.set(Some(e.to_string()));
+                                            error_msg.set(Some(user_facing_message(&e)));
                                         }
                                         detail_res.restart();
                                     });
@@ -256,7 +257,7 @@ fn UserDetailContent(username: String) -> Element {
                                     Ok(()) => {
                                         let _ = navigator().push(Route::AdminUsersPage {});
                                     }
-                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                             });
                         }

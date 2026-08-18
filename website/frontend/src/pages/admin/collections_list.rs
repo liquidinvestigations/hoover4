@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{admin_create_collection, admin_list_collections};
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_PRIMARY, INPUT, LINK, MODULE,
@@ -60,7 +61,7 @@ fn CollectionsListContent() -> Element {
                                     fullname.set(String::new());
                                     cols_res.restart();
                                 }
-                                Err(e) => error_msg.set(Some(e.to_string())),
+                                Err(e) => error_msg.set(Some(user_facing_message(&e))),
                             }
                         });
                     },
@@ -109,7 +110,7 @@ fn CollectionsListContent() -> Element {
                     }
                 }
             },
-            Some(Err(e)) => rsx! { ErrorBar { message: "{e}" } },
+            Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
             None => rsx! { "Loading..." },
         }
     }

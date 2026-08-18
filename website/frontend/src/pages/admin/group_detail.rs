@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_add_member, admin_delete_group, admin_get_group, admin_grant_permission,
     admin_list_collections, admin_remove_member, admin_revoke_permission, admin_set_group_admin,
@@ -109,7 +110,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         msg.set(Some("The group was changed successfully.".to_string()));
                                         detail_res.restart();
                                     }
-                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                             });
                         }
@@ -156,7 +157,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                 let uname = uname.clone();
                                                 spawn(async move {
                                                     if let Err(e) = admin_set_group_admin(gname, uname, val).await {
-                                                        error_msg.set(Some(e.to_string()));
+                                                        error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     detail_res.restart();
                                                 });
@@ -175,7 +176,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                 let uname = uname.clone();
                                                 spawn(async move {
                                                     if let Err(e) = admin_remove_member(gname, uname).await {
-                                                        error_msg.set(Some(e.to_string()));
+                                                        error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     detail_res.restart();
                                                 });
@@ -202,7 +203,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 }
                                 spawn(async move {
                                     if let Err(e) = admin_add_member(gname, u, false).await {
-                                        error_msg.set(Some(e.to_string()));
+                                        error_msg.set(Some(user_facing_message(&e)));
                                     } else {
                                         add_user.set(String::new());
                                     }
@@ -237,7 +238,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         let cn = cn.clone();
                                         spawn(async move {
                                             if let Err(e) = admin_revoke_permission(gname, cn).await {
-                                                error_msg.set(Some(e.to_string()));
+                                                error_msg.set(Some(user_facing_message(&e)));
                                             }
                                             detail_res.restart();
                                         });
@@ -272,7 +273,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                     }
                                     spawn(async move {
                                         if let Err(e) = admin_grant_permission(gname, cn).await {
-                                            error_msg.set(Some(e.to_string()));
+                                            error_msg.set(Some(user_facing_message(&e)));
                                         }
                                         detail_res.restart();
                                     });
@@ -299,7 +300,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         Ok(()) => {
                                             let _ = navigator().push(Route::AdminGroupsPage {});
                                         }
-                                        Err(e) => error_msg.set(Some(e.to_string())),
+                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                     }
                                 });
                             }

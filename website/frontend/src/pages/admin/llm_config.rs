@@ -3,6 +3,7 @@
 use common::llm_types::{AdminLlmPage as LlmPageData, LlmModelItem};
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_get_llm, admin_refresh_catalog, admin_set_default_chat_model, admin_set_model_allowed,
     admin_set_summarization_model,
@@ -137,7 +138,7 @@ fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<O
                             match admin_refresh_catalog().await {
                                 Ok(true) => flash.set(Some(Ok("Refresh started".to_string()))),
                                 Ok(false) => flash.set(Some(Ok("Refresh already in flight".to_string()))),
-                                Err(e) => flash.set(Some(Err(e.to_string()))),
+                                Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
                             }
                             busy.set(false);
                             let next = *reload.peek() + 1;
@@ -183,7 +184,7 @@ fn DefaultsPanel(
                                         let next = *reload.peek() + 1;
                                         reload.set(next);
                                     }
-                                    Err(e) => flash.set(Some(Err(e.to_string()))),
+                                    Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
                                 }
                             });
                         },
@@ -208,7 +209,7 @@ fn DefaultsPanel(
                                         let next = *reload.peek() + 1;
                                         reload.set(next);
                                     }
-                                    Err(e) => flash.set(Some(Err(e.to_string()))),
+                                    Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
                                 }
                             });
                         },
@@ -298,7 +299,7 @@ fn CatalogPanel(
                                                                 let next = *reload.peek() + 1;
                                                                 reload.set(next);
                                                             }
-                                                            Err(e) => flash.set(Some(Err(e.to_string()))),
+                                                            Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
                                                         }
                                                     });
                                                 },

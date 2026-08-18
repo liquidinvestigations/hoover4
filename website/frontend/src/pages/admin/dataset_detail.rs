@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_delete_dataset, admin_get_dataset, admin_trigger_workflow, admin_update_dataset,
 };
@@ -131,7 +132,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                                             msg.set(Some("The dataset was changed successfully.".to_string()));
                                             detail_res.restart();
                                         }
-                                        Err(e) => error_msg.set(Some(e.to_string())),
+                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                     }
                                 });
                             }
@@ -182,7 +183,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                                     Ok(()) => {
                                         let _ = navigator().push(Route::AdminCollectionPage { collection_id: cid });
                                     }
-                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                             });
                         }
@@ -232,7 +233,7 @@ fn WorkflowButton(
                         error_msg.set(None);
                         match admin_trigger_workflow(ds, kind).await {
                             Ok(run_id) => msg.set(Some(format!("Workflow started: {run_id}"))),
-                            Err(e) => error_msg.set(Some(e.to_string())),
+                            Err(e) => error_msg.set(Some(user_facing_message(&e))),
                         }
                         pending.set(false);
                     });

@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::admin_list_users;
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, HELP_TEXT, INPUT, LINK, TABLE, TD, TH,
@@ -113,7 +114,7 @@ fn UsersListContent() -> Element {
                     }
                 }
             }
-            Some(Err(e)) => rsx! { ErrorBar { message: "{e}" } },
+            Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
             None => rsx! { "Loading..." },
         }
     }

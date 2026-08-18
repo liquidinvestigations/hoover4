@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_delete_collection, admin_get_collection, admin_grant_permission, admin_list_groups,
     admin_revoke_permission, admin_set_collection_public, admin_update_collection,
@@ -124,7 +125,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         msg.set(Some("The collection was changed successfully.".to_string()));
                                         detail_res.restart();
                                     }
-                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                             });
                         }
@@ -206,7 +207,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                             ));
                                             detail_res.restart();
                                         }
-                                        Err(e) => error_msg.set(Some(e.to_string())),
+                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                     }
                                 });
                             }
@@ -242,7 +243,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         let gn = gn.clone();
                                         spawn(async move {
                                             if let Err(e) = admin_revoke_permission(gn, cname).await {
-                                                error_msg.set(Some(e.to_string()));
+                                                error_msg.set(Some(user_facing_message(&e)));
                                             }
                                             detail_res.restart();
                                         });
@@ -277,7 +278,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                     }
                                     spawn(async move {
                                         if let Err(e) = admin_grant_permission(gn, cname).await {
-                                            error_msg.set(Some(e.to_string()));
+                                            error_msg.set(Some(user_facing_message(&e)));
                                         }
                                         detail_res.restart();
                                     });
@@ -324,7 +325,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         Ok(()) => {
                                             let _ = navigator().push(Route::AdminCollectionsPage {});
                                         }
-                                        Err(e) => error_msg.set(Some(e.to_string())),
+                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                     }
                                 });
                             }

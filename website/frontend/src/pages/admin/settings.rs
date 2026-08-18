@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{admin_list_deployment_config, admin_list_settings, admin_set_setting};
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, INPUT, SELECT, TABLE, TD, TH,
@@ -71,7 +72,7 @@ fn SettingsContent() -> Element {
     let load_error = settings_res
         .read()
         .as_ref()
-        .and_then(|r| r.as_ref().err().map(|e| e.to_string()));
+        .and_then(|r| r.as_ref().err().map(|e| user_facing_message(&e)));
 
     rsx! {
         if let Some(m) = msg.read().clone() {
@@ -142,7 +143,7 @@ fn SettingsContent() -> Element {
                                                         msg.set(Some(format!("The setting \u{201c}{k}\u{201d} was saved successfully.")));
                                                         settings_res.restart();
                                                     }
-                                                    Err(e) => error_msg.set(Some(e.to_string())),
+                                                    Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                                 }
                                             });
                                         }
