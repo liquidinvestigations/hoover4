@@ -717,15 +717,17 @@ fn SearchableFacetPane(
         }
         // The box filters what is rendered, not what is fetched: the server returns the
         // top buckets and re-querying per keystroke would be one fan-out per character.
-        div {
-            style: "--facet-needle: '{needle}';",
-            SuspendWrapper {
-                FacetSelectorList {
-                    original_query,
-                    modified_search_query: pending,
-                    facet_field_name: field,
-                    map_string_terms,
-                }
+        // The needle is handed to the list, which owns the buckets and is the only place
+        // that can narrow them — an earlier version published it as a CSS custom property
+        // instead, which nothing read and nothing could have read: CSS cannot test one
+        // element's text against a value held in a variable, so the box did nothing at all.
+        SuspendWrapper {
+            FacetSelectorList {
+                original_query,
+                modified_search_query: pending,
+                facet_field_name: field,
+                map_string_terms,
+                needle: ReadSignal::from(needle),
             }
         }
     }

@@ -29,6 +29,14 @@ pub fn FacetSelectorList(
     modified_search_query: Signal<SearchQuery>,
     facet_field_name: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
+    /// Substring the rendered buckets are narrowed to, case-insensitively.
+    ///
+    /// It filters what is RENDERED, never what is fetched: the server returns the top
+    /// buckets for the query and re-running that fan-out per keystroke would cost one
+    /// search per character on an index that already fails on its time budget. Empty
+    /// means no narrowing, which is why the default renders every bucket.
+    #[props(default)]
+    needle: ReadSignal<String>,
 ) -> Element {
     use_effect(move || {
         let x = facet_field_name.read().clone();
@@ -81,6 +89,22 @@ pub fn FacetSelectorList(
         .iter()
         .map(|v| v.original_value.clone())
         .collect::<BTreeSet<_>>();
+    // Narrowing happens on the label the user can actually read. `original_value` is a
+    // term id for the mapped fields, so matching against it would search text that is
+    // never on screen and miss the text that is.
+    let needle_text = needle.read().trim().to_lowercase();
+    let visible_values: Vec<_> = if needle_text.is_empty() {
+        search_result.facet_values
+    } else {
+        search_result
+            .facet_values
+            .into_iter()
+            .filter(|v| v.display_string.to_lowercase().contains(&needle_text))
+            .collect()
+    };
+    // A narrowing that matches nothing has to say so. Rendering an empty list under a box
+    // the user just typed into is indistinguishable from the list having failed to load.
+    let no_matches = visible_values.is_empty() && !needle_text.is_empty();
     let missing_values = originally_filtered_values
         .difference(&returned_values)
         .cloned()
@@ -104,8 +128,14 @@ pub fn FacetSelectorList(
                 "Some collections could not be searched — facet counts may be incomplete."
             }
         }
+        if no_matches {
+            div {
+                style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
+                "Nothing here matches \"{needle_text}\"."
+            }
+        }
         ul {
-            for result in search_result.facet_values {
+            for result in visible_values {
                 li {
                     key: "{result.display_string}-{result.count}-{result.original_value:?}",
                     FacetCheckbox {
