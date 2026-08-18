@@ -3,8 +3,9 @@
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{admin_create_group, admin_list_groups};
+use crate::api::error_util::user_facing_message;
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_PRIMARY, INPUT, LINK, MODULE, MODULE_BODY,
+    AdminGuard, AdminShell, ErrorBar, HELP_TEXT, SuccessBar, BTN_PRIMARY, INPUT, LINK, MODULE, MODULE_BODY,
     MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -45,6 +46,13 @@ fn GroupsListContent() -> Element {
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 input { style: INPUT, placeholder: "groupname", value: "{groupname}", oninput: move |e| groupname.set(e.value()) }
                 input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                // The rule, next to the field it constrains. The dataset form on the
+                // collection page states its own the same way; this one asked for a
+                // value in a format it never named, so the first thing a person types
+                // ("TestGroup") is rejected by a rule they had no way to know.
+                p { style: "{HELP_TEXT} width: 100%; margin: 0;",
+                    "Group name: lowercase letters, digits, underscores and hyphens only. It cannot be changed afterwards. The display name is free text."
+                }
                 button {
                     style: BTN_PRIMARY,
                     onclick: move |_| {
@@ -60,7 +68,7 @@ fn GroupsListContent() -> Element {
                                     fullname.set(String::new());
                                     groups_res.restart();
                                 }
-                                Err(e) => error_msg.set(Some(e.to_string())),
+                                Err(e) => error_msg.set(Some(user_facing_message(&e))),
                             }
                         });
                     },
@@ -93,7 +101,7 @@ fn GroupsListContent() -> Element {
                     }
                 }
             },
-            Some(Err(e)) => rsx! { ErrorBar { message: "{e}" } },
+            Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
             None => rsx! { "Loading..." },
         }
     }

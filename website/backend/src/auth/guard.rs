@@ -44,9 +44,31 @@ pub fn is_not_found(err: &anyhow::Error) -> bool {
 /// 400. That is also why the search path must propagate the error rather than restate it
 /// with `anyhow!("{e}")`.
 pub fn is_bad_request(err: &anyhow::Error) -> bool {
-    err.chain()
-        .any(|cause| cause.is::<crate::db_utils::manticore_match::MatchQueryError>())
+    err.chain().any(|cause| {
+        cause.is::<crate::db_utils::manticore_match::MatchQueryError>()
+            || cause.is::<InvalidInput>()
+    })
 }
+
+/// A value the caller supplied that this endpoint will never accept.
+///
+/// Same reasoning as [`is_bad_request`]'s other arm and the same shape as
+/// `MatchQueryError`: a typed error rather than a recognisable phrase, because the message
+/// is user-facing prose that will be reworded, and because an admin form rejecting a bad
+/// name is the form working. Reported as 500 it is counted as breakage in the telemetry
+/// and `is_user_input_error` presents it as a crash instead of as advice.
+///
+/// The message is read by whoever typed the value, so it says what the rule is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidInput(pub String);
+
+impl std::fmt::Display for InvalidInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for InvalidInput {}
 
 #[cfg(test)]
 mod tests {

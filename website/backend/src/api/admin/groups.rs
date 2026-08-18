@@ -15,6 +15,30 @@ fn slug_valid(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
 }
 
+/// The nearest legal slug to what was typed, for the rejection message.
+///
+/// Naming the rule is not the same as showing it: the overwhelmingly common rejection is
+/// a capital letter in an otherwise fine name, and `TestGroup` -> `testgroup` says more
+/// than any sentence about character classes.
+fn slug_suggestion(s: &str) -> String {
+    let suggestion: String = s
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if suggestion.is_empty() {
+        "my_group".to_string()
+    } else {
+        suggestion
+    }
+}
+
 pub async fn admin_list_groups(user: &CurrentUser) -> anyhow::Result<Vec<AdminGroupItem>> {
     guard::require_admin(user)?;
     let groups = groups::list_groups().await?;
@@ -68,10 +92,16 @@ pub async fn admin_create_group(
 ) -> anyhow::Result<()> {
     guard::require_admin(user)?;
     if !slug_valid(&groupname) {
-        anyhow::bail!("invalid groupname slug");
+        return Err(guard::InvalidInput(format!(
+            "\u{201c}{groupname}\u{201d} is not a valid group name. Use lowercase letters, \
+             digits, underscores and hyphens only \u{2014} for example \
+             \u{201c}{}\u{201d}.",
+            slug_suggestion(&groupname)
+        ))
+        .into());
     }
     if groups::get_group(&groupname).await?.is_some() {
-        anyhow::bail!("group already exists");
+        return Err(guard::InvalidInput(format!("The group \u{201c}{groupname}\u{201d} already exists.")).into());
     }
     groups::upsert_group(GroupRow {
         groupname,
