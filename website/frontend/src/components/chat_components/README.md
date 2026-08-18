@@ -87,6 +87,15 @@ text and one turn can surface a dozen, so `ChatDocRefCard` renders
 full text stays in the payload and the card links to the document, which is where reading
 it belongs.
 
+**One card per document, not per hit.** The search tool answers with one hit per PAGE —
+`page_id` is part of its dedup key on purpose, since two pages are two pieces of evidence —
+and the same bytes can be ingested into several collections, so one document arrives as
+several rows. `extract_doc_refs` collapses them on `file_hash`, keeps the best-scoring
+row's snippet, and gathers the other datasets into `ChatDocRef::also_in`, which the card
+renders after the primary one under a CSS width clamp. Without that collapse the same title
+rendered three times over and the disclosure's count described page-hits while calling them
+documents.
+
 **The cards are collapsed behind `DocRefsDisclosure` by default**, one disclosure per tool
 row, labelled `<n> documents from <tool> — show`. A result set is evidence for the answer,
 not the answer: rendered open, a single search put 46 cards between the question and a
