@@ -94,6 +94,11 @@ fn SearchPageRootComponent(
             "#,
             div {
                 id: "x-search-input-top-bar",
+                // `min-height`, never `height`. The bar holds the control row and, once a
+                // filter is active, a chip row under it — about 82px of content in a 76px
+                // box. A fixed height plus `align-items: center` does not clip the
+                // overflow at the bottom; it splits it, so the search box and the
+                // Filter/Sort buttons were pushed to a negative `y` and lost their tops.
                 style: "
                     border-bottom: 1px solid rgb(164, 164, 164);
                     background-color: #F8FCFF;
@@ -101,7 +106,9 @@ fn SearchPageRootComponent(
                     display: flex;
                     flex-direction: row;
                     align-items: center;
-                    height: 76px;
+                    min-height: 76px;
+                    padding: 6px 0;
+                    box-sizing: border-box;
                     width: 100%;
                 ",
 
@@ -110,12 +117,17 @@ fn SearchPageRootComponent(
 
             div {
                 id: "x-search-results-bottom-space",
+                // Sized by the flex column, not by subtracting the bar's height. The old
+                // `calc(100% - 76px)` restated the bar's height as a literal, so the two
+                // had to be edited together and a bar that grows by a chip row would have
+                // overlapped this pane. `min-height: 0` is what actually lets a flex child
+                // shrink below its content and scroll internally.
                 style: r#"
                     width: 100%;
                     display: flex;
                     flex-direction: row;
-                    flex-grow: 1;
-                    max-height: calc(100% - 76px);
+                    flex: 1 1 auto;
+                    min-height: 0;
                 "#,
                 div {
                     id: "x-search-results-left-panel",
