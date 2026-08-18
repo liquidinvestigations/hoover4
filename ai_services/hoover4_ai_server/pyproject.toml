@@ -27,7 +27,7 @@ priority = "primary"
 
 [[tool.poetry.source]]
 name = "pytorch-gpu"
-url = "https://download.pytorch.org/whl/cu126"
+url = "https://download.pytorch.org/whl/cu130"
 priority = "explicit"
 
 [build-system]

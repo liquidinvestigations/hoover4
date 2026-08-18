@@ -14,6 +14,11 @@ services:
       # it reuses the stale image.
       context: ${HOOVER4_REPO_ROOT}/ai_services
       dockerfile: hoover4_ai_server/Dockerfile
+      # Compiler/thread jobs inside the build. Bounded because an unbounded build
+      # sizes every backend to the host's core count at once and takes the machine
+      # running it out of service; raise it on a dedicated builder.
+      args:
+        BUILD_JOBS: ${BUILD_JOBS:-6}
     image: hoover4-ai-server:local
     container_name: hoover4-ai-server
     ports:

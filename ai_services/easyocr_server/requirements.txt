@@ -1,0 +1,16 @@
+# torch is taken from the CUDA 13 index, not PyPI. The PyPI wheel is CPU-only, and the
+# cu126 index has no aarch64 build carrying Blackwell kernels — CUDA 13 is the first
+# index with wheels for both x86_64 and aarch64 that cover sm_120, which is what a
+# GB10 (sm_121) needs. These three versions are the newest set published for BOTH
+# arches; torchvision lags torch by one minor on aarch64, so the set moves together.
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+torch==2.10.0+cu130
+torchvision==0.25.0+cu130
+
+easyocr==1.7.2
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.9
+pillow>=11
+numpy>=1.26,<3

@@ -2,6 +2,24 @@
 # This builds a FastAPI-based embedding server using multilingual-e5-large-instruct model
 # with support for embeddings, reranking, and NER functionality on GPU/CPU
 FROM nvidia/cuda:12.6.0-devel-ubuntu22.04 AS builder
+# Build and thread parallelism, bounded. Left unbounded, every build backend here sizes
+# itself to the host's core count at once — pip resolves and compiles several packages in
+# parallel, each of which then forks one compiler job per core — and the machine running
+# the build stops being usable. One knob feeds every backend that has its own spelling
+# for it, because missing one is enough to lose the bound.
+ARG BUILD_JOBS=6
+ENV BUILD_JOBS=${BUILD_JOBS} \
+    MAX_JOBS=${BUILD_JOBS} \
+    MAKEFLAGS=-j${BUILD_JOBS} \
+    CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} \
+    NINJAFLAGS=-j${BUILD_JOBS} \
+    NPY_NUM_BUILD_JOBS=${BUILD_JOBS} \
+    CARGO_BUILD_JOBS=${BUILD_JOBS} \
+    RAYON_NUM_THREADS=${BUILD_JOBS} \
+    OMP_NUM_THREADS=${BUILD_JOBS} \
+    OPENBLAS_NUM_THREADS=${BUILD_JOBS} \
+    MKL_NUM_THREADS=${BUILD_JOBS} \
+    NUMEXPR_NUM_THREADS=${BUILD_JOBS}
 
 # Set environment variables for NVIDIA GPU support
 ENV NVIDIA_VISIBLE_DEVICES=all \
@@ -53,6 +71,15 @@ RUN $VENV_PATH/bin/pip install --upgrade pip && \
 
 # Runtime stage - CUDA-enabled runtime image
 FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04 AS runtime
+# Thread caps, carried into the runtime image. These services are GPU-bound; the CPU-side
+# thread pools (OpenMP inside torch, the tokenizers' rayon pool) otherwise each spin up one
+# thread per core and contend with everything else on the box for no throughput gain.
+ARG BUILD_JOBS=6
+ENV OMP_NUM_THREADS=${BUILD_JOBS} \
+    OPENBLAS_NUM_THREADS=${BUILD_JOBS} \
+    MKL_NUM_THREADS=${BUILD_JOBS} \
+    NUMEXPR_NUM_THREADS=${BUILD_JOBS} \
+    RAYON_NUM_THREADS=${BUILD_JOBS}
 
 # Set environment variables for NVIDIA GPU support
 ENV NVIDIA_VISIBLE_DEVICES=all \

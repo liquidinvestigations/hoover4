@@ -104,7 +104,9 @@ You can configure the server using these environment variables:
 ### Dependencies
 - Python 3.11+
 - Poetry for dependency management
-- PyTorch with CUDA support (for GPU acceleration)
+- PyTorch with CUDA support, from the CUDA 13 wheel index (see
+  [CUDA and GPU architecture](../README.md#cuda-and-gpu-architecture) — it is what
+  makes the image work on both x86_64 and aarch64, and on Blackwell cards)
 - Required Python packages (automatically installed with Poetry):
   - `sentence-transformers` - for embeddings and reranking
   - `transformers` - for NER (disabled in current pyproject.toml due to Python 3.13 compatibility)

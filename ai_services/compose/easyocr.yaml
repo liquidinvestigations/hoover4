@@ -12,6 +12,11 @@ services:
       # every build.
       context: ${HOOVER4_REPO_ROOT}/ai_services/easyocr_server
       dockerfile: Dockerfile
+      # Compiler/thread jobs inside the build. Bounded because an unbounded build
+      # sizes every backend to the host's core count at once and takes the machine
+      # running it out of service; raise it on a dedicated builder.
+      args:
+        BUILD_JOBS: ${BUILD_JOBS:-6}
     image: hoover4-easyocr:local
     container_name: hoover4-easyocr-gpu
     ports:
@@ -25,9 +30,12 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
-      # Same named volume the ai-server uses for HuggingFace, at EasyOCR's own cache
-      # path — preserved across resets like every model cache.
-      - ai_models_cache:/root/.EasyOCR
+      # EasyOCR's own cache volume, not the ai-server's: the two hold different model
+      # formats, and sharing one volume overlays EasyOCR's flat *.pth files on top of a
+      # HuggingFace `hub/` tree. It happens to work because the names do not collide,
+      # and it breaks the moment either side writes an index. Preserved across resets
+      # like every model cache (deploy.py CACHE_VOLUME_SUFFIXES).
+      - easyocr_models_cache:/root/.EasyOCR
     devices:
       - nvidia.com/gpu=all
     restart: unless-stopped
@@ -41,7 +49,7 @@ services:
       - ai_services
 
 volumes:
-  ai_models_cache:
+  easyocr_models_cache:
     driver: local
 
 networks:

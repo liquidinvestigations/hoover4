@@ -897,6 +897,14 @@ def ensure_network(rt, name):
     if rt.name == "podman":
         for resolver in resolvers[:3]:
             args += ["--dns", resolver]
+    # docker compose adopts a network it did not create only when that network carries
+    # the labels compose would have set itself; without them it refuses the whole `up`
+    # with "network ... has incorrect label com.docker.compose.network". podman-compose
+    # does not check, which is why creating the network here was invisible until a
+    # deploy on plain docker. On both sides the compose network KEY, its `name:` and
+    # the project name are the same string, so one value fills all three labels.
+    args += ["--label", "com.docker.compose.project=%s" % name,
+             "--label", "com.docker.compose.network=%s" % name]
     print("creating network %s (dns: %s)" % (name, ", ".join(resolvers) or "default"))
     result = rt.run(args + [name], capture_output=True, text=True)
     if result.returncode != 0:

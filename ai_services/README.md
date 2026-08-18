@@ -1,8 +1,7 @@
 # Hoover4 ai_services — the optional GPU tier
 
 GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
-(`hoover4-vllm`, **supported but parked**), and GPU EasyOCR (`hoover4-easyocr-gpu`,
-**overlay only — no server image in the tree**).
+(`hoover4-vllm`, **supported but parked**), and GPU EasyOCR (`hoover4-easyocr-gpu`).
 
 > **Standalone.** This tier is fully optional and has **no
 > dependencies on anything else**: no external network, nothing here calls into
@@ -27,7 +26,7 @@ Every service is an optional overlay under `compose/`, selected by `hoover4.ini`
 |---|---|---|---|---|
 | `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
 | `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. **Parked**: nothing starts it; the NVIDIA NIM cloud provider carries the live tests. |
-| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP. The server directory (`easyocr_server/`) does not exist, so enabling this overlay fails at build time — deliberately, rather than starting a container that cannot serve. The CPU twin `main_services/ocr_tesseract` carries OCR today. |
+| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so `tasks/ocr_client.py` posts one request shape to either. |
 
 ## Deploy
 
@@ -51,16 +50,38 @@ which looks like a GPU problem and is not. **The durable fix is to bring every
 reintroduce the bad entries.
 
 The private `ai_services` network is created by `deploy.py` with explicit DNS
-settings — fresh podman networks have no DNS until resolvers are attached.
+settings — fresh podman networks have no DNS until resolvers are attached. It is created
+carrying the `com.docker.compose.project` / `com.docker.compose.network` labels compose
+would have set itself, because docker compose refuses to adopt a network that lacks them
+and fails the whole `up`; podman-compose does not check, so the labels only start
+mattering on plain docker.
 
 ### Model caches
 
-The named volumes `ai_services_ai_models_cache` (~6 GB) and
-`ai_services_vllm_huggingface_cache` (~16 GB) are preserved across
-`./deploy --ai-services --reset`; pass `--reset-caches` to delete them too. The compose
+The named volumes `ai_services_ai_models_cache` (~6 GB),
+`ai_services_vllm_huggingface_cache` (~16 GB) and
+`ai_services_easyocr_models_cache` (~100 MB) are preserved across
+`./deploy --ai-services --reset`; pass `--reset-caches` to delete them too.
+EasyOCR keeps its own volume rather than sharing the ai-server's: the two hold
+different model layouts, and overlaying EasyOCR's flat `*.pth` files on a HuggingFace
+`hub/` tree works only for as long as the two never pick the same name. The compose
 project name is pinned to `ai_services` (`COMPOSE_PROJECT_NAME` in the generated
 `.env`) so the caches stay attached. Changing it orphans them and re-downloads every
 weight.
+
+### CUDA and GPU architecture
+
+Both images take their torch wheels from the **CUDA 13 index**
+(`download.pytorch.org/whl/cu130`), not from PyPI and not from cu126. That index is the
+first one that publishes, for **x86_64 and aarch64 alike**, wheels carrying `sm_120`
+kernels — which is what a Blackwell card needs. A GB10 reports compute capability
+**12.1** and runs those `sm_120` cubins; the cu126 index has no aarch64 build of the
+pinned torch at all, so on ARM the build fails outright at dependency resolution rather
+than at first inference.
+
+`torch`, `torchvision` and `torchaudio` move as a set, and the set is chosen as the
+newest one published for **both** architectures: torchvision's aarch64 wheels lag torch
+by one minor, so it is torchvision that decides which triple is available, not torch.
 
 ### Podman specifics
 
@@ -77,11 +98,17 @@ weight.
 Python here runs **in containers only** — the host has almost no tooling.
 
 ```bash
-docker exec hoover4-ai-server python -m pytest tests/ -q
+cd ai_services/hoover4_ai_server
+docker run --rm --network ai_services -v "$PWD":/w -w /w \
+    -e AI_SERVER_TEST_URL=http://hoover4-ai-server:8000 \
+    --entrypoint sh hoover4-ai-server:local \
+    -c 'pip -q install pytest requests && python -m pytest tests/ -q'
 ```
 
-The ai-server tests target `http://localhost:21961` by default; set
-`AI_SERVER_TEST_URL` to point them at a remote GPU host.
+The runtime image carries the server module and nothing else — no `tests/`, no pytest —
+so the suite is mounted in rather than run with `docker exec`. `AI_SERVER_TEST_URL`
+defaults to `http://localhost:21961`; point it at a container name on the `ai_services`
+network as above, or at a remote GPU host.
 
 ## The local LLM: Qwen3.5-2B at its full 262 K context
 
