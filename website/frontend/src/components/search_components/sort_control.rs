@@ -5,14 +5,19 @@
 //! direction affordance, so if the glyph did not toggle there would be no way to ask for
 //! "oldest first" at all.
 //!
-//! Like every other control in this toolbar it edits the PENDING query and nothing
-//! reaches the URL until `Apply Filters`. So the button names the order the results on
-//! screen are actually in, and a choice that has not been applied yet is drawn after it
-//! as `applied → pending` in the accent colour. Relabelling straight to the new key was
-//! the whole of the defect: it claimed an order the list was not in. Applying on
-//! selection is not the alternative it looks like — the apply path pushes the whole
-//! pending query, so a sort click would also commit filter edits the user had not
-//! confirmed.
+//! Picking an order applies it: the control edits the pending query and then runs the
+//! search, so the results are in the order the button names by the time the menu closes.
+//!
+//! This is safe only because every other non-text control in the toolbar does the same —
+//! the filter chips commit on removal too. The apply path pushes the WHOLE pending query,
+//! so while filters still batched behind `Apply Filters` a sort click would have silently
+//! committed filter edits the user had not confirmed. If filter editing is ever put back
+//! behind an explicit apply, this must go back with it.
+//!
+//! The `applied → pending` accent labelling is kept for the window where the search is in
+//! flight, and because the search can reject a query and leave the applied order behind.
+//! The button names the order the results on screen are actually in; relabelling straight
+//! to the new key was the original defect, since it claimed an order the list was not in.
 
 use common::search_query::{SearchQuery, SortKey, SortSpec};
 use dioxus::prelude::*;
@@ -74,6 +79,9 @@ pub fn SortControl(
     original_query: ReadSignal<SearchQuery>,
     /// The pending query every control in this toolbar edits.
     query: Signal<SearchQuery>,
+    /// Run the search for the order just picked. See the module docs for why this is
+    /// safe only while the filter chips commit on edit as well.
+    on_commit: Callback<()>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
 
@@ -136,11 +144,14 @@ pub fn SortControl(
     });
 
     let mut set_key = move |key: SortKey| {
-        let mut q = query.write();
-        // A new key keeps a sensible default direction: newest/biggest first for the
-        // numeric keys, A→Z for the name.
-        q.sort = SortSpec { key, desc: !matches!(key, SortKey::Name) };
+        {
+            let mut q = query.write();
+            // A new key keeps a sensible default direction: newest/biggest first for the
+            // numeric keys, A→Z for the name.
+            q.sort = SortSpec { key, desc: !matches!(key, SortKey::Name) };
+        }
         menu_open.set(false);
+        on_commit.call(());
     };
 
     rsx! {
@@ -173,9 +184,12 @@ pub fn SortControl(
                 title: "{direction_tooltip}",
                 onclick: move |event: Event<MouseData>| {
                     event.stop_propagation();
-                    let mut q = query.write();
-                    let current = q.sort.resolved(&q.query_string);
-                    q.sort = SortSpec { key: current.key, desc: !current.desc };
+                    {
+                        let mut q = query.write();
+                        let current = q.sort.resolved(&q.query_string);
+                        q.sort = SortSpec { key: current.key, desc: !current.desc };
+                    }
+                    on_commit.call(());
                 },
                 if effective().desc {
                     Icon { icon: MdArrowDownward, style: "width: 18px; height: 18px; color: {direction_colour()};" }

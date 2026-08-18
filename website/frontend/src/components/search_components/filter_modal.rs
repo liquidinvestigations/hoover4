@@ -173,7 +173,17 @@ fn term_field_prop(facet_field: &str) -> Option<String> {
 
 /// The chip row under the search box: one chip per active category.
 #[component]
-pub fn FilterChips(query: Signal<SearchQuery>, on_open: Callback<FilterCategory>) -> Element {
+pub fn FilterChips(
+    query: Signal<SearchQuery>,
+    on_open: Callback<FilterCategory>,
+    /// Run the search for the query these chips just edited.
+    ///
+    /// Removing a chip used to edit the pending query and stop, which left the result
+    /// list and its heading describing a filter the chip row no longer showed, until the
+    /// user noticed Apply Filters had lit up. A control that removes a filter has to
+    /// remove it from the results too.
+    on_commit: Callback<()>,
+) -> Element {
     // Every term id the chips need text for, grouped by term field. A memo in front of
     // the resource, so the round trip happens when the SELECTION changes and not when
     // anything else in the query does — a resource reading `query` itself would resolve
@@ -228,7 +238,10 @@ pub fn FilterChips(query: Signal<SearchQuery>, on_open: Callback<FilterCategory>
                                 title: "Remove this filter",
                                 onclick: move |event: Event<MouseData>| {
                                     event.stop_propagation();
+                                    // Scoped so the borrow is released before the search
+                                    // reads the signal it was just written through.
                                     category.clear(&mut query.write());
+                                    on_commit.call(());
                                 },
                                 Icon { icon: MdClose, style: "width: 16px; height: 16px;" }
                             }
@@ -239,9 +252,12 @@ pub fn FilterChips(query: Signal<SearchQuery>, on_open: Callback<FilterCategory>
             button {
                 style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 14px; color: rgba(0,0,0,0.7);",
                 onclick: move |_| {
-                    let mut q = query.write();
-                    q.facet_filters.clear();
-                    q.range_filters.clear();
+                    {
+                        let mut q = query.write();
+                        q.facet_filters.clear();
+                        q.range_filters.clear();
+                    }
+                    on_commit.call(());
                 },
                 "Clear all"
             }

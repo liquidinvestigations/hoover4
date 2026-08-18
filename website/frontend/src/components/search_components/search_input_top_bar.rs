@@ -168,7 +168,11 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                     }
                 }
 
-                SortControl { original_query, query: modified_search_query }
+                SortControl {
+                    original_query,
+                    query: modified_search_query,
+                    on_commit: Callback::new(move |_| trigger_search(())),
+                }
             }
 
             FilterChips {
@@ -176,6 +180,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 on_open: Callback::new(move |category: FilterCategory| {
                     open_category.set(Some(category));
                 }),
+                on_commit: Callback::new(move |_| trigger_search(())),
             }
         }
 
