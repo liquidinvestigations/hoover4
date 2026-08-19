@@ -309,12 +309,21 @@ def _append_marker(
     # 1. The structured key, for any client that preserves structured content (the host's
     #    .mcp.json entries do). It keeps the bare-array shape: a client reading the
     #    structured key has `is_error` from MCP itself and needs no flag from us.
+    #
+    #    **Only ever ADDED to structured content the sidecar itself produced, never
+    #    invented.** Most browser tools answer in TEXT and carry no structured content at
+    #    all, and synthesising a dict for them turns `structured_content: None` into
+    #    `{"_hoover4_artifacts": []}` — a non-empty structured result, which every client
+    #    that prefers structured output over text (Claude Code does) shows the model
+    #    INSTEAD of the text, discarding the snapshot, the `browser_evaluate` value, the
+    #    console log and the network list. When there is nothing of the sidecar's to add
+    #    to, the text marker below is the whole delivery, which is what it exists for.
     structured = result.structured_content
     if isinstance(structured, dict):
         structured = dict(structured)
         structured[artifacts.ARTIFACTS_KEY] = entries
     else:
-        structured = {artifacts.ARTIFACTS_KEY: entries}
+        structured = None
 
     # 2. The text marker, for the transcript path — and it must be the FINAL block, since
     #    that position is what the card authenticates it by. See ARTIFACT_MARKER.

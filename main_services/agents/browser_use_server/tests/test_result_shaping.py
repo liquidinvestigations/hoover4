@@ -83,8 +83,28 @@ def test_a_capture_that_produced_nothing_still_ends_with_a_marker():
 
 def test_the_structured_key_keeps_the_bare_array():
     # A client reading structured content has MCP's own `is_error` and needs no flag here.
-    out = _append_marker(_result("x"), [{"artifact_id": "a"}], failed=True)
+    out = _append_marker(
+        ToolResult(
+            content=[TextContent(type="text", text="x")],
+            structured_content={"result": "x"},
+        ),
+        [{"artifact_id": "a"}],
+        failed=True,
+    )
     assert out.structured_content["_hoover4_artifacts"] == [{"artifact_id": "a"}]
+    # And it is ADDED to what the sidecar said, never instead of it.
+    assert out.structured_content["result"] == "x"
+
+
+def test_a_text_only_result_stays_text_only():
+    # Attaching the artifact key to a result with NO structured content would invent one,
+    # and a client that prefers structured output over text then shows the model
+    # `{"_hoover4_artifacts": []}` and discards the snapshot, the evaluate result, the
+    # console log and the network list. The marker in the text carries them instead.
+    out = _append_marker(_result("### Page\n- Page URL: https://x.example/"), [])
+    assert out.structured_content is None
+    assert _text(out)[0].startswith("### Page")
+    assert _marker_payload(out) == {"artifacts": []}
 
 
 # ------------------------------------------------------------------------ dead links
