@@ -24,8 +24,9 @@ pub fn TextDataViewer() -> Element {
                 vertical: ScrollLogicalPosition::Center,
                 horizontal: ScrollLogicalPosition::Center,
             });
-        } else {
         }
+        // No `else`: an index with no mounted span is the ordinary state while the text
+        // is still rendering, not something to say anything about.
     });
     rsx! {
         TextDataInner { mounts }

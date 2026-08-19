@@ -309,8 +309,10 @@ pub fn PdfViewer(
 
         let promise = x_open_pdf_viewer(pdf_url.clone(), cb);
         spawn(async move {
-            let result = promise.await;
-            info!("_js::x_open_pdf_viewer: {:#?}", result);
+            // Awaited rather than dropped: a dropped promise that rejects surfaces as an
+            // uncaught rejection in the console. The resolved value is the viewer handle
+            // the callback above already received, so there is nothing here to report.
+            let _ = promise.await;
         });
     });
 
