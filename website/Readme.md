@@ -678,9 +678,18 @@ answer different questions (`components/search_components/vfs_tree.rs`):
 
 | cap | bounds | overflow row |
 |---|---|---|
-| `MAX_CHILDREN_PER_NODE` (500) | what is FETCHED per expansion | `N more…`, raises the limit and refetches |
+| `CHILDREN_PAGE_SIZE` (500) | what is FETCHED per request | `N more…`, fetches the NEXT page and appends |
 | `MAX_SIBLINGS_EACH_SIDE` (10) | what is RENDERED either side of the folder you are in | `N more above/below…`, client-side only |
 | `MAX_VISIBLE_ANCESTORS` (8) | how many levels of the path to that folder render at all | `N more levels…`, collapses the middle |
+
+The tree asks for folder-like children ONLY (`folders_only`), so `total` counts what it
+can draw: a folder holding nothing but files is a leaf rather than a row promising
+thousands of children that never appear, and a folder's files can no longer fill the first
+page and starve the archives behind them (`ORDER BY kind ASC` puts containers last). The
+file-browser content pane asks without the flag, because files belong in the pane. The
+server's own `MAX_CHILDREN_PER_PAGE` (2000) is a page-size cap and is deliberately larger
+than what the tree asks for: while the two were the same number, a wider request was
+clamped back to the page the caller already had.
 
 The last two are measured from the tree's **focus** — the node the URL names — and are
 inert in the filter pane, which has no "here". Only one of the first two is ever on screen
@@ -738,7 +747,11 @@ each other, which is the only path that writes the default width back to storage
 
 Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
 crosses container boundaries — `PathDescriptor` carries a single `container_hash`, so an
-archive inside an archive used to render one hop and lose the rest. Past
+archive inside an archive used to render one hop and lose the rest. A container has no
+`/` node: what is inside it hangs off the container FILE, so expanding `report.zip` shows
+its contents and the trail reads `dataset › folder › report.zip › member`. The content
+pane still addresses that level as the descriptor `container_hash + "/"` — a descriptor
+and a tree node are different things. Past
 `MAX_CRUMBS_SHOWN` (3) the leading crumbs collapse into a `…` chip whose popup lists them.
 
 Every read of it goes through `manticore_search_sql_uncached`: the tree changes while
