@@ -87,6 +87,7 @@ DEFAULTS = {
     "main_services": {
         # which side of each capability the pipeline prefers
         "ner_provider": "gpu",
+        "ner_spacy_enabled": "false",
         "embeddings_provider": "gpu",
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
@@ -189,6 +190,7 @@ MAIN_OVERLAYS = [
     (None, "compose/agents.yaml", None),          # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
+    ("ner_spacy_enabled", "compose/ner-spacy.yaml", "hoover4-ner-spacy"),
     # Overrides hoover4-website's command; adds no service of its own.
     ("website_release_mode", "compose/website-release.yaml", None),
 ]
@@ -529,17 +531,17 @@ def write_env_file(path, env):
 def _ner_spacy_twin_enabled(cfg):
     """Whether the CPU NER twin will actually be running.
 
-    hoover4-ner-spacy lives in the BASE main compose file (it is never optional),
-    so its presence there is the honest test. Announcing a fallback url for a
-    container that does not exist would be
-    worse than having none: tasks/remote.py would spend a connect timeout on it
-    before failing, on every single batch.
+    One config key, which is also what selects the overlay that defines the service, so
+    "enabled" and "running" cannot drift apart. This used to grep the base compose file
+    for the string `hoover4-ner-spacy`, which was true whenever the string appeared
+    anywhere in it -- in a comment, in a volume name, in another service's depends_on --
+    and so was true unconditionally.
+
+    Announcing a fallback url for a container that does not exist is worse than having
+    none: tasks/remote.py would spend a connect timeout on it before failing, on every
+    single batch.
     """
-    base = MAIN_COMPOSE_DIR / "docker-compose.yaml"
-    try:
-        return "hoover4-ner-spacy" in base.read_text()
-    except OSError:
-        return False
+    return cfg.get_bool("main_services", "ner_spacy_enabled")
 
 
 def selected_overlays(cfg, side):
@@ -811,6 +813,23 @@ def preflight_ports(cfg, side, rt):
         fail("ports already in use:\n%s" % detail)
 
 
+def preflight_ner_spacy(cfg, side):
+    """A knob that is rendered and not read is the failure mode to refuse, not degrade.
+
+    `ner_provider = spacy` with `ner_spacy_enabled = false` asks for entities from a
+    service that will not be running. Silently producing no entities at all would look
+    exactly like a corpus with none in it.
+    """
+    if side == "ai":
+        return
+    if cfg.get("main_services", "ner_provider") != "spacy":
+        return
+    if not cfg.get_bool("main_services", "ner_spacy_enabled"):
+        fail("[main_services] ner_provider = spacy but ner_spacy_enabled = false — the "
+             "spaCy twin would not be running, so no entities would be extracted at "
+             "all. Set ner_spacy_enabled = true, or pick another ner_provider.")
+
+
 def preflight_ai_enabled(cfg, side):
     if side == "ai" and not cfg.get_bool("ai_services", "enabled"):
         fail("--ai-services was requested but [ai_services] says enabled = false — "
@@ -828,6 +847,7 @@ def run_preflights(cfg, side, rt, starting):
     if starting:
         preflight_ports(cfg, side, rt)
     preflight_ai_enabled(cfg, side)
+    preflight_ner_spacy(cfg, side)
 
 
 # --------------------------------------------------------------------------------------

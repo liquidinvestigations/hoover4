@@ -25,7 +25,10 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_email import parse_email_extract_text_headers, EmailExtractionAndScan
     from tasks.P3_parse_files.parse_text import extract_plaintext_chunks
     from tasks.P3_parse_files.parse_tika import run_tika_and_store, RunTikaParams
-    from tasks.P3_parse_files.parse_mime import detect_mime_with_gnu_file, detect_mime_with_magika, DetectMimeParams
+    from tasks.P3_parse_files.parse_mime import (
+        detect_mime_with_gnu_file, detect_mime_with_magika, detect_mime_from_name,
+        detect_mime_by_content, DetectMimeParams,
+    )
     from tasks.P3_parse_files.parse_pdf import PdfProcessingAndScan
     from tasks.P3_parse_files.parse_image import parse_image_metadata_and_store, ParseImageParams
     from tasks.P3_parse_files.parse_audio import parse_audio_metadata_and_store, ParseAudioParams
@@ -105,8 +108,42 @@ class ParseSingleFile:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
+        # Detection from the filename alone -- no file read, and the only detector that
+        # can be right about a .docx whose bytes are a zip.
+        name_fut = workflow.execute_activity(
+            detect_mime_from_name,
+            DetectMimeParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                file_hash=params.item_hash,
+                file_path=params.file_path,
+                timeout_seconds=proc_secs,
+            ),
+            start_to_close_timeout=timedelta(seconds=proc_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+
+        # The content sniff: an extension-less RFC 822 message is text/plain to every
+        # other detector here, so without this a whole maildir indexes as text.
+        sniff_fut = workflow.execute_activity(
+            detect_mime_by_content,
+            DetectMimeParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                file_hash=params.item_hash,
+                file_path=params.file_path,
+                timeout_seconds=proc_secs,
+            ),
+            start_to_close_timeout=timedelta(seconds=proc_secs),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+
         detectors_started_at = workflow.now()
-        mime_res, tika_res, magika_res = await asyncio.gather(mime_fut, tika_fut, magika_fut, return_exceptions=True)
+        mime_res, tika_res, magika_res, name_res, sniff_res = await asyncio.gather(
+            mime_fut, tika_fut, magika_fut, name_fut, sniff_fut, return_exceptions=True,
+        )
 
         def _as_list(d: dict | Any, key: str) -> List[str]:
             v = d.get(key) if isinstance(d, dict) else []
@@ -130,8 +167,8 @@ class ParseSingleFile:
                 "mime_encodings": sorted(set(all_enc)),
             }
 
-        detector_results = [mime_res, tika_res, magika_res]
-        detector_names = ["file", "tika", "magika"]
+        detector_results = [mime_res, tika_res, magika_res, name_res, sniff_res]
+        detector_names = ["file", "tika", "magika", "extension", "content_sniff"]
         try:
             await record_errors_from_results(
                 detector_results,

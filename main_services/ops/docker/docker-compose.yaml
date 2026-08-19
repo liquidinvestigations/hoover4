@@ -341,9 +341,10 @@ services:
     environment:
       - "NER_URL=${NER_URL}"
       # The CPU twin remote.py falls back to on a CONNECT failure. deploy.py renders
-      # this only when hoover4-ner-spacy is actually in the base compose file --
-      # announcing a fallback url for a container that does not exist would cost a
-      # connect timeout per batch before failing anyway.
+      # this only when [main_services] ner_spacy_enabled is true, which is the same key
+      # that pulls in compose/ner-spacy.yaml -- announcing a fallback url for a
+      # container that does not exist would cost a connect timeout per batch before
+      # failing anyway. The key defaults to false.
       - "NER_URL_FALLBACK=${NER_URL_FALLBACK:-}"
       # The full research agent, for the P_agent ResearchTask workflow. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
@@ -528,61 +529,6 @@ services:
       - ./pdf-to-html:/app
     entrypoint: ["/usr/bin/python", "/app/pdf2html_server.py"]
     working_dir: /app
-
-  # ------------------------------------------------------------------ NER: CPU twin
-  # In the BASE file, not an overlay, and never optional. deploy.py's
-  # `_ner_spacy_twin_enabled` tests for this service's presence *here* before it will
-  # announce NER_URL_FALLBACK, because announcing a fallback url for a container that
-  # does not exist is worse than having none: tasks/remote.py would spend a connect
-  # timeout on it before failing, on every batch.
-  hoover4-ner-spacy:
-    container_name: hoover4-ner-spacy
-    build:
-      context: ../../ner_spacy
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:${NER_SPACY_PORT}:8000"
-    networks:
-      - hoover4
-    restart: unless-stopped
-    # Sized for the WORST batch, not the average one. A request carries a list of texts,
-    # each of up to NER_MAX_TEXT_CHARS (1 M chars), and NER_CONCURRENCY of them are in
-    # flight at once — so the peak is several large documents resident in spaCy at the
-    # same time, which was measured at just over 4 GB on a real corpus.
-    #
-    # The failure this guards against is silent and expensive: the cgroup kills uvicorn,
-    # the container restarts (so `docker ps` shows it healthy and `OOMKilled` is false —
-    # the PROCESS was killed, not the container), and every NER activity in flight fails
-    # with `ConnectionError: Connection refused` against a service that looks fine by the
-    # time anyone looks. It reads as a network fault. The tell is RestartCount climbing
-    # and `Memory cgroup out of memory` in dmesg.
-    memswap_limit: 12000M
-    mem_limit: 12000M
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8000
-      # Must differ from the GPU tier's model id. entity_hit carries nlp_model in its
-      # ORDER BY, so the two providers' rows coexist; sharing an id would make the
-      # twin overwrite the GPU's rows and its watermark, and the files it handled
-      # during an outage would then never be reprocessed when the GPU came back.
-      - NLP_MODEL_ID=${NLP_MODEL_ID_SPACY:-ner-spacy-xx}
-      - NER_CONCURRENCY=${NER_SPACY_CONCURRENCY:-2}
-      - NER_QUEUE_DEPTH=${NER_SPACY_QUEUE_DEPTH:-16}
-      # Characters between pipeline rebuilds. This is what bounds the container's memory:
-      # a spaCy pipeline interns every distinct string it has ever seen and never evicts,
-      # so without a rebuild the footprint tracks the corpus's vocabulary rather than the
-      # request. Lower it for a corpus with an unusually large vocabulary (raw text
-      # archives, OCR output); `/health` reports `pipeline_reloads` so it can be watched.
-      - NER_RECYCLE_CHARS=${NER_SPACY_RECYCLE_CHARS:-5000000}
-      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      # The model is baked into the image, so there is no download to wait for.
-      start_period: 30s
 
 volumes:
   clickhouse_data:

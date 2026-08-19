@@ -32,6 +32,7 @@ from database.clickhouse import get_collection_client
 from database.manticore import DOCUMENT_COLUMNS, manticore_execute, shard_table_from_name
 from .params import BuildEmailGraphParams, BuildVfsNodesParams, IndexShardParams, OptimizeShardsParams
 from tasks.heartbeat import with_heartbeat
+from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 log = logging.getLogger(__name__)
 
 
@@ -324,15 +325,32 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     item_hashes: list[str] = params.hashes
 
     with get_collection_client(params.collectionname) as client:
+        # The coarse type and the MIME come from `file_type_canonical`, one value each,
+        # which is what makes the file-type facet single-valued per document: a .docx
+        # used to appear under `doc` AND `archive` because the union of five disagreeing
+        # detectors went straight into the index. The losing detections are not lost --
+        # they are on `file_type_canonical.losers` and in `file_types`, both of which the
+        # raw metadata tab still shows.
+        #
+        # Extensions stay a union: a document reachable under several names has all of
+        # them, and none of them is wrong.
         raw_metadatas = client.query_arrow("""
-            SELECT hash,
-                    arrayDistinct(arrayFlatten(groupArray(file_type))) as file_types,
-                    arrayDistinct(arrayFlatten(groupArray(mime_type))) as mime_types,
-                    arrayDistinct(arrayFlatten(groupArray(extensions))) as extensions
-            FROM file_types FINAL
-            WHERE collection_dataset = {collection_dataset:String}
-            AND hash IN {item_hashes:Array(String)}
-            GROUP BY hash
+            SELECT c.hash AS hash,
+                    [c.file_type] AS file_types,
+                    if(c.mime_type = '', [], [c.mime_type]) AS mime_types,
+                    e.extensions AS extensions
+            FROM (
+                SELECT hash, file_type, mime_type FROM file_type_canonical FINAL
+                WHERE collection_dataset = {collection_dataset:String}
+                AND hash IN {item_hashes:Array(String)}
+            ) AS c
+            LEFT JOIN (
+                SELECT hash, arrayDistinct(arrayFlatten(groupArray(extensions))) AS extensions
+                FROM file_types FINAL
+                WHERE collection_dataset = {collection_dataset:String}
+                AND hash IN {item_hashes:Array(String)}
+                GROUP BY hash
+            ) AS e ON e.hash = c.hash
         """, {
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
@@ -1091,3 +1109,123 @@ def index_vectors(params: IndexShardParams) -> list[str]:
             client.commit()
         client.commit()
     return sorted({row['file_hash'] for row in kept})
+
+
+@activity.defn
+@with_heartbeat
+def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
+    """Decide one definitive type per document, after every parser has had its turn.
+
+    This is the "last final pass" the whole parallel-detection design was waiting for.
+    Detection is contradictory on purpose and processing is attempted on every detected
+    type, which is what gets a .docx its office text out of a file libmagic calls a zip.
+    The cost was a file-type facet that listed the same document under three headings.
+    Here the contradictions are resolved, once, from what the parsers actually produced.
+
+    Dataset-scoped and idempotent, like `build_vfs_nodes`, and for the same reason: a
+    plan holds a slice of the dataset, and a document's evidence can arrive in a
+    different plan from its detections. It runs before `document_metadata`, which reads
+    the result.
+
+    See `canonical_file_type.py` for the rank table itself.
+    """
+    import pyarrow as pa
+
+    from .canonical_file_type import resolve_canonical
+
+    collection_dataset: str = params.collection_dataset
+    with get_collection_client(params.collectionname) as client:
+        detection_rows = client.query_arrow("""
+            SELECT hash, extracted_by, mime_type
+            FROM file_types FINAL
+            WHERE collection_dataset = {cd:String}
+        """, {"cd": collection_dataset}).to_pylist()
+
+        # What each parser actually produced rows for. `text_content` is joined by
+        # extracted_by rather than taken wholesale: every text extractor writes there,
+        # and only the office one is evidence of an office document.
+        evidence_rows = client.query_arrow("""
+            SELECT email_hash AS hash, 'email' AS kind FROM emails FINAL
+                WHERE collection_dataset = {cd:String}
+            UNION ALL
+            SELECT pdf_hash AS hash, 'pdf' AS kind FROM pdfs FINAL
+                WHERE collection_dataset = {cd:String}
+            UNION ALL
+            SELECT image_hash AS hash, 'image' AS kind FROM image FINAL
+                WHERE collection_dataset = {cd:String}
+            UNION ALL
+            SELECT archive_hash AS hash, 'archive' AS kind FROM archives FINAL
+                WHERE collection_dataset = {cd:String}
+            UNION ALL
+            SELECT hash, 'office' AS kind FROM text_content FINAL
+                WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'
+        """, {"cd": collection_dataset}).to_pylist()
+
+        # How many members each container actually produced. An archive that exploded
+        # into nothing is not an archive, and half a million container nodes corpus-wide
+        # are exactly that.
+        member_rows = client.query_arrow("""
+            SELECT container_hash, count() AS members FROM (
+                SELECT DISTINCT container_hash, path FROM vfs_files FINAL
+                WHERE collection_dataset = {cd:String} AND container_hash != ''
+                UNION ALL
+                SELECT DISTINCT container_hash, path FROM vfs_directories FINAL
+                WHERE collection_dataset = {cd:String} AND container_hash != ''
+            )
+            GROUP BY container_hash
+        """, {"cd": collection_dataset}).to_pylist()
+
+    detections: dict[str, dict[str, list[str]]] = {}
+    for row in detection_rows:
+        detections.setdefault(row['hash'], {})[row['extracted_by']] = [
+            m for m in (row['mime_type'] or []) if m
+        ]
+
+    #: Office text is evidence of a document, but not of *which* document: the extractor
+    #: is one activity for Word, Excel and PowerPoint alike. The MIME set decides which,
+    #: and `doc` is the fallback when it cannot.
+    evidence: dict[str, set[str]] = {}
+    for row in evidence_rows:
+        evidence.setdefault(row['hash'], set()).add(row['kind'])
+    members = {row['container_hash']: int(row['members']) for row in member_rows}
+
+    hashes = sorted(set(detections) | set(evidence))
+    if not hashes:
+        log.info("%s: no detections to canonicalise", collection_dataset)
+        return "ok"
+
+    out_hashes: list[str] = []
+    out_mimes: list[str] = []
+    out_types: list[str] = []
+    out_decided: list[str] = []
+    out_losers: list[list[str]] = []
+    for file_hash in hashes:
+        by_detector = detections.get(file_hash, {})
+        kinds = set(evidence.get(file_hash, ()))
+        if 'office' in kinds:
+            kinds.discard('office')
+            all_mimes = {m for mimes in by_detector.values() for m in mimes}
+            office_coarse = {coarse_file_type(m) for m in all_mimes} & {'doc', 'xls', 'ppt'}
+            kinds |= office_coarse or {'doc'}
+        canonical = resolve_canonical(
+            by_detector, kinds, members.get(file_hash, 0),
+        )
+        out_hashes.append(file_hash)
+        out_mimes.append(canonical.mime_type)
+        out_types.append(canonical.file_type)
+        out_decided.append(canonical.decided_by)
+        out_losers.append(canonical.losers)
+
+    table = pa.table({
+        "collection_dataset": pa.array([collection_dataset] * len(out_hashes), type=pa.string()),
+        "hash": pa.array(out_hashes, type=pa.string()),
+        "mime_type": pa.array(out_mimes, type=pa.string()),
+        "file_type": pa.array(out_types, type=pa.string()),
+        "decided_by": pa.array(out_decided, type=pa.string()),
+        "losers": pa.array(out_losers, type=pa.list_(pa.string())),
+    })
+    with get_collection_client(params.collectionname) as client:
+        client.insert_arrow("file_type_canonical", table)
+    log.info("%s: canonical file type resolved for %d documents",
+             collection_dataset, len(out_hashes))
+    return "ok"

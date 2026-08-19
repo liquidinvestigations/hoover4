@@ -115,8 +115,12 @@ def coarse_file_type(mime_type: str) -> str:
     ):
         return 'ppt'
 
+    # `message/x-emlx` and `application/x-hoover-pst` come from the content sniff, which
+    # is the only detector that names either: libmagic reports an Apple `.emlx` as text
+    # and a PST only in its human-readable output.
     if mime_type in (
         "message/rfc822", "application/vnd.ms-outlook", "application/vnd.ms-exchange", "application/mbox",
+        "message/x-emlx", "application/x-hoover-pst",
     ):
         return "email"
 

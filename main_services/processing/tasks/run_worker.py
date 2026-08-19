@@ -59,7 +59,10 @@ async def run_common_worker():
     from .P3_parse_files.document_dates import resolve_document_dates
     from .P3_parse_files.parse_text import extract_plaintext_chunks
     from .P3_parse_files.parse_office_xml import parse_office_xml_and_store
-    from .P3_parse_files.parse_mime import detect_mime_with_gnu_file, detect_mime_with_magika
+    from .P3_parse_files.parse_mime import (
+        detect_mime_with_gnu_file, detect_mime_with_magika, detect_mime_from_name,
+        detect_mime_by_content,
+    )
     from .P3_parse_files.parse_pdf import PdfProcessingAndScan, pdf_get_metadata_and_store, pdf_small_extract_text_and_images, pdf_large_split_to_chunks
     from .P3_parse_files.parse_image import parse_image_metadata_and_store
     from .P3_parse_files.parse_audio import parse_audio_metadata_and_store
@@ -190,6 +193,8 @@ async def run_common_worker():
             video_extract_frames_and_subtitles,
             detect_mime_with_gnu_file,
             detect_mime_with_magika,
+            detect_mime_from_name,
+            detect_mime_by_content,
 
             # Shared plan helpers
             fetch_plan_hashes,
@@ -333,7 +338,7 @@ async def run_embed_worker():
 async def run_indexing_worker():
   from .P6_index_data.activities import (
       build_email_graph, build_vfs_nodes, index_text_pages, index_vectors,
-      index_vfs_structure, optimize_shard_tables,
+      index_vfs_structure, optimize_shard_tables, resolve_canonical_file_type,
   )
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
@@ -350,7 +355,8 @@ async def run_indexing_worker():
       task_queue="processing-indexing-queue",
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
-                  index_vfs_structure, build_email_graph, optimize_shard_tables],
+                  index_vfs_structure, build_email_graph, optimize_shard_tables,
+                  resolve_canonical_file_type],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

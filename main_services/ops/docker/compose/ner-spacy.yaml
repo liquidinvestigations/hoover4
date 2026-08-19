@@ -1,0 +1,71 @@
+# The CPU twin for named-entity recognition, included only when
+# `ner_spacy_enabled = true`.
+#
+# It is OFF by default and should stay off wherever a GPU NER endpoint exists: spaCy's
+# accuracy on this corpus is poor and its output noisy enough that the entity facets
+# become unusable. Turning it on is a deliberate choice to prefer noisy entities over
+# none.
+#
+# "Off" means "not running", not "running and unused" -- which is why the service lives
+# in an overlay rather than in the base compose behind an env var. deploy.py renders
+# NER_URL_FALLBACK from the same key, so a fallback url is never announced for a
+# container that does not exist: tasks/remote.py would spend a connect timeout on it
+# before failing, on every batch.
+
+services:
+  # ------------------------------------------------------------------ NER: CPU twin
+  hoover4-ner-spacy:
+    container_name: hoover4-ner-spacy
+    build:
+      # Narrow context on purpose, like the other overlays.
+      context: ${HOOVER4_REPO_ROOT}/main_services/ner_spacy
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:${NER_SPACY_PORT}:8000"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    # Sized for the WORST batch, not the average one. A request carries a list of texts,
+    # each of up to NER_MAX_TEXT_CHARS (1 M chars), and NER_CONCURRENCY of them are in
+    # flight at once — so the peak is several large documents resident in spaCy at the
+    # same time, which was measured at just over 4 GB on a real corpus.
+    #
+    # The failure this guards against is silent and expensive: the cgroup kills uvicorn,
+    # the container restarts (so `docker ps` shows it healthy and `OOMKilled` is false —
+    # the PROCESS was killed, not the container), and every NER activity in flight fails
+    # with `ConnectionError: Connection refused` against a service that looks fine by the
+    # time anyone looks. It reads as a network fault. The tell is RestartCount climbing
+    # and `Memory cgroup out of memory` in dmesg.
+    memswap_limit: 12000M
+    mem_limit: 12000M
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Must differ from the GPU tier's model id. entity_hit carries nlp_model in its
+      # ORDER BY, so the two providers' rows coexist; sharing an id would make the
+      # twin overwrite the GPU's rows and its watermark, and the files it handled
+      # during an outage would then never be reprocessed when the GPU came back.
+      - NLP_MODEL_ID=${NLP_MODEL_ID_SPACY:-ner-spacy-xx}
+      - NER_CONCURRENCY=${NER_SPACY_CONCURRENCY:-2}
+      - NER_QUEUE_DEPTH=${NER_SPACY_QUEUE_DEPTH:-16}
+      # Characters between pipeline rebuilds. This is what bounds the container's memory:
+      # a spaCy pipeline interns every distinct string it has ever seen and never evicts,
+      # so without a rebuild the footprint tracks the corpus's vocabulary rather than the
+      # request. Lower it for a corpus with an unusually large vocabulary (raw text
+      # archives, OCR output); `/health` reports `pipeline_reloads` so it can be watched.
+      - NER_RECYCLE_CHARS=${NER_SPACY_RECYCLE_CHARS:-5000000}
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # The model is baked into the image, so there is no download to wait for.
+      start_period: 30s
+
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true

@@ -68,6 +68,7 @@ EXPECTED_COLLECTION_TABLES = {
     "email_headers",
     "emails",
     "entity_hit",
+    "file_type_canonical",
     "file_types",
     "image",
     "index_state",

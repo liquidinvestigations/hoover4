@@ -86,6 +86,12 @@ easyocr_languages  = en
 [main_services]
 # ---- which side of each capability the pipeline prefers -------------------------
 ner_provider          = gpu        ; gpu | spacy | both
+
+# spaCy is the CPU twin for NER. It is OFF by default and should stay off wherever a GPU
+# NER endpoint exists: its accuracy on this corpus is poor and its output is noisy enough
+# that the entity facets become unusable. Turning it on is a deliberate choice to prefer
+# noisy entities over none.
+ner_spacy_enabled     = false
 embeddings_provider   = gpu        ; gpu | cpu | none
 pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
 tesseract_cpu_enabled = true

@@ -27,6 +27,10 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
         // DocumentMetadataTableInfo::new("text_content", "file_hash"),
         DocumentMetadataTableInfo::new("blobs", "blob_hash"),
         DocumentMetadataTableInfo::new("file_types", "hash"),
+        // The winning type, the rule that chose it, and every detection that lost.
+        // The search index carries one type per document now, so this row is where
+        // the disagreement between the five detectors stays visible.
+        DocumentMetadataTableInfo::new("file_type_canonical", "hash"),
         DocumentMetadataTableInfo::new3("tika_metadata", "hash", vec!["tika_metadata_json"]),
         DocumentMetadataTableInfo::new("archives", "archive_hash"),
         DocumentMetadataTableInfo::new("vfs_files", "container_hash"),

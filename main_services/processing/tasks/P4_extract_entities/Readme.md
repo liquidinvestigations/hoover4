@@ -17,7 +17,11 @@ and worker, and so NER results are reusable when indexing is re-run.
   debris rather than entities (`tasks/entity_stoplist.py`).
 - Call the remote NER service in batches of `NLP_BATCH_TEXTS = 64` texts per
   request, via `tasks.remote.post_json` over an ordered endpoint list
-  (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin).
+  (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin, which is
+  rendered only when `[main_services] ner_spacy_enabled = true` — off by default,
+  because spaCy's accuracy on real corpora is poor and its noise makes the entity
+  facets unusable. With it off there is no fallback and an unreachable GPU fails
+  fast naming the url, which is the intent).
   Calls use a `(connect, read)` timeout pair and a per-endpoint,
   time-boxed circuit breaker; a connect failure falls back, a read timeout
   does not (the host is alive — degrading would mask a server-side fault).

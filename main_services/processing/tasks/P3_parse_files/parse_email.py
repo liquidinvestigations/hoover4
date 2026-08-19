@@ -111,6 +111,20 @@ def extract_email_addresses(
     return list(seen.values())
 
 
+
+def _message_bytes(file_path: str) -> bytes:
+    """The RFC 822 message, with anything wrapped around it removed.
+
+    Two wrappers reach this code. A UTF-8 BOM, and Apple Mail's `.emlx` byte-count line —
+    a decimal number on its own first line, which `email`'s parser has never heard of and
+    reads as the start of a body, losing every header in the file.
+    """
+    from tasks.P3_parse_files.sniff_email import strip_email_envelope
+
+    with open(file_path, "rb") as handle:
+        return strip_email_envelope(handle.read())
+
+
 @dataclass
 class ParseEmailHeadersParams:
     collectionname: str
@@ -130,8 +144,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     from database.clickhouse import get_collection_client
     import pyarrow as pa
     log.info("[P3] Parsing email headers for %s", params.file_path)
-    with open(params.file_path, "rb") as f:
-        msg = BytesParser(policy=policy.default).parse(f)
+    msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
 
     subject = msg["subject"] or ""
     # Parse RFC 2822 Date header and convert to UTC naive datetime for ClickHouse.
@@ -253,8 +266,7 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
     out_dir = make_temp_dir(params.collection_dataset, "email", params.email_hash)
     log.info("[P3] Extracting email attachments for %s to %s", params.file_path, out_dir)
 
-    with open(params.file_path, "rb") as f:
-        msg = BytesParser(policy=policy.default).parse(f)
+    msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
 
     attachment_index = 0
     for part in msg.walk():

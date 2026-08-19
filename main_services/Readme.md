@@ -21,7 +21,9 @@ This directory contains the core data plane for Hoover4. It includes database in
   pages, sends each to the OCR tier above, and writes back a PDF with an invisible text
   layer. It owns no engine and no language data — see its Readme for the derived-prefix
   guard that keeps the ingest walker from re-ingesting what it writes.
-- `ner_spacy/` - spaCy NER over HTTP (`hoover4-ner-spacy`).
+- `ner_spacy/` - spaCy NER over HTTP (`hoover4-ner-spacy`). Off unless
+  `[main_services] ner_spacy_enabled` is true: its accuracy on real corpora is poor
+  and its output noisy enough that the entity facets become unusable.
 
 ### Why the CPU twins live here and not in `ai_services`
 

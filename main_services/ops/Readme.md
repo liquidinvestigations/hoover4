@@ -112,7 +112,8 @@ The docker containers start up the following services:
 - **ocr-pdf**: `localhost:21922` - searchable-PDF assembly. Renders pages, calls the OCR
   tier above, writes the result under MinIO's `derived/` prefix with **no** `blobs` row
   (see `main_services/ocr_pdf/Readme.md` for why that absence is load-bearing)
-- **ner-spacy**: `localhost:21923` - the CPU NER twin
+- **ner-spacy**: `localhost:21923` - the CPU NER twin, only when
+  `[main_services] ner_spacy_enabled = true` (off by default)
 
 ### Search Engines
 
