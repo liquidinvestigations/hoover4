@@ -1980,3 +1980,275 @@ async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
         assert_eq!(response.status(), 404, "{path} must be a 404, not a server error");
     }
 }
+
+// ---------------------------------------------------------------------------------
+// The email connection graph.
+//
+// These exercise the READER against a live ClickHouse. The rows are written here in
+// exactly the shape P6's `build_email_graph` writes them, because the builder is Python
+// and its rules -- the identity join, the attachment containment, the inferred edge's
+// three guards -- are unit-tested there. What only a live stack can answer is whether the
+// reader walks an edge table that spans two datasets, terminates on a cycle, and reports
+// a component's true size rather than the number of nodes it drew.
+// ---------------------------------------------------------------------------------
+
+use common::search_result::DocumentIdentifier as GraphDocumentIdentifier;
+
+/// Fixture hashes, long enough that they cannot collide with a real document hash and
+/// distinctive enough to be found and deleted by exactly the rows these tests wrote.
+const GRAPH_A: &str = "00000000000000000000000000000000000000000000000000graphaa";
+const GRAPH_B: &str = "00000000000000000000000000000000000000000000000000graphbb";
+const GRAPH_LOOP: &str = "00000000000000000000000000000000000000000000000000graphlp";
+
+async fn clear_graph_fixture() {
+    for dataset in [TESTFILES, SHAPES] {
+        let client = get_client_for_dataset(dataset).await.unwrap();
+        for hash in [GRAPH_A, GRAPH_B, GRAPH_LOOP] {
+            for (table, column) in
+                [("email_headers", "email_hash"), ("email_identity", "email_hash"),
+                 ("email_clusters", "email_hash"), ("email_addresses", "email_hash")]
+            {
+                client
+                    .query(&format!(
+                        "DELETE FROM {table} WHERE collection_dataset = ? AND {column} = ?"
+                    ))
+                    .bind(dataset)
+                    .bind(hash)
+                    .execute()
+                    .await
+                    .unwrap();
+            }
+            client
+                .query("DELETE FROM email_edges WHERE src_hash = ? OR dst_hash = ?")
+                .bind(hash)
+                .bind(hash)
+                .execute()
+                .await
+                .unwrap();
+        }
+    }
+}
+
+async fn insert_graph_message(dataset: &str, hash: &str, subject: &str, epoch: i64) {
+    let client = get_client_for_dataset(dataset).await.unwrap();
+    client
+        .query(
+            "INSERT INTO email_headers \
+             (collection_dataset, email_hash, raw_headers_json, subject, addresses, date_sent, date_sent_known) \
+             VALUES (?, ?, '[]', ?, 'from: a@b.com', toDateTime(?), 1)",
+        )
+        .bind(dataset)
+        .bind(hash)
+        .bind(subject)
+        .bind(epoch)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query(
+            "INSERT INTO email_addresses \
+             (collection_dataset, email_hash, role, address, display_name) \
+             VALUES (?, ?, 'from', 'a@b.com', 'A Sender')",
+        )
+        .bind(dataset)
+        .bind(hash)
+        .execute()
+        .await
+        .unwrap();
+    client
+        .query(
+            "INSERT INTO email_identity \
+             (collection_dataset, email_hash, message_id, subject_norm, subject_prefix, \
+              date_sent, date_sent_known, from_address, participants) \
+             VALUES (?, ?, 'graph-fixture@example.com', ?, '', toDateTime(?), 1, 'a@b.com', ['a@b.com'])",
+        )
+        .bind(dataset)
+        .bind(hash)
+        .bind(subject)
+        .bind(epoch)
+        .execute()
+        .await
+        .unwrap();
+}
+
+async fn insert_graph_edge(
+    collection: &str,
+    src_dataset: &str,
+    src_hash: &str,
+    dst_dataset: &str,
+    dst_hash: &str,
+    kind: &str,
+    confidence: f32,
+) {
+    let client = get_client_for_dataset(src_dataset).await.unwrap();
+    client
+        .query(
+            "INSERT INTO email_edges \
+             (collectionname, src_dataset, src_hash, dst_dataset, dst_hash, kind, confidence, evidence) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'integration fixture')",
+        )
+        .bind(collection)
+        .bind(src_dataset)
+        .bind(src_hash)
+        .bind(dst_dataset)
+        .bind(dst_hash)
+        .bind(kind)
+        .bind(confidence)
+        .execute()
+        .await
+        .unwrap();
+}
+
+async fn insert_graph_cluster(dataset: &str, hash: &str, size: u32) {
+    let collection = resolve_collection(dataset).await.unwrap();
+    let client = get_client_for_dataset(dataset).await.unwrap();
+    client
+        .query(
+            "INSERT INTO email_clusters \
+             (collectionname, collection_dataset, email_hash, cluster_id, cluster_size) \
+             VALUES (?, ?, ?, 1, ?)",
+        )
+        .bind(&collection)
+        .bind(dataset)
+        .bind(hash)
+        .bind(size)
+        .execute()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn the_same_message_in_two_datasets_is_one_cluster_from_either_centre() {
+    let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    let _budget = Budget::start("email_graph_identity_across_datasets");
+    clear_graph_fixture().await;
+    // The same `.eml` in two datasets: one custodian's copy and another's, which is the
+    // relation the identity edge exists for.
+    insert_graph_message(TESTFILES, GRAPH_A, "shared fixture message", 1_600_000_000).await;
+    insert_graph_message(SHAPES, GRAPH_B, "shared fixture message", 1_600_000_000).await;
+    let collection = resolve_collection(TESTFILES).await.unwrap();
+    insert_graph_edge(&collection, TESTFILES, GRAPH_A, SHAPES, GRAPH_B, "identity", 1.0).await;
+    insert_graph_cluster(TESTFILES, GRAPH_A, 2).await;
+    insert_graph_cluster(SHAPES, GRAPH_B, 2).await;
+
+    for (dataset, hash) in [(TESTFILES, GRAPH_A), (SHAPES, GRAPH_B)] {
+        let graph = backend::api::documents::get_email_graph::get_email_graph(
+            &admin_user(),
+            GraphDocumentIdentifier {
+                collection_dataset: dataset.to_string(),
+                file_hash: hash.to_string(),
+            },
+            50,
+            3,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            graph.nodes.len(),
+            2,
+            "both renditions must be reachable from {dataset}, got {graph:?}"
+        );
+        assert_eq!(graph.cluster_size, 2);
+        let identity_edges: Vec<_> =
+            graph.edges.iter().filter(|e| e.kind == "identity").collect();
+        assert_eq!(identity_edges.len(), 1, "exactly one identity edge: {identity_edges:?}");
+        assert!(
+            graph.nodes.iter().any(|n| n.is_centre && n.document_identifier.file_hash == hash),
+            "the centre must be marked as such"
+        );
+    }
+
+    // The envelope reads the same cluster with one point lookup, which is what decides
+    // whether the button appears at all.
+    let envelope = backend::api::documents::get_email_graph::get_email_envelope(
+        &admin_user(),
+        GraphDocumentIdentifier {
+            collection_dataset: TESTFILES.to_string(),
+            file_hash: GRAPH_A.to_string(),
+        },
+    )
+    .await
+    .unwrap()
+    .expect("a document with email_headers rows is an email");
+    assert_eq!(envelope.cluster_size, 2);
+    assert!(envelope.has_connections());
+
+    clear_graph_fixture().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn a_cycle_in_the_edge_table_terminates_the_walk() {
+    let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    let _budget = Budget::start("email_graph_cycle_terminates");
+    clear_graph_fixture().await;
+    // `eml-7-recursive` is an email that contains itself, so a self edge and a two-cycle
+    // are both real input. The reader's visited set is what makes this return instead of
+    // looping, exactly as `vfs_tree_path_to` documents for the same fixture.
+    insert_graph_message(TESTFILES, GRAPH_A, "cycle fixture", 1_600_000_000).await;
+    insert_graph_message(TESTFILES, GRAPH_LOOP, "cycle fixture", 1_600_000_100).await;
+    let collection = resolve_collection(TESTFILES).await.unwrap();
+    insert_graph_edge(&collection, TESTFILES, GRAPH_A, TESTFILES, GRAPH_LOOP, "attachment", 1.0)
+        .await;
+    insert_graph_edge(&collection, TESTFILES, GRAPH_LOOP, TESTFILES, GRAPH_A, "attachment", 1.0)
+        .await;
+    insert_graph_edge(&collection, TESTFILES, GRAPH_LOOP, TESTFILES, GRAPH_LOOP, "attachment", 1.0)
+        .await;
+
+    let graph = backend::api::documents::get_email_graph::get_email_graph(
+        &admin_user(),
+        GraphDocumentIdentifier {
+            collection_dataset: TESTFILES.to_string(),
+            file_hash: GRAPH_A.to_string(),
+        },
+        50,
+        3,
+    )
+    .await
+    .unwrap();
+    assert_eq!(graph.nodes.len(), 2, "a cycle must not multiply the nodes: {graph:?}");
+    assert!(
+        graph.edges.iter().all(|e| e.kind == "attachment"),
+        "only the attachment edges were written"
+    );
+
+    clear_graph_fixture().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn the_node_budget_is_clamped_server_side() {
+    let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    let _budget = Budget::start("email_graph_budget_clamped");
+    clear_graph_fixture().await;
+    insert_graph_message(TESTFILES, GRAPH_A, "budget fixture", 1_600_000_000).await;
+    insert_graph_message(TESTFILES, GRAPH_B, "budget fixture", 1_600_000_100).await;
+    let collection = resolve_collection(TESTFILES).await.unwrap();
+    insert_graph_edge(&collection, TESTFILES, GRAPH_A, TESTFILES, GRAPH_B, "reply", 0.5).await;
+    // The component is claimed to be far larger than what can be drawn, so the reader has
+    // to say it was truncated rather than implying the cluster ends at two.
+    insert_graph_cluster(TESTFILES, GRAPH_A, 900).await;
+
+    // A client asking for 10 000 nodes gets the budget, not 10 000.
+    let graph = backend::api::documents::get_email_graph::get_email_graph(
+        &admin_user(),
+        GraphDocumentIdentifier {
+            collection_dataset: TESTFILES.to_string(),
+            file_hash: GRAPH_A.to_string(),
+        },
+        10_000,
+        99,
+    )
+    .await
+    .unwrap();
+    assert!(graph.nodes.len() <= 50, "the node budget is clamped server-side");
+    assert_eq!(graph.cluster_size, 900);
+    assert!(graph.truncated, "a component bigger than the drawn set must say so");
+    assert!(
+        graph.edges.iter().any(|e| e.is_inferred()),
+        "a 0.5-confidence edge must arrive as inferred so the page can dash it"
+    );
+
+    clear_graph_fixture().await;
+}
