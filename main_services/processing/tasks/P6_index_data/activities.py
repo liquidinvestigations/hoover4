@@ -1157,7 +1157,7 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
             SELECT archive_hash AS hash, 'archive' AS kind FROM archives FINAL
                 WHERE collection_dataset = {cd:String}
             UNION ALL
-            SELECT hash, 'office' AS kind FROM text_content FINAL
+            SELECT file_hash AS hash, 'office' AS kind FROM text_content FINAL
                 WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'
         """, {"cd": collection_dataset}).to_pylist()
 
