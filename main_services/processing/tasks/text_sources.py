@@ -39,6 +39,14 @@ OCR_ENGINES = (ENGINE_TESSERACT, ENGINE_EASYOCR)
 #: Prefix marking an OCR variant. Native extractors have no prefix.
 OCR_PREFIX = "ocr_"
 
+#: Smallest image edge worth sending to an OCR engine, in pixels.
+#:
+#: An icon, a bullet, a spacer GIF or a signature scrap carries no text content, and a
+#: corpus of PDFs is mostly those: the engine still costs a round trip, a model pass and
+#: a `raw_ocr_results` row per engine per language pass. Both the standalone image path
+#: and the per-page PDF path read this one definition so they cannot drift.
+MIN_OCR_IMAGE_PX = 129
+
 
 def ner_reads_variant(extracted_by: str, variants_present: Collection[str]) -> bool:
     """Is this text variant worth running named-entity recognition over?

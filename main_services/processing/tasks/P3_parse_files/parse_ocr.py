@@ -30,7 +30,10 @@ from typing import List
 from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
-from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT, ocr_extracted_by
+from tasks.P3_parse_files.image_loader import image_dimensions
+from tasks.text_sources import (
+    ENGINE_EASYOCR, ENGINE_TESSERACT, MIN_OCR_IMAGE_PX, ocr_extracted_by,
+)
 
 log = logging.getLogger(__name__)
 
@@ -154,6 +157,22 @@ def run_ocr_and_store(params: RunOcrParams) -> str:
                 if not image_bytes:
                     _record_skip(params, 0, "ocr_skipped_empty: file is zero bytes")
                     return "ocr_skipped_empty"
+
+                # The size gate. An image whose shorter edge is under
+                # MIN_OCR_IMAGE_PX is an icon, a bullet, a rule or a signature scrap --
+                # it carries no text content, and a corpus of PDFs is mostly those.
+                # Read from the header, so this costs a few hundred bytes rather than a
+                # decode. An image whose header will not parse is NOT skipped here: the
+                # engines handle formats Pillow does not, and `ocr_skipped_unreadable`
+                # is the honest answer for a file neither can read.
+                size = image_dimensions(image_bytes)
+                if size is not None and min(size) < MIN_OCR_IMAGE_PX:
+                    _record_skip(
+                        params, 0,
+                        "ocr_skipped_too_small: %dx%d is under %dpx"
+                        % (size[0], size[1], MIN_OCR_IMAGE_PX),
+                    )
+                    return "ocr_skipped_too_small"
 
             started = time.time()
             outcome = run_ocr(params.engine, languages, image_bytes)

@@ -56,3 +56,21 @@ records is the TRUE size of the component, never the reader's render budget.
 
 - [Go Back](../Readme.md)
 - [P4 - Extract Entities](../P4_extract_entities/Readme.md)
+
+## The canonical file type
+
+`resolve_canonical_file_type` runs once per dataset, after the VFS tree and before the
+shard writers. It reads every detector's `file_types` row and every parser's output, and
+writes one row per document to `file_type_canonical`: the winning MIME, the winning
+coarse type, the rule that chose it, and every detection that lost.
+
+The rank table is in `canonical_file_type.py`. The rule that matters is the first one: a
+document is a docx because the docx parser read text out of it, not because a lookup
+table says `.docx` is not a zip. An archive that produced no members at all is demoted
+there too — an empty tar is text, and an email whose attachment extraction failed is an
+email.
+
+`document_metadata` reads this table rather than unioning `file_types`, which is what
+makes the file-type facet single-valued per document. Nothing is lost: the losing
+detections stay in `file_types` and on `file_type_canonical.losers`, both of which the
+raw metadata tab shows.

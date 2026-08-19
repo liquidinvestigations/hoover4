@@ -84,3 +84,41 @@ Parsing uses type-based routing derived from detector results. Archives, PDFs, e
 - [P2 - Execute Plan](../P2_execute_plan/Readme.md)
 - [P4 - Extract Entities](../P4_extract_entities/Readme.md)
 - [P6 - Index Data](../P6_index_data/Readme.md)
+
+## Detection is parallel, contradictory, and resolved later
+
+Five detectors run on every file and each writes its own `file_types` row: `file`, Tika,
+Magika, the filename (`extension`) and the content sniff (`content_sniff`). They are
+allowed to disagree — processing is attempted on the union of what they say, which is how
+a `.docx` gets its office text extracted out of a file libmagic calls a zip, and how a
+mail file gets both its headers parsed and its body extracted as text.
+
+`content_sniff` is the one that reads content nothing else can name. `sniff_email.py`
+recognises an RFC 822 message from its header block, which is the only way to classify an
+extension-less maildir: every other detector calls those files `text/plain`. It also
+strips Apple Mail's `.emlx` byte-count prefix and a leading BOM before the message is
+parsed, and it carries two rules libmagic still gets wrong (a PST named only in the
+human-readable output, and a legacy Excel workbook reported as a generic OLE container).
+The sniff runs behind a cheap gate, so it never touches a file another detector has
+confidently named.
+
+The disagreement is resolved once, at the end, by `resolve_canonical_file_type` in
+`P6_index_data` — that is where a document gets the single type the search index and the
+filter pane use. Nothing here picks a winner.
+
+## PDF images are children, and their text is indexed twice
+
+`pdf_small_extract_text_and_images` extracts page images into a temp directory that is
+then scanned as a container with the PDF as its `container_hash`, so every image is a
+real member of the PDF: it gets a `vfs_files` row, its own `ParseSingleFile` run, its own
+MIME detection and its own OCR. The searchable-PDF assembly (`parse_ocr_pdf.py`) OCRs the
+same pages again for its own rendition.
+
+That double-indexing is intended. The image's own OCR text is what makes the image
+findable as a document, and the PDF's rendition is what makes the page findable in the
+PDF. They are the same characters under two `extracted_by` labels.
+
+Both paths sit behind the same size gate: an image whose shorter edge is under
+`MIN_OCR_IMAGE_PX` (`tasks/text_sources.py`) records `ocr_skipped_too_small` and is never
+sent to an engine. Icons, bullets, rules and signature scraps are most of the images in a
+PDF corpus and none of them carries text.

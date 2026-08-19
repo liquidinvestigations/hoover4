@@ -279,6 +279,8 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     if image_paths:
         # Insert image rows and pdfs_image relationships
         from hashlib import sha3_256
+
+        from tasks.P3_parse_files.image_loader import image_dimensions
         rows_img_cd: List[str] = []
         rows_img_hash: List[str] = []
         rows_img_w: List[int] = []
@@ -297,10 +299,15 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
                 ih = sha3_256(data).hexdigest()
             except Exception:
                 continue
+            # Real dimensions, from the header. They are what the OCR size gate reads
+            # to skip icons and rules, and a stored 0x0 would make every extracted image
+            # look ungated. `image_dimensions` returns None for a format Pillow cannot
+            # open, and 0 then means "unknown" rather than "tiny".
+            size = image_dimensions(data)
             rows_img_cd.append(collection_dataset)
             rows_img_hash.append(ih)
-            rows_img_w.append(0)
-            rows_img_h.append(0)
+            rows_img_w.append(size[0] if size else 0)
+            rows_img_h.append(size[1] if size else 0)
             rows_img_meta.append("")
 
             rows_link_cd.append(collection_dataset)
