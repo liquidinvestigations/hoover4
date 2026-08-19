@@ -12,7 +12,7 @@
 use std::collections::BTreeSet;
 
 use common::{search_query::SearchQuery, search_result::FacetOriginalValue};
-use dioxus::{logger::tracing, prelude::*};
+use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::md_toggle_icons::{MdCheckBox, MdCheckBoxOutlineBlank},
@@ -38,12 +38,6 @@ pub fn FacetSelectorList(
     #[props(default)]
     needle: ReadSignal<String>,
 ) -> Element {
-    use_effect(move || {
-        let x = facet_field_name.read().clone();
-
-    tracing::info!("FacetSelectorList(facet_field_name={x})");
-    });
-
     let mut facet_request = use_resource(move || {
         let q = original_query.read().clone();
         search_string_facet(

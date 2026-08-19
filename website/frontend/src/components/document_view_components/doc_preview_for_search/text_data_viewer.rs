@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use common::{document_sources::DocumentTextSourceItem, search_result::DocumentIdentifier};
-use dioxus::{logger::tracing, prelude::*};
+use dioxus::prelude::*;
 
 use crate::{
     components::{
@@ -19,14 +19,12 @@ pub fn TextDataViewer() -> Element {
     use_effect(move || {
         let current = *current_highlighted_word_index.read();
         if let Some(mount) = mounts.read().get(&(current as u32)) {
-            dioxus::logger::tracing::info!("Scrolling to span: {current}");
             let _x = mount.scroll_to_with_options(ScrollToOptions {
                 behavior: ScrollBehavior::Smooth,
                 vertical: ScrollLogicalPosition::Center,
                 horizontal: ScrollLogicalPosition::Center,
             });
         } else {
-            dioxus::logger::tracing::info!("No span found to scroll to: {current}");
         }
     });
     rsx! {
@@ -71,7 +69,6 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
     let document_identifier = document_identifier.peek().clone();
     let source = source.peek().clone();
     let onclick = Callback::new(move |clicked_index| {
-        tracing::info!("Clicked index {clicked_index}");
         current_highlighted_word_index.set(clicked_index);
     });
     let spans = text_data

@@ -45,11 +45,6 @@ fn DocumentPreviewForSearchContent(
     document_identifier: ReadSignal<DocumentIdentifier>,
     show_finder: bool,
 ) -> Element {
-    dioxus::logger::tracing::info!(
-        "DocumentPreviewForSearchRoot selected_result_hash: {:?}",
-        document_identifier
-    );
-
     let document_identifier_value = document_identifier();
     // By value through `use_reactive`: a `ReadSignal` prop is a new signal on every
     // parent render, so a resource subscribed to it never re-runs on its own.

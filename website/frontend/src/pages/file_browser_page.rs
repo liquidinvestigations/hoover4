@@ -489,7 +489,6 @@ fn FileBrowserContent(
         // if already_selected {
         //     return;
         // }
-        dioxus::logger::tracing::info!("on_file_click2: {:?}", doc_id);
         navigator().replace(Route::FileBrowserPage {
             collection: collection.read().clone(),
             path: path.read().clone().into(),
@@ -513,7 +512,6 @@ fn FileBrowserContent(
     let collection_value = collection();
     let path_value = path();
     let selected_value = selected_result_hash.read().clone();
-    dioxus::logger::tracing::info!("selected_value: {:?}", selected_value);
 
     let listing_view = match listing_resource.read().clone() {
         None => rsx! { div { padding: "20px", "Loading..." } },
@@ -866,7 +864,6 @@ fn ListingTable(
                 });
                 spawn(async move {
                     let _r_ = _x.await;
-                    dioxus::logger::tracing::info!("scrolled to selected file");
                 });
             }
         }
@@ -1300,7 +1297,6 @@ fn FolderSearchResults(
 
 #[component]
 fn PreviewPane(selected_file: ReadSignal<Option<DocumentIdentifier>>) -> Element {
-    dioxus::logger::tracing::info!("PreviewPane selected_file: {:?}", selected_file);
     rsx! {
         DocumentPreviewForSearchRoot {
             query: SearchQuery::default(),

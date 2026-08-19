@@ -186,7 +186,6 @@ fn RawMetadataTable(value: serde_json::Value) -> Element {
                                         .navigator()
                                         .clipboard()
                                         .write_text(&v);
-                                    dioxus::logger::tracing::info!("Data copied to clipboard: {:#?}", v);
                                     let k = truncate_for_table(&k, 16);
 
                                     let toast_api = dioxus_primitives::toast::consume_toast();

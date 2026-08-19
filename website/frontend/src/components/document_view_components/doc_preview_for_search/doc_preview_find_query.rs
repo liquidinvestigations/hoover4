@@ -48,7 +48,6 @@ pub fn DocPreviewFindQueryInputBox(on_find_query_changed: Callback<String>) -> E
                     },
                     onkeydown: move |e| {
                         if e.key() == Key::Enter {
-                            dioxus::logger::tracing::info!("Find Query: {}", find_query.read().clone());
                             on_find_query_changed.call(modified_find_query.read().clone());
                         }
                     },

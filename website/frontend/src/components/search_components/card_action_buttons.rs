@@ -65,7 +65,6 @@ pub fn DocCardActionButtonMore(
             .navigator()
             .clipboard()
             .write_text(&url);
-        dioxus::logger::tracing::info!("Link copied to clipboard: {:#?}", url);
         // toastr().success("Link copied to clipboard");
 
         let toast_api = dioxus_primitives::toast::consume_toast();
