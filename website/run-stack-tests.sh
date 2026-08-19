@@ -29,6 +29,18 @@ if [ "${1:-}" = "--slow" ]; then
     shift
 fi
 
+# `dx check` is the only thing that finds a hook called conditionally or inside a closure.
+# Such a hook shifts every hook index after it on the render that adds it and traps the
+# WebAssembly runtime: the page paints, then nothing re-renders and no handler ever fires
+# again. `cargo check` is blind to it and the release build reports only
+# `RuntimeError: unreachable`, so it runs here, first, and a failure stops the suite.
+echo "== dx check (hook order) =="
+docker exec "$WEBSITE_CONTAINER" sh -lc '
+    export PATH=/usr/local/cargo/bin:$PATH
+    cd /app
+    dx check --package frontend
+'
+
 FILTER_ARGS="--ignored --nocapture --test-threads 4"
 if [ "$SLOW" = "0" ]; then
     # `--skip` matches on the test's full path, and every slow test's NAME starts with

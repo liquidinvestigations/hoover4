@@ -39,6 +39,11 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
     let current_text_data = use_context::<DocumentViewerResultStore>().current_text_data;
     let document_identifier = use_context::<DocumentViewerResultStore>().document_identifier;
     let source = use_context::<DocumentViewerResultStore>().source;
+    // Read out of the context in the component body, not in the click handler below: a
+    // hook inside a closure runs an unpredictable number of times per render and shifts
+    // every hook index after it. The signal is `Copy`, so the closure captures it.
+    let mut current_highlighted_word_index =
+        use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
 
     let text_data = match current_text_data.read().clone() {
         Some(Ok(text_data)) => {
@@ -67,7 +72,6 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
     let source = source.peek().clone();
     let onclick = Callback::new(move |clicked_index| {
         tracing::info!("Clicked index {clicked_index}");
-        let mut current_highlighted_word_index = use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
         current_highlighted_word_index.set(clicked_index);
     });
     let spans = text_data

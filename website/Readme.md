@@ -763,6 +763,7 @@ shape.
 | what | how |
 |---|---|
 | unit (Rust) | `cargo test --offline` inside `hoover4-website` — Rust is not on `$PATH` there, so `export PATH=/usr/local/cargo/bin:$PATH` first |
+| hook order | `dx check --package frontend` inside `hoover4-website`; `./run-stack-tests.sh` and `./development.sh` both run it first |
 | live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
 | whole stack | `main_services/verify-stack.sh` |
 | screenshots | `./take-screenshots.sh` |
@@ -774,6 +775,12 @@ clock — the 30 s shard-state cache, a ClickHouse mutation — carry a `slow_` 
 skipped by default. Every other test asserts its own wall time against
 `HOOVER4_STACK_TEST_BUDGET_MS` (5 s), which is what notices when an endpoint quietly starts
 doing a full scan: without it a test that grows from 0.3 s to 9 s still passes.
+
+**`dx check` runs before the suite because it is the only thing that catches a conditional
+hook.** Such a hook traps the WebAssembly runtime on the render that adds it, leaving the
+page painted and completely inert — a failure `cargo check` cannot see and the release build
+reports only as `RuntimeError: unreachable`. See
+[`frontend/README.md`](frontend/README.md).
 
 ### Screenshots
 

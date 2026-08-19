@@ -37,6 +37,29 @@ Admin route stubs — registered, no body yet:
 
 See [`src/components/chat_components/README.md`](src/components/chat_components/README.md).
 
+## Hooks run unconditionally, and `dx check` is what proves it
+
+Every `use_*` call must run on every render, in the same order, and never from inside a
+closure. A `use_effect` placed inside `if let Some(x) = some_resource.read()…` is absent on
+the first render and present on the second, which shifts every hook index after it and
+traps the WebAssembly runtime: the page paints, and from then on nothing re-renders, no
+event handler fires and `pushState` changes the URL while the view stays put. The debug
+build says `Unable to retrieve the hook that was initialized at this index`; the release
+build says only `RuntimeError: unreachable`, naming no file.
+
+The fix is always the same shape — hoist the hook above the conditional and put the
+condition *inside* the closure, reading the resource there so the effect still re-runs when
+it resolves:
+
+```rust
+use_effect(move || {
+    if let Some(Ok(value)) = defaults_res.read().as_ref().cloned() { … }
+});
+```
+
+`cargo check` cannot see any of this. `dx check --package frontend` names the exact line,
+in about a second, and both `run-stack-tests.sh` and `development.sh` gate on it.
+
 ## Development
 
 From this directory:

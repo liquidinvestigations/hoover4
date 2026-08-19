@@ -55,15 +55,21 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
 
     // Seed the language boxes from the collection's defaults, once. After that the admin
     // owns them: a re-render must not undo what they typed.
-    if let Some(Ok((tess, easy))) = defaults_res.read().as_ref().cloned() {
-        use_effect(move || {
+    //
+    // The hook runs on every render and the resource's state is tested *inside* it. A
+    // `use_effect` that only exists once a resource has resolved shifts every hook index
+    // after it on the render that adds it, which traps the WebAssembly runtime and leaves
+    // the whole page painted but dead.
+    use_effect(move || {
+        let defaults = defaults_res.read().as_ref().cloned();
+        if let Some(Ok((tess, easy))) = defaults {
             if !*seeded.peek() {
-                tesseract.set(tess.clone());
-                easyocr.set(easy.clone());
+                tesseract.set(tess);
+                easyocr.set(easy);
                 seeded.set(true);
             }
-        });
-    }
+        }
+    });
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
     let mut submitting = use_signal(|| false);

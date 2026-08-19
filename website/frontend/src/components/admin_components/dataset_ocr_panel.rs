@@ -258,18 +258,25 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     // router reuses this component for another one. Writing signals during render is what
     // `use_effect` is for; the guard is the dataset id rather than a bool so a navigation
     // between two datasets does not leave the first one's languages in the boxes.
-    if let Some(ref loaded) = panel {
-        let id = loaded.collection_dataset.clone();
-        let tess = loaded.tesseract_languages.clone();
-        let easy = loaded.easyocr_languages.clone();
-        use_effect(move || {
-            if *seeded_for.peek() != id {
-                tesseract.set(split_languages(&tess));
-                easyocr_raw.set(easy.clone());
-                seeded_for.set(id.clone());
+    //
+    // The hook runs on every render and the resource is read *inside* it, both so the
+    // effect re-runs when the fetch resolves and because a `use_effect` that only exists
+    // once a resource has resolved shifts every hook index after it on the render that
+    // adds it, which traps the WebAssembly runtime and leaves the page painted but dead.
+    use_effect(move || {
+        let loaded = panel_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .cloned();
+        if let Some(loaded) = loaded {
+            if *seeded_for.peek() != loaded.collection_dataset {
+                tesseract.set(split_languages(&loaded.tesseract_languages));
+                easyocr_raw.set(loaded.easyocr_languages);
+                seeded_for.set(loaded.collection_dataset);
             }
-        });
-    }
+        }
+    });
 
     let Some(panel) = panel else {
         return rsx! {
