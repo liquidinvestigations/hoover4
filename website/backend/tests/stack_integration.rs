@@ -798,6 +798,7 @@ async fn vfs_endpoints_respect_permissions() {
         dataset_root_key("other_emails"),
         50,
         0,
+        false,
     )
     .await;
     let denied_children = backend::api::vfs::vfs_tree_children(
@@ -806,6 +807,7 @@ async fn vfs_endpoints_respect_permissions() {
         dataset_root_key(TESTFILES),
         50,
         0,
+        false,
     )
     .await;
     let denied_path = backend::api::vfs::vfs_tree_path_to(
@@ -861,6 +863,7 @@ async fn structure_queries_are_not_cached() {
             dataset_root_key(SHAPES),
             50,
             0,
+            false,
         )
         .await
         .unwrap();
@@ -920,6 +923,7 @@ async fn vfs_tree_path_to_crosses_a_container() {
         make_node_key("testdata_zips", "", "/location-1"),
         50,
         0,
+        false,
     )
     .await
     .unwrap();
@@ -929,7 +933,27 @@ async fn vfs_tree_path_to_crosses_a_container() {
         .find(|n| n.kind == VfsNodeKind::Container)
         .expect("/location-1 must hold a container");
 
-    let inside = make_node_key("testdata_zips", &zip.file_hash, "/");
+    // What is inside the archive hangs off the archive FILE. There is no `/` node in
+    // between — expanding an archive shows its contents, not a virtual root the user has
+    // to open again — so the archive's own node key is what its members' parent is.
+    let members = backend::api::vfs::vfs_tree_children(
+        &admin_user(),
+        "testdata_zips".to_string(),
+        zip.node_key.clone(),
+        50,
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(!members.nodes.is_empty(), "parent.zip has members");
+    for member in &members.nodes {
+        assert_eq!(member.container_hash, zip.file_hash);
+        assert_ne!(member.path, "/", "the synthetic container root is not a node");
+        assert_eq!(member.parent_key, zip.node_key);
+    }
+
+    let inside = members.nodes[0].node_key.clone();
     let chain = backend::api::vfs::vfs_tree_path_to(
         &admin_user(),
         "testdata_zips".to_string(),
@@ -941,13 +965,116 @@ async fn vfs_tree_path_to_crosses_a_container() {
     let paths: Vec<&str> = chain.iter().map(|n| n.path.as_str()).collect();
     assert_eq!(
         paths,
-        ["/", "/location-1", "/location-1/parent.zip", "/"],
-        "root, the folder, the archive, and the archive's own root"
+        ["/", "/location-1", "/location-1/parent.zip", members.nodes[0].path.as_str()],
+        "root, the folder, the archive, and what is in it — no `/` crumb"
     );
     assert_eq!(chain.last().unwrap().node_key, inside);
     for pair in chain.windows(2) {
         assert_eq!(pair[1].parent_key, pair[0].node_key);
     }
+}
+
+/// `folders_only` drops plain files from the page AND from `total`, so the tree's
+/// "N more…" row can only ever promise rows the tree will actually draw.
+///
+/// The second half is the one that bites in the field: `ORDER BY kind ASC` sorts
+/// `dir`(0), `file`(1), `container`(2), so a folder with more files than the page size
+/// never shows its archives at all — the files fill the page and the containers behind
+/// them are starved. `testfiles`' root is that shape in miniature (five files, one
+/// container), so a page of five is the whole test.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn folders_only_counts_and_returns_only_what_the_tree_draws() {
+    let _budget = Budget::start("folders_only_counts_and_returns_only_what_the_tree_draws");
+    use common::vfs::dataset_root_key;
+
+    let root = dataset_root_key(TESTFILES);
+    let everything = backend::api::vfs::vfs_tree_children(
+        &admin_user(), TESTFILES.to_string(), root.clone(), 500, 0, false,
+    )
+    .await
+    .unwrap();
+    let folder_like = everything.nodes.iter().filter(|n| n.kind.is_folder_like()).count() as u64;
+    let files = everything.total - folder_like;
+    assert!(files > 0, "the fixture must hold plain files for this to mean anything");
+    assert!(folder_like > 0, "and at least one container");
+
+    let folders = backend::api::vfs::vfs_tree_children(
+        &admin_user(), TESTFILES.to_string(), root.clone(), 500, 0, true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(folders.total, folder_like, "total counts what the tree draws, not files");
+    assert!(folders.nodes.iter().all(|n| n.kind.is_folder_like()));
+
+    // A page exactly as big as the file count. Without the flag the containers are
+    // starved off the end of it; with the flag they are the only thing on it.
+    let starved = backend::api::vfs::vfs_tree_children(
+        &admin_user(), TESTFILES.to_string(), root.clone(), files, 0, false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        starved.nodes.iter().filter(|n| n.kind == common::vfs::VfsNodeKind::Container).count(),
+        0,
+        "the unfiltered page is the starvation this flag exists to fix"
+    );
+    let first_page = backend::api::vfs::vfs_tree_children(
+        &admin_user(), TESTFILES.to_string(), root, files, 0, true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_page.nodes.iter().filter(|n| n.kind.is_folder_like()).count() as u64,
+        folder_like,
+        "every container is on the FIRST page once the files are gone"
+    );
+}
+
+/// The "N more…" row's arithmetic: pages tile the level, and no row arrives twice.
+///
+/// The row raises an OFFSET and appends. It used to raise the limit, which the server
+/// clamped straight back to the page it had already sent — so the row could not resolve
+/// for any folder in any dataset. `shapes/the-directory` has 334 subfolders, which is
+/// three pages of 150 with a short last one.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn paging_a_wide_level_tiles_it_exactly_once() {
+    let _budget = Budget::start("paging_a_wide_level_tiles_it_exactly_once");
+    use common::vfs::make_node_key;
+    use std::collections::BTreeSet;
+
+    let node = make_node_key(SHAPES, "", "/the-directory");
+    let page_size = 150u64;
+    let whole = backend::api::vfs::vfs_tree_children(
+        &admin_user(), SHAPES.to_string(), node.clone(), 2000, 0, true,
+    )
+    .await
+    .unwrap();
+    assert!(whole.total > 2 * page_size, "the fixture must need three pages: {}", whole.total);
+    assert_eq!(whole.nodes.len() as u64, whole.total, "one page holds the level");
+
+    let mut seen: Vec<String> = Vec::new();
+    let mut offset = 0u64;
+    while offset < whole.total {
+        let page = backend::api::vfs::vfs_tree_children(
+            &admin_user(), SHAPES.to_string(), node.clone(), page_size, offset, true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(page.total, whole.total, "total does not move as the caller pages");
+        assert!(!page.nodes.is_empty(), "a page inside the total is never empty");
+        offset += page.nodes.len() as u64;
+        seen.extend(page.nodes.into_iter().map(|n| n.node_key));
+    }
+
+    let unique: BTreeSet<&String> = seen.iter().collect();
+    assert_eq!(unique.len(), seen.len(), "a row came back on two pages");
+    assert_eq!(
+        unique,
+        whole.nodes.iter().map(|n| &n.node_key).collect::<BTreeSet<&String>>(),
+        "the union of the pages is the whole level"
+    );
 }
 
 /// One hash, two paths, each with its own resolved chain.
@@ -969,6 +1096,7 @@ async fn file_locations_lists_every_path_of_a_hash() {
         make_node_key("testdata_zips", "", "/location-1"),
         50,
         0,
+        false,
     )
     .await
     .unwrap();
@@ -1018,6 +1146,7 @@ async fn the_shapes_fixture_is_deep_and_wide() {
         make_node_key(SHAPES, "", "/the-directory"),
         500,
         0,
+        false,
     )
     .await
     .unwrap();

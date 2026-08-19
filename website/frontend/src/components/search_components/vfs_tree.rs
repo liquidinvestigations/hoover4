@@ -14,8 +14,8 @@
 //! sibling folders. Three independent caps keep the rendered row count bounded, and they
 //! are deliberately separate because they answer different questions:
 //!
-//! * [`MAX_CHILDREN_PER_NODE`] caps what is FETCHED. Its overflow row raises the limit
-//!   and refetches.
+//! * [`CHILDREN_PAGE_SIZE`] caps what is FETCHED per request. Its overflow row asks for
+//!   the NEXT page and appends it.
 //! * [`MAX_SIBLINGS_EACH_SIDE`] caps what is RENDERED per level, once the level has been
 //!   fetched — centred on the node you are on when the level contains it, from the top
 //!   otherwise. Its overflow rows are client-side only.
@@ -59,9 +59,14 @@ use dioxus_free_icons::{
 
 use crate::api::vfs_api::{vfs_tree_children, vfs_tree_path_to};
 
-/// Children fetched per expansion. Past this the tree shows a "N more…" row rather than
-/// rendering forty thousand siblings and freezing the tab.
-pub const MAX_CHILDREN_PER_NODE: u64 = 500;
+/// Children fetched per request. Past this the tree shows a "N more…" row rather than
+/// rendering forty thousand siblings and freezing the tab; clicking it fetches the next
+/// page at the offset the level has already loaded and APPENDS it.
+///
+/// Strictly smaller than the server's own page cap, and that is the point: while the two
+/// numbers were equal, a client asking for more than one page had its request clamped
+/// back to the page it already had, and the row could never resolve.
+pub const CHILDREN_PAGE_SIZE: u64 = 500;
 
 /// Rungs that get the full [`INDENT_PX`] step. Past this the step shrinks to
 /// [`DEEP_INDENT_PX`]; it never stops.
@@ -267,6 +272,21 @@ pub fn VfsTree(
     }
 }
 
+/// What one level needs to know about the focus chain, and nothing more.
+///
+/// The point of the type is its `PartialEq`: it is what a level's focus memo compares, so
+/// a focus change somewhere else in the tree resolves to an unchanged value here and the
+/// level does not re-render.
+#[derive(Clone, PartialEq, Default)]
+struct LevelFocus {
+    /// The child of this level that the chain continues through. `None` when this level
+    /// is not on the path at all, which is the common case and the whole saving.
+    next_on_path: Option<String>,
+    /// Set only on the level that RENDERS the elision gap, with the key the chain resumes
+    /// at already resolved.
+    elision_resume: Option<(AncestorElision, String)>,
+}
+
 /// One level of the tree: either the elision gap, or the level itself.
 ///
 /// The split is not cosmetic. Deciding elision needs the focus chain, and fetching the
@@ -284,23 +304,47 @@ fn VfsTreeLevel(
 ) -> Element {
     let context = use_context::<TreeContext>();
     let mut unfolded = context.unfolded;
+    let focus_chain = context.focus_chain;
+    let unfolded_signal = context.unfolded;
 
     // Is this level on the path to the focused node, and if so which of its children is
-    // the next step? Everything below keys off these two answers.
-    let chain = context.focus_chain.read().clone();
-    let on_focus_path = chain.get(depth).is_some_and(|key| *key == parent_key);
-    let next_on_path = if on_focus_path { chain.get(depth + 1).cloned() } else { None };
-    let chain_rows = chain.len().saturating_sub(1);
-    let is_unfolded = unfolded.read().contains(&parent_key);
+    // the next step? Everything below keys off those answers — and they are read through
+    // a MEMO rather than straight out of the signal. Reading `focus_chain` in the render
+    // subscribes the level to the whole chain, so every mounted level re-renders whenever
+    // the focus moves anywhere in the tree. A level that is not on the new path computes
+    // the same `LevelFocus::default()` it had before, and a memo whose value did not
+    // change wakes nobody.
+    let level_focus = use_memo(use_reactive!(|parent_key, depth| {
+        let chain = focus_chain.read();
+        if !chain.get(depth).is_some_and(|key| *key == parent_key) {
+            return LevelFocus::default();
+        }
+        // `chain_rows` is one less than the chain length: the dataset root is the tree
+        // container rather than a row in it.
+        let elision = elide_ancestors(chain.len().saturating_sub(1));
+        LevelFocus {
+            next_on_path: chain.get(depth + 1).cloned(),
+            // Resolved here, inside the memo, so the level never has to hold the chain.
+            elision_resume: elision
+                .filter(|elision| elision.head == depth)
+                .and_then(|elision| {
+                    Some((elision, chain.get(elision.resume_depth)?.clone()))
+                }),
+        }
+    }));
+    // Same reasoning for the unfolded set: one boolean per level, not the whole set.
+    let is_unfolded =
+        use_memo(use_reactive!(|parent_key| unfolded_signal.read().contains(&parent_key)));
+
+    let focus = level_focus();
+    let next_on_path = focus.next_on_path.clone();
+    let is_unfolded = is_unfolded();
 
     // The elision gap. Rendered by the level whose children start the hidden run, which
     // then hands off to the level the chain resumes at.
-    if let Some(elision) = elide_ancestors(chain_rows)
-        && on_focus_path
-        && depth == elision.head
+    if let Some((elision, resume_key)) = focus.elision_resume
         && !is_unfolded
     {
-        let resume_key = chain[elision.resume_depth].clone();
         let hidden = elision.hidden;
         let gap_indent = indent_style(rung);
         let unfold_key = parent_key.clone();
@@ -343,9 +387,7 @@ fn VfsTreeLevelBody(
     unfolded: bool,
 ) -> Element {
     let context = use_context::<TreeContext>();
-    let expanded = use_context::<Signal<BTreeSet<String>>>();
     let mut unfolded_set = context.unfolded;
-    let mut limit = use_signal(|| MAX_CHILDREN_PER_NODE);
 
     // `parent_key` through a memo, not captured directly. Dioxus props are not reactive:
     // this component keeps its identity while its `parent_key` changes, because the level
@@ -355,54 +397,101 @@ fn VfsTreeLevelBody(
     // came FROM, correctly indented, under freshly recomputed depth badges. A page reload
     // on the same URL rendered perfectly, which is what made it look like a data bug.
     let parent = use_memo(use_reactive!(|parent_key| parent_key));
+
+    // The page this level is currently ASKING for, as `(parent_key, offset)` in one
+    // signal rather than two. One signal because the pair has to change atomically: a
+    // parent that changed while an offset from the previous parent was still set would
+    // fetch page three of a folder the tree is no longer showing.
+    let mut request = use_signal({
+        let parent_key = parent_key.clone();
+        move || (parent_key.clone(), 0u64)
+    });
+    // Everything fetched for this level so far, appended page by page.
+    let loaded = use_signal(LoadedChildren::default);
+
+    let mut request_signal = request;
+    use_effect(move || {
+        let parent = parent();
+        // Written only when it changes — an unconditional `write()` on a signal the
+        // resource reads from is a refetch per run.
+        if request_signal.peek().0 != parent {
+            request_signal.set((parent, 0));
+        }
+    });
+
     let children = use_resource({
         let dataset = context.collection_dataset.clone();
         move || {
             let dataset = dataset.clone();
             // Read OUTSIDE the async block: that read is the subscription.
-            let parent = parent();
-            let limit = *limit.read();
-            async move { vfs_tree_children(dataset, parent, limit, 0).await }
+            let (parent, offset) = request();
+            async move {
+                // `folders_only`: the tree draws only what can be opened, so the server
+                // must count only that too. Counting files into `total` is what gave
+                // every folder full of plain files a "N more…" row for rows that could
+                // never be drawn, and no click could ever resolve it.
+                vfs_tree_children(dataset, parent, CHILDREN_PAGE_SIZE, offset, true).await
+            }
         }
     });
 
-    let value = children.read().clone();
-    let Some(value) = value else {
-        return rsx! {
-            div {
-                style: "padding: 4px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
-                "Loading…"
-            }
+    let mut loaded_signal = loaded;
+    use_effect(move || {
+        let Some(Ok(page)) = children.read().clone() else {
+            return;
         };
-    };
-    let listing = match value {
-        Err(error) => {
-            return rsx! {
+        let (asked_parent, asked_offset) = request.peek().clone();
+        // The server echoes the key it answered for, so a page that arrives after the
+        // level moved on is recognisable rather than merged into the wrong folder.
+        if page.parent_key != asked_parent {
+            return;
+        }
+        let mut next = loaded_signal.peek().clone();
+        if next.parent_key != asked_parent || asked_offset == 0 {
+            next = LoadedChildren { parent_key: asked_parent, nodes: Vec::new(), total: 0 };
+        }
+        if asked_offset == 0 {
+            next.nodes = page.nodes;
+        } else if next.nodes.len() as u64 == asked_offset {
+            next.nodes.extend(page.nodes);
+        } else {
+            // The accumulator and the offset are out of step, which can only happen if a
+            // page was applied twice. Dropping the page is the safe answer: a duplicated
+            // row is a node the user can click that expands the wrong folder.
+            return;
+        }
+        next.total = page.total;
+        if *loaded_signal.peek() != next {
+            loaded_signal.set(next);
+        }
+    });
+
+    let parent_now = parent();
+    let listing = loaded();
+    if listing.parent_key != parent_now {
+        return match children.read().clone() {
+            Some(Err(error)) => rsx! {
                 div {
                     class: "x-error-display",
                     style: "padding: 4px 8px; font-size: 14px; color: rgb(160,30,30);",
                     "Could not load this folder: {error}"
                 }
-            };
-        }
-        Ok(listing) => listing,
-    };
+            },
+            _ => rsx! {
+                div {
+                    style: "padding: 4px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
+                    "Loading…"
+                }
+            },
+        };
+    }
 
-    // Only folder-like nodes are navigable, in both skins: you filter by folder and you
-    // browse into folders. Plain files are listed in the content pane, not the tree.
-    //
-    // `fetched` is counted BEFORE that filter, because it is only ever compared against
-    // `listing.total`, which the server also counts before it. Subtracting the filtered
-    // count from the unfiltered total is how every folder that merely contained files
-    // grew a "N more…" row for rows the tree was never going to draw — and the row's
-    // handler raises the FETCH limit, so re-fetching returned the same children, dropped
-    // the same files, and left the same number sitting there. It could not resolve.
+    // No client-side kind filter: `folders_only` already excluded plain files, so
+    // `nodes.len()` and `total` count the same thing and the offset arithmetic below is
+    // in the same space the server pages in. Filtering here again would silently shift
+    // every offset by the number of files dropped.
     let fetched = listing.nodes.len() as u64;
-    let nodes: Vec<VfsTreeNode> = listing
-        .nodes
-        .into_iter()
-        .filter(|node| node.kind.is_folder_like())
-        .collect();
+    let nodes: Vec<VfsTreeNode> = listing.nodes;
 
     if nodes.is_empty() && depth == 0 {
         return rsx! {
@@ -443,23 +532,7 @@ fn VfsTreeLevelBody(
             }
         }
         for node in visible {
-            {
-                let node_key = node.node_key.clone();
-                let is_expanded = expanded.read().contains(&node_key);
-                rsx! {
-                    div {
-                        key: "{node_key}",
-                        VfsTreeRow { node: node.clone(), depth, rung, is_expanded }
-                        if is_expanded {
-                            VfsTreeLevel {
-                                parent_key: node_key.clone(),
-                                depth: depth + 1,
-                                rung: rung + 1,
-                            }
-                        }
-                    }
-                }
-            }
+            VfsTreeBranch { key: "{node.node_key}", node: node.clone(), depth, rung }
         }
         if window.hidden_after > 0 {
             button {
@@ -475,12 +548,55 @@ fn VfsTreeLevelBody(
             button {
                 style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                 class: "x-facet-list-item",
+                title: "Load the next {CHILDREN_PAGE_SIZE.min(more)} of the {listing.total} folders here",
                 onclick: move |_| {
-                    let current = *limit.read();
-                    limit.set(current + MAX_CHILDREN_PER_NODE);
+                    // The NEXT page, at the offset already loaded. Raising the limit
+                    // instead is what made this row a no-op: the server caps the page
+                    // size, so a wider request came back as the same page.
+                    let loaded_now = loaded.peek().nodes.len() as u64;
+                    request.set((parent_now.clone(), loaded_now));
                 },
                 "{more} more…"
             }
+        }
+    }
+}
+
+/// Everything one level has fetched so far, and what the server says is there in total.
+///
+/// Keyed by `parent_key` so a page that arrives for the folder the level USED to show is
+/// discarded rather than appended: `VfsTreeLevelBody` keeps its identity while its
+/// `parent_key` changes.
+#[derive(Clone, PartialEq, Default)]
+struct LoadedChildren {
+    parent_key: String,
+    nodes: Vec<VfsTreeNode>,
+    /// Folder-like children this node has, as the server counts them. `nodes.len()` is
+    /// how many of those are loaded; the difference is what the "N more…" row states.
+    total: u64,
+}
+
+/// One row of the tree and, when it is open, the level beneath it.
+///
+/// A component rather than an inline block, because the expansion boolean is a HOOK: the
+/// row subscribes to its OWN expansion through a memo, so toggling one chevron wakes one
+/// row instead of every level in the tree. `VfsTreeLevelBody` reading the expansion set
+/// directly is what made a click cost O(levels x rows) of render work in WASM — nothing
+/// visibly wrong, because the DOM diff then found almost nothing to do, but all of the
+/// work.
+#[component]
+fn VfsTreeBranch(node: VfsTreeNode, depth: usize, rung: usize) -> Element {
+    let expanded = use_context::<Signal<BTreeSet<String>>>();
+    let node_key = node.node_key.clone();
+    // A memo of a boolean: recomputing it is one set lookup, and it only wakes this row
+    // when the answer actually changes.
+    let is_expanded = use_memo(use_reactive!(|node_key| expanded.read().contains(&node_key)));
+    let child_key = node.node_key.clone();
+
+    rsx! {
+        VfsTreeRow { node, depth, rung, is_expanded: is_expanded() }
+        if is_expanded() {
+            VfsTreeLevel { parent_key: child_key, depth: depth + 1, rung: rung + 1 }
         }
     }
 }

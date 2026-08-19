@@ -192,17 +192,26 @@ pub fn StorageTree(
     // An effect that only INSERTS. It must never clear the set: a user who collapsed a
     // row would see it spring open again on the next render, and clearing plus restarting
     // a resource here is the pattern that doubles every request in this codebase.
+    //
+    // Built from `peek()` and written only when it CHANGES. `write()` marks the signal
+    // dirty whether or not the value moved, and this effect re-runs on every read of the
+    // resource — so an unconditional write here was a re-render of every collection row,
+    // every dataset row and every mounted `VfsTree` per run. The same reasoning as the
+    // sibling effect in `vfs_tree.rs`.
     use_effect(move || {
         let Some(Ok(nodes)) = tree.read().clone() else {
             return;
         };
         let dataset = current_dataset();
-        let mut open = expanded.write();
+        let mut next = expanded.peek().clone();
         for node in &nodes {
-            open.insert(collection_expansion_key(&node.collectionname));
+            next.insert(collection_expansion_key(&node.collectionname));
         }
         if !dataset.is_empty() {
-            open.insert(dataset_expansion_key(&dataset));
+            next.insert(dataset_expansion_key(&dataset));
+        }
+        if *expanded.peek() != next {
+            expanded.set(next);
         }
     });
 

@@ -26,10 +26,14 @@ use crate::db_utils::clickhouse_utils;
 use crate::db_utils::manticore_match::quoted_manticore_string;
 use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
-/// Children returned per expansion before the tree shows a "N more…" row. A folder with
-/// 40 000 entries is a real thing in these corpora (`many-children`), and rendering all
-/// of them freezes the browser long before it helps anyone.
-pub const MAX_CHILDREN_PER_NODE: u64 = 500;
+/// The biggest page this module will hand back in one call.
+///
+/// A PAGE SIZE cap, not a per-node cap: the caller pages with `offset`, so a folder with
+/// 40 000 entries is reachable a page at a time. It used to be the same number the tree
+/// asks for (500), which meant a caller trying to widen its request had it clamped back
+/// to what it already had and the "N more…" row could never resolve. Keeping the two
+/// numbers different is what stops that from coming back.
+pub const MAX_CHILDREN_PER_PAGE: u64 = 2000;
 
 /// Ancestors walked before `vfs_tree_path_to` gives up. The tree can contain cycles
 /// (`eml-7-recursive` is an email containing itself), so this is a termination
@@ -81,34 +85,76 @@ async fn structure_table(user: &CurrentUser, collection_dataset: &str) -> anyhow
     Ok(format!("{collectionname}_vfs"))
 }
 
+/// The SQL one page of children resolves to.
+///
+/// Split out of [`vfs_tree_children`] so the two things that are easy to get wrong here —
+/// which rows `folders_only` excludes, and that `total` is counted over the same
+/// predicate the page is drawn from — are assertable without a live Manticore.
+///
+/// `kind != 1` is "not a plain file": `Enum8('dir'=0,'file'=1,'container'=2)`, and a
+/// container is folder-like. Excluding by inequality rather than listing `IN (0, 2)`
+/// keeps a future kind on the folder side by default, which is the safer default for a
+/// tree whose whole job is to show what can be opened.
+fn children_sql(
+    table: &str,
+    collection_dataset: &str,
+    node_key: &str,
+    limit: u64,
+    offset: u64,
+    folders_only: bool,
+    options_clause: &str,
+) -> String {
+    let kind_clause = if folders_only { "\n          AND kind != 1" } else { "" };
+    format!(
+        "
+        SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
+               kind, file_hash, file_size_bytes, depth
+        FROM {table}
+        WHERE collection_dataset = {}
+          AND parent_key = {}{kind_clause}
+        ORDER BY kind ASC, path ASC
+        LIMIT {limit} OFFSET {offset}
+        {options_clause}
+        ;",
+        format_sql_query::QuotedData(collection_dataset),
+        format_sql_query::QuotedData(node_key),
+    )
+}
+
 /// One page of a node's immediate children, folders first then files, each group by name.
 ///
 /// `node_key` is the full `{dataset}\x1f{container}\x1f{path}` key. It is bound as a
 /// quoted string rather than reconstructed here so the caller cannot end up with a key
 /// the indexer never wrote.
+///
+/// `folders_only` drops plain files from both the page AND from `total`. The tree skins
+/// set it; the file-browser content pane does not, because files belong in the pane. It
+/// is one predicate and it fixes three things at once: the "N more…" row stops promising
+/// rows the tree will never draw, `ORDER BY kind ASC` stops letting a folder's files fill
+/// the first page and starve the containers behind them, and a folder holding nothing but
+/// files reports `total = 0` and renders as the leaf it is.
+///
+/// Paging is by `offset`. The caller appends pages; it must not re-ask with a bigger
+/// `limit`, which is what [`MAX_CHILDREN_PER_PAGE`] used to make impossible.
 pub async fn vfs_tree_children(
     user: &CurrentUser,
     collection_dataset: String,
     node_key: String,
     limit: u64,
     offset: u64,
+    folders_only: bool,
 ) -> anyhow::Result<VfsTreeChildren> {
     let table = structure_table(user, &collection_dataset).await?;
-    let limit = limit.clamp(1, MAX_CHILDREN_PER_NODE);
+    let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
     let options_clause = sql_options_clause((limit + offset).max(1000));
-    let sql = format!(
-        "
-        SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
-               kind, file_hash, file_size_bytes, depth
-        FROM {table}
-        WHERE collection_dataset = {}
-          AND parent_key = {}
-        ORDER BY kind ASC, path ASC
-        LIMIT {limit} OFFSET {offset}
-        {options_clause}
-        ;",
-        format_sql_query::QuotedData(&collection_dataset),
-        format_sql_query::QuotedData(&node_key),
+    let sql = children_sql(
+        &table,
+        &collection_dataset,
+        &node_key,
+        limit,
+        offset,
+        folders_only,
+        &options_clause,
     );
     let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
     Ok(VfsTreeChildren {
@@ -182,7 +228,7 @@ pub async fn vfs_search_in_folder(
     if cleaned.is_empty() {
         return Ok(VfsTreeChildren { parent_key: node_key, nodes: Vec::new(), total: 0 });
     }
-    let limit = limit.clamp(1, MAX_CHILDREN_PER_NODE);
+    let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
     let options_clause = sql_options_clause(limit.max(1000));
     let Some(ancestor_id) = node_term_id(&collection_dataset, &node_key).await? else {
         // The node has never been an ancestor of anything, so nothing is under it.
@@ -297,6 +343,47 @@ mod tests {
         assert_eq!(sanitize_folder_search("*wild*"), "wild");
         assert_eq!(sanitize_folder_search("\"exact\""), "exact");
         assert_eq!(sanitize_folder_search("a !b"), "a b");
+    }
+
+    fn snapshot(folders_only: bool) -> String {
+        children_sql(
+            "testcoll_vfs",
+            "testdata_zips",
+            "testdata_zips\u{1f}\u{1f}/location-1",
+            500,
+            1000,
+            folders_only,
+            "OPTION max_matches=1500",
+        )
+    }
+
+    #[test]
+    fn folders_only_excludes_plain_files_and_nothing_else() {
+        let sql = snapshot(true);
+        assert!(sql.contains("AND kind != 1"), "{sql}");
+        // The predicate belongs to the WHERE clause, so `total` is counted over it too —
+        // that is what makes the "N more…" row's arithmetic honest.
+        let where_clause = sql.split("ORDER BY").next().unwrap();
+        assert!(where_clause.contains("AND kind != 1"), "{sql}");
+        assert!(sql.contains("ORDER BY kind ASC, path ASC"), "{sql}");
+        assert!(sql.contains("LIMIT 500 OFFSET 1000"), "{sql}");
+        assert!(sql.contains("OPTION max_matches=1500"), "{sql}");
+    }
+
+    #[test]
+    fn without_folders_only_the_page_is_every_child() {
+        let sql = snapshot(false);
+        assert!(!sql.contains("kind !="), "{sql}");
+        // Everything else is identical: the flag adds one predicate and changes nothing
+        // about the ordering or the paging.
+        assert_eq!(sql, snapshot(true).replace("\n          AND kind != 1", ""));
+    }
+
+    #[test]
+    fn the_node_key_is_quoted_not_interpolated() {
+        // A key carries unit separators and arbitrary path text; it is data.
+        let sql = children_sql("t_vfs", "ds", "ds\u{1f}\u{1f}/it's", 10, 0, true, "");
+        assert!(sql.contains("'ds\u{1f}\u{1f}/it''s'"), "{sql}");
     }
 
     #[test]

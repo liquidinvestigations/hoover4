@@ -11,17 +11,31 @@ use dioxus::prelude::*;
 #[cfg(feature = "server")]
 use crate::api::error_util::to_server_fn_error;
 
+/// One page of a node's children.
+///
+/// `folders_only` is what the tree skins pass and the file-browser content pane does not:
+/// the tree draws only what can be opened, so counting files into its `total` promised
+/// rows it was never going to render. Paging is by `offset` — the caller appends pages
+/// rather than re-asking with a bigger `limit`.
 #[server]
 pub async fn vfs_tree_children(
     collection_dataset: String,
     node_key: String,
     limit: u64,
     offset: u64,
+    folders_only: bool,
 ) -> Result<VfsTreeChildren, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::vfs::vfs_tree_children(&user, collection_dataset, node_key, limit, offset)
-        .await
-        .map_err(to_server_fn_error)
+    backend::api::vfs::vfs_tree_children(
+        &user,
+        collection_dataset,
+        node_key,
+        limit,
+        offset,
+        folders_only,
+    )
+    .await
+    .map_err(to_server_fn_error)
 }
 
 /// The chain of nodes from the dataset root down to one node, root first. What the
