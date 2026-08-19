@@ -20,17 +20,22 @@ pytestmark = pytest.mark.integration
 _CREATE_TABLE_RE = re.compile(
     r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+[`\"]?(\w+)[`\"]?", re.IGNORECASE
 )
+_ALTER_TABLE_RE = re.compile(r"ALTER\s+TABLE\s+[`\"]?(\w+)[`\"]?", re.IGNORECASE)
 
 
 def _expected_tables() -> set[str]:
     """Table names declared by the collection migrations, parsed from the SQL files.
 
-    A migration file may create more than one table.
+    A migration file may create more than one table, and a migration that only adds
+    columns to a table an earlier one created declares no table at all. Both are
+    legitimate; what is not legitimate is a file that touches no table, which would mean
+    the regex stopped understanding the SQL and the table set below silently shrank.
     """
     tables = set()
     for path in sorted(Path(COLLECTION_MIGRATIONS_PATH).glob("*.sql")):
-        found = _CREATE_TABLE_RE.findall(path.read_text())
-        assert found, f"no CREATE TABLE found in {path.name}"
+        sql = path.read_text()
+        found = _CREATE_TABLE_RE.findall(sql)
+        assert found or _ALTER_TABLE_RE.search(sql), f"no table statement in {path.name}"
         tables.update(found)
     return tables
 
