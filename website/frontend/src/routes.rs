@@ -18,6 +18,7 @@ use crate::pages::admin::{
     users_list::AdminUsersPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
+use crate::pages::email_graph_page::EmailGraphPage;
 use crate::pages::file_browser_page::{
     FileBrowserCollectionPage, FileBrowserCollectionsPage, FileBrowserPage,
 };
@@ -66,6 +67,16 @@ pub enum Route {
         collection: String,
         path: UrlParam<PathDescriptor>,
         selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
+        doc_viewer_state: UrlParam<Option<DocViewerState>>,
+    },
+
+    // `centre` is the message the graph was opened on and never changes while you
+    // browse; `selected` is what the right-hand pane shows. That split is what makes the
+    // back button mean "the node I was on before" instead of "a different graph".
+    #[route("/email_graph/:centre/:selected/:doc_viewer_state")]
+    EmailGraphPage {
+        centre: UrlParam<DocumentIdentifier>,
+        selected: UrlParam<Option<DocumentIdentifier>>,
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
 

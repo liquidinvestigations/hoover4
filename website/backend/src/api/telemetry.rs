@@ -297,6 +297,8 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "fetch_db_terms_for_ints",
     "get_document_dates",
     "get_document_email",
+    "get_email_envelope",
+    "get_email_graph",
     "get_raw_metadata_tables",
     "list_folder_children",
     "list_storage_tree",

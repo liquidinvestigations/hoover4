@@ -152,3 +152,18 @@ html, body, #main {
     color:red;
     border: 1px solid rgba(255, 0, 0, 0.308);
 }
+/* Attachment cards in the email viewer. The whole card is the link, so the hover has to
+   be on the card and not on its filename. */
+.x-email-attachment-card:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+}
+
+/* Graph nodes. `cursor` is on the group so the whole node, label included, is one target. */
+.x-email-graph-node {
+    cursor: pointer;
+}
+.x-email-graph-node:hover .x-email-graph-node-body {
+    stroke: #1a73e8;
+    stroke-width: 2;
+}
