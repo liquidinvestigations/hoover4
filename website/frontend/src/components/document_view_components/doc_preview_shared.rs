@@ -8,7 +8,6 @@ use common::document_sources::DocumentSourceItem;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
-use crate::components::document_view_components::doc_file_locations_panel::DocumentFileLocationsPanel;
 use crate::components::document_view_components::doc_preview_for_search::{
     doc_preview_for_email::DocumentPreviewForEmail, doc_preview_for_pdf::DocumentPreviewForPdf,
     doc_preview_for_text::DocumentPreviewForTextWithSearch,
@@ -96,9 +95,6 @@ pub fn DocSourceDispatch(
                     }
                 }
             },
-        },
-        DocumentSourceItem::FileLocations => rsx! {
-            DocumentFileLocationsPanel { document_identifier }
         },
         // A source this build has no viewer for. It is not an error — an older bookmark
         // or a newer indexer can both produce one — so it says so plainly and carries no

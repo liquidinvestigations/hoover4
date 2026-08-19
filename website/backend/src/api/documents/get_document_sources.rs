@@ -311,13 +311,13 @@ pub async fn get_document_sources(
     for source in aud.unwrap_or_default() {
         sources.push(DocumentSourceItem::Audio(source));
     }
-    // Not `Metadata`: metadata is not a rendering of the document, it is a description of
-    // it, and the viewer already has a whole right-hand tab for it (`RawMetadataCollector`
-    // — dates, email headers, every raw table). Offering it here as well put a second copy
-    // of that panel where the document should be, and — because it sorts last while
-    // nothing selected it — was only ever reachable as a dead end. The variant is kept so
-    // bookmarked URLs still parse; the selector falls back to the first real source.
-    sources.push(DocumentSourceItem::FileLocations);
+    // Nothing else is pushed here. `Metadata` and the file locations are DESCRIPTIONS of
+    // the document, not renderings of it, and each has its own right-hand tab in the
+    // viewer (`RawMetadataCollector` and `DocumentFileLocationsPanel`). Offering either as
+    // a preview source puts a second copy of that panel where the document belongs, and
+    // since both sort last and neither is ever selected by default it is reachable only as
+    // a dead end. `Metadata` stays a variant so a bookmarked URL naming it still parses;
+    // the selector falls back to the first real source.
     sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(sources)

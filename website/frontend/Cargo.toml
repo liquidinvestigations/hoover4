@@ -47,6 +47,9 @@ serde_json = "1"
 web-sys = {version = "0.3", features = [
     "Window", "Navigator", "Clipboard", "Url", "Permissions",
     "Storage", "Document", "Element", "DomRect",
+    # The clipboard fallback for a non-secure context builds and selects a textarea,
+    # then copies it with `execCommand`, which lives on HtmlDocument.
+    "HtmlTextAreaElement", "HtmlDocument",
     # The sidebar handle recognises its double-click from the press timestamps, because
     # the drag overlay stops any `click`/`dblclick` from ever being dispatched.
     "Performance",

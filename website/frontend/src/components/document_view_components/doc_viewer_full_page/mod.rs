@@ -15,6 +15,7 @@ use crate::{
                 DocumentPreviewSourceSelectorList, search_document_item_hit_counts,
             },
         },
+        doc_file_locations_panel::DocumentFileLocationsPanel,
         doc_title_bar::DocTitleBar,
         doc_viewer_full_page::{
             document_entities_panel::DocumentEntitiesPanel,
@@ -245,12 +246,14 @@ fn RightPanel(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
                     background: rgba(0,0,0,0.02);
                 ",
                 RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Entities, label: "Entities" }
+                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::FileLocations, label: "File Locations" }
                 RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Metadata, label: "Metadata" }
             }
             div {
                 style: "flex: 1 1 auto; min-height: 0; overflow: hidden;",
                 match right_tab().selected_tab {
                     ViewerRightTabSelection::Entities => rsx! { DocumentEntitiesPanel { document_identifier } },
+                    ViewerRightTabSelection::FileLocations => rsx! { DocumentFileLocationsPanel { document_identifier } },
                     ViewerRightTabSelection::Metadata => rsx! { RawMetadataCollector { document_identifier } },
                 }
             }

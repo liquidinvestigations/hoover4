@@ -8,7 +8,7 @@ use dioxus_free_icons::{
     icons::{
         md_action_icons::MdQuestionAnswer,
         md_communication_icons::MdEmail,
-        md_file_icons::{MdFolder, MdTextSnippet},
+        md_file_icons::MdTextSnippet,
         md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
         md_navigation_icons::MdCheck,
         md_toggle_icons::MdRadioButtonUnchecked,
@@ -166,7 +166,6 @@ fn SelectedItemDropdownDisplay(
     rsx! {
         div {
             onclick: move |_e| {
-                dioxus::logger::tracing::info!("toggle expand");
                 _e.prevent_default();
                 _e.stop_propagation();
                 expand.toggle();
@@ -225,9 +224,6 @@ fn SourceItemRow(
         DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),
         DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), "Audio".to_string()),
         DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), "Video".to_string()),
-        DocumentSourceItem::FileLocations => {
-            (_item_icon_rsx(MdFolder), "File locations".to_string())
-        }
         // Never `{source:?}`: a variant name is a storage detail, and a selector that
         // offers a row nobody can read is worse than one that says "other".
         _ => (_item_icon_rsx(MdQuestionAnswer), "Other".to_string()),

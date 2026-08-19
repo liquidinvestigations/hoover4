@@ -360,7 +360,6 @@ pub enum DocumentSourceItem {
     Video(DocumentVideoSourceItem),
     Audio(DocumentAudioSourceItem),
     Text(DocumentTextSourceItem),
-    FileLocations,
     /// Not offered as a preview source — the viewer's Metadata tab is the metadata
     /// surface. Kept because it is part of the URL-encoded viewer state and dropping the
     /// variant would turn every bookmark carrying it into a parse failure.
