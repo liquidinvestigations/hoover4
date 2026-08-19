@@ -310,6 +310,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     a `file_types` row, because a document known only to `vfs_files` still has a
     filename, a size and a folder to be filtered by.
     """
+    from database.enum_wire import ROLE_DEFAULT, ROLE_ORDINALS, enum_from_wire
+
     from .vfs_nodes import (
         STRUCT_FLAG_EMAIL_HAS_ATTACHMENTS,
         STRUCT_FLAG_TRUNCATED_ANCESTRY,
@@ -357,7 +359,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         }).to_pylist()
 
         address_rows = client.query_arrow("""
-            SELECT email_hash, role, address
+            SELECT email_hash, toString(role) AS role, address
             FROM email_addresses FINAL
             WHERE collection_dataset = {collection_dataset:String}
             AND email_hash IN {item_hashes:Array(String)}
@@ -409,7 +411,13 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     from_by_hash: dict[str, set[str]] = {}
     to_by_hash: dict[str, set[str]] = {}
     for row in address_rows:
-        bucket = from_by_hash if row['role'] == 'from' else to_by_hash
+        # `role` is an Enum8 and arrives as an ORDINAL through arrow unless the query
+        # says `toString`. Both belts are done up here: the SELECT above asks for the
+        # name, and this normalises whatever arrives. Comparing the raw value to `'from'`
+        # is always false for an ordinal, does not raise, and files every sender as a
+        # recipient — which is how the whole corpus ended up with an empty sender field.
+        role = enum_from_wire(row['role'], ROLE_ORDINALS, ROLE_DEFAULT)
+        bucket = from_by_hash if role == 'from' else to_by_hash
         bucket.setdefault(row['email_hash'], set()).add(row['address'])
 
     file_types_by_hash = {item['hash']: item for item in raw_metadatas}
@@ -636,6 +644,15 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
         return "0 nodes"
 
     with get_collection_client(params.collectionname) as client:
+        # Everything written below carries an `updated_at` of at least this instant, so
+        # anything for this dataset still older afterwards is a node the rebuild did not
+        # produce. A ReplacingMergeTree replaces rows that came back and keeps rows that
+        # did not: without this sweep a node that stopped existing — a file that stopped
+        # being a container, the `/` that used to sit inside every archive — would stay
+        # in the tree forever, because nothing overwrites a key that is never written
+        # again. Read from the server rather than from Python: the comparison is against
+        # ClickHouse's own clock.
+        cutoff = client.query("SELECT now()").result_rows[0][0]
         client.insert_arrow("vfs_nodes", pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(nodes), type=pa.string()),
             "container_hash": pa.array([n.container_hash for n in nodes], type=pa.string()),
@@ -647,6 +664,11 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
             "file_size_bytes": pa.array([n.file_size_bytes for n in nodes], type=pa.int64()),
             "depth": pa.array([n.depth for n in nodes], type=pa.uint16()),
         }))
+        client.command(
+            "DELETE FROM vfs_nodes WHERE collection_dataset = {cd:String} "
+            "AND updated_at < {cutoff:DateTime}",
+            parameters={"cd": collection_dataset, "cutoff": cutoff},
+        )
     log.info("[P6] %s: materialised %d VFS nodes", collection_dataset, len(nodes))
     return f"{len(nodes)} nodes"
 
@@ -700,6 +722,16 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     key_ids = get_string_term_ids(params.collectionname, collection_dataset, 'vfs_node', all_keys)
 
     with get_manticore_client() as client:
+        # Clear the dataset's rows first, then write the tree back. A REPLACE only
+        # overwrites the keys it is given, so a node that no longer exists would survive
+        # every future rebuild and keep answering the tree — and the whole point of this
+        # activity is that `vfs_nodes` is the truth. The gap is the duration of one
+        # dataset's rebuild, during which the tree is being rewritten anyway.
+        manticore_execute(
+            client, f"DELETE FROM {vfs_table} WHERE collection_dataset = %s",
+            (collection_dataset,),
+        )
+        client.commit()
         for start in range(0, len(nodes), INDEX_ROW_CHUNK_SIZE):
             for node, closure in zip(nodes[start:start + INDEX_ROW_CHUNK_SIZE],
                                      closures[start:start + INDEX_ROW_CHUNK_SIZE]):

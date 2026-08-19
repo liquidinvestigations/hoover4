@@ -74,8 +74,15 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
 
 * `build_vfs_nodes` — materialises the dataset's tree into ClickHouse `vfs_nodes`.
   Dataset-scoped and idempotent, because a plan holds only a slice and a tree assembled
-  slice by slice has holes.
-* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table.
+  slice by slice has holes. It is a REBUILD in both directions: rows written keep their
+  key, and rows the rebuild did not produce are deleted afterwards by `updated_at`,
+  because a ReplacingMergeTree never removes a key that stops being written.
+  A file counts as a container only if something is inside it — being sniffed as an
+  archive, or being an email, is a guess, and an email with no attachments rendered as a
+  folder that opens onto nothing. What is inside a container hangs off the container FILE;
+  there is no `/` node in between.
+* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table,
+  clearing the dataset's rows first for the same reason.
 * `index_text_pages` — one row per text segment plus one synthetic `filename_index` row
   per document carrying its basenames, each row also carrying the document's typed
   attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,
@@ -107,4 +114,7 @@ silently returning a short closure.
   `params` arrives as a raw dict and every attribute access fails at runtime.
 * **ClickHouse `Enum8` takes the NAME on insert and returns the ORDINAL on read.**
   Comparing that int against `'container'` never raises; it silently makes every container
-  a directory. Use `kind_from_wire` on every read.
+  a directory, and comparing `role` against `'from'` silently files every sender as a
+  recipient. Pass every enum read through `database/enum_wire.py::enum_from_wire`, and
+  select the column as `toString(col)` as well. `tests/unit/test_enum_wire.py` greps
+  `P6_index_data` for the bare comparison and fails the suite if it reappears.

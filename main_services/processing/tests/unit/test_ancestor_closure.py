@@ -195,7 +195,7 @@ def test_build_node_rows_synthesises_the_dataset_root():
     assert nodes[ROOT].depth == 0
 
 
-def test_build_node_rows_marks_containers_and_links_their_roots():
+def test_build_node_rows_marks_containers_and_links_their_members():
     nodes = nodes_by_key(build_node_rows(
         DS,
         dir_rows=[("", "/data")],
@@ -206,9 +206,10 @@ def test_build_node_rows_marks_containers_and_links_their_roots():
     assert archive.kind == KIND_CONTAINER
     assert archive.file_hash == "ziphash"
     assert archive.file_size_bytes == 500
-    # The root INSIDE the archive hangs off the archive file, crossing the boundary.
-    inner_root = nodes[key("ziphash", "/")]
-    assert inner_root.parent_key == archive.node_key
+    # What is inside the archive hangs off the archive FILE, crossing the boundary. There
+    # is no `/` node in between: expanding the archive shows its contents.
+    assert key("ziphash", "/") not in nodes
+    assert nodes[key("ziphash", "/doc.txt")].parent_key == archive.node_key
     assert nodes[key("ziphash", "/doc.txt")].kind == KIND_FILE
 
 
@@ -244,7 +245,9 @@ def test_build_node_rows_picks_a_stable_parent_for_a_duplicated_container():
     ]
     first = nodes_by_key(build_node_rows(DS, [], file_rows, {"ziphash"}))
     second = nodes_by_key(build_node_rows(DS, [], list(reversed(file_rows)), {"ziphash"}))
-    assert first[key("ziphash", "/")].parent_key == second[key("ziphash", "/")].parent_key
+    member = key("ziphash", "/child.txt")
+    assert first[member].parent_key == second[member].parent_key
+    assert first[member].parent_key == key("", "/location-1/parent.zip")
 
 
 def test_a_recursive_email_does_not_hang_the_depth_walk():
@@ -268,6 +271,9 @@ def test_container_parents_from_nodes_collects_every_location():
         file_rows=[
             ("", "/location-1/parent.zip", "ziphash", 100),
             ("", "/location-2/parent.zip", "ziphash", 100),
+            # The member is what makes the two copies containers at all — a hash nothing
+            # is inside is a plain file, and a plain file is nobody's parent.
+            ("ziphash", "/child.txt", "childhash", 10),
         ],
         container_hashes={"ziphash"},
     )
@@ -337,3 +343,118 @@ def test_a_document_in_a_duplicated_container_reaches_both_locations_end_to_end(
     )
     assert key("", "/location-1") in keys
     assert key("", "/location-2") in keys
+
+
+# --- a container is a file with members ---------------------------------------------
+
+#: The three fixture shapes the corpus actually contains, as `(dir_rows, file_rows,
+#: detected, hash, expect_container)`. "Detected" is what the archive/email sniff says;
+#: whether it is a CONTAINER is a different question, and the answer is membership.
+MEMBERSHIP_SHAPES = [
+    (
+        "eml-2-attachment: an email with one attachment is a container",
+        [], [("", "/eml-2-attachment.eml", "mailhash", 900),
+             ("mailhash", "/report.pdf", "pdfhash", 400)],
+        {"mailhash"}, "mailhash", True,
+    ),
+    (
+        "an email with no attachment is a FILE however it was detected",
+        [], [("", "/plain.eml", "mailhash", 900)],
+        {"mailhash"}, "mailhash", False,
+    ),
+    (
+        "eml-7-recursive: an email containing itself has a member, so it is a container",
+        [], [("", "/self.eml", "selfmail", 10), ("selfmail", "/self.eml", "selfmail", 10)],
+        {"selfmail"}, "selfmail", True,
+    ),
+    (
+        "zip-in-multiple-locations: two copies of one archive, one set of members",
+        [], [("", "/location-1/parent.zip", "ziphash", 100),
+             ("", "/location-2/parent.zip", "ziphash", 100),
+             ("ziphash", "/child.txt", "childhash", 10)],
+        {"ziphash"}, "ziphash", True,
+    ),
+    (
+        "an archive whose listing found nothing is not an archive",
+        [], [("", "/location-1/empty.zip", "ziphash", 100)],
+        {"ziphash"}, "ziphash", False,
+    ),
+    (
+        "a container whose only member is a DIRECTORY still has members",
+        [("ziphash", "/inner")], [("", "/dirs-only.zip", "ziphash", 100)],
+        {"ziphash"}, "ziphash", True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,dir_rows,file_rows,detected,file_hash,expect_container",
+    MEMBERSHIP_SHAPES,
+    ids=[shape[0].split(":")[0] for shape in MEMBERSHIP_SHAPES],
+)
+def test_build_node_rows_membership(
+    label, dir_rows, file_rows, detected, file_hash, expect_container
+):
+    """Detection proposes, membership decides.
+
+    Every email in the demo corpus is detected as an archive-like thing, and 100% of them
+    had nothing inside — so 543 195 emails rendered as folders that expand to nothing.
+    A file with no members is a FILE, whatever the sniff said.
+    """
+    nodes = nodes_by_key(build_node_rows(DS, dir_rows, file_rows, detected))
+    the_file = next(n for n in nodes.values() if n.file_hash == file_hash)
+    expected = KIND_CONTAINER if expect_container else KIND_FILE
+    assert the_file.kind == expected, label
+
+
+def test_no_synthetic_container_root():
+    """No `/` node inside a container, and the members re-parent onto the container file.
+
+    `depth` drops by exactly one per container hop as a result: the hop IS the hop, and
+    the extra `/` level was counting it twice.
+    """
+    nodes = nodes_by_key(build_node_rows(
+        DS,
+        dir_rows=[("", "/data")],
+        file_rows=[
+            ("", "/data/outer.zip", "outerhash", 500),
+            ("outerhash", "/inner.zip", "innerhash", 300),
+            ("innerhash", "/deep.txt", "deephash", 20),
+        ],
+        container_hashes={"outerhash", "innerhash"},
+    ))
+    assert not [n for n in nodes.values() if n.path == "/" and n.container_hash], \
+        "a container's root is not a node"
+
+    outer = nodes[key("", "/data/outer.zip")]
+    inner = nodes[key("outerhash", "/inner.zip")]
+    deep = nodes[key("innerhash", "/deep.txt")]
+    assert inner.parent_key == outer.node_key
+    assert deep.parent_key == inner.node_key
+    # One hop per level, container hops included: /data(1) outer.zip(2) inner.zip(3)
+    # deep.txt(4). With the `/` nodes it was six.
+    assert (nodes[key("", "/data")].depth, outer.depth, inner.depth, deep.depth) == (1, 2, 3, 4)
+
+
+def test_ancestor_closure_unchanged():
+    """Membership does not go through `parent_key`, so removing the `/` node changes NO
+    closure. Pinned as an explicit expected set: if this moves, the change is wrong.
+    """
+    node_rows = [
+        {"kind": KIND_TO_INT[KIND_CONTAINER], "file_hash": "ziphash",
+         "container_hash": "", "path": "/location-1/parent.zip"},
+    ]
+    keys, truncated = ancestor_node_keys(
+        DS, [("ziphash", "/inner/child.txt")], container_parents_from_nodes(node_rows),
+    )
+    assert not truncated
+    assert keys == {
+        # Inside the container, the `/` KEY is still an ancestor of the path — it is a
+        # term, not a node, and the two were never the same thing.
+        key("ziphash", "/"),
+        key("ziphash", "/inner"),
+        key("", "/location-1/parent.zip"),
+        key("", "/"),
+        key("", "/location-1"),
+        ROOT,
+    }

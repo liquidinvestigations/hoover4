@@ -37,6 +37,8 @@ import logging
 import os
 import re
 
+from database.enum_wire import KIND_DEFAULT, KIND_ORDINALS, enum_from_wire
+
 log = logging.getLogger(__name__)
 
 UNIT_SEP = "\x1f"
@@ -59,23 +61,18 @@ STRUCT_FLAG_TRUNCATED_ANCESTRY = 1 << 1
 KIND_DIR = "dir"
 KIND_FILE = "file"
 KIND_CONTAINER = "container"
-KIND_TO_INT = {KIND_DIR: 0, KIND_FILE: 1, KIND_CONTAINER: 2}
+KIND_TO_INT = dict(KIND_ORDINALS)
 INT_TO_KIND = {value: name for name, value in KIND_TO_INT.items()}
 
 
 def kind_from_wire(value) -> str:
     """Normalise a `kind` that may arrive as a name or as an ordinal.
 
-    ClickHouse writes `Enum8('dir'=0,…)` and accepts the NAME on insert, but reading the
-    column back through `query_arrow().to_pylist()` yields the ORDINAL — an int, not the
-    string the schema shows. Comparing that int against `'container'` is always false,
-    which does not raise: it silently makes every container look like a directory, and
-    the visible symptom is a folder filter that finds one document instead of two.
-    Normalise once, here, on every read.
+    One line over :func:`database.enum_wire.enum_from_wire`, which carries the reasoning
+    and is used for `email_addresses.role` as well. Kept as a name because `kind` is read
+    in several places and "which enum, with which default" is worth saying once.
     """
-    if isinstance(value, str):
-        return value if value in KIND_TO_INT else KIND_DIR
-    return INT_TO_KIND.get(int(value), KIND_DIR)
+    return enum_from_wire(value, KIND_ORDINALS, KIND_DEFAULT)
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -204,8 +201,8 @@ class VfsNode:
 
     @property
     def name(self) -> str:
-        """The label the tree shows. The root of a container borrows nothing — it is
-        rendered under the container's own name by the caller."""
+        """The label the tree shows. Empty only for the dataset pseudo-root, which the
+        caller renders under the dataset's own name."""
         return "" if self.path == "/" else os.path.basename(self.path)
 
 
@@ -220,11 +217,27 @@ def build_node_rows(
     ``dir_rows``  -- ``(container_hash, path)`` from `vfs_directories`.
     ``file_rows`` -- ``(container_hash, path, file_hash, file_size_bytes)`` from
     `vfs_files`. ``container_hashes`` -- hashes that are archives or emails, i.e. files
-    that are also folders.
+    that COULD be folders.
 
-    Synthesises what the scan does not record: the dataset pseudo-root, the root inside
-    every container, and any intermediate directory that has files but no
-    `vfs_directories` row (which happens whenever a container's listing skipped a level).
+    A file is a container here only if something is actually inside it. Being detected as
+    an archive, or being an email, is not enough: an email with no attachments and a
+    ``.zip`` whose listing found nothing have no children, and rendering them as folders
+    gives the tree an expandable chevron that opens onto nothing. The evidence is already
+    in hand — a hash has members exactly when some `vfs_directories` or `vfs_files` row
+    names it as its ``container_hash`` — so the container test is the intersection of "is
+    an archive or an email" with "has members". The demotion is to the tree's ``kind``
+    only: the file keeps its `archives`/`emails` rows and its Email or Archive rendering
+    in the viewer.
+
+    There is NO synthetic ``/`` node inside a container. What lives at the top of an
+    archive hangs directly off the archive FILE, so expanding `report.zip` shows what is
+    in it rather than a single row named ``/`` that has to be opened again. ``depth``
+    therefore counts one hop per container rather than two, which is what a container hop
+    always was.
+
+    Synthesises what the scan does not record: the dataset pseudo-root, and any
+    intermediate directory that has files but no `vfs_directories` row (which happens
+    whenever a container's listing skipped a level).
 
     ``parent_key`` is single-valued and crosses container boundaries. When a container
     lives at more than one path the lexicographically smallest location wins — an
@@ -242,6 +255,13 @@ def build_node_rows(
     rejected: list[str] = []
 
     def add(container_hash, path, kind, file_hash="", size=-1) -> str | None:
+        if container_hash and normalise_path(path) == "/":
+            # The root INSIDE a container is not a node. It arrives from three places —
+            # a `vfs_directories` row for `/`, the ancestor walk of every member, and the
+            # old explicit synthesis — so it is refused here once rather than guarded at
+            # each of them. Members hang off the container file instead; see the
+            # docstring. The `/` of the DATASET is a different node and is seeded above.
+            return None
         key = make_node_key(collection_dataset, container_hash, path)
         if key is None:
             rejected.append(f"{container_hash}:{path}")
@@ -258,14 +278,20 @@ def build_node_rows(
             existing.file_size_bytes = int(size)
         return key
 
-    # Where every container physically lives, for the container-root parent links.
+    # Where every container physically lives, for the parent links of what is inside it.
     container_locations: dict[str, list[str]] = {}
+
+    # A hash is a container only if something names it as its container. See the
+    # docstring: "detected as an archive" is a guess, "has members" is the fact.
+    hashes_with_members = {ch for ch, *_ in dir_rows if ch}
+    hashes_with_members |= {ch for ch, *_ in file_rows if ch}
+    effective_containers = set(container_hashes) & hashes_with_members
 
     for container_hash, path in dir_rows:
         add(container_hash or "", path, KIND_DIR)
 
     for container_hash, path, file_hash, size in file_rows:
-        is_container = file_hash in container_hashes
+        is_container = file_hash in effective_containers
         key = add(container_hash or "", path, KIND_CONTAINER if is_container else KIND_FILE,
                   file_hash=file_hash, size=size)
         if key is not None and is_container:
@@ -274,24 +300,26 @@ def build_node_rows(
         # row for it, or the tree has holes exactly where a container skipped a level.
         for ancestor in path_ancestors(path):
             add(container_hash or "", ancestor, KIND_DIR)
-        # The root inside a container is a node of its own: it is what the tree expands
-        # into when the user clicks the container.
-        if container_hash:
-            add(container_hash, "/", KIND_DIR)
 
     for node in nodes.values():
         if node.node_key == root_key:
             continue
-        if node.path != "/":
-            node.parent_key = make_node_key(
-                collection_dataset, node.container_hash, os.path.dirname(node.path) or "/"
-            ) or root_key
-        elif node.container_hash:
-            # The root inside a container hangs off the container FILE.
+        parent_path = os.path.dirname(node.path) or "/"
+        if node.container_hash and parent_path == "/":
+            # The top level inside a container hangs off the container FILE — there is no
+            # `/` node in between. When the container lives at more than one path the
+            # lexicographically smallest wins: arbitrary, but stable across runs, so a
+            # breadcrumb does not flip. A container whose own file was never seen (its
+            # members arrived without it) falls back to the dataset root rather than
+            # dangling.
             locations = sorted(container_locations.get(node.container_hash, ()))
             node.parent_key = locations[0] if locations else root_key
         else:
-            node.parent_key = root_key
+            # The only node left whose own path is `/` is the dataset pseudo-root, and
+            # that one is skipped above.
+            node.parent_key = make_node_key(
+                collection_dataset, node.container_hash, parent_path
+            ) or root_key
 
     _assign_depths(nodes, root_key)
 
