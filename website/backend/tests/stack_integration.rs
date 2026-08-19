@@ -980,50 +980,52 @@ async fn vfs_tree_path_to_crosses_a_container() {
 /// The second half is the one that bites in the field: `ORDER BY kind ASC` sorts
 /// `dir`(0), `file`(1), `container`(2), so a folder with more files than the page size
 /// never shows its archives at all — the files fill the page and the containers behind
-/// them are starved. `testfiles`' root is that shape in miniature (five files, one
-/// container), so a page of five is the whole test.
+/// them are starved. The fixture level is FOUND rather than named: an email with an
+/// attachment and a couple of inline parts is exactly that shape in miniature, and which
+/// of `other_emails`' messages has it is not something this test should hardcode.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn folders_only_counts_and_returns_only_what_the_tree_draws() {
     let _budget = Budget::start("folders_only_counts_and_returns_only_what_the_tree_draws");
-    use common::vfs::dataset_root_key;
+    use common::vfs::{VfsNodeKind, VfsTreeChildren, dataset_root_key};
 
-    let root = dataset_root_key(TESTFILES);
-    let everything = backend::api::vfs::vfs_tree_children(
-        &admin_user(), TESTFILES.to_string(), root.clone(), 500, 0, false,
-    )
-    .await
-    .unwrap();
-    let folder_like = everything.nodes.iter().filter(|n| n.kind.is_folder_like()).count() as u64;
+    async fn children(node_key: &str, folders_only: bool, limit: u64) -> VfsTreeChildren {
+        backend::api::vfs::vfs_tree_children(
+            &admin_user(), "other_emails".to_string(), node_key.to_string(),
+            limit, 0, folders_only,
+        )
+        .await
+        .unwrap()
+    }
+
+    // A level holding plain files AND something folder-like.
+    let mut mixed = None;
+    let root = children(&dataset_root_key("other_emails"), false, 500).await;
+    for candidate in root.nodes.iter().filter(|n| n.kind.is_folder_like()) {
+        let level = children(&candidate.node_key, false, 500).await;
+        let folders = level.nodes.iter().filter(|n| n.kind.is_folder_like()).count() as u64;
+        if folders > 0 && folders < level.total {
+            mixed = Some((candidate.node_key.clone(), level, folders));
+            break;
+        }
+    }
+    let (node_key, everything, folder_like) =
+        mixed.expect("other_emails must hold one message with both an attachment and files");
     let files = everything.total - folder_like;
-    assert!(files > 0, "the fixture must hold plain files for this to mean anything");
-    assert!(folder_like > 0, "and at least one container");
 
-    let folders = backend::api::vfs::vfs_tree_children(
-        &admin_user(), TESTFILES.to_string(), root.clone(), 500, 0, true,
-    )
-    .await
-    .unwrap();
+    let folders = children(&node_key, true, 500).await;
     assert_eq!(folders.total, folder_like, "total counts what the tree draws, not files");
     assert!(folders.nodes.iter().all(|n| n.kind.is_folder_like()));
 
     // A page exactly as big as the file count. Without the flag the containers are
     // starved off the end of it; with the flag they are the only thing on it.
-    let starved = backend::api::vfs::vfs_tree_children(
-        &admin_user(), TESTFILES.to_string(), root.clone(), files, 0, false,
-    )
-    .await
-    .unwrap();
+    let starved = children(&node_key, false, files).await;
     assert_eq!(
-        starved.nodes.iter().filter(|n| n.kind == common::vfs::VfsNodeKind::Container).count(),
+        starved.nodes.iter().filter(|n| n.kind == VfsNodeKind::Container).count(),
         0,
         "the unfiltered page is the starvation this flag exists to fix"
     );
-    let first_page = backend::api::vfs::vfs_tree_children(
-        &admin_user(), TESTFILES.to_string(), root, files, 0, true,
-    )
-    .await
-    .unwrap();
+    let first_page = children(&node_key, true, files).await;
     assert_eq!(
         first_page.nodes.iter().filter(|n| n.kind.is_folder_like()).count() as u64,
         folder_like,
