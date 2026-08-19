@@ -120,9 +120,9 @@ fn EmailGraphContent(
     let selected_value = selected.read().clone().or_else(|| Some(centre_value.clone()));
 
     let on_node_click = Callback::new(move |identifier: DocumentIdentifier| {
-        // `push`, not `replace`: clicking a node is a navigation, and the prompt asks for
-        // back and forward to keep the layout — which they do, because the layout lives
-        // in the signal above and not in the URL.
+        // `push`, not `replace`: clicking a node is a navigation, and back and forward
+        // keep the layout — because the layout lives in the signal above and not in the
+        // URL.
         navigator().push(Route::EmailGraphPage {
             centre: centre.read().clone().into(),
             selected: Some(identifier).into(),
@@ -339,7 +339,7 @@ fn edge_key(identifier: &DocumentIdentifier) -> (String, String) {
 
 /// Where the time axis wants each node.
 ///
-/// Scaled across the CURRENTLY RENDERED set, per the prompt: a cluster spanning three
+/// Scaled across the CURRENTLY RENDERED set: a cluster spanning three
 /// days and one spanning three years both use the full width, because the question the
 /// axis answers is "which of these came first", not "what year is it".
 fn target_x(nodes: &[EmailGraphNode]) -> HashMap<(String, String), f64> {
