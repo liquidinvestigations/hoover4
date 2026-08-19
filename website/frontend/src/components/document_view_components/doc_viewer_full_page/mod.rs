@@ -30,7 +30,7 @@ use crate::pages::search_page::DocViewerStateControl;
 use crate::{
     components::document_view_components::doc_preview_for_search::get_document_sources,
     components::document_view_components::doc_preview_shared::{
-        DocSourceDispatch, ProvidePreviewExtraSections,
+        DocSourceDispatch, PreviewWrapper, ProvidePreviewExtraSections,
     },
     data_definitions::doc_viewer_state::DocViewerState,
 };
@@ -138,8 +138,28 @@ pub fn DocViewerRoot(
         item_hit_counts: item_hit_counts.into(),
     });
 
+    // `None` means two different things and they must not look the same. Until the
+    // resource answers, `doc_sources` is `None` and the viewer is genuinely loading; once
+    // it answers with an empty list there is no source and never will be, so a spinner
+    // would run forever. Every source is a piece of extracted content, so a document
+    // whose extraction produced nothing — or an identifier that resolves to no document
+    // at all — lands here, and it still gets the title bar and the right-hand tabs:
+    // the name and the metadata are exactly what someone looking at an empty document
+    // came for.
+    let sources_answered = use_memo(move || doc_sources.read().is_some());
     let content_view_inner = match currently_selected_source.read().clone() {
         Some(source) => rsx! { DocSourceDispatch { document_identifier, source } },
+        None if sources_answered() => rsx! {
+            PreviewWrapper {
+                controls: rsx! { div {} },
+                page: rsx! {
+                    div {
+                        style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
+                        "No preview available for this document."
+                    }
+                },
+            }
+        },
         None => rsx! { div { style: "padding: 12px;", "Loading..." } },
     };
 

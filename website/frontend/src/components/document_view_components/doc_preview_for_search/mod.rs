@@ -144,11 +144,26 @@ fn DocumentPreviewForSearchContent(
                 // DocumentPreviewForPdf { document_identifier, page_count }
             }
         }
-        // Some((false, _)) => {
-        //     rsx! {
-        //         DocumentPreviewForTextWithSearch { document_identifier }
-        //     }
-        // }
+        // The sources resource has answered with nothing: a document whose extraction
+        // produced no text, or an identifier that resolves to no document at all. It is
+        // a final answer, not a slow one, so it gets the title bar and a note rather than
+        // a spinner that would never stop.
+        (Some(_sources), None) => {
+            rsx! {
+                ProvidePreviewExtraSections {
+                    find_query_input_box,
+                    preview_selector,
+                    children: rsx! {
+                        DocTitleBar { document_identifier, show_new_tab_button: true, show_finder }
+                        div {
+                            style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
+                            "No preview available for this document."
+                        }
+                    },
+                    wrapper_fn: _make_preview_wrapper,
+                }
+            }
+        }
         _ => {
             return rsx! {
                 LoadingIndicator {  }
