@@ -229,31 +229,69 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
     }
 }
 
-/// The body snippet, or — when the filename is the only thing that matched — a note.
+/// The body snippet, or — when the filename is the only thing that matched — a note plus
+/// the matching part of the filename.
 ///
-/// The snippet for such a hit is `HIGHLIGHT()` over the synthetic filename row, so it
-/// renders the title a second time (`easychair.docx` → `easychair docx`) in the place a
-/// reader takes for "here is the sentence that matched". Saying what happened is both
-/// shorter and true.
+/// The snippet for such a hit is `HIGHLIGHT()` over the synthetic filename row, so on its
+/// own it renders the title a second time (`easychair.docx` → `easychair docx`) in the
+/// place a reader takes for "here is the sentence that matched". The note says what
+/// happened, and the highlighted path below it says *where* — clamped to three lines so
+/// the hit keeps one line of context above and below it and a deep path cannot grow the
+/// card.
 #[component]
 fn HighlightTextSnippetSection(
     highlight_text_spans: Vec<HighlightTextSpan>,
     matched_by_filename: bool,
 ) -> Element {
     if matched_by_filename {
+        let has_spans = !highlight_text_spans.is_empty();
         return rsx! {
             div {
-                class: "x-matched-by-filename",
                 style: "
-                    font-size: 15px;
-                    line-height: 23px;
-                    font-weight: 400;
-                    font-style: italic;
-                    color: rgba(0, 0, 0, 0.55);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: stretch;
                     flex: 1;
                     min-width: 0;
                 ",
-                "Matched by filename — no matching text inside this document."
+                div {
+                    class: "x-matched-by-filename",
+                    style: "
+                        font-size: 15px;
+                        line-height: 23px;
+                        font-weight: 400;
+                        font-style: italic;
+                        color: rgba(0, 0, 0, 0.55);
+                        min-width: 0;
+                    ",
+                    "Matched by filename — no matching text inside this document."
+                }
+                if has_spans {
+                    div {
+                        class: "x-filename-hit-snippet",
+                        // Monospace because it is a path, not prose. `overflow-wrap:
+                        // anywhere` is what keeps a long unbroken path segment from
+                        // widening the card instead of wrapping inside it.
+                        style: "
+                            font-size: 14px;
+                            line-height: 20px;
+                            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                            color: rgba(0, 0, 0, 0.7);
+                            background: rgba(0, 0, 0, 0.03);
+                            border-left: 2px solid rgba(235, 62, 1, 0.35);
+                            padding: 4px 8px;
+                            margin-top: 4px;
+                            border-radius: 0 6px 6px 0;
+                            overflow: hidden;
+                            display: -webkit-box;
+                            -webkit-line-clamp: 3;
+                            -webkit-box-orient: vertical;
+                            overflow-wrap: anywhere;
+                            min-width: 0;
+                        ",
+                        {render_highlight_text_span(highlight_text_spans)}
+                    }
+                }
             }
         };
     }
