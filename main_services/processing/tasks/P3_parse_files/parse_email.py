@@ -18,6 +18,55 @@ log = logging.getLogger(__name__)
 ADDRESS_ROLES = ("from", "to", "cc", "bcc")
 
 
+def header_pairs(msg) -> list[list[str]]:
+    """Every header of a message as ``[name, value]`` pairs, in the order it carried them.
+
+    A LIST, not a dict, and this is the whole point: ``dict(msg.items())`` keeps only the
+    LAST value of a repeated header, and the header repeated most is ``Received:`` -- five
+    to ten lines on a normal message, the delivery path, and the single most useful
+    forensic header a mail file has. Collapsing it to one line is not a lossy display, it
+    is lost data. The same applies to repeated ``X-`` headers and to ``Cc:``.
+
+    Order is preserved for the same reason: a ``Received:`` chain read out of order says
+    the message travelled the other way.
+    """
+    return [[str(name), str(value)] for name, value in msg.items()]
+
+
+def header_pairs_from_json(raw: str) -> list[tuple[str, str]]:
+    """Read `email_headers.raw_headers_json` back, in either shape it can have.
+
+    The column held ``{"Name": "value"}`` before it held ``[["Name", "value"], ...]``, and
+    a document only gets the new shape when it is re-parsed. Both shapes are read here so
+    a caller never has to know how old a row is; the dict shape simply has the repeated
+    headers already thrown away.
+    """
+    if not raw:
+        return []
+    try:
+        loaded = json.loads(raw)
+    except ValueError:
+        return []
+    if isinstance(loaded, dict):
+        return [(str(k), str(v)) for k, v in loaded.items()]
+    if isinstance(loaded, list):
+        pairs = []
+        for entry in loaded:
+            if isinstance(entry, (list, tuple)) and len(entry) == 2:
+                pairs.append((str(entry[0]), str(entry[1])))
+        return pairs
+    return []
+
+
+def first_header(pairs, name: str) -> str:
+    """The first value of `name`, case-insensitively, or the empty string."""
+    wanted = name.lower()
+    for header_name, value in pairs:
+        if header_name.lower() == wanted:
+            return value
+    return ""
+
+
 def extract_email_addresses(
     headers_by_role: dict[str, list[str]]
 ) -> list[tuple[str, str, str]]:
@@ -125,7 +174,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
         tbl_h = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "email_hash": pa.array([params.email_hash], type=pa.string()),
-            "raw_headers_json": pa.array([json.dumps(dict(msg.items()))], type=pa.string()),
+            "raw_headers_json": pa.array([json.dumps(header_pairs(msg))], type=pa.string()),
             "subject": pa.array([subject], type=pa.string()),
             "addresses": pa.array([addresses_str], type=pa.string()),
             "date_sent": pa.array([date_sent_dt], type=pa.timestamp("s")),
