@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .params import (
+        BuildEmailGraphParams,
         BuildVfsNodesParams,
         FinalizeIndexBatchParams,
         IndexDatasetPlanParams,
@@ -25,6 +26,7 @@ with workflow.unsafe.imports_passed_through():
         RecordIndexedParams,
     )
     from .activities import (
+        build_email_graph,
         build_vfs_nodes,
         index_text_pages,
         index_vectors,
@@ -215,6 +217,20 @@ class IndexDatasetPlan:
                 retry_policy=RetryPolicy(maximum_attempts=2),
                 task_queue=INDEXING_TASK_QUEUE,
             )
+
+        # The email connection graph, last: it reads `email_identity` for the whole
+        # collection and the identity rows for THIS dataset are refreshed by the same
+        # activity, so running it before the writers would only mean running it on a
+        # dataset that had not finished arriving. Collection-scoped, idempotent, and
+        # cheap on a collection with no email in it.
+        await workflow.execute_activity(
+            build_email_graph,
+            BuildEmailGraphParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
+            start_to_close_timeout=timedelta(minutes=60),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
 
         log.info(f"[P6] Done: Indexing dataset plan {params.collection_dataset} {params.plan_hash}")
         return f"indexed {params.plan_hash}"

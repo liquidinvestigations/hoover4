@@ -53,3 +53,15 @@ class RecordIndexedParams:
     # (shard_name, file_hash) pairs whose writers committed; collection_dataset
     # is uniform for the whole batch.
     entries: list[tuple[str, str]]
+
+
+@dataclass
+class BuildEmailGraphParams:
+    """Collection-scoped work triggered by one dataset finishing.
+
+    `collection_dataset` says which dataset's `email_identity` rows to refresh; the edges
+    and clusters are rebuilt for the WHOLE collection either way, because the most common
+    edge is the same message present in two datasets and that edge cannot be seen from
+    inside one of them."""
+    collectionname: str
+    collection_dataset: str

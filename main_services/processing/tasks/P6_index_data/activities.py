@@ -30,7 +30,7 @@ from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
 from database.manticore import DOCUMENT_COLUMNS, manticore_execute, shard_table_from_name
-from .params import BuildVfsNodesParams, IndexShardParams, OptimizeShardsParams
+from .params import BuildEmailGraphParams, BuildVfsNodesParams, IndexShardParams, OptimizeShardsParams
 from tasks.heartbeat import with_heartbeat
 log = logging.getLogger(__name__)
 
@@ -671,6 +671,184 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
         )
     log.info("[P6] %s: materialised %d VFS nodes", collection_dataset, len(nodes))
     return f"{len(nodes)} nodes"
+
+
+@activity.defn
+@with_heartbeat
+def build_email_graph(params: BuildEmailGraphParams) -> str:
+    """Rebuild one dataset's ``email_identity`` rows and the whole collection's
+    ``email_edges`` and ``email_clusters``.
+
+    Collection-scoped on purpose. The most common edge is `identity` -- the same message
+    present in two custodians' mailboxes -- and an edge builder that could only see one
+    dataset would never find one. The identity ROWS are per dataset because that is where
+    the source tables are; the graph over them is not.
+
+    Full rebuild plus a stale sweep, the same shape as `build_vfs_nodes`, and for the same
+    reason: all three tables are ReplacingMergeTrees, so a row whose key stops being
+    produced is never overwritten and would survive every later rebuild. Rows are written
+    first, then everything for this scope older than a server-read cutoff is deleted.
+
+    ``email_clusters`` gets a row only for a message that has at least one edge. A row per
+    isolated message would be one row per email in the corpus to say "no connections", and
+    the viewer already reads a missing row as exactly that.
+    """
+    import pyarrow as pa
+
+    from database.enum_wire import ROLE_DEFAULT, ROLE_ORDINALS, enum_from_wire
+    from tasks.P3_parse_files.parse_email import first_header, header_pairs_from_json
+    from .email_graph import (
+        EmailIdentity,
+        build_all_edges,
+        connected_components,
+        normalise_message_id,
+        normalise_subject,
+        subject_prefix_kind,
+    )
+
+    collection_dataset: str = params.collection_dataset
+    with get_collection_client(params.collectionname) as client:
+        header_rows = client.query_arrow("""
+            SELECT email_hash, raw_headers_json, subject, toInt64(date_sent) AS date_sent,
+                   date_sent_known
+            FROM email_headers FINAL
+            WHERE collection_dataset = {cd:String}
+        """, {"cd": collection_dataset}).to_pylist()
+        # `toString(role)`: an Enum8 read through arrow arrives as its ORDINAL, and
+        # comparing that to 'from' is false for every row without raising. That is the
+        # exact bug that left the whole corpus with an empty sender field.
+        address_rows = client.query_arrow("""
+            SELECT email_hash, toString(role) AS role, address
+            FROM email_addresses FINAL
+            WHERE collection_dataset = {cd:String} AND address != ''
+        """, {"cd": collection_dataset}).to_pylist()
+
+    participants_by_hash: dict[str, set[str]] = {}
+    from_by_hash: dict[str, str] = {}
+    for row in address_rows:
+        role = enum_from_wire(row['role'], ROLE_ORDINALS, ROLE_DEFAULT)
+        participants_by_hash.setdefault(row['email_hash'], set()).add(row['address'])
+        if role == 'from' and row['email_hash'] not in from_by_hash:
+            from_by_hash[row['email_hash']] = row['address']
+
+    dataset_identities = []
+    for row in header_rows:
+        pairs = header_pairs_from_json(row['raw_headers_json'])
+        subject = row['subject'] or ''
+        dataset_identities.append(EmailIdentity(
+            collection_dataset=collection_dataset,
+            email_hash=row['email_hash'],
+            message_id=normalise_message_id(first_header(pairs, 'Message-ID')),
+            subject_norm=normalise_subject(subject),
+            subject_prefix=subject_prefix_kind(subject),
+            date_sent=int(row['date_sent'] or 0),
+            date_sent_known=int(row['date_sent_known'] or 0),
+            from_address=from_by_hash.get(row['email_hash'], ''),
+            participants=tuple(sorted(participants_by_hash.get(row['email_hash'], ()))),
+        ))
+
+    with get_collection_client(params.collectionname) as client:
+        if dataset_identities:
+            cutoff = client.query("SELECT now()").result_rows[0][0]
+            client.insert_arrow("email_identity", pa.table({
+                "collection_dataset": pa.array([i.collection_dataset for i in dataset_identities], type=pa.string()),
+                "email_hash": pa.array([i.email_hash for i in dataset_identities], type=pa.string()),
+                "message_id": pa.array([i.message_id for i in dataset_identities], type=pa.string()),
+                "subject_norm": pa.array([i.subject_norm for i in dataset_identities], type=pa.string()),
+                "date_sent": pa.array([i.date_sent for i in dataset_identities], type=pa.int64()).cast(pa.timestamp("s")),
+                "date_sent_known": pa.array([i.date_sent_known for i in dataset_identities], type=pa.uint8()),
+                "from_address": pa.array([i.from_address for i in dataset_identities], type=pa.string()),
+                "subject_prefix": pa.array([i.subject_prefix for i in dataset_identities], type=pa.string()),
+                "participants": pa.array([list(i.participants) for i in dataset_identities], type=pa.list_(pa.string())),
+            }))
+            client.command(
+                "DELETE FROM email_identity WHERE collection_dataset = {cd:String} "
+                "AND updated_at < {cutoff:DateTime}",
+                parameters={"cd": collection_dataset, "cutoff": cutoff},
+            )
+
+        # The whole collection, for the graph. Identity edges cross datasets, so this
+        # cannot be narrowed to the one that just finished.
+        identity_rows = client.query_arrow("""
+            SELECT collection_dataset, email_hash, message_id, subject_norm, subject_prefix,
+                   toInt64(date_sent) AS date_sent, date_sent_known, from_address, participants
+            FROM email_identity FINAL
+        """).to_pylist()
+        containment_rows = client.query_arrow("""
+            SELECT collection_dataset, container_hash, hash FROM vfs_files FINAL
+            WHERE container_hash != ''
+        """).to_pylist()
+
+    identities = [EmailIdentity(
+        collection_dataset=row['collection_dataset'],
+        email_hash=row['email_hash'],
+        message_id=row['message_id'],
+        subject_norm=row['subject_norm'],
+        subject_prefix=row['subject_prefix'],
+        date_sent=int(row['date_sent'] or 0),
+        date_sent_known=int(row['date_sent_known'] or 0),
+        from_address=row['from_address'],
+        participants=tuple(row['participants'] or ()),
+    ) for row in identity_rows]
+
+    # RFC threading headers are read only for the dataset just rebuilt plus whatever is
+    # already known: `raw_headers_json` for the whole collection is the largest column in
+    # this stage and 0.06% of these corpora carry `In-Reply-To` at all. The map is keyed
+    # by node so a missing entry simply produces no RFC edge.
+    header_pairs_by_key = {
+        (collection_dataset, row['email_hash']): header_pairs_from_json(row['raw_headers_json'])
+        for row in header_rows
+    }
+    containment = [
+        (row['collection_dataset'], row['container_hash'], row['hash'])
+        for row in containment_rows
+    ]
+
+    edges, stats = build_all_edges(identities, header_pairs_by_key, containment)
+    log.info("[P6] %s: email graph over %d messages, %s",
+             params.collectionname, len(identities), stats.summary())
+
+    components = connected_components(edges)
+    cluster_rows = []
+    for node, members in components.items():
+        anchor_key = min(members)
+        cluster_rows.append((
+            node[0], node[1],
+            hash_string_to_uint63(f"{anchor_key[0]}|{anchor_key[1]}"),
+            len(members),
+        ))
+
+    with get_collection_client(params.collectionname) as client:
+        cutoff = client.query("SELECT now()").result_rows[0][0]
+        if edges:
+            client.insert_arrow("email_edges", pa.table({
+                "collectionname": pa.array([params.collectionname] * len(edges), type=pa.string()),
+                "src_dataset": pa.array([e.src_dataset for e in edges], type=pa.string()),
+                "src_hash": pa.array([e.src_hash for e in edges], type=pa.string()),
+                "dst_dataset": pa.array([e.dst_dataset for e in edges], type=pa.string()),
+                "dst_hash": pa.array([e.dst_hash for e in edges], type=pa.string()),
+                "kind": pa.array([e.kind for e in edges], type=pa.string()),
+                "confidence": pa.array([e.confidence for e in edges], type=pa.float32()),
+                "evidence": pa.array([e.evidence for e in edges], type=pa.string()),
+            }))
+        if cluster_rows:
+            client.insert_arrow("email_clusters", pa.table({
+                "collectionname": pa.array([params.collectionname] * len(cluster_rows), type=pa.string()),
+                "collection_dataset": pa.array([r[0] for r in cluster_rows], type=pa.string()),
+                "email_hash": pa.array([r[1] for r in cluster_rows], type=pa.string()),
+                "cluster_id": pa.array([r[2] for r in cluster_rows], type=pa.uint64()),
+                "cluster_size": pa.array([r[3] for r in cluster_rows], type=pa.uint32()),
+            }))
+        for table in ("email_edges", "email_clusters"):
+            client.command(
+                f"DELETE FROM {table} WHERE collectionname = {{cn:String}} "
+                "AND updated_at < {cutoff:DateTime}",
+                parameters={"cn": params.collectionname, "cutoff": cutoff},
+            )
+
+    log.info("[P6] %s: %d email edges, %d clustered messages",
+             params.collectionname, len(edges), len(cluster_rows))
+    return f"{len(edges)} edges, {len(cluster_rows)} clustered"
 
 
 @activity.defn

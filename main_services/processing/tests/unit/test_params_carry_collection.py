@@ -35,11 +35,41 @@ def _task_module_names() -> list[str]:
 
 
 def _params_dataclasses():
+    """Every dataclass that crosses a Temporal boundary, by the ``*Params`` convention.
+
+    The suffix is the filter because not every dataclass in a task module is a parameter:
+    the derivation stages also use dataclasses as ROW MIRRORS (one instance per ClickHouse
+    row, e.g. `email_graph.EmailIdentity`). A row mirror legitimately carries
+    `collection_dataset` without `collectionname` -- it mirrors a table in a per-collection
+    database, where naming the collection in every row would be the redundancy, and it is
+    never an activity argument. `test_every_params_dataclass_uses_the_suffix` below keeps
+    the convention honest so this filter cannot quietly exclude a real one.
+    """
     for name in _task_module_names():
         module = importlib.import_module(name)
         for attr in vars(module).values():
             if isinstance(attr, type) and dataclasses.is_dataclass(attr):
+                if not attr.__name__.endswith("Params"):
+                    continue
                 yield name, attr
+
+
+def test_every_params_dataclass_uses_the_suffix():
+    """Anything declared in a `params` module is an activity argument or an activity
+    return and must say so in its name, because the walk above trusts the suffix."""
+    offenders = []
+    for name in _task_module_names():
+        if not name.endswith(".params"):
+            continue
+        module = importlib.import_module(name)
+        for attr in vars(module).values():
+            if isinstance(attr, type) and dataclasses.is_dataclass(attr):
+                if attr.__module__ == name and not attr.__name__.endswith(("Params", "Result")):
+                    offenders.append(f"{name}.{attr.__name__}")
+    assert not offenders, (
+        "dataclasses in a params module without a Params/Result suffix: "
+        + ", ".join(sorted(offenders))
+    )
 
 
 def test_every_task_module_imports():

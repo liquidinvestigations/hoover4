@@ -332,8 +332,8 @@ async def run_embed_worker():
 
 async def run_indexing_worker():
   from .P6_index_data.activities import (
-      build_vfs_nodes, index_text_pages, index_vectors, index_vfs_structure,
-      optimize_shard_tables,
+      build_email_graph, build_vfs_nodes, index_text_pages, index_vectors,
+      index_vfs_structure, optimize_shard_tables,
   )
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
@@ -350,7 +350,7 @@ async def run_indexing_worker():
       task_queue="processing-indexing-queue",
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
-                  index_vfs_structure, optimize_shard_tables],
+                  index_vfs_structure, build_email_graph, optimize_shard_tables],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
