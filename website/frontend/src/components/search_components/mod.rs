@@ -1,6 +1,7 @@
 //! Search UI components module.
 
 pub mod card_action_buttons;
+pub mod collections_facet_pane;
 pub mod filter_modal;
 pub mod search_facets;
 pub mod sort_control;

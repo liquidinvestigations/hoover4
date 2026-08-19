@@ -48,6 +48,7 @@ use crate::{
     api::search_api::{search_date_histogram, search_for_results_hit_count, search_numeric_facet},
     components::{
         search_components::{
+            collections_facet_pane::CollectionsFacetPane,
             search_facets::FacetSelectorList,
             storage_tree::{StorageRow, StorageTree, node_keys_from_terms},
             vfs_tree::TreeSkin,
@@ -567,14 +568,7 @@ pub fn FilterModal(
                         style: "{PANE_STYLE}",
                         match active {
                             FilterCategory::Collections => rsx! {
-                                SuspendWrapper {
-                                    FacetSelectorList {
-                                        original_query,
-                                        modified_search_query: pending,
-                                        facet_field_name: "collection_dataset".to_string(),
-                                        map_string_terms: term_field_prop("collection_dataset"),
-                                    }
-                                }
+                                CollectionsFacetPane { original_query, pending }
                             },
                             FilterCategory::FileTypes => rsx! {
                                 SearchableFacetPane {
