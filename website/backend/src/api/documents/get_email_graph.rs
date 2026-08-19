@@ -88,17 +88,21 @@ pub async fn get_email_envelope(
         .bind(&hash)
         .fetch_all()
         .await?;
-    // The icon label, in a second query rather than a correlated subquery: `file_types`
-    // is a separate ReplacingMergeTree and joining it inside an aggregate is how a
-    // missing row turns an attachment list into an empty one.
+    // The icon label, in a second query rather than a correlated subquery:
+    // `file_type_canonical` is a separate ReplacingMergeTree and joining it inside an
+    // aggregate is how a missing row turns an attachment list into an empty one. It is
+    // also the only table that holds ONE type per document — the per-detector
+    // `file_types` rows disagree with each other by design, and picking one of them here
+    // would give an attachment a different glyph from the one it has everywhere else.
+    // A document with no row yet simply gets the generic glyph.
     let member_hashes: Vec<String> = attachments.iter().map(|(_, _, h)| h.clone()).collect();
     let coarse_types: Vec<(String, String)> = if member_hashes.is_empty() {
         Vec::new()
     } else {
         client
             .query(
-                "SELECT hash, arrayElement(file_types, 1) FROM file_types FINAL
-                 WHERE collection_dataset = ? AND hash IN ? AND length(file_types) > 0",
+                "SELECT hash, file_type FROM file_type_canonical FINAL
+                 WHERE collection_dataset = ? AND hash IN ?",
             )
             .bind(&dataset)
             .bind(&member_hashes)
