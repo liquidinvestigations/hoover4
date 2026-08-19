@@ -360,9 +360,13 @@ pub enum DocumentSourceItem {
     Video(DocumentVideoSourceItem),
     Audio(DocumentAudioSourceItem),
     Text(DocumentTextSourceItem),
+    /// Not offered as a preview source — the viewer's File Locations tab is where a
+    /// document's paths live. Kept because it is part of the URL-encoded viewer state and
+    /// dropping the variant would turn every bookmark carrying it into a parse failure,
+    /// which the router shows as "Page not found".
+    FileLocations,
     /// Not offered as a preview source — the viewer's Metadata tab is the metadata
-    /// surface. Kept because it is part of the URL-encoded viewer state and dropping the
-    /// variant would turn every bookmark carrying it into a parse failure.
+    /// surface. Kept for the same reason as the variant above.
     Metadata,
 }
 
