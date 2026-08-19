@@ -20,6 +20,34 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
   `web-sys` beyond `Window`.
 - `src/api/` - Server functions that proxy to the backend crate.
 
+## The document viewer's right-hand tabs
+
+`/view_document/…` ends with a `ViewerRightTabState` URL parameter naming one of three
+tabs: `Entities`, `File Locations`, `Metadata`. **Declaration order in
+`ViewerRightTabSelection` is the rendered order of the strip**, so moving a variant moves
+the tab. The parameter is CBOR by variant NAME, so an old link keeps its meaning when a
+variant is added in the middle.
+
+`File Locations` is `doc_file_locations_panel.rs`: one full path per row — containers
+included, because a file inside a zip has no meaningful path without the archive — with a
+button that opens the containing folder in the file browser (a new tab, hence `<a
+target="_blank">` rather than `Link`) and a button that copies the path. These are
+descriptions of a document rather than renderings of it, which is why neither this nor the
+metadata panel is offered as a preview source in the source dropdown.
+
+## The Collections filter is composed client-side
+
+`collections_facet_pane.rs` groups the flat `collection_dataset` facet buckets into
+collections using `list_storage_tree()`, sums the counts and sorts both levels
+count-descending. **The filter the backend sees is unchanged** — still a flat set of
+dataset ids.
+
+Expanding a collection issues **no request**: the buckets and the collection → dataset map
+are both in hand before the first row is drawn. Expansion state is a `Signal<BTreeSet>`
+that only the rows read, each through a `Memo` of its own key, so opening one collection
+re-renders that row rather than the pane. Anything else added to this pane should keep both
+properties.
+
 ## AI Chat routes
 
 | Path | Component |
