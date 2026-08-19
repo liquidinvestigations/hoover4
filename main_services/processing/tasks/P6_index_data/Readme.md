@@ -11,8 +11,8 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 ## Entry Points
 
 - Workflow: `IndexDatasetPlan` in `workflows.py`
-- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `optimize_shard_tables` in `activities.py`
-- Helpers: `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
+- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `build_email_graph`, `optimize_shard_tables` in `activities.py`
+- Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 ## Technical Details
 
@@ -25,6 +25,27 @@ Every writer here sends its rows with `database.manticore.manticore_execute`, ne
 Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit` and are per SEGMENT, not per document; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
 
 `optimize_shard_tables` runs once at the end of the workflow, per shard the plan wrote to, and compacts a table whose `killed_rate` is over 20% or whose `disk_chunks` is over 12 (`OPTIMIZE TABLE … OPTION cutoff=1`, asynchronous). It is a **storage** win — a re-ingested corpus reclaimed 32–58% of its disk — and not a latency one: killed rows are cheap to skip at query time. It skips itself entirely while another plan of the same collection is still in flight, because a merge competing with a write batch for I/O turns seconds into minutes.
+
+`build_email_graph` materialises the email connection graph into `email_identity`,
+`email_edges` and `email_clusters`. It is the one activity here that is COLLECTION-scoped
+rather than dataset-scoped, because its most common edge is `identity` — the same message
+present in two custodians' mailboxes — and an edge builder that could only see one dataset
+would never find one. The identity rows for the dataset that just finished are refreshed
+first, then the whole collection's edges and clusters are rebuilt and swept.
+
+Three of the four edge kinds come from an exact key (the message id, an RFC threading
+header, `vfs_files.container_hash`) and record `confidence = 1.0`. The fourth is inferred
+from an equal normalised subject plus a participant overlap and records `0.5`, because the
+corpora this runs against carry `In-Reply-To` on well under 1% of their messages and a
+graph built on threading headers alone would be empty. The inference is guarded three ways
+— a subject-length floor, a cap on how many messages may share one normalised subject, and
+a time window — and every guard is a module constant in `email_graph.py` with the number it
+was chosen against. `build_email_graph` logs the edge count per kind and what each guard
+dropped in one line, so a threshold change is visible in the worker log rather than in a
+graph nobody can read.
+
+`email_clusters` holds a row only for a message that has at least one edge, and the size it
+records is the TRUE size of the component, never the reader's render budget.
 
 ## Usage
 

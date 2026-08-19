@@ -65,6 +65,12 @@ scan, a row with no object is a broken link nothing can repair.
 
 ## Technical Details
 
+`email_headers.raw_headers_json` stores a **list of `[name, value]` pairs in header order**,
+not an object. A message repeats headers — `Received:` five to ten times on a normal
+message, and it is the delivery path — and a name-keyed object keeps only the last of them.
+Readers go through `parse_email.header_pairs_from_json`, which also accepts the older
+object shape, because a document only gets the list shape when it is re-parsed.
+
 Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. OCR runs on a dedicated queue (`processing-ocr-queue`) and Tika runs on `processing-tika-queue` to isolate heavy dependencies.
 
 ## Usage
