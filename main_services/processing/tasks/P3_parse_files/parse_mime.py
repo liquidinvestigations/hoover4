@@ -4,6 +4,7 @@ from temporalio import activity
 from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple, Set
 import subprocess
+import threading
 import mimetypes
 import os
 from tasks.heartbeat import with_heartbeat
@@ -118,6 +119,7 @@ def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
     extensions: List[str] = sorted(set(ext_list + _extract_extensions(params.file_path)))
 
     # Insert into ClickHouse file_types with arrays and extracted_by='file'
+    from database.clickhouse import insert_arrow_idempotent
     with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
@@ -128,7 +130,7 @@ def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
             "extensions": pa.array([extensions], type=pa.list_(pa.string())),
             "extracted_by": pa.array(["file"], type=pa.large_string()),
         })
-        client.insert_arrow("file_types", tbl)
+        insert_arrow_idempotent(client, "file_types", tbl)
 
     return {
         "mime_types": mime_types,
@@ -146,17 +148,11 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
     Writes a row to file_types with extracted_by='magika' and returns lists.
     """
     # Import locally to avoid hard dependency at import time
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     import pyarrow as pa
-    try:
-        from magika import Magika
-    except Exception as e:
-        # Surface structured error for workflow error recording
-        raise RuntimeError(f"magika not available or failed to import: {e}")
 
-    m = Magika()
-    res = m.identify_path(params.file_path)
+    res = identify_path_with_magika(params.file_path)
     # Use res.output (may be overwritten result)
     ct = res.output
     mime_types: List[str] = []
@@ -202,7 +198,7 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
             "extensions": pa.array([extensions], type=pa.list_(pa.string())),
             "extracted_by": pa.array(["magika"], type=pa.large_string()),
         })
-        client.insert_arrow("file_types", tbl)
+        insert_arrow_idempotent(client, "file_types", tbl)
 
     return {
         "mime_types": mime_types,
@@ -210,6 +206,44 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
         "coarse_types": coarse_types,
         "extensions": extensions,
     }
+
+
+_magika = None
+_magika_lock = threading.Lock()
+
+
+def reset_magika_for_tests() -> None:
+    """Drop the process-wide detector so a test can re-count constructions."""
+    global _magika
+    with _magika_lock:
+        _magika = None
+
+
+def _magika_detector():
+    """One Magika instance per process. Construction dominates identify_path."""
+    global _magika
+    if _magika is not None:
+        return _magika
+    with _magika_lock:
+        if _magika is None:
+            try:
+                from magika import Magika
+            except Exception as e:
+                raise RuntimeError(f"magika not available or failed to import: {e}")
+            _magika = Magika()
+        return _magika
+
+
+def identify_path_with_magika(file_path: str):
+    """Identify ``file_path`` through the process-wide Magika detector.
+
+    Magika is not documented as thread-safe, so identify runs under the same
+    lock as construction. Import stays inside the first call so a missing
+    magika fails in the activity, not at worker import.
+    """
+    detector = _magika_detector()
+    with _magika_lock:
+        return detector.identify_path(file_path)
 
 
 def magicka_filetype_to_hoover_filetype(filetype: str) -> str:
@@ -273,7 +307,7 @@ def mime_types_from_name(file_path: str) -> Tuple[List[str], List[str]]:
 def _store_file_types(params: DetectMimeParams, extracted_by: str,
                       mime_types: List[str], coarse_types: List[str],
                       extensions: List[str], encodings: List[str] | None = None) -> None:
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
     with get_collection_client(params.collectionname) as client:
@@ -286,7 +320,7 @@ def _store_file_types(params: DetectMimeParams, extracted_by: str,
             "extensions": pa.array([extensions], type=pa.list_(pa.string())),
             "extracted_by": pa.array([extracted_by], type=pa.large_string()),
         })
-        client.insert_arrow("file_types", tbl)
+        insert_arrow_idempotent(client, "file_types", tbl)
 
 
 @activity.defn
