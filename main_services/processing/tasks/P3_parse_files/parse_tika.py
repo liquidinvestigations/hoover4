@@ -42,6 +42,10 @@ _EXTRACTOUS_SUBPROCESS_TIMEOUT_S = 600
 # extract; extras wait on the idle queue rather than spawning unbounded.
 _EXTRACTOUS_POOL_SIZE = 8
 
+# How long a checkout parks on the idle queue before re-checking whether it may
+# spawn instead. Only reached when every helper is busy.
+_CHECKOUT_WAIT_SECONDS = 1.0
+
 # Long-lived helper: one JSON request per line on stdin, one JSON object per
 # line on stdout. Native Extractous stays isolated in the child so a wedge can
 # be killed; the parent does not pay interpreter startup per file.
@@ -138,7 +142,15 @@ class ExtractousHelperPool:
                     spawned = self._spawn()
                     self._live += 1
                     return spawned
-            proc = self._idle.get()
+            # Wait for a check-in, but never indefinitely: a helper killed on
+            # timeout decrements `_live` without putting anything back, so a
+            # thread parked on an unbounded get() would wait for a check-in that
+            # is not coming. The timeout returns to the top, where the spawn
+            # branch is now open again.
+            try:
+                proc = self._idle.get(timeout=_CHECKOUT_WAIT_SECONDS)
+            except queue.Empty:
+                continue
             if proc.poll() is None:
                 return proc
             with self._lock:
