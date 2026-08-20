@@ -66,7 +66,8 @@ into the global `processing_eta_samples` table (migration `00013`); the website 
   NLP-processed, documents indexed), not over a wall-clock window.
 - Each stage's rate is measured in every unit the schema offers: items/s (blobs, plans,
   segments, documents) and bytes/s (`blobs.blob_size_bytes`,
-  `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`). P6 has no byte
+  `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`,
+  `text_content.text_bytes`). P6 has no byte
   watermark, so documents/s is its only measure; P0 is not sampled at all (no timestamps,
   no knowable denominator — the live count stays on the stage bar).
 - The remaining-time projections from the two units are combined by taking the **more
@@ -80,9 +81,16 @@ into the global `processing_eta_samples` table (migration `00013`); the website 
   at least **20 x mean(last 10)** before the next pass (floor 60 s). These queries scan
   the whole collection database; on a large collection one pass is seconds, and a naive
   poll would put the pipeline's own storage under load to report on the pipeline.
+  `continue_as_new` resets `passes` to 0 before carrying state into the next run, so the
+  sleep remains reachable after the history bound.
 - A collection whose every stage is complete is skipped entirely — no queries, no sample
   rows. It is re-validated once every 5 minutes so a rescan of a "finished" collection
   gets fresh estimates again.
+- NLP byte totals come from `text_content.text_bytes` (and `nlp_processed.text_bytes` for
+  the done side), never from `length(text)`. `text_bytes` is written at insert.
+- `processing_eta_samples` retains rows for 3 days (`TTL sampled_at + INTERVAL 3 DAY`).
+  The table is append-shaped (`ORDER BY` ends in `sampled_at`) so the admin processing
+  page can still plot the newest 100 samples per stage.
 
 The estimate is a best-effort hint, not a scheduling promise, and the UI labels it as
 one. The chart on the processing page plots estimated deadline against sample time: a
