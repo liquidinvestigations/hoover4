@@ -622,18 +622,25 @@ fn ColumnFilterPopover(
     let mut high = use_signal(String::new);
 
     // Declared for every column, not only text ones: a resource behind an `if` would
-    // shift the hook order of every header after it. The condition lives in the closure.
+    // shift the hook order of every header after it. Every condition lives in the closure.
+    //
+    // `is_open` is one of them, and it is not an optimisation. A header renders one of
+    // these per column, so fetching the value list eagerly costs one GROUP BY over a whole
+    // column PER COLUMN on every page render — 60 server calls to open a wide sheet whose
+    // reader may never touch a filter. The list is only ever shown inside the popover.
     let value_search = text();
     let is_text = class == TableColumnClass::Text;
+    let is_open = open();
     let values: Resource<Vec<TableColumnValue>> = use_resource(use_reactive!(|(
         document_identifier,
         sheet_id,
         column_id,
         value_search,
-        is_text
+        is_text,
+        is_open
     )| {
         async move {
-            if !is_text {
+            if !is_text || !is_open {
                 return Vec::new();
             }
             get_table_column_values(document_identifier, sheet_id, column_id, value_search)

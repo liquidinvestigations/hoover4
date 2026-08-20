@@ -38,6 +38,20 @@
 //! Rows with **no cell in the sort column** are not in phase 1's range at all. They are
 //! appended after the sorted rows, in `row_id` order, in both directions — the same thing
 //! a spreadsheet's own sort does with blanks.
+//!
+//! # The header row is not a data row
+//!
+//! The reader stores the header row as ordinary cells — it is row `table_sheets.header_row`
+//! of `table_cells` — and *also* writes its text into `table_columns.header`, and excludes
+//! it from every column statistic. So the grid draws that row's text as its column labels,
+//! and drawing it a second time as row 1 of the data shows it twice while making every
+//! count disagree with the statistics the filter popovers and type marks come from.
+//!
+//! Everything reader-facing here therefore starts **after** `header_row`: the row floor
+//! [`data_row_floor`] is spliced into every cell query, the totals subtract it, and the
+//! unfiltered window's arithmetic is offset by it. `header_row = 0` means the sheet has no
+//! header row and nothing is skipped. It is a `row_id` — dense within the sheet — not a
+//! `source_row`, so it must never be compared against the file's own row numbers.
 
 use common::current_user::CurrentUser;
 use common::document_tables::{
@@ -252,11 +266,16 @@ pub async fn get_table_overview(
         .fetch_all()
         .await?;
 
+    // Every row count a reader sees is a DATA row count, so the header rows come off it
+    // here — once per sheet, and only where a sheet has one. The stored figures are still
+    // in the raw dumps of `table_documents` and `table_sheets` for anyone who wants them.
+    let header_rows: u64 = sheet_rows.iter().map(|row| row.header_row).sum();
+
     Ok(Some(TableOverview {
         reader: manifest.reader,
         table_format: manifest.table_format,
         sheet_count: manifest.sheet_count,
-        row_count: manifest.row_count,
+        row_count: manifest.row_count.saturating_sub(header_rows),
         column_count: manifest.column_count,
         cell_count: manifest.cell_count,
         stored_bytes: manifest.stored_bytes,
@@ -267,7 +286,7 @@ pub async fn get_table_overview(
             .map(|row| TableSheet {
                 sheet_id: row.sheet_id,
                 name: row.name,
-                row_count: row.row_count,
+                row_count: row.row_count.saturating_sub(row.header_row),
                 column_count: row.column_count,
                 header_row: row.header_row,
                 truncated: row.truncated == 1,
@@ -291,6 +310,19 @@ pub async fn get_table_overview(
         truncations: manifest.truncations,
         truncated_reason: manifest.truncated_reason,
     }))
+}
+
+/// The `AND row_id > N` fragment that keeps a sheet's header row out of its data.
+///
+/// Empty when `header_row` is `0`, which is a sheet with no header row: there is nothing
+/// to skip and splicing `row_id > 0` would only cost a comparison. Spliced rather than
+/// bound because it is an integer read from the manifest, like `sheet_id` beside it.
+fn data_row_floor(header_row: u64) -> String {
+    if header_row == 0 {
+        String::new()
+    } else {
+        format!(" AND row_id > {header_row}")
+    }
 }
 
 /// A value bound into the query, in the order the SQL text mentions it.
@@ -395,9 +427,9 @@ pub async fn get_table_page(
     // that does not exist is a 404 rather than an empty grid: sheet ordinals are the
     // workbook's, not indices, so "sheet 1" of a two-sheet workbook is often absent and
     // an empty grid would read as "this sheet is empty".
-    let sheets: Vec<(u16, u64, u32)> = client
+    let sheets: Vec<(u16, u64, u32, u64)> = client
         .query(
-            "SELECT sheet_id, row_count, column_count FROM table_sheets FINAL \
+            "SELECT sheet_id, row_count, column_count, header_row FROM table_sheets FINAL \
              WHERE collection_dataset = ? AND hash = ? ORDER BY sheet_id",
         )
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
@@ -405,11 +437,15 @@ pub async fn get_table_page(
         .bind(&hash)
         .fetch_all()
         .await?;
-    let Some(&(sheet_id, sheet_rows, _sheet_columns)) =
-        sheets.iter().find(|(id, _, _)| *id == query.sheet_id)
+    let Some(&(sheet_id, stored_rows, _sheet_columns, header_row)) =
+        sheets.iter().find(|(id, _, _, _)| *id == query.sheet_id)
     else {
         anyhow::bail!("{NOT_FOUND}: this document has no sheet {}", query.sheet_id);
     };
+    // The header row is drawn as the column labels, so the data begins after it and every
+    // count below is a count of data rows. See the module docstring.
+    let floor = data_row_floor(header_row);
+    let sheet_rows = stored_rows.saturating_sub(header_row);
 
     // Column types, so the comparator and every filter predicate are chosen from what the
     // pipeline recorded rather than from what the caller claims.
@@ -482,7 +518,7 @@ pub async fn get_table_page(
         let constraints = build_constraints(&filters, &search, sheet_id, &hash, &mut binds);
         let sql = format!(
             "SELECT count() FROM (SELECT DISTINCT row_id FROM table_cells FINAL \
-             WHERE file_hash = ? AND sheet_id = {sheet_id}{constraints})"
+             WHERE file_hash = ? AND sheet_id = {sheet_id}{floor}{constraints})"
         );
         let query = client
             .query(&sql)
@@ -508,7 +544,7 @@ pub async fn get_table_page(
                 .query(&format!(
                     "SELECT count() FROM (SELECT DISTINCT row_id FROM table_cells FINAL \
                      WHERE file_hash = ? AND sheet_id = {sheet_id} AND column_id = {column_id}\
-                     {constraints})"
+                     {floor}{constraints})"
                 ))
                 .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS),
             binds,
@@ -526,7 +562,7 @@ pub async fn get_table_page(
                     .query(&format!(
                         "SELECT row_id FROM table_cells FINAL \
                          WHERE file_hash = ? AND sheet_id = {sheet_id} AND column_id = {column_id}\
-                         {constraints} \
+                         {floor}{constraints} \
                          ORDER BY {order} LIMIT {take} OFFSET {offset}"
                     ))
                     .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS),
@@ -545,7 +581,7 @@ pub async fn get_table_page(
                 client
                     .query(&format!(
                         "SELECT DISTINCT row_id FROM table_cells FINAL \
-                         WHERE file_hash = ? AND sheet_id = {sheet_id}{constraints} \
+                         WHERE file_hash = ? AND sheet_id = {sheet_id}{floor}{constraints} \
                          AND row_id NOT IN (SELECT row_id FROM table_cells FINAL \
                            WHERE file_hash = ? AND sheet_id = {sheet_id} AND column_id = {column_id}) \
                          ORDER BY row_id ASC LIMIT {tail_take} OFFSET {tail_offset}"
@@ -566,7 +602,7 @@ pub async fn get_table_page(
             client
                 .query(&format!(
                     "SELECT DISTINCT row_id FROM table_cells FINAL \
-                     WHERE file_hash = ? AND sheet_id = {sheet_id}{constraints} \
+                     WHERE file_hash = ? AND sheet_id = {sheet_id}{floor}{constraints} \
                      ORDER BY row_id ASC LIMIT {take} OFFSET {offset}"
                 ))
                 .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS),
@@ -576,9 +612,9 @@ pub async fn get_table_page(
         .await?
     } else {
         // Unsorted and unfiltered: `row_id` is 1-based and dense, so the window is
-        // arithmetic and needs no query at all.
-        let first = offset + 1;
-        let last = (offset + limit as u64).min(sheet_rows);
+        // arithmetic and needs no query at all. Data row 1 is `row_id = header_row + 1`.
+        let first = header_row + offset + 1;
+        let last = (header_row + offset + limit as u64).min(stored_rows);
         (first..=last).collect()
     };
 
@@ -737,13 +773,32 @@ pub async fn get_table_column_values(
         anyhow::bail!("{NOT_FOUND}: this sheet has no column {column_id}");
     }
 
+    // The header row's text is this column's LABEL, not one of its values, and the column
+    // statistics beside this list already exclude it. Offering it as a filterable value
+    // would let a reader pick a value that matches no data row.
+    let header_row: u64 = client
+        .query(
+            "SELECT header_row FROM table_sheets FINAL \
+             WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? LIMIT 1",
+        )
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .bind(sheet_id)
+        .fetch_all::<u64>()
+        .await?
+        .into_iter()
+        .next()
+        .unwrap_or(0);
+    let floor = data_row_floor(header_row);
+
     // The search string is BOUND. See the module docstring: the Manticore escaping next
     // door exists because Manticore has nothing to bind, and copying it here would be a
     // second, worse escaping layer over a parameter that is already safe.
     let rows: Vec<(String, u64)> = client
         .query(&format!(
             "SELECT cell_text, count() AS n FROM table_cells FINAL \
-             WHERE file_hash = ? AND sheet_id = ? AND column_id = ? \
+             WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} \
                AND (? = '' OR positionCaseInsensitiveUTF8(cell_text, ?) > 0) \
              GROUP BY cell_text ORDER BY n DESC, cell_text ASC LIMIT {MAX_TABLE_COLUMN_VALUES}"
         ))
@@ -776,14 +831,22 @@ pub async fn count_table_cell_matches(
     }
     let _manifest = require_table_manifest(user, document_identifier).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    // Header rows are excluded, so this number counts the same cells the grid can show a
+    // reader. A term that only appears in a header would otherwise promise matches that
+    // no row of the grid contains — the header is drawn once, as the column label.
     let count: u64 = client
         .query(
             "SELECT count() FROM table_cells FINAL \
-             WHERE file_hash = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0",
+             WHERE file_hash = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 \
+               AND (sheet_id, row_id) NOT IN ( \
+                 SELECT sheet_id, header_row FROM table_sheets FINAL \
+                 WHERE collection_dataset = ? AND hash = ? AND header_row > 0)",
         )
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
         .bind(&document_identifier.file_hash)
         .bind(find_query)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
         .fetch_one()
         .await?;
     Ok(count)
@@ -806,6 +869,15 @@ mod tests {
                 assert!(expression.ends_with("row_id ASC"), "{expression}");
             }
         }
+    }
+
+    /// The header row is stored as cells and drawn as the column labels, so no read that
+    /// feeds the grid may see it — and a sheet without one must lose nothing.
+    #[test]
+    fn the_header_row_is_floored_out_and_only_when_there_is_one() {
+        assert_eq!(data_row_floor(0), "");
+        assert_eq!(data_row_floor(1), " AND row_id > 1");
+        assert_eq!(data_row_floor(4), " AND row_id > 4");
     }
 
     #[test]

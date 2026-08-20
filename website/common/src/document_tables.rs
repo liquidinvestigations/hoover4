@@ -44,6 +44,9 @@ pub struct TableSheet {
     pub sheet_id: u16,
     /// Sheet name as the file gives it. Empty for a delimited file's single sheet.
     pub name: String,
+    /// Rows a reader can page through: the sheet's stored rows **less its header row**.
+    /// The header row is stored as ordinary cells but is drawn as the column labels, so
+    /// counting it again as a data row would show every reader one row too many.
     pub row_count: u64,
     pub column_count: u32,
     /// `row_id` the column headers came from, `0` when the sheet has no usable header.
@@ -177,8 +180,8 @@ pub struct TableOverview {
     /// `csv` | `tsv` | `xlsx` | `xls` | `ods` | …
     pub table_format: String,
     pub sheet_count: u16,
-    /// Rows summed across every sheet. The per-sheet counts in [`Self::sheets`] are the
-    /// ones that bound a read.
+    /// Data rows summed across every sheet, header rows excluded. The per-sheet counts
+    /// in [`Self::sheets`] are the ones that bound a read.
     pub row_count: u64,
     /// Widest column ordinal across every sheet.
     pub column_count: u32,
