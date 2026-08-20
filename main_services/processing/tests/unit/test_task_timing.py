@@ -6,8 +6,9 @@ Two properties matter more than the happy path here:
 * it must never fail *silently* -- the O2 defect this plan fixed was a bare
   ``except: pass`` losing error rows.
 
-So the drop paths (unroutable activity, buffer overflow, failed insert) are tested for
-their log output as much as for their behaviour.
+So the drop paths (buffer overflow, failed insert) are tested for their log output as
+much as for their behaviour. Unroutable activities are recorded in the global table
+instead of dropped.
 """
 
 import ast
@@ -146,8 +147,8 @@ def test_a_failed_execution_is_recorded_in_the_same_table_and_still_raises(recor
 
 
 def test_an_unroutable_activity_is_skipped_but_logged(recorder, caplog):
-    """No collectionname means no database to write to. Dropping is correct here --
-    doing it quietly is not."""
+    """No collectionname means the global table. Dropping is not correct --
+    doing it quietly even less so."""
     interceptor = _TimingActivityInbound(_FakeNext(result="ok"))
     with caplog.at_level(logging.INFO, logger="tasks.task_timing"):
         result = asyncio.run(
@@ -155,8 +156,18 @@ def test_an_unroutable_activity_is_skipped_but_logged(recorder, caplog):
         )
 
     assert result == "ok"
-    assert _row(recorder) == []
-    assert any("cleanup_temp_dir" in r.getMessage() for r in caplog.records)
+    rows = _row(recorder)
+    assert len(rows) == 1
+    dataset, task_name, item_hash, outcome, run_time_ms, *_rest = rows[0]
+    assert dataset == ""
+    assert task_name == "cleanup_temp_dir"
+    assert outcome == "ok"
+    assert run_time_ms >= 0
+    assert recorder.inserts[0][0] == ""
+    assert any(
+        "Hoover4_Processing.processing_task_runs" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_an_insert_failure_cannot_fail_the_activity_and_is_logged(monkeypatch, caplog):

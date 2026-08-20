@@ -138,6 +138,6 @@ if [ "$FORMAT" != "CSVWithNames" ]; then
     printf '\nRun with --csv to pipe these into a spreadsheet, and with\n'
     printf "  --since '<UTC timestamp>' to scope the report to a single ingest.\n"
     printf 'Activities whose parameters name no collection (ensure_temp_dir_exists,\n'
-    printf 'cleanup_temp_dir, the chat activities) are deliberately absent -- see the\n'
-    printf 'routing note in processing/tasks/task_timing.py.\n'
+    printf 'cleanup_temp_dir, collect_eta_samples, the chat activities) are recorded\n'
+    printf 'in Hoover4_Processing.processing_task_runs -- see processing/tasks/task_timing.py.\n'
 fi

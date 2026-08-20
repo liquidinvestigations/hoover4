@@ -45,6 +45,7 @@ EXPECTED_GLOBAL_TABLES = {
     "llm_models",
     "ai_service_telemetry",
     "processing_eta_samples",
+    "processing_task_runs",
     "search_manticore_cache",
     "server_settings",
     "usage_events",
@@ -283,10 +284,16 @@ def test_no_migration_drops_a_table():
 
 
 def test_the_two_sets_are_disjoint():
+    """Most tables live in exactly one directory. `processing_task_runs` is the
+    exception: the same name exists in both databases on purpose. Collection rows
+    go to the collection copy, unroutable activities to the global copy. That is
+    two tables, not one table read through the wrong client."""
     overlap = set(_table_names(GLOBAL_MIGRATIONS_PATH)) & set(
         _table_names(COLLECTION_MIGRATIONS_PATH)
     )
-    assert not overlap, f"table declared in both directories: {sorted(overlap)}"
+    assert overlap == {"processing_task_runs"}, (
+        f"table declared in both directories: {sorted(overlap)}"
+    )
 
 
 def test_readiness_sentinel_matches_last_collection_migration():

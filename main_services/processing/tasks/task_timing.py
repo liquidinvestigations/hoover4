@@ -22,17 +22,17 @@ moment the body returns or raises. For a sync activity that includes the hand-of
 thread-pool executor -- see the note in ``00035_processing_task_runs.sql``. It is not CPU
 time and does not claim to be.
 
-**Routing.** Every row is per-collection data and goes to the collection's own database,
-never the global one. The collection is read off the activity's parameter dataclass
-(virtually all of them carry ``collectionname`` and ``collection_dataset``). An activity
-whose parameters name no collection -- ``ensure_temp_dir_exists``, ``cleanup_temp_dir``,
-the P_agent chat activities -- cannot be routed and is NOT recorded. That is a real gap
-and it is logged once per task name at INFO rather than swallowed.
+**Routing.** Per-collection rows go to that collection's own database. The collection
+is read off the activity's parameter dataclass (virtually all of them carry
+``collectionname`` and ``collection_dataset``). An activity whose parameters name no
+collection -- ``ensure_temp_dir_exists``, ``cleanup_temp_dir``, ``collect_eta_samples``,
+the P_agent chat activities -- is recorded in the global ``Hoover4_Processing`` copy of
+``processing_task_runs`` with an empty ``collection_dataset``. The INFO log names that
+table the first time a given task type takes this path.
 
 **Best-effort, but never silent.** Nothing in here may fail an ingest, so every write is
-wrapped. Every drop -- a failed insert, an overflowing buffer, an unroutable activity --
-is logged with a count. The O2 defect this plan fixed was a bare ``except: pass`` losing
-error rows, and the fix is not worth much if the instrumentation repeats it.
+wrapped. Every drop -- a failed insert, an overflowing buffer -- is logged with a count.
+A bare ``except: pass`` losing error rows is the failure mode this exists to close.
 
 **Batched.** 200k files is single-digit millions of executions. One insert per execution
 would add a ClickHouse round trip to every activity and distort the very measurement it
@@ -231,7 +231,7 @@ class _Recorder:
             self._wake.set()
 
     def note_unroutable(self, task_name: str) -> None:
-        """An activity whose parameters name no collection, so it cannot be recorded."""
+        """An activity whose parameters name no collection: recorded in the global table."""
         with self._lock:
             seen = self._unroutable.get(task_name, 0)
             self._unroutable[task_name] = seen + 1
@@ -239,7 +239,7 @@ class _Recorder:
         if first:
             log.info(
                 "task_timing: %s names no collectionname in its parameters, so its "
-                "executions are NOT recorded in processing_task_runs",
+                "executions are recorded in Hoover4_Processing.processing_task_runs",
                 task_name,
             )
 
@@ -276,16 +276,22 @@ class _Recorder:
         if not rows:
             return
         try:
-            from database.clickhouse import get_collection_client
+            if not collectionname:
+                from database.clickhouse import get_global_client
 
-            with get_collection_client(collectionname) as client:
-                client.insert(table, rows, column_names=columns)
+                with get_global_client() as client:
+                    client.insert(table, rows, column_names=columns)
+            else:
+                from database.clickhouse import get_collection_client
+
+                with get_collection_client(collectionname) as client:
+                    client.insert(table, rows, column_names=columns)
         except Exception as exc:  # noqa: BLE001 - never fail an ingest over telemetry
             self._insert_dropped += len(rows)
             self._warn(
                 "task_timing: insert into %s.%s failed, %d rows dropped "
                 "(%d total this process): %s",
-                collectionname,
+                collectionname or "Hoover4_Processing",
                 table,
                 len(rows),
                 self._insert_dropped,
@@ -354,11 +360,11 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
         task_name, attempt, task_queue = _activity_identity(input)
         collectionname, dataset, item_hash = identify(input.args)
 
-        if not collectionname:
+        unroutable = not collectionname
+        if unroutable:
             _recorder.note_unroutable(task_name)
-            return await self.next.execute_activity(input)
 
-        token = _recorder.begin(collectionname, dataset, task_name)
+        token = None if unroutable else _recorder.begin(collectionname, dataset, task_name)
         started_at = datetime.now(timezone.utc).replace(tzinfo=None)
         start = time.monotonic()
         outcome = "ok"
@@ -370,7 +376,8 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
             raise
         finally:
             run_time_ms = max(0, int((time.monotonic() - start) * 1000))
-            _recorder.end(token)
+            if token is not None:
+                _recorder.end(token)
             _recorder.record(
                 collectionname,
                 [

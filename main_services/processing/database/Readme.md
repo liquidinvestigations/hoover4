@@ -16,7 +16,7 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects` |
+| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings) |
 | Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `collectionname` is a slug matching `[a-z0-9_]{1,48}` that may not end in `_<digits>`
@@ -63,11 +63,10 @@ consequences:
 - Collections created at different times converge on the same schema at the next
   `migrate` run, because each has its own independent `schema_versions`.
 
-Both sets are **collapsed**: every `ALTER` is folded back into the `CREATE TABLE` it
-modified, and both directories run contiguously from `00001` with no `ALTER TABLE` and no
-`DROP TABLE` anywhere. `COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is
-`{global: 20, collection: 31}` — files at or below those numbers are the collapsed
-baseline and must never be edited.
+Both sets are **collapsed at a baseline**, then grow by new numbered files.
+`COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is `{global: 20,
+collection: 31}` — files at or below those numbers are CREATE-only history and must
+never be edited. Files above the baseline may `ALTER TABLE`.
 
 Collapsing is a deliberate break of the never-edit-history rule and is paid for by a full
 `./deploy --reset`: it drops all data and reindexes `testdata`. There is no migration path
@@ -195,10 +194,12 @@ returns without infix indexing, not equal to it.
 
 `COLLAPSED_BASELINE` is `{global: 20, collection: 31}`. Files at or below those numbers
 are the collapsed baseline and must never be edited. Above them the collection set carries
-five appended tables and one column-adding migration:
+appended tables and column-adding migrations; the global set does the same.
 
 | | |
 |---|---|
+| `00024_eta_samples_ttl.sql` | Global. `processing_eta_samples` TTL is 3 days. `sampled_at` stays in the sort key so the admin page can plot the newest 100 samples per stage. |
+| `00025_processing_task_runs.sql` | Global. Same columns as the collection table of this name. Activities whose parameters name no collection write here with an empty `collection_dataset`. |
 | `00032_email_addresses.sql` | Structured sender/recipient rows written by `parse_email`. |
 | `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
 | `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
@@ -209,6 +210,7 @@ five appended tables and one column-adding migration:
 | `00043_table_documents.sql` | The per-`(collection_dataset, hash)` manifest for those cells: reader, format, counts, and the truncation record. The only thing that authorises a cell read. |
 | `00044_table_sheets.sql` | Per-sheet extents. Every cell read is bounded by these, which is how a re-parse that produces fewer rows leaves the old tail unreachable rather than needing a mutation. |
 | `00045_table_columns.sql` | Per-column header, inferred type, per-kind counts, value range and samples. Real columns rather than JSON, so "every document with a column called IBAN" is a SQL query. |
+| `00046_text_content_bytes.sql` | `text_bytes` on `text_content`: byte length of `text`, written at insert so size queries never scan the body. |
 
 The last two are written by `tasks/task_timing.py` (a Temporal activity interceptor,
 batched, best-effort but never silent) and read by the admin processing page and
