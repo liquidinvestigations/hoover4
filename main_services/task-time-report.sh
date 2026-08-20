@@ -202,6 +202,24 @@ if [ -n "$queue_wait" ]; then
     printf '%s\n' "$queue_wait"
 fi
 
+# The figure that separates "our code is slow" from "Temporal will not hand out work":
+# executions per second of that queue's own wall clock. A queue whose workers sit idle
+# while schedule_to_start climbs is dispatch-bound, and no amount of faster activity
+# code moves it -- raise the server's shard count and matching partitions instead.
+dispatch=$(CH_try "$COMMON
+SELECT task_queue,
+       count() AS executions,
+       round((max(t1ms) - min(t0ms)) / 1000, 1) AS wall_clock_seconds,
+       round(1000 * count() / greatest(1, max(t1ms) - min(t0ms)), 1) AS dispatch_per_second,
+       round(sum(run_time_ms) / greatest(1, max(t1ms) - min(t0ms)), 2) AS achieved_parallelism
+FROM processing_task_runs $WHERE
+GROUP BY task_queue
+ORDER BY dispatch_per_second DESC")
+if [ -n "$dispatch" ]; then
+    section "Dispatch rate: activity starts per second by task_queue"
+    printf '%s\n' "$dispatch"
+fi
+
 if [ "$FORMAT" != "CSVWithNames" ]; then
     printf '\nRun with --csv to pipe these into a spreadsheet, and with\n'
     printf "  --since '<UTC timestamp>' to scope the report to a single ingest.\n"

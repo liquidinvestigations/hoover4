@@ -308,13 +308,23 @@ class _FakeDescribe:
         self.pollers = pollers
 
 
-def test_backlog_sample_is_dropped_when_every_queue_is_idle():
+def test_backlog_sample_is_dropped_only_when_no_worker_is_attached():
+    sampled_at = _EPOCH
+    rows = [
+        row_from_describe("processing-common-queue", _FakeDescribe(), sampled_at),
+        row_from_describe("processing-indexing-queue", _FakeDescribe(hint=0), sampled_at),
+    ]
+    assert backlog_rows_to_write(rows) == []
+
+
+def test_backlog_sample_survives_a_zero_backlog_while_pollers_are_attached():
+    """A stalled fleet reports backlog 0 on every queue; the pollers are the evidence."""
     sampled_at = _EPOCH
     rows = [
         row_from_describe("processing-common-queue", _FakeDescribe(pollers=["a"]), sampled_at),
         row_from_describe("processing-indexing-queue", _FakeDescribe(hint=0), sampled_at),
     ]
-    assert backlog_rows_to_write(rows) == []
+    assert len(backlog_rows_to_write(rows)) == 2
 
 
 def test_backlog_sample_is_kept_when_any_queue_has_waiters():

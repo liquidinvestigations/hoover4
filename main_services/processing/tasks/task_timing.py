@@ -318,12 +318,18 @@ def row_from_describe(queue: str, resp: Any, sampled_at: datetime) -> list:
 
 
 def backlog_rows_to_write(rows: Sequence[list]) -> list[list]:
-    """Drop the whole sample when every queue's backlog_count is 0.
+    """Keep the sample when any queue reports a backlog OR has a poller attached.
 
-    Same discipline as inflight: idle costs zero rows, so "no fresh samples" means
-    idle rather than a hole in the data.
+    A backlog of 0 does not mean the queue is idle. Servers that leave the enhanced
+    ``stats`` block empty fall back to ``backlog_count_hint``, which reads 0 for a task
+    that is sync-matched or about to be -- so a fleet stalled on dispatch reports zeros
+    on every queue while activities wait seconds to start. Keying the sample on pollers
+    instead means a worker that is attached is always on the record, and the table's TTL
+    is what bounds it. Only a stack with no workers at all costs zero rows.
     """
-    if not rows or not any(int(row[2] or 0) for row in rows):
+    if not rows:
+        return []
+    if not any(int(row[2] or 0) or int(row[6] or 0) for row in rows):
         return []
     return list(rows)
 

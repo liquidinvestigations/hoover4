@@ -166,8 +166,12 @@ finished-rows table cannot show the twenty-minute activity that has not finished
 Samples are levels, not counters: a reader takes the newest per worker and sums those.
 Inflight is busy slots inside a worker process. Queue *waiters* are
 `Hoover4_Processing.processing_queue_backlog`, sampled from Temporal `DescribeTaskQueue`
-every 10 s by the common worker: one row per known queue, nothing written while every
-queue's backlog is 0, TTL 2 days like inflight.
+every 10 s by the common worker: one row per known queue, TTL 2 days like inflight. A
+sample is kept whenever any queue has a poller attached, not merely when one reports a
+backlog -- a server that leaves the enhanced `stats` block empty falls back to
+`backlog_count_hint`, which reads 0 for a task that is sync-matched or about to be, so a
+fleet stalled on dispatch reports zeros everywhere while activities wait seconds to
+start. Only a stack with no workers at all costs zero rows.
 
 Read it back with `main_services/task-time-report.sh` (per-task totals, shares, p95, wall
 clock, achieved parallelism) or on `/admin/collections/<name>/processing`, which has both
