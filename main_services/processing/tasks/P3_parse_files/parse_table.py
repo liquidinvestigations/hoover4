@@ -295,6 +295,8 @@ class _Collector:
             return
         import pyarrow as pa
 
+        from database.clickhouse import insert_arrow_idempotent
+
         rows = self.batch
         self.batch = []
         table = pa.table({
@@ -311,7 +313,7 @@ class _Collector:
             "cell_link": pa.array([r[10] for r in rows], type=pa.string()),
             "cell_formula": pa.array([r[11] for r in rows], type=pa.string()),
         })
-        client.insert_arrow("table_cells", table)
+        insert_arrow_idempotent(client, "table_cells", table)
 
     def meets_threshold(self) -> bool:
         """Whether what was read is a table at all. See the module docstring."""
@@ -409,6 +411,8 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
                     parse_error: str = "") -> None:
     import pyarrow as pa
 
+    from database.clickhouse import insert_arrow_idempotent
+
     truncation = truncation or TruncationRecord()
     table = pa.table({
         "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
@@ -430,7 +434,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
         "parse_ms": pa.array([parse_ms], type=pa.uint32()),
         "parse_error": pa.array([parse_error], type=pa.string()),
     })
-    client.insert_arrow("table_documents", table)
+    insert_arrow_idempotent(client, "table_documents", table)
 
 
 def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> None:
@@ -496,7 +500,7 @@ def _copy_structure(client, params: ParseTableParams, source_dataset: str) -> No
 @with_heartbeat
 def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any]:
     """Read one tabular document into `table_cells` and describe it in the manifest."""
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.P3_parse_files.table_readers import fallback_reader, read_cells
 
     started = time.time()
@@ -594,10 +598,10 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any]:
                     "cell_count": collector.cell_count,
                     "reason": "below the minimum table shape"}
 
-        client.insert_arrow("table_sheets", _sheet_rows(params, collector))
+        insert_arrow_idempotent(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)
         if columns.num_rows:
-            client.insert_arrow("table_columns", columns)
+            insert_arrow_idempotent(client, "table_columns", columns)
 
         row_count = sum(s.row_count for s in collector.sheets.values())
         column_count = max((s.column_count for s in collector.sheets.values()), default=0)

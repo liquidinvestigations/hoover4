@@ -141,7 +141,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     from email.parser import BytesParser
     from email.utils import parsedate_to_datetime
     from datetime import datetime, timezone
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
     log.info("[P3] Parsing email headers for %s", params.file_path)
     msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
@@ -183,7 +183,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             "email_hash": pa.array([params.email_hash], type=pa.string()),
             "email_type": pa.array(["eml"], type=pa.string()),
         })
-        client.insert_arrow("emails", tbl_e)
+        insert_arrow_idempotent(client, "emails", tbl_e)
         tbl_h = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "email_hash": pa.array([params.email_hash], type=pa.string()),
@@ -193,9 +193,9 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             "date_sent": pa.array([date_sent_dt], type=pa.timestamp("s")),
             "date_sent_known": pa.array([date_sent_known], type=pa.uint8()),
         })
-        client.insert_arrow("email_headers", tbl_h)
+        insert_arrow_idempotent(client, "email_headers", tbl_h)
         if address_rows:
-            client.insert_arrow("email_addresses", pa.table({
+            insert_arrow_idempotent(client, "email_addresses", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset] * len(address_rows), type=pa.string()),
                 "email_hash": pa.array([params.email_hash] * len(address_rows), type=pa.string()),
                 "role": pa.array([r[0] for r in address_rows], type=pa.string()),

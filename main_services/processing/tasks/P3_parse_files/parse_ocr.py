@@ -111,7 +111,7 @@ def _passes_for(engine: str, collection_dataset: str) -> List[str]:
 def run_ocr_and_store(params: RunOcrParams) -> str:
     import pyarrow as pa
 
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.ocr_client import engine_configured, run_ocr
     from tasks.P3_parse_files.parse_common import insert_text_chunks
 
@@ -180,7 +180,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str:
 
             extracted_by = ocr_extracted_by(outcome.engine, outcome.languages)
 
-            client.insert_arrow("raw_ocr_results", pa.table({
+            insert_arrow_idempotent(client, "raw_ocr_results", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
                 "image_hash": pa.array([params.file_hash], type=pa.string()),
                 "engine": pa.array([outcome.engine], type=pa.string()),

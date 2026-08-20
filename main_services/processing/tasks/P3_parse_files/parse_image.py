@@ -55,7 +55,7 @@ class ParseImageParams:
 @activity.defn
 @with_heartbeat
 def parse_image_metadata_and_store(params: ParseImageParams) -> str:
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
     from datetime import datetime, timezone
 
@@ -82,7 +82,7 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
             "height_pixels": pa.array([int(height)], type=pa.uint32()),
             "image_metadata": pa.array([json.dumps(meta)], type=pa.string()),
         })
-        client.insert_arrow("image", tbl_img)
+        insert_arrow_idempotent(client, "image", tbl_img)
 
         # Also store raw metadata to image_metadata table if present in DB
         try:
@@ -92,7 +92,7 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
                 "image_metadata_json": pa.array([json.dumps(meta)], type=pa.string()),
                 "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
             })
-            client.insert_arrow("image_metadata", tbl_meta)
+            insert_arrow_idempotent(client, "image_metadata", tbl_meta)
         except Exception:
             # Table might not exist yet; ignore
             pass

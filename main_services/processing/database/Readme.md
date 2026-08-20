@@ -61,10 +61,19 @@ re-runnable activity opt out through `insert_idempotent` / `insert_arrow_idempot
 re-runs until the anti-joins converge. Ledgers and watermarks go through
 `insert_durable` / `insert_arrow_durable`, or through unmarked inserts which wait.
 
+The line is drawn by what re-derives the row, not by how important it is. Every P3
+parser output qualifies: the parser runs again and writes the same content-addressed
+row. A P0 scan row does not — nothing rescans the disk, so a lost `blobs` row is a file
+that is never planned and never noticed.
+
 | Wait | Tables |
 |---|---|
-| Do not wait | `file_types`, `text_content`, `tika_metadata`, `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry` |
-| Wait | `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+| Do not wait | every P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry` |
+| Wait | `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+
+The wait is not a rounding error. One waited insert costs ~60 ms against ~1 ms without;
+`parse_email_extract_text_headers` writes three rows per email, so leaving them durable
+put ~180 ms of pure waiting into a ~540 ms activity that runs once per message.
 
 ## Migrations
 

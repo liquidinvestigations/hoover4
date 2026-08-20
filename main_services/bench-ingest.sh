@@ -184,6 +184,20 @@ done
 [ "$left" = "0" ] || fail "dataset registry row for $DS survived the purge"
 ok "dataset registry row for $DS is gone"
 
+# `add-disk-dataset` starts ingest-disk-<ds> with ALLOW_DUPLICATE_FAILED_ONLY, so a
+# COMPLETED run of the same fixture reserves that id for the whole Temporal retention
+# window and the next benchmark is refused. Production wants that refusal; a benchmark
+# wants the id back. Deleting the closed execution frees it. Children are started with
+# the default reuse policy and need no help.
+docker exec temporal temporal workflow delete --address temporal:7233 \
+    --workflow-id "ingest-disk-${DS}" >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do
+    docker exec temporal temporal workflow describe --address temporal:7233 \
+        --workflow-id "ingest-disk-${DS}" >/dev/null 2>&1 || break
+    sleep 1
+done
+ok "ingest-disk-${DS} is free to start again"
+
 empty_or_fail() {
     local table="$1"
     local n

@@ -158,7 +158,7 @@ class PdfMetaParams:
 @activity.defn
 @with_heartbeat
 def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
     from datetime import datetime, timezone
 
@@ -227,7 +227,7 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
             "author_metadata": pa.array([author_metadata], type=pa.string()),
             "date_created": pa.array([date_created_dt], type=pa.timestamp("s")),
         })
-        client.insert_arrow("pdfs", tbl_pdfs)
+        insert_arrow_idempotent(client, "pdfs", tbl_pdfs)
 
         # pdf_metadata row
         tbl_meta = pa.table({
@@ -236,7 +236,7 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
             "pdf_metadata_json": pa.array([json.dumps(meta)], type=pa.string()),
             "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
         })
-        client.insert_arrow("pdf_metadata", tbl_meta)
+        insert_arrow_idempotent(client, "pdf_metadata", tbl_meta)
 
     return {"page_count": page_count, "size_bytes": size_bytes}
 
@@ -254,7 +254,7 @@ class PdfSmallParams:
 @with_heartbeat
 def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     """For small PDFs, attempt text extraction and extract images to temp dir."""
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
     log.info("[P3] Extracting text and images for PDF %s", params.file_path)
@@ -329,7 +329,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
                     "height_pixels": pa.array(rows_img_h, type=pa.uint32()),
                     "image_metadata": pa.array(rows_img_meta, type=pa.string()),
                 })
-                client.insert_arrow("image", tbl_img)
+                insert_arrow_idempotent(client, "image", tbl_img)
 
                 tbl_link = pa.table({
                     "collection_dataset": pa.array(rows_link_cd, type=pa.string()),
@@ -337,7 +337,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
                     "on_page": pa.array(rows_link_page, type=pa.uint32()),
                     "image_hash": pa.array(rows_link_img, type=pa.string()),
                 })
-                client.insert_arrow("pdfs_image", tbl_link)
+                insert_arrow_idempotent(client, "pdfs_image", tbl_link)
 
     return {"out_dir": out_dir}
 

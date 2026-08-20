@@ -149,7 +149,7 @@ def _source_key(client, collection_dataset: str, pdf_hash: str) -> Optional[str]
 def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
     import pyarrow as pa
 
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.ocr_pdf_client import build_ocr_pdf, engines_for_provider, service_configured
 
     started_all = time.time()
@@ -222,7 +222,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
             run_time_ms = max(int((time.time() - started) * 1000), 0)
 
             # Object first, row second — see the module docstring.
-            client.insert_arrow("pdf_ocr_results", pa.table({
+            insert_arrow_idempotent(client, "pdf_ocr_results", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
                 "pdf_hash": pa.array([params.pdf_hash], type=pa.string()),
                 "engine": pa.array([outcome.engine], type=pa.string()),

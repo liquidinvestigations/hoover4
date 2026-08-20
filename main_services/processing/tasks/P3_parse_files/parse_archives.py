@@ -72,7 +72,7 @@ class RecordArchiveContainerParams:
 @with_heartbeat
 def record_archive_container(params: RecordArchiveContainerParams) -> str:
     """Activity that inserts a single archive container row into ClickHouse."""
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
     log.info("[P3] Recording archive container for %s", params.archive_hash)
     with get_collection_client(params.collectionname) as client:
@@ -82,7 +82,7 @@ def record_archive_container(params: RecordArchiveContainerParams) -> str:
             # Store space-separated list of MIME types
             "archive_type": pa.array([" ".join([t for t in (params.archive_types or []) if t])], type=pa.string()),
         })
-        client.insert_arrow("archives", tbl_arch)
+        insert_arrow_idempotent(client, "archives", tbl_arch)
     return params.archive_hash
 
 

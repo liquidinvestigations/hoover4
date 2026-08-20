@@ -258,7 +258,7 @@ def resolve_document_dates(params: ResolveDocumentDatesParams) -> str:
     re-parse) would linger, which is why every read of the table uses FINAL and the
     viewer shows the source of each row.
     """
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
     collection_dataset = params.collection_dataset
@@ -334,7 +334,7 @@ def resolve_document_dates(params: ResolveDocumentDatesParams) -> str:
         return f"0 dates for {len(item_hashes)} documents"
 
     with get_collection_client(params.collectionname) as client:
-        client.insert_arrow("document_dates", pa.table({
+        insert_arrow_idempotent(client, "document_dates", pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(out_hash), type=pa.string()),
             "hash": pa.array(out_hash, type=pa.string()),
             "date": pa.array(out_date, type=pa.int64()),

@@ -88,8 +88,12 @@ object back. A timeout kills that helper, raises a non-retryable `ApplicationErr
 the next file gets a fresh one. Stderr is drained so a noisy child cannot fill a pipe
 and stall.
 
-`file_types`, `text_content` and `tika_metadata` inserts skip the ClickHouse async-insert
-wait: those writers are re-runnable and a lost buffer converges on the next pass.
+Every parser output here skips the ClickHouse async-insert wait
+(`insert_arrow_idempotent`): these writers are re-runnable and a lost buffer converges on
+the next pass, while the wait itself costs ~60 ms per insert against ~1 ms without. The
+scan tables P0 writes are the exception and stay durable — nothing rescans a disk, so a
+lost `blobs` row is a file that is never planned. See
+[`../../database/Readme.md`](../../database/Readme.md).
 
 ## Usage
 
