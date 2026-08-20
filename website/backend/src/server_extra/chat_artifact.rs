@@ -34,7 +34,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use common::current_user::CurrentUser;
-use minio::s3::types::S3Api;
 use reqwest::StatusCode;
 
 use crate::{
@@ -103,36 +102,11 @@ pub fn may_read(caller: &str, caller_is_admin: bool, owner: &str) -> bool {
 /// and an archived page is capped at 8 MB by `CAPTURE_MAX_SNAPSHOT_BYTES`, so streaming
 /// would add a failure mode (a half-written response with headers already sent) for no
 /// benefit at these sizes.
-///
-/// **The work is handed to the server's multi-threaded runtime**, and that is not
-/// cosmetic. The MinIO SDK reaches `block_in_place` somewhere under
-/// `to_segmented_bytes`, which panics with *"can call blocking only when running on the
-/// multi-threaded runtime"* when the caller is a Dioxus **server function** — those do
-/// not run on the runtime the axum routes do. Observed as an HTTP 500 on the
-/// search-detail popup while the equivalent axum route worked.
-///
-/// A bare `tokio::spawn` does **not** fix it: it schedules on the caller's own runtime
-/// context, so the panic simply moves into the spawned task (measured — that was the
-/// first attempt). The handle registered by `main.rs` is what actually escapes.
 pub async fn fetch_artifact_object(key: &str) -> anyhow::Result<Vec<u8>> {
-    let key = key.to_string();
-    crate::startup::on_multi_thread_runtime(async move {
-        fetch_artifact_object_inner(&key).await
-    })
-    .await
-}
-
-async fn fetch_artifact_object_inner(key: &str) -> anyhow::Result<Vec<u8>> {
-    let endpoint = std::env::var("S3_ENDPOINT")
-        .map_err(|_| anyhow::anyhow!("S3_ENDPOINT is not set"))?;
-    let base_url = endpoint
-        .parse::<minio::s3::http::BaseUrl>()
-        .map_err(|e| anyhow::anyhow!("bad S3_ENDPOINT: {e}"))?;
-    let (access, secret) = crate::db_utils::s3_credentials();
-    let provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
-    let client = minio::s3::Client::new(base_url, Some(Box::new(provider)), None, None)?;
-    let object = client.get_object("hoover4-blobs", key).send().await?;
-    Ok(object.content.to_segmented_bytes().await?.to_bytes().to_vec())
+    let bucket = crate::db_utils::s3_bucket();
+    let client = crate::db_utils::s3_client().await?;
+    let object = client.get_object().bucket(&bucket).key(key).send().await?;
+    Ok(object.body.collect().await?.to_vec())
 }
 
 async fn _chat_artifact(

@@ -19,7 +19,6 @@ use axum::{
 };
 use common::current_user::CurrentUser;
 use futures::TryStreamExt;
-use minio::s3::types::S3Api;
 use reqwest::StatusCode;
 
 use crate::{
@@ -76,25 +75,17 @@ async fn _download_ocr_pdf(
     let (blob_key, size_bytes) =
         lookup_blob_key(&collection_dataset, &pdf_hash, &engine, &languages).await?;
 
-    let s3_endpoint = std::env::var("S3_ENDPOINT").context("S3_ENDPOINT is not set")?;
-    let base_url = s3_endpoint
-        .parse::<minio::s3::http::BaseUrl>()
-        .context("Failed to parse s3 endpoint")?;
-    let (access, secret) = crate::db_utils::s3_credentials();
-    let static_provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
-    let client = minio::s3::Client::new(base_url, Some(Box::new(static_provider)), None, None)
-        .context("Failed to create s3 client")?;
+    let bucket = crate::db_utils::s3_bucket();
+    let client = crate::db_utils::s3_client().await?;
     let object = client
-        .get_object("hoover4-blobs", &blob_key)
+        .get_object()
+        .bucket(&bucket)
+        .key(&blob_key)
         .send()
         .await
         .with_context(|| format!("Failed to get {blob_key}"))?;
-    let object_size = object.object_size as usize;
-    let (stream, _size) = object
-        .content
-        .to_stream()
-        .await
-        .context("Failed to get object stream")?;
+    let object_size = object.content_length().unwrap_or_default() as usize;
+    let stream = object.body;
 
     // `inline`, not `attachment`: this is the source the PDF viewer swaps to, so it has to
     // render in place rather than start a download.

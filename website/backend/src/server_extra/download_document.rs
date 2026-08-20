@@ -9,13 +9,12 @@ use axum::{
 use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
 use futures::TryStreamExt;
-use minio::s3::types::S3Api;
 use reqwest::StatusCode;
 use tracing::debug;
 
 use crate::{
     api::documents::download_document::{
-        blob_bucket_client, get_blob_filename, get_blob_info, get_blob_value_from_clickhouse,
+        get_blob_filename, get_blob_info, get_blob_value_from_clickhouse,
     },
     auth::{guard, permissions},
 };
@@ -40,26 +39,25 @@ async fn get_document_content_stream(
         ));
     }
 
-    let s3_path = blob_info.s3_path.replace("s3://hoover4-blobs/", "");
-    tracing::debug!("serving blob from s3: {s3_path}");
-    let s3_bucket = "hoover4-blobs";
-    let client = blob_bucket_client()?;
+    let bucket = crate::db_utils::s3_bucket();
+    let key = blob_info.s3_path.replace(&format!("s3://{bucket}/"), "");
+    tracing::debug!("serving blob from s3: {key}");
+    let client = crate::db_utils::s3_client().await?;
     let object = client
-        .get_object(s3_bucket, s3_path)
+        .get_object()
+        .bucket(&bucket)
+        .key(&key)
         .send()
         .await
         .context("Failed to get object")?;
-    let object_size = object.object_size as usize;
+    let object_size = object.content_length().unwrap_or_default() as usize;
     assert_eq!(object_size, blob_info.blob_size_bytes as usize);
-    let (stream, _size) = object
-        .content
-        .to_stream()
-        .await
-        .context("Failed to get object stream")?;
 
-    let stream2 = stream.map_err(anyhow::Error::from);
+    // The body streams; nothing here buffers the object. `ByteStream` yields
+    // `aws_smithy_types::byte_stream::error::Error`, mapped to the anyhow the route wants.
+    let stream = object.body.map_err(anyhow::Error::from);
 
-    Ok((object_size, Box::pin(stream2)))
+    Ok((object_size, Box::pin(stream)))
 }
 
 async fn _download_document(

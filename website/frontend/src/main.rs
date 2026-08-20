@@ -15,15 +15,13 @@ fn main() {
         // .unwrap();
 
         dioxus::serve(|| async move {
-            let rt_handle = tokio::runtime::Handle::current();
+            // Dioxus server functions do not run on this runtime and cannot call a
+            // library that blocks internally. Nothing in this binary does: the S3 client
+            // is async end to end.
             assert_eq!(
                 tokio::runtime::RuntimeFlavor::MultiThread,
-                rt_handle.runtime_flavor()
+                tokio::runtime::Handle::current().runtime_flavor()
             );
-            // Server functions do NOT run on this runtime, and a library that blocks
-            // internally panics when they call it. Anything in that position hands its
-            // work back here through `startup::on_multi_thread_runtime`.
-            backend::startup::set_multi_thread_runtime(rt_handle.clone());
 
             // Fail loudly if the database is unreachable rather than serving a
             // site where every DB-backed route silently fails.

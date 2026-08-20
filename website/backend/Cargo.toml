@@ -21,7 +21,9 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 sha256 = "1.6.0"
 axum = "0.8.6"
 tracing = "0.1"
-minio = "0.3.0"
+# The client Garage tests its own S3 implementation against. Fully async: nothing in
+# the request path blocks, which is what a Dioxus server function requires.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "sigv4a", "rustls"] }
 serde_bytes="0.11"
 base64 = "0.22"
 

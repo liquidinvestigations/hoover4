@@ -15,7 +15,6 @@ use anyhow::Context;
 use clickhouse::Row;
 use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
-use minio::s3::types::S3Api;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::permissions;
@@ -97,12 +96,6 @@ pub async fn get_blob_value_from_clickhouse(
 /// an oversized document costs one ClickHouse query rather than a multi-gigabyte
 /// allocation. Callers must pass a real ceiling: whatever they hand the bytes to buffers
 /// them too, so "how big can this get" is a question about the whole chain.
-///
-/// **The S3 read is handed to the server's multi-threaded runtime.** The MinIO SDK reaches
-/// `block_in_place` under `to_segmented_bytes`, which panics with *"can call blocking only
-/// when running on the multi-threaded runtime"* when the caller is a Dioxus server
-/// function — those do not run on the runtime the axum routes do, and a bare
-/// `tokio::spawn` inherits the same context rather than escaping it.
 pub async fn read_blob_bytes(
     user: &CurrentUser,
     document_identifier: &DocumentIdentifier,
@@ -120,28 +113,20 @@ pub async fn read_blob_bytes(
         return Ok(get_blob_value_from_clickhouse(document_identifier).await?.blob_value);
     }
 
-    let s3_path = blob_info.s3_path.replace("s3://hoover4-blobs/", "");
-    crate::startup::on_multi_thread_runtime(async move { read_s3_object(&s3_path).await }).await
+    let bucket = crate::db_utils::s3_bucket();
+    let key = blob_info.s3_path.replace(&format!("s3://{bucket}/"), "");
+    read_s3_object(&key).await
 }
 
 async fn read_s3_object(key: &str) -> anyhow::Result<Vec<u8>> {
-    let client = blob_bucket_client()?;
+    let bucket = crate::db_utils::s3_bucket();
+    let client = crate::db_utils::s3_client().await?;
     let object = client
-        .get_object("hoover4-blobs", key)
+        .get_object()
+        .bucket(&bucket)
+        .key(key)
         .send()
         .await
         .context("Failed to get object")?;
-    Ok(object.content.to_segmented_bytes().await?.to_bytes().to_vec())
-}
-
-/// A MinIO client for the blobs bucket, configured from the environment.
-pub fn blob_bucket_client() -> anyhow::Result<minio::s3::Client> {
-    let s3_endpoint = std::env::var("S3_ENDPOINT").context("S3_ENDPOINT is not set")?;
-    let base_url = s3_endpoint
-        .parse::<minio::s3::http::BaseUrl>()
-        .context("Failed to parse s3 endpoint")?;
-    let (access, secret) = crate::db_utils::s3_credentials();
-    let static_provider = minio::s3::creds::StaticProvider::new(&access, &secret, None);
-    minio::s3::Client::new(base_url, Some(Box::new(static_provider)), None, None)
-        .context("Failed to create s3 client")
+    Ok(object.body.collect().await.context("Failed to read object body")?.to_vec())
 }
