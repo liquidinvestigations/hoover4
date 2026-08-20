@@ -16,7 +16,7 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings) |
+| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `bench_runs` |
 | Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `collectionname` is a slug matching `[a-z0-9_]{1,48}` that may not end in `_<digits>`
@@ -200,6 +200,7 @@ appended tables and column-adding migrations; the global set does the same.
 |---|---|
 | `00024_eta_samples_ttl.sql` | Global. `processing_eta_samples` TTL is 3 days. `sampled_at` stays in the sort key so the admin page can plot the newest 100 samples per stage. |
 | `00025_processing_task_runs.sql` | Global. Same columns as the collection table of this name. Activities whose parameters name no collection write here with an empty `collection_dataset`. |
+| `00026_bench_runs.sql` | Global. One row per `bench-ingest.sh` run, sorted `(fixture, started_at)`. |
 | `00032_email_addresses.sql` | Structured sender/recipient rows written by `parse_email`. |
 | `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
 | `00034_vfs_nodes.sql` | The folder tree, one row per path node. |

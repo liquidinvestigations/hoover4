@@ -44,6 +44,7 @@ EXPECTED_GLOBAL_TABLES = {
     "llm_call_events",
     "llm_models",
     "ai_service_telemetry",
+    "bench_runs",
     "processing_eta_samples",
     "processing_task_runs",
     "search_manticore_cache",
