@@ -1,31 +1,15 @@
-# Temporal dynamic config, bind-mounted over the empty file auto-setup ships.
-# Every key here answers a measurement taken against this pipeline; the image's
-# defaults are sized for a single-workflow demo, not for a fan-out of thousands of
-# activities against one task queue.
+# Temporal dynamic config, mounted over the zero-byte file `auto-setup` ships.
+#
+# Deliberately small. Most of this server's defaults are already right for a
+# single-node deployment, and a key set to its own default is noise that reads as a
+# decision. Measured against this pipeline: raising `matching.numTaskqueue*Partitions`
+# above the default of 4 made a fan-out across many concurrent workflows *slower*, and
+# `history.persistenceMaxQPS` defaults higher than any value worth writing here, so
+# setting it would be a throttle rather than a lift.
 
-# A task queue is sharded into partitions and a worker polls one at a time, so the
-# partition count bounds how much of a burst can be matched in parallel. The default
-# of 4 is what pins every task type's p99 queue wait at the same value the moment the
-# pipeline fans out. Reads must be >= writes, or tasks land in a partition nobody polls.
-matching.numTaskqueueWritePartitions:
-  - value: 4
-matching.numTaskqueueReadPartitions:
-  - value: 4
-
-# The batch workflow accumulates one result event per unit of work it dispatches, so a
-# large plan is thousands of events in a single execution. Warn well before the 51,200
-# hard cap, where the failure is the whole plan dying with nothing partial recorded.
+# A workflow that fans out over a plan accumulates several history events per item, and
+# the 51,200-event hard cap fails the whole plan with nothing partial recorded.
+# ProcessItemsBatched continues as new well before that; this makes the approach visible
+# in the server log rather than only in the failure.
 limit.historyCount.warn:
   - value: 10000
-history.maximumBufferedEventsBatch:
-  - value: 500
-
-# Persistence rate limits, per host. The defaults throttle the history service long
-# before Cassandra is the constraint; on this deployment Cassandra is a 4-core, 4 GB
-# heap node that measures far below its own limits while the ingest runs.
-frontend.persistenceMaxQPS:
-  - value: 4000
-history.persistenceMaxQPS:
-  - value: 4000
-matching.persistenceMaxQPS:
-  - value: 4000
