@@ -1,8 +1,11 @@
 """Static regression guard: stage order inside ExecuteSinglePlan and ExecutePlans.
 
-ExtractEntitiesForPlan must be awaited strictly before IndexDatasetPlan. The same
-AST walk pins the dataset-scoped VFS activities on ExecutePlans (once per batch)
-and asserts IndexDatasetPlan no longer drives them.
+P4 (entities) and P5 (chunk+embed) must both complete before P6 (indexing): P6 reads
+the entity_hit rows and copies text_chunk_vectors into the shard's HNSW table, so an
+index that runs first comes up with no entities and empty `_vectors` tables. P4 and P5
+themselves are independent -- disjoint tables, different worker queues -- and run
+together. The same AST walk pins the dataset-scoped VFS activities on ExecutePlans
+(once per batch) and asserts IndexDatasetPlan no longer drives them.
 """
 
 import ast
@@ -19,7 +22,7 @@ def _child_workflow_order() -> list[str]:
         if isinstance(node, ast.ClassDef) and node.name == "ExecuteSinglePlan":
             for fn in node.body:
                 if isinstance(fn, ast.AsyncFunctionDef) and fn.name == "run":
-                    order = []
+                    found = []
                     for child in ast.walk(fn):
                         if (
                             isinstance(child, ast.Call)
@@ -30,8 +33,11 @@ def _child_workflow_order() -> list[str]:
                             and child.args[0].attr == "run"
                             and isinstance(child.args[0].value, ast.Name)
                         ):
-                            order.append(child.args[0].value.id)
-                    return order
+                            found.append((child.lineno, child.args[0].value.id))
+                    # ast.walk is breadth-first, so a call nested inside another (a
+                    # gathered pair, say) comes back out of order. Line number is what
+                    # "source order" means here.
+                    return [name for _lineno, name in sorted(found)]
     raise AssertionError("ExecuteSinglePlan.run not found in P2_execute_plan/workflows.py")
 
 
@@ -48,17 +54,43 @@ def test_extract_entities_runs_before_indexing():
     )
 
 
-def test_chunk_embed_runs_between_nlp_and_indexing():
+def test_chunk_embed_runs_before_indexing():
     # P6's vector indexer copies the text_chunk_vectors rows P5 writes; an index that
     # runs before embedding comes up with empty _vectors tables.
     order = _child_workflow_order()
     assert "ChunkEmbedForPlan" in order, (
         f"ChunkEmbedForPlan is not executed by ExecuteSinglePlan: {order}"
     )
-    assert order.index("ExtractEntitiesForPlan") < order.index("ChunkEmbedForPlan") \
-        < order.index("IndexDatasetPlan"), (
-        f"stage order must be P4 NER -> P5 chunk+embed -> P6 index: {order}"
+    assert order.index("ChunkEmbedForPlan") < order.index("IndexDatasetPlan"), (
+        f"ChunkEmbedForPlan must run strictly before IndexDatasetPlan: {order}"
     )
+
+
+def test_entities_and_chunk_embed_are_gathered():
+    """They read the same text_content and write disjoint tables, so they run together.
+
+    Running them in sequence left one worker tier idle for the whole of the other's
+    stage. This pins the pair inside one gather so a later edit cannot quietly
+    re-serialise them.
+    """
+    source = open(p2_workflows.__file__).read()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "gather"):
+            continue
+        started = {
+            arg.args[0].value.id
+            for arg in node.args
+            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute)
+            and arg.func.attr == "execute_child_workflow" and arg.args
+            and isinstance(arg.args[0], ast.Attribute)
+            and isinstance(arg.args[0].value, ast.Name)
+        }
+        if {"ExtractEntitiesForPlan", "ChunkEmbedForPlan"} <= started:
+            return
+    raise AssertionError(
+        "ExtractEntitiesForPlan and ChunkEmbedForPlan are no longer started together")
 
 
 def test_sanity_order_is_nonempty():

@@ -11,6 +11,44 @@ from .task_timing import TaskTimingInterceptor, attach_temporal_client
 log = logging.getLogger(__name__)
 
 
+def worker_concurrency(name: str, default: int) -> int:
+    """Activity slots for one worker tier, from `HOOVER4_<NAME>_CONCURRENCY`.
+
+    The defaults below are shaped by what each tier is waiting on, not by the host: the
+    common tier runs local work and wants roughly a slot per core, tika holds a
+    subprocess helper per slot, and the NLP and embed tiers pipeline HTTP against a
+    remote GPU that has its own admission control -- more slots there only deepen a
+    queue somebody else is already bounding.
+    """
+    import os
+    raw = os.environ.get("HOOVER4_%s_CONCURRENCY" % name.upper(), "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("HOOVER4_%s_CONCURRENCY is not a number: %r", name.upper(), raw)
+        return default
+    return max(1, value)
+
+
+def common_worker_processes() -> int:
+    """How many common-worker processes to spawn: `HOOVER4_COMMON_WORKERS`, else cores/4.
+
+    The common tier is where the fan-out lands. Two processes was a constant that
+    happened to suit a four-core laptop; on a sixteen-core host it left the machine
+    idle. Bounded at 2..8 because past that the constraint stops being local slots.
+    """
+    import os
+    raw = os.environ.get("HOOVER4_COMMON_WORKERS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            log.warning("HOOVER4_COMMON_WORKERS is not a number: %r", raw)
+    return max(2, min(8, (os.cpu_count() or 4) // 4))
+
+
 async def _probe_embeddings_at_startup(worker_name: str) -> None:
     """Record what the embeddings endpoint actually serves, before taking any work.
 
@@ -61,8 +99,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_office_xml import parse_office_xml_and_store
     from .P3_parse_files.parse_table import parse_table_and_store
     from .P3_parse_files.parse_mime import (
-        detect_mime_with_gnu_file, detect_mime_with_magika, detect_mime_from_name,
-        detect_mime_by_content,
+        detect_mime_all,
     )
     from .P3_parse_files.parse_pdf import PdfProcessingAndScan, pdf_get_metadata_and_store, pdf_small_extract_text_and_images, pdf_large_split_to_chunks
     from .P3_parse_files.parse_image import parse_image_metadata_and_store
@@ -135,7 +172,7 @@ async def run_common_worker():
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
 
-    CONCURRENCY = 8
+    CONCURRENCY = worker_concurrency("common", 8)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
@@ -195,10 +232,7 @@ async def run_common_worker():
             parse_audio_metadata_and_store,
             video_ffprobe_and_store,
             video_extract_frames_and_subtitles,
-            detect_mime_with_gnu_file,
-            detect_mime_with_magika,
-            detect_mime_from_name,
-            detect_mime_by_content,
+            detect_mime_all,
 
             # Shared plan helpers
             fetch_plan_hashes,
@@ -242,7 +276,7 @@ async def run_tika_worker():
     log.info("Starting Tika worker...")
     client = await Client.connect("temporal:7233")
     await ensure_search_attributes(client)
-    CONCURRENCY = 8
+    CONCURRENCY = worker_concurrency("tika", 8)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
@@ -276,7 +310,7 @@ async def run_ocr_worker():
     log.info("Starting OCR worker...")
     client = await Client.connect("temporal:7233")
     await ensure_search_attributes(client)
-    CONCURRENCY = 4
+    CONCURRENCY = worker_concurrency("ocr", 4)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
@@ -303,7 +337,7 @@ async def run_nlp_worker():
   await ensure_search_attributes(client)
   # The NER service is remote; concurrency here is about pipelining HTTP,
   # not local CPU.
-  CONCURRENCY = 2
+  CONCURRENCY = worker_concurrency("nlp", 2)
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
@@ -326,7 +360,7 @@ async def run_embed_worker():
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
   await _probe_embeddings_at_startup("embed worker")
-  CONCURRENCY = 2
+  CONCURRENCY = worker_concurrency("embed", 2)
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
@@ -352,7 +386,7 @@ async def run_indexing_worker():
   # `index_vectors` builds Manticore `_vectors` tables from the probed dimension, and a
   # table's knn_dims is fixed at creation — this worker needs the probe as much as P5.
   await _probe_embeddings_at_startup("indexing worker")
-  CONCURRENCY = 1
+  CONCURRENCY = worker_concurrency("indexing", 1)
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,

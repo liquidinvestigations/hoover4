@@ -257,8 +257,13 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
       - email_hash: str
       - file_path: str (path to .eml)
     Returns:
-      - { "out_dir": str }
+      - { "out_dir": str, "attachment_count": int }
+
+    The count is what lets the caller skip the scan entirely. Most messages in a mail
+    corpus carry no attachment at all, and scanning the empty directory anyway costs a
+    child workflow and two activities per message to discover nothing.
     """
+    import os as _os
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
     from email import policy
     from email.parser import BytesParser
@@ -269,6 +274,7 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
     msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
 
     attachment_index = 0
+    written = 0
     for part in msg.walk():
         # Skip containers
         if part.is_multipart():
@@ -293,8 +299,16 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
         except Exception:
             # Best-effort: skip on error
             continue
+        written += 1
 
-    return {"out_dir": out_dir}
+    if written == 0:
+        # Remove it here rather than leaving the caller a cleanup activity to run for
+        # a directory that was never used.
+        try:
+            _os.rmdir(out_dir)
+        except OSError:
+            pass
+    return {"out_dir": out_dir, "attachment_count": written}
 
 
 @dataclass
@@ -337,6 +351,15 @@ class EmailExtractionAndScan:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
         out_dir = res.get("out_dir")
+
+        # A message with no attachments is the common case in a mail corpus, and the
+        # activity above has already removed the empty directory. Scanning it anyway
+        # costs a child workflow and a cleanup activity per message to find nothing --
+        # on a maildir that is about a third of every Temporal execution the ingest
+        # makes. `attachment_count` is absent only on a result written by an older
+        # worker mid-upgrade, where the old unconditional behaviour is still correct.
+        if res.get("attachment_count", 1) == 0:
+            return out_dir
 
         # 3) Scan extracted attachments via P0 as child workflow
         with workflow.unsafe.imports_passed_through():

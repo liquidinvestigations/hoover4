@@ -829,8 +829,13 @@ def worker(worker_type: str | None = None):
     shutting_down = False
 
     # Initial spawn set. "index-planner" MUST stay at exactly one process:
-    # a second planner worker would corrupt the Manticore shard ledger.
-    for wt in ["tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * 2:
+    # a second planner worker would corrupt the Manticore shard ledger. The common tier
+    # is where the fan-out lands, so its process count follows the host rather than a
+    # constant -- see tasks/run_worker.py:common_worker_processes.
+    from tasks.run_worker import common_worker_processes
+    common_count = common_worker_processes()
+    log.info("Spawning %d common workers", common_count)
+    for wt in ["tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * common_count:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

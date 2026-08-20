@@ -10,8 +10,19 @@ import logging
 from dataclasses import dataclass
 
 from tasks.P3_parse_files.workflows import ParseSingleFileParams
+from tasks.workflow_window import run_with_window
 
 log = logging.getLogger(__name__)
+
+# How many per-item results one `record_processing_errors` activity carries. The rows
+# are small and mostly absent; the point of the chunk is to keep a single insert off a
+# plan-sized list, not to bound anything the workflow does.
+ERROR_REPORT_CHUNK = 500
+
+# Items one `ProcessItemsBatched` run covers before continuing as new. Each item is a
+# child workflow, and each child workflow is a handful of events on this execution's
+# history; the 51,200-event cap is a hard failure of the whole plan, not a slowdown.
+MAX_ITEMS_PER_RUN = 2000
 
 
 # Import activities and sibling workflows through the sandbox
@@ -164,23 +175,24 @@ class ExecutePlans:
             task_queue=INDEXING_TASK_QUEUE,
         )
 
-        # 3) Run per-plan child workflows, in parallel batches of 16
+        # 3) Run per-plan child workflows, 16 in flight. Plans differ in size by orders
+        # of magnitude, so a barrier here costs the largest plan in each group of 16.
         CONCURRENCY = 16
-        for i in range(0, len(plan_hashes), CONCURRENCY):
-            batch = plan_hashes[i:i + CONCURRENCY]
-            futs = []
-            for ph in batch:
-                futs.append(
-                    workflow.execute_child_workflow(
-                        ExecuteSinglePlan.run,
-                        {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
-                        id=f"execute-plan-{params.collection_dataset}-{ph}",
-                        task_queue="processing-common-queue",
-                        search_attributes=dataset_search_attributes(params.collection_dataset),
-                    )
-                )
-            if futs:
-                await asyncio.gather(*futs)
+
+        def _plan_factory(ph):
+            return lambda: workflow.execute_child_workflow(
+                ExecuteSinglePlan.run,
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
+                id=f"execute-plan-{params.collection_dataset}-{ph}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
+
+        plan_results = await run_with_window(
+            [_plan_factory(ph) for ph in plan_hashes], CONCURRENCY)
+        for res in plan_results:
+            if isinstance(res, Exception):
+                raise res
 
         # Rebuild the tree over what this batch just discovered, then copy it into
         # Manticore. The pre-loop rebuild cannot see structure the batch's own P3
@@ -357,27 +369,33 @@ class ExecuteSinglePlan:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        # 6) NLP stage: extract entities. Must complete before indexing starts -
-        # the indexing stage reads the entity_hit rows and nlp_processed
-        # watermarks written here.
-        await workflow.execute_child_workflow(
-            ExtractEntitiesForPlan.run,
-            ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            id=f"extract-entities-{params.collection_dataset}-{params.plan_hash}",
-            task_queue="processing-common-queue",
-            search_attributes=dataset_search_attributes(params.collection_dataset),
+        # 6+7) NLP and chunk+embed, together. Both read the `text_content` the parse
+        # stages just wrote and write to disjoint tables -- entities and the
+        # nlp_processed watermark on one side, text_chunks and text_chunk_vectors on
+        # the other -- and only indexing needs both. They also run on different worker
+        # queues, so running them in sequence left one tier idle for the other's whole
+        # duration. Both must still finish before step 8: P6 reads entity_hit rows and
+        # copies the vectors into the shard's HNSW table.
+        stage_results = await asyncio.gather(
+            workflow.execute_child_workflow(
+                ExtractEntitiesForPlan.run,
+                ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                id=f"extract-entities-{params.collection_dataset}-{params.plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            ),
+            workflow.execute_child_workflow(
+                ChunkEmbedForPlan.run,
+                ChunkEmbedForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                id=f"chunk-embed-{params.collection_dataset}-{params.plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            ),
+            return_exceptions=True,
         )
-
-        # 7) Chunk+embed stage: writes text_chunks and text_chunk_vectors (the durable
-        # vector store). Must complete before indexing starts - the P6 vector indexer
-        # copies these rows into the shard's HNSW table.
-        await workflow.execute_child_workflow(
-            ChunkEmbedForPlan.run,
-            ChunkEmbedForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            id=f"chunk-embed-{params.collection_dataset}-{params.plan_hash}",
-            task_queue="processing-common-queue",
-            search_attributes=dataset_search_attributes(params.collection_dataset),
-        )
+        for res in stage_results:
+            if isinstance(res, Exception):
+                raise res
 
         # 8) Indexing stage
         await workflow.execute_child_workflow(
@@ -419,46 +437,67 @@ class ProcessItemsBatched:
         if not params.items:
             return "no items"
 
-        # Spawn child workflows in parallel batches of up to 32
-        CONCURRENCY = 32
-        processed = 0
-        for i in range(0, len(params.items), CONCURRENCY):
-            batch = params.items[i:i + CONCURRENCY]
-            futs = []
-            starts = []
-            item_hashes = []
-            for it in batch:
-                args = ParseSingleFileParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash,
-                    item_hash=it.get('item_hash'),
-                    file_path=f"{params.out_dir}/{it.get('item_hash')}",
-                    file_size_bytes=it.get('file_size_bytes'),
-                )
-                futs.append(
-                    workflow.execute_child_workflow(
-                        ParseSingleFile.run,
-                        args,
-                        id=f"parse-file-{params.collection_dataset}-{params.plan_hash}-{it.get('item_hash')}",
-                        task_queue="processing-common-queue",
-                        search_attributes=dataset_search_attributes(params.collection_dataset),
-                    )
-                )
-                starts.append(workflow.now())
-                item_hashes.append((it.get("item_hash") or "") if isinstance(it, dict) else "")
+        # A child workflow costs about five history events here, so a run that covers
+        # more than MAX_ITEMS_PER_RUN items walks toward Temporal's 51,200-event hard
+        # cap. Hitting it fails the whole plan with nothing partial recorded, which is
+        # far worse than the continuation this costs. P1 caps a plan at 1000 items, so
+        # this is a guard against a future plan sizing, not something today's traffic
+        # reaches.
+        this_run = params.items[:MAX_ITEMS_PER_RUN]
+        remaining = params.items[MAX_ITEMS_PER_RUN:]
 
-            results = await asyncio.gather(*futs, return_exceptions=True)
-            await record_errors_from_results(
-                results,
-                task_ids=["P3_ParseSingleFile"] * len(batch),
-                starts=starts,
+        # A sliding window, not batches. Per-file wall time on this pipeline has a p99
+        # about fifteen times its p50, so a barrier every 32 files means a handful of
+        # large files idle 31 slots for tens of seconds each -- most of the parse
+        # phase went there. With a window the next file starts the moment one finishes.
+        CONCURRENCY = 32
+        started_at = workflow.now()
+        item_hashes = [
+            (it.get("item_hash") or "") if isinstance(it, dict) else ""
+            for it in this_run
+        ]
+
+        def _factory(it):
+            args = ParseSingleFileParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                item_hashes=item_hashes,
+                plan_hash=params.plan_hash,
+                item_hash=it.get('item_hash'),
+                file_path=f"{params.out_dir}/{it.get('item_hash')}",
+                file_size_bytes=it.get('file_size_bytes'),
             )
-            processed += len(batch)
+            return lambda: workflow.execute_child_workflow(
+                ParseSingleFile.run,
+                args,
+                id=f"parse-file-{params.collection_dataset}-{params.plan_hash}-{it.get('item_hash')}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
 
-        return f"processed {processed} items"
+        results = await run_with_window([_factory(it) for it in this_run], CONCURRENCY)
+
+        # Error rows are written once for the whole run rather than once per batch:
+        # the activity that writes them is itself a Temporal execution, and one per 32
+        # files is a cost the window no longer has any reason to pay.
+        for i in range(0, len(results), ERROR_REPORT_CHUNK):
+            chunk = results[i:i + ERROR_REPORT_CHUNK]
+            await record_errors_from_results(
+                chunk,
+                task_ids=["P3_ParseSingleFile"] * len(chunk),
+                starts=[started_at] * len(chunk),
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=item_hashes[i:i + ERROR_REPORT_CHUNK],
+            )
+
+        if remaining:
+            workflow.continue_as_new(ProcessItemsBatchedParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                plan_hash=params.plan_hash,
+                out_dir=params.out_dir,
+                items=remaining,
+            ))
+        return f"processed {len(results)} items"
 
 

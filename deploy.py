@@ -106,6 +106,16 @@ DEFAULTS = {
         "search_max_parallelism": "",
         "search_timeout_seconds": "",
         "ocr_pdf_enabled": "true",
+        # Worker fleet. Empty = the worker's own default, which for the common tier is
+        # cores/4 processes of 8 activity slots each and for the rest is shaped by what
+        # that tier waits on. Set one only to override a measurement.
+        "common_workers": "",
+        "common_concurrency": "",
+        "tika_concurrency": "",
+        "ocr_concurrency": "",
+        "nlp_concurrency": "",
+        "embed_concurrency": "",
+        "indexing_concurrency": "",
         # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
         "gpu_connect_timeout_ms": "2000",
@@ -487,6 +497,15 @@ def render_main_env(cfg):
     # [ai_services] section because that is where its server is configured, but the
     # worker is what needs it -- it decides how many passes to run.
     env["EASYOCR_LANGUAGES"] = cfg.get("ai_services", "easyocr_languages")
+
+    # Worker fleet sizing. Rendered only when set: an empty value would reach the worker
+    # as the string "" and every tier has a default it is better off keeping.
+    if cfg.get(m, "common_workers"):
+        env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
+    for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing"):
+        value = cfg.get(m, "%s_concurrency" % tier)
+        if value:
+            env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
 
     return env
 

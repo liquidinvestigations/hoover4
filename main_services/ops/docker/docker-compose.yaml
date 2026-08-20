@@ -196,9 +196,12 @@ services:
       - 127.0.0.1:${TEMPORAL_GRPC_PORT}:7233
       - 127.0.0.1:${TEMPORAL_HTTP_PORT}:7243
     volumes:
-      # The image ships this path as an empty file, which leaves every matching and
-      # persistence tunable at its demo default.
-      - ${HOOVER4_REPO_ROOT}/main_services/ops/docker/temporal-dynamicconfig.yaml:/etc/temporal/config/dynamicconfig/docker.yaml:ro
+      # The image ships `dynamicconfig/docker.yaml` as an empty file, which leaves
+      # every matching and persistence tunable at its demo default. The DIRECTORY is
+      # mounted rather than the file: a single-file bind mount follows the inode it was
+      # created with, so any editor that writes-and-renames silently leaves the
+      # container reading the old contents.
+      - ${HOOVER4_REPO_ROOT}/main_services/ops/docker/temporal-dynamicconfig:/etc/temporal/config/dynamicconfig:ro
     labels:
       kompose.volume.type: configMap
     healthcheck:
@@ -383,6 +386,16 @@ services:
       # variants are produced at all — the activity records a skip and succeeds, exactly
       # like an OCR engine with no endpoint.
       - "OCR_PDF_URL=${OCR_PDF_URL:-}"
+      # Worker fleet sizing. Unset everywhere by default: each tier's own default is a
+      # measurement, not a guess, and the common tier's process count already follows
+      # the host's core count. Set one to override that for this deployment.
+      - "HOOVER4_COMMON_WORKERS=${HOOVER4_COMMON_WORKERS:-}"
+      - "HOOVER4_COMMON_CONCURRENCY=${HOOVER4_COMMON_CONCURRENCY:-}"
+      - "HOOVER4_TIKA_CONCURRENCY=${HOOVER4_TIKA_CONCURRENCY:-}"
+      - "HOOVER4_OCR_CONCURRENCY=${HOOVER4_OCR_CONCURRENCY:-}"
+      - "HOOVER4_NLP_CONCURRENCY=${HOOVER4_NLP_CONCURRENCY:-}"
+      - "HOOVER4_EMBED_CONCURRENCY=${HOOVER4_EMBED_CONCURRENCY:-}"
+      - "HOOVER4_INDEXING_CONCURRENCY=${HOOVER4_INDEXING_CONCURRENCY:-}"
       - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"

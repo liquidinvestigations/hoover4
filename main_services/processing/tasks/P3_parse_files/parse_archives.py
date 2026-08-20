@@ -25,6 +25,7 @@ class ExtractArchiveParams:
 @with_heartbeat
 def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     """Activity that extracts an archive to a temp directory using 7z."""
+    import os
     import shutil
     import subprocess
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
@@ -57,7 +58,13 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
         shutil.rmtree(out_dir, ignore_errors=True)
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")
 
-    return {"out_dir": out_dir}
+    # Counted here so the caller can skip the scan of an archive that turned out to
+    # hold nothing -- a child workflow and a cleanup activity to discover an empty
+    # directory. 7z exits 0 on an empty archive, so a zero count is not an error.
+    entry_count = sum(len(files) for _root, _dirs, files in os.walk(out_dir))
+    if entry_count == 0:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return {"out_dir": out_dir, "entry_count": entry_count}
 
 
 @dataclass
@@ -146,6 +153,13 @@ class ArchiveExtractionAndScan:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
+
+        # An archive that extracted to nothing has already had its directory removed;
+        # scanning it would cost a child workflow and a cleanup activity to find an
+        # empty folder. `entry_count` is absent only on a result written by an older
+        # worker mid-upgrade, where the old unconditional behaviour is still correct.
+        if res.get("entry_count", 1) == 0:
+            return out_dir
 
         # 3) Coordinate P0 scan as child workflow, with container and root overrides
 

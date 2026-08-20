@@ -26,8 +26,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_text import extract_plaintext_chunks
     from tasks.P3_parse_files.parse_tika import run_tika_and_store, RunTikaParams
     from tasks.P3_parse_files.parse_mime import (
-        detect_mime_with_gnu_file, detect_mime_with_magika, detect_mime_from_name,
-        detect_mime_by_content, DetectMimeParams,
+        detect_mime_all, DetectMimeParams, LOCAL_DETECTORS,
     )
     from tasks.P3_parse_files.parse_pdf import PdfProcessingAndScan
     from tasks.P3_parse_files.parse_image import parse_image_metadata_and_store, ParseImageParams
@@ -65,9 +64,13 @@ class ParseSingleFile:
         BPS_10_K = 10_000 // 8  # 1,250 bytes/sec
         proc_secs = 900 + math.ceil(size_bytes / BPS_10_K)
 
-        # First, detect MIME/type via two parallel activities: `file` and Tika
-        mime_fut = workflow.execute_activity(
-            detect_mime_with_gnu_file,
+        # One activity for the four local detectors, one for Tika. The local four are
+        # tens of milliseconds each: scheduling a Temporal activity per detector cost
+        # several times what the detection did, and two of them ran `file` separately on
+        # the same bytes. Tika stays its own activity on its own queue because it holds
+        # an extractous helper there.
+        local_fut = workflow.execute_activity(
+            detect_mime_all,
             DetectMimeParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
@@ -96,55 +99,9 @@ class ParseSingleFile:
             task_queue="processing-tika-queue",
         )
 
-        magika_fut = workflow.execute_activity(
-            detect_mime_with_magika,
-            DetectMimeParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                file_hash=params.item_hash,
-                file_path=params.file_path,
-                timeout_seconds=proc_secs,
-            ),
-            start_to_close_timeout=timedelta(seconds=proc_secs),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
-        )
-
-        # Detection from the filename alone -- no file read, and the only detector that
-        # can be right about a .docx whose bytes are a zip.
-        name_fut = workflow.execute_activity(
-            detect_mime_from_name,
-            DetectMimeParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                file_hash=params.item_hash,
-                file_path=params.file_path,
-                timeout_seconds=proc_secs,
-            ),
-            start_to_close_timeout=timedelta(seconds=proc_secs),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
-        )
-
-        # The content sniff: an extension-less RFC 822 message is text/plain to every
-        # other detector here, so without this a whole maildir indexes as text.
-        sniff_fut = workflow.execute_activity(
-            detect_mime_by_content,
-            DetectMimeParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                file_hash=params.item_hash,
-                file_path=params.file_path,
-                timeout_seconds=proc_secs,
-            ),
-            start_to_close_timeout=timedelta(seconds=proc_secs),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
-        )
-
         detectors_started_at = workflow.now()
-        mime_res, tika_res, magika_res, name_res, sniff_res = await asyncio.gather(
-            mime_fut, tika_fut, magika_fut, name_fut, sniff_fut, return_exceptions=True,
+        local_res, tika_res = await asyncio.gather(
+            local_fut, tika_fut, return_exceptions=True,
         )
 
         def _as_list(d: dict | Any, key: str) -> List[str]:
@@ -169,8 +126,21 @@ class ParseSingleFile:
                 "mime_encodings": sorted(set(all_enc)),
             }
 
-        detector_results = [mime_res, tika_res, magika_res, name_res, sniff_res]
-        detector_names = ["file", "tika", "magika", "extension", "content_sniff"]
+        # Unpack the combined activity back into one result per detector, so error
+        # attribution and the canonical resolution below see the same shape they always
+        # have. A detector that raised inside the activity comes back under `errors`;
+        # the activity itself failing means all four are unavailable.
+        detector_names = list(LOCAL_DETECTORS) + ["tika"]
+        if isinstance(local_res, Exception):
+            detector_results: List[Any] = [local_res] * len(LOCAL_DETECTORS)
+        else:
+            per_detector = local_res.get("detectors") or {}
+            per_error = local_res.get("errors") or {}
+            detector_results = [
+                per_detector.get(name, RuntimeError(per_error.get(name, "detector produced no result")))
+                for name in LOCAL_DETECTORS
+            ]
+        detector_results.append(tika_res)
         try:
             await record_errors_from_results(
                 detector_results,

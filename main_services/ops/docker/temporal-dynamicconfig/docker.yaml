@@ -8,9 +8,9 @@
 # of 4 is what pins every task type's p99 queue wait at the same value the moment the
 # pipeline fans out. Reads must be >= writes, or tasks land in a partition nobody polls.
 matching.numTaskqueueWritePartitions:
-  - value: 16
+  - value: 4
 matching.numTaskqueueReadPartitions:
-  - value: 16
+  - value: 4
 
 # The batch workflow accumulates one result event per unit of work it dispatches, so a
 # large plan is thousands of events in a single execution. Warn well before the 51,200

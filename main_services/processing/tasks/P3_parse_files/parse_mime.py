@@ -103,35 +103,18 @@ def _extract_extensions(file_path: str) -> List[str]:
     return exts
 
 
-@activity.defn
-@with_heartbeat
-def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
-    """Activity that runs `file` to detect MIME/encoding, stores to file_types, and returns lists."""
-    from database.clickhouse import get_collection_client
+def _detect_gnu_file(params: DetectMimeParams,
+                     file_multi: Tuple[List[str], List[str], List[str]] | None = None
+                     ) -> Dict[str, Any]:
+    """`file`'s view of the bytes. Pure: the caller decides where the row goes."""
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
-    import pyarrow as pa
 
-    mime_types_list, encodings_list, ext_list = _run_file_multi(params.file_path)
+    mime_types_list, encodings_list, ext_list = file_multi or _run_file_multi(params.file_path)
     mime_types: List[str] = [m for m in mime_types_list if m]
     mime_encodings: List[str] = [e for e in encodings_list if e]
     coarse_types: List[str] = sorted({coarse_file_type(m) for m in mime_types if m})
     # Combine filename-derived extensions with `file --extension`
     extensions: List[str] = sorted(set(ext_list + _extract_extensions(params.file_path)))
-
-    # Insert into ClickHouse file_types with arrays and extracted_by='file'
-    from database.clickhouse import insert_arrow_idempotent
-    with get_collection_client(params.collectionname) as client:
-        tbl = pa.table({
-            "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-            "hash": pa.array([params.file_hash], type=pa.string()),
-            "mime_type": pa.array([mime_types], type=pa.list_(pa.string())),
-            "mime_encoding": pa.array([mime_encodings], type=pa.list_(pa.string())),
-            "file_type": pa.array([coarse_types], type=pa.list_(pa.string())),
-            "extensions": pa.array([extensions], type=pa.list_(pa.string())),
-            "extracted_by": pa.array(["file"], type=pa.large_string()),
-        })
-        insert_arrow_idempotent(client, "file_types", tbl)
-
     return {
         "mime_types": mime_types,
         "mime_encodings": mime_encodings,
@@ -140,17 +123,10 @@ def detect_mime_with_gnu_file(params: DetectMimeParams) -> Dict[str, Any]:
     }
 
 
-@activity.defn
-@with_heartbeat
-def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
-    """Activity that uses Google Magika to detect content type and stores it.
-
-    Writes a row to file_types with extracted_by='magika' and returns lists.
-    """
+def _detect_magika(params: DetectMimeParams) -> Dict[str, Any]:
+    """Google Magika's view of the bytes. Pure: the caller decides where the row goes."""
     # Import locally to avoid hard dependency at import time
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
-    import pyarrow as pa
 
     res = identify_path_with_magika(params.file_path)
     # Use res.output (may be overwritten result)
@@ -187,19 +163,6 @@ def detect_mime_with_magika(params: DetectMimeParams) -> Dict[str, Any]:
     coarse_types2 = sorted(set([coarse_file_type(m) for m in mime_types if m]))
     coarse_types = sorted(set(coarse_types + coarse_types2) - set(""))
     extensions = sorted(set(extensions))
-
-    with get_collection_client(params.collectionname) as client:
-        tbl = pa.table({
-            "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-            "hash": pa.array([params.file_hash], type=pa.string()),
-            "mime_type": pa.array([mime_types], type=pa.list_(pa.string())),
-            "mime_encoding": pa.array([mime_encodings], type=pa.list_(pa.string())),
-            "file_type": pa.array([coarse_types], type=pa.list_(pa.string())),
-            "extensions": pa.array([extensions], type=pa.list_(pa.string())),
-            "extracted_by": pa.array(["magika"], type=pa.large_string()),
-        })
-        insert_arrow_idempotent(client, "file_types", tbl)
-
     return {
         "mime_types": mime_types,
         "mime_encodings": mime_encodings,
@@ -304,40 +267,95 @@ def mime_types_from_name(file_path: str) -> Tuple[List[str], List[str]]:
     return sorted(mime_types), extensions
 
 
-def _store_file_types(params: DetectMimeParams, extracted_by: str,
-                      mime_types: List[str], coarse_types: List[str],
-                      extensions: List[str], encodings: List[str] | None = None) -> None:
+def _store_file_types_many(params: DetectMimeParams, rows: List[Dict[str, Any]]) -> None:
+    """One `file_types` insert for several detectors' rows.
+
+    Each detector keeps its own row, keyed by `extracted_by` -- the canonical resolution
+    weighs them against each other and needs them distinct. What is shared is the round
+    trip: four separate inserts of one row each cost four of them for no gain.
+    """
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
+    if not rows:
+        return
+    n = len(rows)
     with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
-            "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-            "hash": pa.array([params.file_hash], type=pa.string()),
-            "mime_type": pa.array([mime_types], type=pa.list_(pa.string())),
-            "mime_encoding": pa.array([encodings or []], type=pa.list_(pa.string())),
-            "file_type": pa.array([coarse_types], type=pa.list_(pa.string())),
-            "extensions": pa.array([extensions], type=pa.list_(pa.string())),
-            "extracted_by": pa.array([extracted_by], type=pa.large_string()),
+            "collection_dataset": pa.array([params.collection_dataset] * n, type=pa.string()),
+            "hash": pa.array([params.file_hash] * n, type=pa.string()),
+            "mime_type": pa.array([r["mime_types"] for r in rows], type=pa.list_(pa.string())),
+            "mime_encoding": pa.array([r.get("mime_encodings") or [] for r in rows],
+                                      type=pa.list_(pa.string())),
+            "file_type": pa.array([r["coarse_types"] for r in rows], type=pa.list_(pa.string())),
+            "extensions": pa.array([r.get("extensions") or [] for r in rows],
+                                   type=pa.list_(pa.string())),
+            "extracted_by": pa.array([r["extracted_by"] for r in rows], type=pa.large_string()),
         })
         insert_arrow_idempotent(client, "file_types", tbl)
 
 
+# The four detectors that run locally, in the order the fan-out used to schedule them.
+# Tika is deliberately absent: it lives on its own task queue because it holds an
+# extractous helper, and merging it here would put that helper on the common worker.
+LOCAL_DETECTORS = ("file", "magika", "extension", "content_sniff")
+
+
 @activity.defn
 @with_heartbeat
-def detect_mime_from_name(params: DetectMimeParams) -> Dict[str, Any]:
+def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
+    """All four local detectors in one activity, one `file` run, one insert.
+
+    Each detector is cheap -- tens of milliseconds -- so scheduling four Temporal
+    activities to carry them costs several times what the work does. They are also not
+    independent: `file` and the content sniff both need `file`'s output, which is a
+    subprocess launch each. Running them together pays for that once.
+
+    Failure stays per detector. One that raises contributes no `file_types` row and
+    reports its error under its own name in `errors`, exactly as a failed activity in
+    the old fan-out did; the other three still store and still return.
+    """
+    file_multi = None
+    try:
+        file_multi = _run_file_multi(params.file_path)
+    except Exception:
+        # Leave it None and let the two detectors that want it fail individually with
+        # their own message, rather than failing all four here.
+        pass
+
+    runners = {
+        "file": lambda: _detect_gnu_file(params, file_multi),
+        "magika": lambda: _detect_magika(params),
+        "extension": lambda: _detect_from_name(params),
+        "content_sniff": lambda: _detect_by_content(params, file_multi),
+    }
+    results: Dict[str, Any] = {}
+    errors: Dict[str, str] = {}
+    rows: List[Dict[str, Any]] = []
+    for name in LOCAL_DETECTORS:
+        try:
+            res = runners[name]()
+        except Exception as exc:
+            errors[name] = "%s: %s" % (type(exc).__name__, exc)
+            continue
+        results[name] = res
+        rows.append({"extracted_by": name, **res})
+    _store_file_types_many(params, rows)
+    return {"detectors": results, "errors": errors}
+
+
+def _detect_from_name(params: DetectMimeParams) -> Dict[str, Any]:
     """Detection from the filename alone, stored as its own `file_types` row.
 
-    Until this existed the extension was consulted only as a fallback for when `file`
-    returned nothing at all, so for a `.docx` — which `file` names confidently, and names
-    a zip — it was discarded. It is a first-class parallel detection now, and the
-    canonical resolution weighs it against the content detectors instead of behind them.
+    The extension used to be consulted only as a fallback for when `file` returned
+    nothing at all, so for a `.docx` — which `file` names confidently, and names a zip —
+    it was discarded. It is a first-class parallel detection, and the canonical
+    resolution weighs it against the content detectors instead of behind them.
     """
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 
     mime_types, extensions = mime_types_from_name(params.file_path)
     coarse_types = sorted({coarse_file_type(m) for m in mime_types if m})
-    _store_file_types(params, "extension", mime_types, coarse_types, extensions)
     return {
         "mime_types": mime_types,
         "mime_encodings": [],
@@ -357,9 +375,9 @@ def _magic_output(file_path: str) -> str:
     return (res.stdout or "").split(r"\012-")[0].strip()
 
 
-@activity.defn
-@with_heartbeat
-def detect_mime_by_content(params: DetectMimeParams) -> Dict[str, Any]:
+def _detect_by_content(params: DetectMimeParams,
+                       file_multi: Tuple[List[str], List[str], List[str]] | None = None
+                       ) -> Dict[str, Any]:
     """The content sniff: email, plus the two rules libmagic still gets wrong.
 
     Emails first, because that is the whole reason this detector exists — an
@@ -382,7 +400,7 @@ def detect_mime_by_content(params: DetectMimeParams) -> Dict[str, Any]:
     from tasks.P3_parse_files.sniff_table import should_check_table, sniff_table_path
 
     magic_output = _magic_output(params.file_path)
-    base_mimes, _encodings, _exts = _run_file_multi(params.file_path)
+    base_mimes, _encodings, _exts = file_multi or _run_file_multi(params.file_path)
 
     mime_types: Set[str] = set()
     details: Dict[str, Any] = {}
@@ -412,7 +430,6 @@ def detect_mime_by_content(params: DetectMimeParams) -> Dict[str, Any]:
 
     mime_list = sorted(mime_types)
     coarse_types = sorted({coarse_file_type(m) for m in mime_list if m})
-    _store_file_types(params, "content_sniff", mime_list, coarse_types, [])
     return {
         "mime_types": mime_list,
         "mime_encodings": [],
