@@ -56,7 +56,7 @@ every page, so per-page storage costs no extra subprocesses. The label is
 ## Searchable PDFs are a derived object, not a document
 
 `parse_ocr_pdf.py` produces a *file*, not rows of text: a PDF with the page images and an
-invisible OCR text layer, written to MinIO under `derived/ocr-pdf/…` by the
+invisible OCR text layer, written to Garage under `derived/ocr-pdf/…` by the
 `hoover4-ocr-pdf` service. It gets **no `blobs` row and no `vfs_files` row** — the only
 index of its existence is `pdf_ocr_results`.
 

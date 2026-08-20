@@ -2,7 +2,7 @@
 
 What it does
 ------------
-Given a PDF in MinIO (or inline, for the small blobs that live in ClickHouse), it renders
+Given a PDF in the object store (or inline, for the small blobs that live in ClickHouse), it renders
 every page to a raster, sends each raster to the **existing** OCR tier
 (`hoover4-tesseract-cpu`), and assembles a new PDF: the page image with the recognised
 words drawn over it in invisible text. The result reads like a scan and selects, copies
@@ -87,11 +87,12 @@ OCR_PDF_QUEUE_DEPTH = int(os.getenv("OCR_PDF_QUEUE_DEPTH", "4"))
 #: a wedged child; this bounds the wait for a healthy but busy one.
 OCR_READ_TIMEOUT = float(os.getenv("OCR_READ_TIMEOUT_SECONDS", "600"))
 
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio-s3:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "hoover4")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "hoover4-secret")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "hoover4-blobs")
-MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() in ("1", "true", "yes")
+S3_ENDPOINT = (os.getenv("S3_ENDPOINT", "garage:3900")
+               .replace("https://", "").replace("http://", "").rstrip("/"))
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "hoover4-blobs-rw")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0")
+S3_BUCKET = os.getenv("S3_BUCKET", "hoover4-blobs")
+S3_SECURE = os.getenv("S3_ENDPOINT", "").startswith("https://")
 
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 
@@ -110,12 +111,12 @@ _inflight = threading.Semaphore(OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH)
 
 
 class OcrPdfRequest(BaseModel):
-    #: MinIO object key of the source PDF, inside `MINIO_BUCKET`. Either this or
+    #: Object key of the source PDF, inside `S3_BUCKET`. Either this or
     #: `pdf_b64` — blobs under the small-file threshold live in ClickHouse and have no
     #: object at all, so the caller sends those inline.
-    source_key: str = Field("", description="MinIO key of the source PDF")
-    pdf_b64: str = Field("", description="Inline source PDF, for blobs not stored in MinIO")
-    dest_key: str = Field(..., description="MinIO key to write, must start with derived/")
+    source_key: str = Field("", description="Object key of the source PDF")
+    pdf_b64: str = Field("", description="Inline source PDF, for blobs not stored in the object store")
+    dest_key: str = Field(..., description="Object key to write, must start with derived/")
     engine: str = Field("tesseract", description="OCR engine: tesseract | easyocr")
     languages: str = Field("eng", description="+-joined language codes for one pass")
     dpi: int = Field(DEFAULT_DPI, ge=72, le=MAX_DPI)
@@ -132,14 +133,14 @@ class OcrPdfResponse(BaseModel):
     run_time_ms: int
 
 
-def _minio():
+def _s3():
     from minio import Minio
 
     return Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=MINIO_SECURE,
+        S3_ENDPOINT,
+        access_key=S3_ACCESS_KEY,
+        secret_key=S3_SECRET_KEY,
+        secure=S3_SECURE,
     )
 
 
@@ -322,7 +323,7 @@ def health():
         "status": "healthy" if ok else "unhealthy",
         "engines": {name: bool(url) for name, url in OCR_ENDPOINTS.items()},
         "renderer": renderer,
-        "bucket": MINIO_BUCKET,
+        "bucket": S3_BUCKET,
         "derived_prefix": DERIVED_PREFIX,
         "dpi_default": DEFAULT_DPI,
         "max_pages": MAX_PAGES,
@@ -350,7 +351,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
             raise HTTPException(status_code=400, detail=f"unknown OCR engine {request.engine!r}")
 
         started = time.time()
-        client = _minio()
+        client = _s3()
 
         if request.pdf_b64:
             try:
@@ -359,7 +360,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
                 raise HTTPException(status_code=400, detail=f"pdf_b64 is not valid base64: {exc}")
         elif request.source_key:
             try:
-                obj = client.get_object(MINIO_BUCKET, request.source_key)
+                obj = client.get_object(S3_BUCKET, request.source_key)
                 try:
                     pdf_bytes = obj.read()
                 finally:
@@ -394,7 +395,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
         # a row with no object is a broken link nothing can repair. The
         # `pdf_ocr_results` row is the caller's to write, after this returns.
         client.put_object(
-            MINIO_BUCKET,
+            S3_BUCKET,
             dest_key,
             io.BytesIO(out_bytes),
             length=len(out_bytes),

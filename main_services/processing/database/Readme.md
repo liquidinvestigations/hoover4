@@ -8,7 +8,7 @@ This directory centralizes database utilities and schema definitions used by the
 - `db_collection_migrations/` - SQL migrations applied to every per-collection ClickHouse database, `Hoover4_Collection_<collectionname>`.
 - `clickhouse.py` - ClickHouse client configuration and migration runner.
 - `manticore.py` - Manticore index maintenance and search configuration utilities.
-- `minio.py` - MinIO client helpers and bucket initialization.
+- `s3.py` - S3 client helpers and bucket initialization for the Garage blob store.
 
 ## The two databases
 

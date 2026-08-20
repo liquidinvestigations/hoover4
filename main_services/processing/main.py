@@ -20,9 +20,9 @@ def version():
 def migrate():
     """Run all database migrations."""
     from database.clickhouse import clickhouse_migrate
-    from database.minio import BUCKET_NAME
+    from database.s3 import BUCKET_NAME
     clickhouse_migrate()
-    from database.minio import ensure_bucket
+    from database.s3 import ensure_bucket
     ensure_bucket(BUCKET_NAME)
     from database.manticore import manticore_migrate
     manticore_migrate()

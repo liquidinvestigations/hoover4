@@ -16,14 +16,14 @@ This directory contains the ingestion and processing pipeline that populates Hoo
 
 ## Subdirectories
 
-- `database/` - ClickHouse migrations, Manticore index utilities, MinIO client helpers, and related scripts.
+- `database/` - ClickHouse migrations, Manticore index utilities, Garage client helpers, and related scripts.
 - `tasks/` - Temporal workflows and activities for the multi-stage processing pipeline.
 
 ## Technical Details
 
 This service implements a multi-stage pipeline: P0 scans datasets and records files/blobs, P1 builds processing plans, P2 executes plan downloads and orchestration, P3 parses content by file type, P4 extracts named entities via the remote NER service, and P6 indexes text and metadata into Manticore.
 
-Code is arranged by function: `tasks/` contains Temporal workflows/activities grouped by stage, `database/` contains ClickHouse/Manticore/MinIO helpers, and `main.py` with `tasks/run_worker.py` provide CLI and worker entry points.
+Code is arranged by function: `tasks/` contains Temporal workflows/activities grouped by stage, `database/` contains ClickHouse/Manticore/Garage helpers, and `main.py` with `tasks/run_worker.py` provide CLI and worker entry points.
 
 ClickHouse storage is partitioned per collection: global tables (users, groups, collections,
 the dataset registry, sessions, settings, search cache, chat, ETA samples, and the 24h

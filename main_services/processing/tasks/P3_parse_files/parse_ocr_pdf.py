@@ -32,7 +32,7 @@ from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT
 
 log = logging.getLogger(__name__)
 
-#: Above this, a PDF that is not in MinIO is left alone rather than base64'd through the
+#: Above this, a PDF that is not in Garage is left alone rather than base64'd through the
 #: request body. Blobs this small are in `blob_values` because they are small; a file that
 #: is both large and absent from object storage is a state worth failing loudly on.
 MAX_INLINE_PDF_BYTES = int(os.getenv("OCR_PDF_MAX_INLINE_BYTES", str(64 * 1024 * 1024)))
@@ -118,7 +118,7 @@ def _passes_for(engine: str, collection_dataset: str) -> List[str]:
 
 
 def _source_key(client, collection_dataset: str, pdf_hash: str) -> Optional[str]:
-    """The MinIO object key of the source PDF, or None when it is not in object storage.
+    """The Garage object key of the source PDF, or None when it is not in object storage.
 
     Small blobs live in `blob_values` in ClickHouse and have no object at all, which is
     why this returns None rather than raising: the caller falls back to sending the local

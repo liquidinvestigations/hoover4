@@ -5,7 +5,7 @@ This stage executes processing plans by downloading planned blobs, coordinating 
 ## Key Responsibilities
 
 - Enumerate pending plans and schedule execution in batches.
-- Download plan files from MinIO or ClickHouse into temp directories.
+- Download plan files from Garage or ClickHouse into temp directories.
 - Spawn per-file parsing workflows and record processing errors.
 - Cleanup temporary artifacts and mark plans complete.
 

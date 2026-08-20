@@ -136,9 +136,13 @@ services:
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio-s3:9000}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
+      # The blob store. `S3_ENDPOINT` carries a scheme; every client strips it when its
+      # library wants bare host:port. Garage refuses an access key id under 8 characters
+      # and a secret under 16, which is why these are not the old short literals.
+      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
+      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
+      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
+      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
@@ -191,9 +195,13 @@ services:
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio-s3:9000}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
+      # The blob store. `S3_ENDPOINT` carries a scheme; every client strips it when its
+      # library wants bare host:port. Garage refuses an access key id under 8 characters
+      # and a secret under 16, which is why these are not the old short literals.
+      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
+      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
+      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
+      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
     # With up to eight browsers live at once this is the difference between "slow" and

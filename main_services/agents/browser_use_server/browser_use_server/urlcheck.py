@@ -42,7 +42,8 @@ ALLOWED_SCHEMES = frozenset({"http", "https"})
 DENIED_HOSTS = frozenset(
     {
         "clickhouse", "manticore", "temporal", "temporal-ui", "redis", "zookeeper",
-        "minio-s3", "minio", "hoover4-vllm", "hoover4-ai-server", "hoover4-worker",
+        "minio-s3", "minio", "garage", "garage-init", "hoover4-vllm",
+        "hoover4-ai-server", "hoover4-worker",
         "hoover4-website", "temporal-cassandra", "temporal-elasticsearch",
         "hoover4-mcp-collections", "hoover4-mcp-ddg", "hoover4-mcp-whois",
         "hoover4-mcp-wikipedia", "hoover4-mcp-metasearch", "hoover4-mcp-browser",

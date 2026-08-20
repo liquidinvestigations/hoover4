@@ -5,8 +5,8 @@ drift.
 
 | Module | What it is |
 |---|---|
-| `artifacts.py` | the chat-artifact writer: bytes to MinIO, one index row in ClickHouse |
-| `minio_store.py` | the MinIO client and the `derived/chat-artifacts/` key scheme |
+| `artifacts.py` | the chat-artifact writer: bytes to S3, one index row in ClickHouse |
+| `s3_store.py` | the S3 client and the `derived/chat-artifacts/` key scheme |
 | `rerank.py` | the GPU tier's `/v1/rerank`, with a 2 s connect timeout and a circuit breaker |
 
 Consumers: `metasearch_server` (writes `search_detail`, reranks) and
@@ -49,7 +49,7 @@ Every part of this is load-bearing:
 * **A failed artifact never fails the tool.** The search still happened; the page was still
   read. `write()` returns `None` and logs, and the caller omits the id.
 
-Path components are sanitised in `minio_store._safe`: the session id arrives in an HTTP
+Path components are sanitised in `s3_store._safe`: the session id arrives in an HTTP
 header, and a header carrying `../../blobs` would otherwise write outside the prefix that
 is the whole point of this module.
 

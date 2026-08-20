@@ -13,7 +13,7 @@ import logging
 log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
-from database.minio import BUCKET_NAME, get_minio_client, ensure_bucket
+from database.s3 import BUCKET_NAME, get_s3_client, ensure_bucket
 from tasks.heartbeat import with_heartbeat
 
 
@@ -72,7 +72,7 @@ def _detect_mime_and_encoding(file_path: str) -> Tuple[str, str]:
 
 
 def _s3_client():
-    return get_minio_client()
+    return get_s3_client()
 
 
 def _s3_bucket_name() -> str:

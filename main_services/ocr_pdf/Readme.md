@@ -15,7 +15,7 @@ POST /ocr-pdf  {"source_key"|"pdf_b64", "dest_key", "engine", "languages", "dpi"
                    "engine", "languages", "dest_key", "run_time_ms"}
 ```
 
-* **`source_key` or `pdf_b64`.** Blobs above the small-file threshold live in MinIO and
+* **`source_key` or `pdf_b64`.** Blobs above the small-file threshold live in the object store and
   are read by key; the ones below it live in `blob_values` in ClickHouse and have no
   object at all, so the caller sends those inline. Exactly one is required.
 * **`dest_key` must start with `derived/`** — see below. The service writes the object and

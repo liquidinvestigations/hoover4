@@ -156,7 +156,7 @@ async def web_search(
         log.exception("metasearch failed")
         return WebSearchResponse(success=False, query=query, error=str(exc))
 
-    # `to_thread`: this is a MinIO PUT plus a ClickHouse insert, both synchronous. On the
+    # `to_thread`: this is an S3 PUT plus a ClickHouse insert, both synchronous. On the
     # event loop they block every *other* in-flight search's source fan-out for the
     # duration — and the fan-out is the part with a deadline.
     artifact_id = await asyncio.to_thread(

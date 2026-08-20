@@ -126,7 +126,7 @@ Each holds a PID; the end of that road is `cannot fork`, surfacing as an unrelat
 launch failing.
 
 **Artifact writes and telemetry go through `asyncio.to_thread`.** `artifacts.write` is
-several MinIO PUTs of megabyte page captures plus a ClickHouse insert, all synchronous; on
+several S3 PUTs of megabyte page captures plus a ClickHouse insert, all synchronous; on
 the event loop it stalls every other chat's browser I/O, including their navigation
 timeouts, which then expire on pages that were never slow.
 
@@ -269,7 +269,7 @@ Cost control is the capture policy itself, and nothing else. **Do not add body-k
 — deduplicating a capture whose `(url, document.lastModified)` matches the previous one in
 the same chat looks free but is not: two explicit snapshots of one page are a deliberate
 act, and handing the second the first one's bytes makes two `chat_artifacts` rows share a
-MinIO object, so deleting either can strand the other. The **sweeper handles shared body
+object-store object, so deleting either can strand the other. The **sweeper handles shared body
 keys** anyway, because transcripts contain rows written that way.
 
 ## MHTML → self-contained HTML

@@ -18,7 +18,7 @@ singleton, rather than as part of ingestion.
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
 - Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
-  the change dropped — from ClickHouse, then Manticore, then MinIO. The order is the
+  the change dropped — from ClickHouse, then Manticore, then Garage. The order is the
   point; `ocr_languages.py`'s module docstring says why each step cannot move.
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has

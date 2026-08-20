@@ -206,7 +206,7 @@ async def _capture(
         # The screenshot is the evidence; say why it is here so the card can label it.
         detail = "captured after a failed tool call"
 
-    # `to_thread`: `artifacts.write` is several synchronous MinIO PUTs (screenshot, MHTML,
+    # `to_thread`: `artifacts.write` is several synchronous S3 PUTs (screenshot, MHTML,
     # thumbnail) followed by a ClickHouse insert, and a page capture is megabytes. On the
     # event loop that stalls every other chat's browser I/O — including their navigation
     # timeouts, which then expire on a page that was never actually slow.

@@ -136,7 +136,7 @@ class DownloadPlanFilesParams:
 @with_heartbeat
 def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     """Activity that downloads plan files locally from S3 or ClickHouse."""
-    from database.minio import get_minio_client, ensure_bucket
+    from database.s3 import get_s3_client, ensure_bucket
     from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
@@ -147,7 +147,7 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     os.makedirs(out_dir, exist_ok=True)
 
     # Prepare ClickHouse client and S3 client once
-    minio_client = get_minio_client()
+    s3_client = get_s3_client()
 
     # Separate S3-backed and ClickHouse-backed items, track output paths
     hash_to_path = {}
@@ -177,7 +177,7 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
 
     # Download S3-backed files
     for job in s3_jobs:
-        minio_client.fget_object(job["bucket"], job["key"], job["path"])
+        s3_client.fget_object(job["bucket"], job["key"], job["path"])
 
     # Batch-fetch ClickHouse blobs in chunks of 100
     BATCH_SIZE = 100

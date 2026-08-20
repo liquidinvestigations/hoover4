@@ -18,8 +18,8 @@ The order below is not interchangeable:
 3. **Purge dropped variants after the re-run, never before.** A purge that runs first
    deletes rows the re-run has not replaced yet, and a crash in between leaves the
    dataset with neither the old variant nor the new one.
-4. **ClickHouse, then Manticore, then MinIO.** Manticore is disposable and rebuilt from
-   ClickHouse, so it is deleted from rather than reconciled. MinIO is last because it is
+4. **ClickHouse, then Manticore, then Garage.** Manticore is disposable and rebuilt from
+   ClickHouse, so it is deleted from rather than reconciled. Garage is last because it is
    the only store with no index of its own: `pdf_ocr_results` is the sole record that a
    derived PDF exists, so the row must survive until the object is gone. Deleting the row
    first orphans the object permanently.
@@ -420,7 +420,7 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
     between case, and it converges.
     """
     from database.clickhouse import get_collection_client
-    from database.minio import BUCKET_NAME, get_minio_client
+    from database.s3 import BUCKET_NAME, get_s3_client
 
     if not params.removed_pairs:
         return 0
@@ -438,12 +438,12 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
                 parameters={"cd": params.collection_dataset, "en": engine, "la": languages},
             ).result_rows
 
-            minio = get_minio_client()
+            s3 = get_s3_client()
             for pdf_hash, blob_key in rows:
                 heartbeat.beat(f"delete {engine}+{languages}")
                 if blob_key:
                     try:
-                        minio.remove_object(BUCKET_NAME, blob_key)
+                        s3.remove_object(BUCKET_NAME, blob_key)
                     except Exception:
                         # An object that is already gone is the crash-in-between case and
                         # must not stop the pass; anything else is logged and retried by

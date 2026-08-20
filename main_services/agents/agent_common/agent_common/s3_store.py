@@ -1,10 +1,9 @@
-"""MinIO access for the MCP servers.
+"""S3 access for the MCP servers.
 
-Mirrors `main_services/processing/database/minio.py` — same bucket, same server — but
-reads endpoint and credentials from the environment instead of hardcoding them. The
-processing copy predates the deploy.py-rendered env and hardcodes `minio-s3:9000`; do not
-copy that habit here, because these containers are also run from the host during
-development and a literal hostname is unreachable there.
+Mirrors `main_services/processing/database/s3.py` — same bucket, same server, same
+environment variables. Endpoint and credentials come from the environment on both sides,
+which is what lets these containers also be run from the host during development, where
+a literal container hostname is unreachable.
 
 Everything these servers write goes under :data:`DERIVED_PREFIX`. That prefix is the one
 part of the bucket `P0_scan_disk` must never walk: an artifact the ingest walker can see
@@ -21,19 +20,19 @@ log = logging.getLogger(__name__)
 
 #: Same bucket the pipeline's blobs live in. One bucket keeps the retention and backup
 #: story single; the prefix below is what separates derived bytes from ingested ones.
-BUCKET_NAME = os.getenv("MINIO_BUCKET", "hoover4-blobs")
+BUCKET_NAME = os.getenv("S3_BUCKET", "hoover4-blobs")
 
 #: Everything an agent writes lives under here. See the module docstring.
 DERIVED_PREFIX = "derived/chat-artifacts"
 
 
 def _endpoint() -> str:
-    """`host:port` for the MinIO API, without a scheme.
+    """`host:port` for the S3 API, without a scheme.
 
-    Accepts either form in `S3_ENDPOINT` (the website's variable carries `http://…`)
-    because both spellings are already in use in this stack.
+    Accepts either spelling in `S3_ENDPOINT`, because the website's copy of the variable
+    carries `http://` and the others do not.
     """
-    raw = os.getenv("MINIO_ENDPOINT") or os.getenv("S3_ENDPOINT") or "minio-s3:9000"
+    raw = os.getenv("S3_ENDPOINT") or "garage:3900"
     return raw.replace("https://", "").replace("http://", "").rstrip("/")
 
 
@@ -41,15 +40,15 @@ def _secure() -> bool:
     return (os.getenv("S3_ENDPOINT") or "").startswith("https://")
 
 
-def get_minio_client():
-    """A configured MinIO client. Imported lazily so a server that never writes an
+def get_s3_client():
+    """A configured S3 client. Imported lazily so a server that never writes an
     artifact does not need the dependency resolved at import time."""
     from minio import Minio
 
     return Minio(
         _endpoint(),
-        access_key=os.getenv("MINIO_ACCESS_KEY", "hoover4"),
-        secret_key=os.getenv("MINIO_SECRET_KEY", "hoover4-secret"),
+        access_key=os.getenv("S3_ACCESS_KEY", "hoover4-blobs-rw"),
+        secret_key=os.getenv("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0"),
         secure=_secure(),
     )
 
@@ -58,7 +57,7 @@ def ensure_bucket(client=None, bucket: str = BUCKET_NAME) -> None:
     """Create the bucket if it is missing, tolerating a concurrent creator."""
     from minio.error import S3Error
 
-    client = client or get_minio_client()
+    client = client or get_s3_client()
     try:
         if client.bucket_exists(bucket):
             return
@@ -100,7 +99,7 @@ def put_bytes(key: str, data: bytes, content_type: str, client=None) -> int:
     """Store `data` at `key` and return its length."""
     import io
 
-    client = client or get_minio_client()
+    client = client or get_s3_client()
     ensure_bucket(client)
     client.put_object(
         BUCKET_NAME,

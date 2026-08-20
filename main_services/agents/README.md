@@ -44,7 +44,7 @@ traceback at container start, not at build time.
 ### Chat artifacts
 
 A tool that produces something too big for the model's context but worth showing the
-*user* writes a **chat artifact**: bytes to MinIO under
+*user* writes a **chat artifact**: bytes to S3 under
 `derived/chat-artifacts/<session>/<id>/`, one index row in `Hoover4_Processing.chat_artifacts`.
 
 * `web_search` writes a `search_detail` — every candidate in both orderings, with
@@ -88,7 +88,7 @@ open that path: the model cannot read files and the website renders it as a brok
 see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`
 asserts that no `blobs` row references it. Retention is a daily Temporal singleton
 (`sweep-chat-artifacts`, in `tasks/P_admin/artifact_sweeper.py`) that deletes the objects
-**before** the rows, because a ClickHouse TTL cannot touch MinIO.
+**before** the rows, because a ClickHouse TTL cannot touch the object store.
 
 The two research agents share one image built from [`research_agent/`](research_agent/README.md):
 

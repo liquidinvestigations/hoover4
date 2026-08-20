@@ -1,7 +1,7 @@
 [project]
 name = "hoover4-agent-common"
 version = "0.1.0"
-description = "Shared helpers for the Hoover4 MCP servers: chat artifacts, MinIO, reranking"
+description = "Shared helpers for the Hoover4 MCP servers: chat artifacts, S3, reranking"
 requires-python = ">=3.11,<4.0"
 dependencies = [
     # Plain HTTP to ClickHouse and to the rerank endpoint, matching

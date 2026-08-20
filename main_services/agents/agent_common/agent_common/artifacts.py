@@ -1,4 +1,4 @@
-"""Chat artifacts: bytes in MinIO, one index row in ClickHouse.
+"""Chat artifacts: bytes in S3, one index row in ClickHouse.
 
 An artifact is a blob a tool produced that is too big to put in the model's context but
 that the *user* should be able to see: the full before/after ordering of a web search,
@@ -9,7 +9,7 @@ The contract, and every part of it is load-bearing:
 * The model receives **only the `artifact_id`** — a UUID, ~36 characters. It is a lookup
   key, never a capability: the website resolves it back to `session_id`/`username` and
   enforces owner-or-admin before serving a single byte.
-* Bytes go under `derived/chat-artifacts/…` (see :mod:`.minio_store`), which the ingest
+* Bytes go under `derived/chat-artifacts/…` (see :mod:`.s3_store`), which the ingest
   walker must never see.
 * Objects are written **before** the row. A crash between the two leaves an orphan object
   the retention sweeper's prefix scan collects. The reverse order would leave a row
@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_common import minio_store
+from agent_common import s3_store
 
 log = logging.getLogger(__name__)
 
@@ -154,19 +154,19 @@ def write(request: ArtifactRequest, artifact_id: str | None = None) -> str | Non
     )
 
     try:
-        client = minio_store.get_minio_client()
+        client = s3_store.get_s3_client()
         if request.reuse_body_key:
             row.body_key = request.reuse_body_key
             row.body_bytes = request.reuse_body_bytes
         elif request.body is not None:
             name, data, content_type = request.body
-            key = minio_store.artifact_key(request.session_id, artifact_id, name)
-            row.body_bytes = minio_store.put_bytes(key, data, content_type, client=client)
+            key = s3_store.artifact_key(request.session_id, artifact_id, name)
+            row.body_bytes = s3_store.put_bytes(key, data, content_type, client=client)
             row.body_key = key
         if request.thumb is not None:
             name, data, content_type = request.thumb
-            key = minio_store.artifact_key(request.session_id, artifact_id, name)
-            row.thumb_bytes = minio_store.put_bytes(key, data, content_type, client=client)
+            key = s3_store.artifact_key(request.session_id, artifact_id, name)
+            row.thumb_bytes = s3_store.put_bytes(key, data, content_type, client=client)
             row.thumb_key = key
     except Exception:  # noqa: BLE001 - an artifact is never worth failing a tool for
         log.exception("could not store artifact bytes for %s", artifact_id)

@@ -1,6 +1,6 @@
-"""Retention for chat artifacts: delete the MinIO objects, then the ClickHouse rows.
+"""Retention for chat artifacts: delete the Garage objects, then the ClickHouse rows.
 
-**A ClickHouse TTL does not delete MinIO objects.** That is the whole reason this exists.
+**A ClickHouse TTL does not delete Garage objects.** That is the whole reason this exists.
 If `chat_artifacts` simply expired its rows, the bytes would stay in the bucket with
 nothing left pointing at them and no way to find them again except a full prefix walk.
 
@@ -82,7 +82,7 @@ def ttl_days() -> int:
 def sweep() -> SweepResult:
     """One retention pass. Never raises: a failed sweep must be visible, not fatal."""
     from database.clickhouse import get_global_client
-    from database.minio import get_minio_client
+    from database.s3 import get_s3_client
 
     result = SweepResult()
     days = ttl_days()
@@ -100,14 +100,14 @@ def sweep() -> SweepResult:
         ).result_rows
         result.expired_rows = len(rows)
 
-        minio = get_minio_client()
-        result = _sweep_rows(client, minio, rows, result)
+        s3 = get_s3_client()
+        result = _sweep_rows(client, s3, rows, result)
 
     log.info("[artifact-sweeper] %s", result.summary())
     return result
 
 
-def _sweep_rows(client, minio, rows, result: SweepResult) -> SweepResult:
+def _sweep_rows(client, s3, rows, result: SweepResult) -> SweepResult:
     doomed_ids: list[str] = []
     doomed = {row[0] for row in rows}
 
@@ -131,7 +131,7 @@ def _sweep_rows(client, minio, rows, result: SweepResult) -> SweepResult:
                 log.debug("[artifact-sweeper] keeping %s, a live artifact still uses it", key)
                 continue
             try:
-                minio.remove_object(BUCKET, key)
+                s3.remove_object(BUCKET, key)
                 result.deleted_objects += 1
             except Exception as exc:  # noqa: BLE001
                 message = f"could not delete {key}: {exc}"
@@ -153,7 +153,7 @@ def _sweep_rows(client, minio, rows, result: SweepResult) -> SweepResult:
     # 4. Orphans: objects under the prefix with no row at all.
     try:
         live_keys = _live_object_keys(client)
-        result.orphan_objects = _collect_orphans(minio, live_keys)
+        result.orphan_objects = _collect_orphans(s3, live_keys)
     except Exception as exc:  # noqa: BLE001
         message = f"orphan scan failed: {exc}"
         log.warning("[artifact-sweeper] %s", message)
@@ -175,7 +175,7 @@ def _live_object_keys(client) -> set[str]:
     return {key for _id, thumb, body in _all_keys(client) for key in (thumb, body) if key}
 
 
-def _collect_orphans(minio, live_keys: set[str]) -> int:
+def _collect_orphans(s3, live_keys: set[str]) -> int:
     """Delete objects under the derived prefix that no row references."""
     import datetime
 
@@ -183,7 +183,7 @@ def _collect_orphans(minio, live_keys: set[str]) -> int:
         seconds=ORPHAN_GRACE_SECONDS
     )
     removed = 0
-    for obj in minio.list_objects(BUCKET, prefix=DERIVED_PREFIX, recursive=True):
+    for obj in s3.list_objects(BUCKET, prefix=DERIVED_PREFIX, recursive=True):
         if obj.object_name in live_keys:
             continue
         modified = getattr(obj, "last_modified", None)
@@ -192,7 +192,7 @@ def _collect_orphans(minio, live_keys: set[str]) -> int:
             # landed yet, not garbage.
             continue
         try:
-            minio.remove_object(BUCKET, obj.object_name)
+            s3.remove_object(BUCKET, obj.object_name)
             removed += 1
             log.info("[artifact-sweeper] removed orphaned object %s", obj.object_name)
         except Exception as exc:  # noqa: BLE001

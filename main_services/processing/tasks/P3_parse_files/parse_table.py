@@ -8,7 +8,7 @@ that can be sorted, filtered and paged without loading the document.
 
 The claim order, and why it is the opposite of the OCR one
 -----------------------------------------------------------
-`parse_ocr_pdf` writes its MinIO object before its ClickHouse row, because there an
+`parse_ocr_pdf` writes its Garage object before its ClickHouse row, because there an
 object with no row is findable by a prefix scan while a row with no object is a broken
 link. Here the order is reversed for the mirrored reason: `table_cells` has no
 `collection_dataset` column, so **cells with no `table_documents` row are invisible to

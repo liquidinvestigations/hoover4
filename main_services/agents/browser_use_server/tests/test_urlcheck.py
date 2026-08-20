@@ -39,7 +39,7 @@ class TestInternalServices:
     @pytest.mark.parametrize(
         "host",
         [
-            "clickhouse", "manticore", "temporal", "redis", "minio-s3",
+            "clickhouse", "manticore", "temporal", "redis", "minio-s3", "garage",
             "hoover4-vllm", "hoover4-ai-server", "hoover4-mcp-collections",
             "localhost",
         ],

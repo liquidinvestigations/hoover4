@@ -6,7 +6,7 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 
 - Walk filesystem paths and record `vfs_directories` and `vfs_files`.
 - Hash file contents and create blob metadata with deduplication.
-- Upload large blobs to MinIO and store small blobs inline in ClickHouse.
+- Upload large blobs to Garage and store small blobs inline in ClickHouse.
 - Seed downstream processing by spawning child workflows for folders and file batches.
 
 ## Entry Points
@@ -17,7 +17,7 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 
 ## Technical Details
 
-The workflow starts at the dataset root and recursively enumerates folders in batches of 10. Files are batched by count and total size to limit ingestion payloads. Hashing uses a single streaming pass to compute `sha3_256` (primary) plus `md5`, `sha1`, and `sha256`. Blob storage is split between ClickHouse (`blob_values`) for small files and MinIO (`blobs.s3_path`) for larger content.
+The workflow starts at the dataset root and recursively enumerates folders in batches of 10. Files are batched by count and total size to limit ingestion payloads. Hashing uses a single streaming pass to compute `sha3_256` (primary) plus `md5`, `sha1`, and `sha256`. Blob storage is split between ClickHouse (`blob_values`) for small files and Garage (`blobs.s3_path`) for larger content.
 
 ## Usage
 

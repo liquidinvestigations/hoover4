@@ -77,7 +77,7 @@ def engines_for_provider() -> List[str]:
 
 
 def derived_key(collection_dataset: str, pdf_hash: str, engine: str, languages: str) -> str:
-    """The MinIO key for one variant.
+    """The Garage key for one variant.
 
     Keyed exactly like the `pdf_ocr_results` row — `(collection_dataset, pdf_hash, engine,
     languages)` — so the row and the object can always be matched from either side. That

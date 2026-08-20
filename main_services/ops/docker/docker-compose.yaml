@@ -408,8 +408,17 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      # The bucket and the key exist only after the bootstrap has run. `ensure_bucket`
+      # would create the bucket anyway, but only if the key already has permission to,
+      # which is itself something the bootstrap grants.
+      garage-init:
+        condition: service_completed_successfully
     environment:
       - "NER_URL=${NER_URL}"
+      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
+      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
+      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
+      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
       # The CPU twin remote.py falls back to on a CONNECT failure. deploy.py renders
       # this only when [main_services] ner_spacy_enabled is true, which is the same key
       # that pulls in compose/ner-spacy.yaml -- announcing a fallback url for a
@@ -503,13 +512,14 @@ services:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
-      - S3_ENDPOINT=http://minio-s3:9000
+      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
+      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
       # Blob-store credentials. Passed in rather than compiled in: the backend used to
       # carry the literals in two source files, which is exactly how a credential
       # survives the day it is rotated. Same defaults and same names the agent
       # containers use (compose/agents.yaml).
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-hoover4}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-hoover4-secret}
+      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
+      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
       # Temporal's HTTP API, used to start workflows from the admin UI. The code
       # defaults to localhost:7243 for running the website outside Docker; inside the
       # container localhost is the container itself, so it must be set explicitly.
