@@ -34,6 +34,20 @@ Garage rejects an access key id shorter than 8 characters and a secret shorter t
 Short credentials that work against other S3 implementations are refused here, and the
 refusal happens at bootstrap rather than at first use.
 
+## `/health` is 503 until the layout is assigned
+
+`GET /health` on the admin port reports *"Quorum is not available for some/all
+partitions"* with a 503 on a node that has never been bootstrapped, because a node with
+no layout owns no partitions. Assigning that layout is the bootstrap's own first job, so
+waiting for a 200 there before bootstrapping deadlocks on exactly the case the bootstrap
+exists for. `init.sh` polls `/v2/GetClusterStatus` for a node id instead — which is both
+the real readiness signal and the next thing it needs. Once a layout is applied, `/health`
+answers 200 and is a fine liveness probe.
+
+`GARAGE_RPC_SECRET` must be **exactly 32 bytes of hex**, 64 characters, even on a single
+node. A secret of any other length fails at startup with *"Invalid RPC secret key"*, before
+anything else is attempted.
+
 ## The bootstrap runs on every deploy
 
 `init.sh` is not a first-run script. It waits for `/health`, reads the node id from the

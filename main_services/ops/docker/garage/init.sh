@@ -16,28 +16,32 @@ KEY_NAME="${S3_KEY_NAME:-hoover4}"
 
 say() { echo "garage-init: $*"; }
 
-# 1) Wait for the daemon. Bounded, and loud on expiry -- a bootstrap that hangs forever
-#    holds up every service that depends on it and says nothing about why.
+status() {
+    curl -s -H "Authorization: Bearer $GARAGE_ADMIN_TOKEN" "$ADMIN/v2/GetClusterStatus"
+}
+
+# 1) Wait for the admin API to name the node.
+#
+#    NOT for `/health` to return 200: that endpoint reports 503 "Quorum is not available
+#    for some/all partitions" until a layout is assigned, and assigning the layout is
+#    this script's own first job -- waiting for it deadlocks on a node that has never
+#    been bootstrapped. The node id is both the real readiness signal and the next
+#    thing needed, so poll for that instead. Bounded, and loud on expiry: a bootstrap
+#    that hangs forever holds up every service depending on it and says nothing.
 i=0
-until curl -sf "$ADMIN/health" >/dev/null 2>&1; do
+NODE=""
+while [ -z "$NODE" ] || [ "$NODE" = "null" ]; do
+    NODE=$(status | jq -r '.nodes[0].id // empty' 2>/dev/null)
+    [ -n "$NODE" ] && [ "$NODE" != "null" ] && break
     i=$((i + 1))
-    if [ "$i" -ge 60 ]; then
-        say "garage did not become healthy at $ADMIN/health after 60s"
+    if [ "$i" -ge 90 ]; then
+        say "garage's admin API never named a node at $ADMIN/v2/GetClusterStatus"
+        say "last response: $(status | head -c 200)"
         exit 1
     fi
     sleep 1
 done
-say "garage is healthy"
-
-status() {
-    curl -sf -H "Authorization: Bearer $GARAGE_ADMIN_TOKEN" "$ADMIN/v2/GetClusterStatus"
-}
-
-NODE=$(status | jq -r '.nodes[0].id')
-if [ -z "$NODE" ] || [ "$NODE" = "null" ]; then
-    say "could not read the node id from $ADMIN/v2/GetClusterStatus"
-    exit 1
-fi
+say "garage answers; node $NODE"
 export GARAGE_RPC_HOST="$NODE@garage:3901"
 
 # 2) Layout. `.nodes[0].role` is null until a layout is applied, which is the exact
