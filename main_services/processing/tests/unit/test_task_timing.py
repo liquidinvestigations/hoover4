@@ -190,6 +190,15 @@ def test_an_insert_failure_cannot_fail_the_activity_and_is_logged(monkeypatch, c
     assert any("rows dropped" in r.message for r in caplog.records)
 
 
+def test_record_starts_the_flusher_so_unroutable_rows_are_not_stuck(monkeypatch):
+    """collect_eta_samples never calls begin(), and that used to leave its rows unflushed."""
+    rec = _Recorder()
+    started = []
+    rec.ensure_started = lambda: started.append(True)
+    rec.record("", ["row"])
+    assert started
+
+
 def test_the_buffer_is_capped_and_says_so(recorder, caplog):
     """A ClickHouse outage must cost rows, never the worker's memory."""
     for i in range(MAX_BUFFERED_ROWS + 25):

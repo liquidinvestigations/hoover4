@@ -212,6 +212,10 @@ class _Recorder:
             self._inflight.pop(token, None)
 
     def record(self, collectionname: str, row: list) -> None:
+        # Unroutable activities never call begin(), so this is what starts the
+        # flusher thread for them. Without it the buffer sits until a collection-scoped
+        # activity happens, and collect_eta_samples would be invisible again.
+        self.ensure_started()
         flush_now = False
         with self._lock:
             rows = self._rows.setdefault(collectionname, [])
