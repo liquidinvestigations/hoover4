@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pyarrow as pa
 from temporalio import activity
 
-from database.clickhouse import get_collection_client
+from database.clickhouse import get_collection_client, insert_arrow_idempotent
 from tasks.entity_stoplist import filter_entity_values
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.plan_utils import clean_text
@@ -232,7 +232,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
                 "entity_type": pa.array([row['entity_type'] for row in clickhouse_ner_rows], type=pa.string()),
                 "entity_values": pa.array([row['entity_values'] for row in clickhouse_ner_rows], type=pa.list_(pa.string())),
             })
-            client.insert_arrow("entity_hit", tbl_ner)
+            insert_arrow_idempotent(client, "entity_hit", tbl_ner)
 
         # Watermark rows, one per processed segment. text_bytes is the byte
         # length of the cleaned text actually indexed - part 6's shard planner
@@ -251,7 +251,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "text_bytes": pa.array([len(text.encode('utf-8')) for text in cleaned_texts], type=pa.uint64()),
             "processed_at": pa.array([now] * len(text_content), type=pa.timestamp("s")),
         })
-        client.insert_arrow("nlp_processed", tbl_processed)
+        insert_arrow_idempotent(client, "nlp_processed", tbl_processed)
 
     log.info(
         f"{collection_dataset} (plan {plan_hash[:8]}): extracted "

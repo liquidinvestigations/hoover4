@@ -46,7 +46,7 @@ class _FakeCHClient:
             ])
         return _FakeQueryResult(self._text_rows)
 
-    def insert_arrow(self, table, tbl):
+    def insert_arrow(self, table, tbl, **kwargs):
         self.inserts.setdefault(table, []).append(tbl)
 
 

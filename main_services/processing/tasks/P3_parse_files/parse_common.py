@@ -115,7 +115,7 @@ def insert_text_pages(
     ``text_bytes`` is ``len(body.encode("utf-8"))`` of the stored text, written here so
     readers that need size (ETA sampling) never scan the body.
     """
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
     rows: List[tuple] = []
@@ -142,7 +142,7 @@ def insert_text_pages(
                 "text": pa.array([r[1] for r in rows], type=pa.string()),
                 "text_bytes": pa.array([r[2] for r in rows], type=pa.uint64()),
             })
-            client.insert_arrow("text_content", tbl_t)
+            insert_arrow_idempotent(client, "text_content", tbl_t)
         if highest:
             _trim_orphan_pages(client, collection_dataset, file_hash, extracted_by, highest)
 

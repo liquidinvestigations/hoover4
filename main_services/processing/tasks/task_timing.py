@@ -480,15 +480,15 @@ class _Recorder:
             return
         try:
             if not collectionname:
-                from database.clickhouse import get_global_client
+                from database.clickhouse import get_global_client, insert_idempotent
 
                 with get_global_client() as client:
-                    client.insert(table, rows, column_names=columns)
+                    insert_idempotent(client, table, rows, column_names=columns)
             else:
-                from database.clickhouse import get_collection_client
+                from database.clickhouse import get_collection_client, insert_idempotent
 
                 with get_collection_client(collectionname) as client:
-                    client.insert(table, rows, column_names=columns)
+                    insert_idempotent(client, table, rows, column_names=columns)
         except Exception as exc:  # noqa: BLE001 - never fail an ingest over telemetry
             self._insert_dropped += len(rows)
             self._warn(
