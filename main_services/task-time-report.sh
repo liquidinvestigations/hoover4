@@ -160,18 +160,18 @@ if [ -n "$overhead" ]; then
     printf '%s\n' "$overhead"
 fi
 
-wall_busy=$(CH_try "SELECT
-    round(avg(busy_ms)) AS busy_ms,
-    round(avg(wall_ms)) AS wall_ms,
-    round(100 * (1 - avg(busy_ms) / greatest(avg(wall_ms), 1)), 1) AS idle_pct
+wall_busy=$(CH_try "SELECT busy_ms, wall_ms,
+    round(100 * (1 - busy_ms / greatest(wall_ms, 1)), 1) AS idle_pct
 FROM (
-    SELECT hash,
-           sum(run_time_ms) AS busy_ms,
-           max(toUnixTimestamp64Milli(started_at) + toInt64(run_time_ms))
-             - min(toUnixTimestamp64Milli(started_at)) AS wall_ms
-    FROM processing_task_runs
-    $WHERE AND hash != '' AND task_name IN ($P3_TASKS)
-    GROUP BY hash
+    SELECT round(avg(b)) AS busy_ms, round(avg(w)) AS wall_ms
+    FROM (
+        SELECT sum(run_time_ms) AS b,
+               max(toUnixTimestamp64Milli(started_at) + toInt64(run_time_ms))
+                 - min(toUnixTimestamp64Milli(started_at)) AS w
+        FROM processing_task_runs
+        $WHERE AND hash != '' AND task_name IN ($P3_TASKS)
+        GROUP BY hash
+    )
 )")
 if [ -n "$wall_busy" ]; then
     section "Wall vs busy, per file (P3 activities)"
