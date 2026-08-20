@@ -24,6 +24,14 @@ ERROR_REPORT_CHUNK = 500
 # history; the 51,200-event cap is a hard failure of the whole plan, not a slowdown.
 MAX_ITEMS_PER_RUN = 2000
 
+# Items one `ProcessItemsBatched` execution drives. A plan is split into groups of this
+# size and the groups run as siblings, because a single workflow execution decides one
+# thing at a time and a per-file chain is a dozen decisions deep -- one driver is a
+# latency ceiling, not a capacity one. Small enough that a plan of any realistic size
+# gets several drivers; large enough that the drivers themselves stay a rounding error
+# against the files they carry.
+PLAN_GROUP_SIZE = 100
+
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
@@ -325,20 +333,43 @@ class ExecuteSinglePlan:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        # 3) Process downloaded files via batched child workflow
-        await workflow.execute_child_workflow(
-            ProcessItemsBatched.run,
-            ProcessItemsBatchedParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                plan_hash=params.plan_hash,
-                out_dir=dl.get("out_dir"),
-                items=items,
-            ),
-            id=f"process-batches-{params.collection_dataset}-{params.plan_hash}",
-            task_queue="processing-common-queue",
-            search_attributes=dataset_search_attributes(params.collection_dataset),
+        # 3) Process the downloaded files. The plan's items are split across several
+        # sibling workflows rather than driven from one.
+        #
+        # Temporal serialises workflow tasks WITHIN an execution: a workflow makes one
+        # decision at a time, no matter how many workers are free. A per-file chain is
+        # about a dozen of those round trips deep, so one driver's rate is capped by its
+        # own task loop, and measurably so -- a synthetic fan-out on this cluster tops
+        # out near 50 executions a second from one parent and passes 150 from thirty-two.
+        # Sibling drivers cost nothing but their own start event and lift that ceiling
+        # in proportion.
+        item_groups = [
+            items[i:i + PLAN_GROUP_SIZE]
+            for i in range(0, len(items), PLAN_GROUP_SIZE)
+        ] or [[]]
+
+        def _group_factory(index, group):
+            return lambda: workflow.execute_child_workflow(
+                ProcessItemsBatched.run,
+                ProcessItemsBatchedParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash,
+                    out_dir=dl.get("out_dir"),
+                    items=group,
+                ),
+                id=f"process-batches-{params.collection_dataset}-{params.plan_hash}-{index}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
+
+        group_results = await run_with_window(
+            [_group_factory(i, g) for i, g in enumerate(item_groups)],
+            len(item_groups),
         )
+        for res in group_results:
+            if isinstance(res, Exception):
+                raise res
 
         # Delete timeout: time at 100 kbps
         del_secs = 900+math.ceil(total_bytes / BPS_100_K)

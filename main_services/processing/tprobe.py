@@ -3,7 +3,7 @@ import asyncio, sys, time, uuid
 from datetime import timedelta
 from temporalio import activity, workflow
 from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio.worker import Worker, UnsandboxedWorkflowRunner
 
 import os
 Q = "probe-queue-" + uuid.uuid4().hex[:8]
@@ -66,9 +66,12 @@ async def main():
     workers = int(sys.argv[4]) if len(sys.argv) > 4 else 2
     slots = int(sys.argv[5]) if len(sys.argv) > 5 else 8
     client = await Client.connect("temporal:7233")
+    extra = {}
+    if os.environ.get("NO_SANDBOX"):
+        extra["workflow_runner"] = UnsandboxedWorkflowRunner()
     ws = [Worker(client, task_queue=Q, workflows=[FanOut, ChildPerItem],
                  activities=[noop], max_concurrent_activities=slots,
-                 max_concurrent_workflow_tasks=slots * 2)
+                 max_concurrent_workflow_tasks=slots * 2, **extra)
           for _ in range(workers)]
     import contextlib
     async with contextlib.AsyncExitStack() as stack:
