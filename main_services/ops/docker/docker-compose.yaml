@@ -597,11 +597,12 @@ volumes:
     driver: local
   manticore_data_v14:
     driver: local
-    driver: local
   elasticsearch_data:
     driver: local
   garage_meta:
+    driver: local
   garage_data:
+    driver: local
   temporal_elasticsearch:
     driver: local
   temporal_cassandra:

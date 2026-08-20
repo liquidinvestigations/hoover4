@@ -50,6 +50,16 @@ partition counts above their default of 4 made a fan-out across many concurrent
 workflows slower, and `history.persistenceMaxQPS` already defaults above anything worth
 writing there, so setting it would throttle rather than lift.
 
+### Docker Compose rejects YAML podman-compose accepts
+
+A duplicate mapping key is the one that bites: podman-compose takes the file and runs,
+Docker Compose refuses it with `mapping key "driver" already defined`. The usual way to
+create one is an edit that removes a volume's or service's name line and leaves the
+indented line under it to attach to whatever came before. `deploy.py` preflights every
+compose file it is about to use with a loader that rejects duplicates — note that
+PyYAML's own `safe_load` does not, it silently keeps the last one — so the failure is
+named on both hosts instead of only on the Docker one.
+
 ### `memswap_limit` is not the total here
 
 Every service in this file sets `mem_limit` and `memswap_limit` to the same value.

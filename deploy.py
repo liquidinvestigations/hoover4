@@ -887,6 +887,54 @@ def preflight_ai_enabled(cfg, side):
              "the ini has this tier off")
 
 
+def preflight_compose_yaml(cfg, side):
+    """Strict-parse the compose files this side will use, before anything is built.
+
+    podman-compose accepts YAML that Docker Compose rejects -- a duplicate mapping key
+    is the one that has actually happened here, from an edit that removed a service's
+    name line and left its `driver:` line behind to attach to the service above. That
+    file deploys fine on a podman host and fails on a Docker host with
+    `mapping key "driver" already defined`, which is a bad way to find out.
+
+    PyYAML's own `safe_load` is NOT strict enough on its own -- it accepts a duplicate
+    key and lets the last one win, which is exactly the case that has to be caught here,
+    so the loader below rejects duplicates explicitly.
+
+    Skipped when PyYAML is absent: this is a guard rail, not a dependency worth adding
+    to a script whose whole job is to run before anything is installed.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return
+
+    class _StrictLoader(yaml.SafeLoader):
+        pass
+
+    def _reject_duplicates(loader, node, deep=False):
+        seen = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.YAMLError(
+                    'duplicate mapping key "%s" on line %d (first seen on line %d)'
+                    % (key, key_node.start_mark.line + 1, seen[key] + 1))
+            seen[key] = key_node.start_mark.line
+        return {loader.construct_object(k, deep=deep): loader.construct_object(v, deep=deep)
+                for k, v in node.value}
+
+    _StrictLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _reject_duplicates)
+
+    for path in compose_files(cfg, side):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                yaml.load(fh, Loader=_StrictLoader)
+        except yaml.YAMLError as exc:
+            fail("%s is not valid compose YAML:\n    %s"
+                 % (path, str(exc).replace("\n", "\n    ")))
+
+
 def temporal_shard_count_in_store(rt):
     """The shard count the Temporal persistence store was initialised with, or None.
 
@@ -956,6 +1004,7 @@ def run_preflights(cfg, side, rt, starting):
         preflight_ports(cfg, side, rt)
     preflight_ai_enabled(cfg, side)
     preflight_ner_spacy(cfg, side)
+    preflight_compose_yaml(cfg, side)
     if starting:
         preflight_temporal_shards(cfg, side, rt)
 
