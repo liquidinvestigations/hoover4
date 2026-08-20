@@ -1214,7 +1214,10 @@ def compose_reset_temporal(cfg, side, rt):
         fail("--reset-temporal applies to the main stack; drop --ai-services")
     proj = project_name(side)
     run_or_fail(compose_command(cfg, side, rt, ["stop"] + TEMPORAL_SERVICES))
-    run_or_fail(compose_command(cfg, side, rt, ["rm", "-f"] + TEMPORAL_SERVICES))
+    # Removal goes through the runtime, not compose: podman-compose has no `rm`
+    # subcommand at all. These four carry a fixed `container_name`, so the compose
+    # service name and the container name are the same string.
+    rt.run(["rm", "-f", "--depend"] + TEMPORAL_SERVICES, capture_output=True, text=True)
     volumes = rt.run(["volume", "ls", "--format", "{{.Name}}"],
                      capture_output=True, text=True).stdout.split()
     doomed = [v for v in volumes if v.startswith(proj + "_")
