@@ -99,7 +99,11 @@ def _env_int(name: str, default: int) -> int:
 NER_CONCURRENCY = _env_int("AI_SERVER_NER_CONCURRENCY", 4)
 EMBED_CONCURRENCY = _env_int("AI_SERVER_EMBED_CONCURRENCY", 8)
 RERANK_CONCURRENCY = _env_int("AI_SERVER_RERANK_CONCURRENCY", 4)
-QUEUE_DEPTH = _env_int("AI_SERVER_QUEUE_DEPTH", 8)
+# Requests allowed to WAIT past the concurrency bound before the handler answers
+# 503. Not a knob: the three concurrency values are what the GPU is sized by, and a
+# deeper queue only converts a refusal Temporal can reschedule into a wait that
+# looks like a timeout at the caller.
+QUEUE_DEPTH = 8
 
 _ner_gate = CapabilityGate(NER_CONCURRENCY, QUEUE_DEPTH, "ner")
 _embed_gate = CapabilityGate(EMBED_CONCURRENCY, QUEUE_DEPTH, "embed")
@@ -244,6 +248,22 @@ def is_token_array(input_item) -> bool:
     return (isinstance(input_item, list) and 
             len(input_item) > 0 and 
             all(isinstance(x, int) for x in input_item))
+
+
+@app.on_event("startup")
+async def widen_the_blocking_thread_limiter():
+    """Give the ``def`` handlers more threads than the gates can ever hold.
+
+    A plain ``def`` endpoint runs on Starlette's anyio thread limiter, whose default
+    is 40 tokens -- the same order as the three gates' combined
+    ``concurrency + queue_depth``. Hitting the limiter first would put requests into
+    an invisible wait instead of the 503 the caller can act on, which is the exact
+    behaviour admission control exists to replace.
+    """
+    import anyio.to_thread
+
+    capacity = sum(g.concurrency + g.queue_depth for g in (_ner_gate, _embed_gate, _rerank_gate))
+    anyio.to_thread.current_default_thread_limiter().total_tokens = capacity + 32
 
 
 @app.on_event("startup")
