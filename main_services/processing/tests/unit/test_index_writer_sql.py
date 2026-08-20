@@ -13,12 +13,16 @@ from tasks.P6_index_data.activities import (
     OPTIMIZE_DISK_CHUNKS,
     OPTIMIZE_KILLED_RATE_PERCENT,
     empty_document_metadata,
+    index_vfs_structure,
     pages_replace_params,
     pages_replace_sql,
     pages_row_id,
     primary_filename,
     repr_manticore_tuple,
     should_optimize,
+    vfs_delete_ids_sql,
+    vfs_replace_sql,
+    vfs_stale_ids,
 )
 from tasks.P6_index_data.string_term_encodings import hash_string_to_uint63
 
@@ -237,3 +241,57 @@ class TestRowIds:
                     for page_id in range(3):
                         seen.add(pages_row_id(ds, file_hash, extractor, page_id))
         assert len(seen) == 24000
+
+
+def _vfs_row(node_key="k1", ancestors="()", **overrides):
+    row = {
+        "id": 11,
+        "collection_dataset": "testdata_testfiles",
+        "container_hash": "",
+        "node_key": node_key,
+        "parent_key": "p",
+        "ancestor_keys": ancestors,
+        "name": "inbox",
+        "path": "/inbox",
+        "kind": 1,
+        "file_hash": "",
+        "file_size_bytes": 0,
+        "depth": 1,
+    }
+    row.update(overrides)
+    return row
+
+
+class TestVfsReplaceSql:
+    def test_one_statement_per_chunk_not_per_node(self):
+        sql, params = vfs_replace_sql("testdata_vfs", [
+            _vfs_row(id=11, node_key="k1", ancestors="(1,2)"),
+            _vfs_row(id=22, node_key="k2", ancestors="()"),
+        ])
+        assert sql.count("REPLACE INTO") == 1
+        assert sql.count("%s") == 22  # 11 bound columns x 2 rows
+        assert "(1,2)" in sql
+        assert params[0] == 11 and params[11] == 22
+        assert "VALUES" in sql and sql.count("), (") == 1
+
+    def test_empty_chunk_is_refused(self):
+        with pytest.raises(ValueError):
+            vfs_replace_sql("testdata_vfs", [])
+
+
+class TestVfsReconciliation:
+    def test_stale_ids_are_those_missing_from_clickhouse(self):
+        indexed = [(11, "keep"), (22, "gone"), (33, "also-gone")]
+        assert vfs_stale_ids(indexed, {"keep", "new"}) == [22, 33]
+
+    def test_delete_sql_is_by_id_never_dataset_wide(self):
+        sql = vfs_delete_ids_sql("testdata_vfs", [22, 33])
+        assert sql == "DELETE FROM testdata_vfs WHERE id IN (22,33)"
+        assert "collection_dataset" not in sql
+
+    def test_index_vfs_structure_does_not_wipe_the_dataset(self):
+        import inspect
+        src = inspect.getsource(index_vfs_structure)
+        assert "DELETE FROM {vfs_table} WHERE collection_dataset" not in src
+        assert "vfs_delete_ids_sql" in src
+        assert "vfs_replace_sql" in src

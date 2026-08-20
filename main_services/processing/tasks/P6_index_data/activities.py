@@ -119,6 +119,65 @@ def pages_row_id(collection_dataset: str, file_hash: str, extracted_by: str, pag
     return hash_string_to_uint63(f"{collection_dataset}|{file_hash}|{extracted_by}|{page_id}")
 
 
+#: Bound columns of a vfs row, in the order :func:`vfs_replace_sql` writes them.
+#: ``ancestor_keys`` is an MVA and is interpolated per row, same as the pages MVAs.
+_VFS_SCALAR_COLUMNS = (
+    "id",
+    "collection_dataset",
+    "container_hash",
+    "node_key",
+    "parent_key",
+    "name",
+    "path",
+    "kind",
+    "file_hash",
+    "file_size_bytes",
+    "depth",
+)
+
+
+def vfs_replace_sql(vfs_table: str, rows: list[dict]) -> tuple[str, tuple]:
+    """One multi-row ``REPLACE INTO`` for a chunk of vfs nodes.
+
+    ``ancestor_keys`` cannot be bound, so each row interpolates its MVA tuple
+    literal. Every other column is a ``%s`` placeholder, flattened across the
+    chunk, and goes through ``manticore_execute`` (never a raw cursor).
+    """
+    if not rows:
+        raise ValueError("vfs_replace_sql needs at least one row")
+    groups = []
+    params: list = []
+    for row in rows:
+        ancestors = row.get("ancestor_keys") or "()"
+        groups.append(f"(%s, %s, %s, %s, %s, {ancestors}, %s, %s, %s, %s, %s, %s)")
+        params.extend(row[name] for name in _VFS_SCALAR_COLUMNS)
+    columns = (
+        "id, collection_dataset, container_hash, node_key, parent_key, "
+        "ancestor_keys, name, path, kind, file_hash, file_size_bytes, depth"
+    )
+    return (
+        f"REPLACE INTO {vfs_table} ({columns}) VALUES " + ", ".join(groups),
+        tuple(params),
+    )
+
+
+def vfs_stale_ids(indexed: list, current_keys: set[str]) -> list[int]:
+    """Manticore row ids whose ``node_key`` is not in the current ClickHouse tree."""
+    stale: list[int] = []
+    for row in indexed:
+        row_id, node_key = row[0], row[1]
+        if node_key not in current_keys:
+            stale.append(int(row_id))
+    return stale
+
+
+def vfs_delete_ids_sql(vfs_table: str, ids: list[int]) -> str:
+    """DELETE by primary key. Never a dataset-wide ``WHERE collection_dataset`` wipe."""
+    if not ids:
+        raise ValueError("vfs_delete_ids_sql needs at least one id")
+    return f"DELETE FROM {vfs_table} WHERE id IN ({','.join(str(int(i)) for i in ids)})"
+
+
 @activity.defn
 @with_heartbeat
 def index_text_pages(params: IndexShardParams) -> list[str]:
@@ -874,10 +933,16 @@ def build_email_graph(params: BuildEmailGraphParams) -> str:
 def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     """Copy one dataset's ``vfs_nodes`` into the collection's ``<coll>_vfs`` table.
 
-    Deterministic row ids from the node key, so a rebuild REPLACEs in place. The
-    ``ancestor_keys`` MVA is the FULL multi-parent closure, not the single ``parent_key``
-    chain: filtering on a folder must find everything under it even when the container
-    in between exists at two paths (`zip-in-multiple-locations`).
+    Deterministic row ids from the node key, so a REPLACE upserts in place. There is
+    no dataset-wide DELETE: wiping the tree first is an availability hole (the file
+    browser serves an empty tree for the duration of the rewrite) and is unnecessary
+    once ids are deterministic. Nodes that no longer exist in ClickHouse are removed
+    afterwards by id, so a stale key cannot survive, and during an ingest the row
+    count never falls to zero because of this activity.
+
+    The ``ancestor_keys`` MVA is the FULL multi-parent closure, not the single
+    ``parent_key`` chain: filtering on a folder must find everything under it even
+    when the container in between exists at two paths (`zip-in-multiple-locations`).
     """
     from database.manticore import get_manticore_client, vfs_table_name
 
@@ -917,41 +982,40 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
 
     key_ids = get_string_term_ids(params.collectionname, collection_dataset, 'vfs_node', all_keys)
 
+    current_keys: set[str] = set()
+    index_rows: list[dict] = []
+    for node, closure in zip(nodes, closures):
+        current_keys.add(node["node_key"])
+        index_rows.append({
+            "id": hash_string_to_uint63(node["node_key"]),
+            "collection_dataset": collection_dataset,
+            "container_hash": node["container_hash"] or "",
+            "node_key": node["node_key"],
+            "parent_key": node["parent_key"] or "",
+            "ancestor_keys": repr_manticore_tuple(sorted(key_ids[k] for k in closure)),
+            "name": os.path.basename(node["path"]) or "/",
+            "path": node["path"],
+            "kind": KIND_TO_INT[kind_from_wire(node["kind"])],
+            "file_hash": node["file_hash"] or "",
+            "file_size_bytes": int(node["file_size_bytes"]),
+            "depth": int(node["depth"]),
+        })
+
     with get_manticore_client() as client:
-        # Clear the dataset's rows first, then write the tree back. A REPLACE only
-        # overwrites the keys it is given, so a node that no longer exists would survive
-        # every future rebuild and keep answering the tree — and the whole point of this
-        # activity is that `vfs_nodes` is the truth. The gap is the duration of one
-        # dataset's rebuild, during which the tree is being rewritten anyway.
-        manticore_execute(
-            client, f"DELETE FROM {vfs_table} WHERE collection_dataset = %s",
+        for chunk in chunks(index_rows, INDEX_ROW_CHUNK_SIZE):
+            sql, bound = vfs_replace_sql(vfs_table, list(chunk))
+            manticore_execute(client, sql, bound)
+            client.commit()
+        # Reads of attribute columns are safe on a cursor; writes of corpus text are
+        # not. node_key is an identifier we minted, not document text.
+        cur = client.cursor()
+        cur.execute(
+            f"SELECT id, node_key FROM {vfs_table} WHERE collection_dataset = %s",
             (collection_dataset,),
         )
-        client.commit()
-        for start in range(0, len(nodes), INDEX_ROW_CHUNK_SIZE):
-            for node, closure in zip(nodes[start:start + INDEX_ROW_CHUNK_SIZE],
-                                     closures[start:start + INDEX_ROW_CHUNK_SIZE]):
-                ancestors = repr_manticore_tuple(sorted(key_ids[k] for k in closure))
-                manticore_execute(
-                    client,
-                    f"""REPLACE INTO {vfs_table} (
-                            id, collection_dataset, container_hash, node_key, parent_key,
-                            ancestor_keys, name, path, kind, file_hash, file_size_bytes, depth
-                        ) VALUES (%s, %s, %s, %s, %s, {ancestors}, %s, %s, %s, %s, %s, %s)""",
-                    (
-                        hash_string_to_uint63(node['node_key']),
-                        collection_dataset,
-                        node['container_hash'] or '',
-                        node['node_key'],
-                        node['parent_key'] or '',
-                        os.path.basename(node['path']) or '/',
-                        node['path'],
-                        KIND_TO_INT[kind_from_wire(node['kind'])],
-                        node['file_hash'] or '',
-                        int(node['file_size_bytes']),
-                        int(node['depth']),
-                    ),
-                )
+        stale = vfs_stale_ids(cur.fetchall() or [], current_keys)
+        for chunk in chunks(stale, INDEX_ROW_CHUNK_SIZE):
+            manticore_execute(client, vfs_delete_ids_sql(vfs_table, list(chunk)))
             client.commit()
         client.commit()
     log.info("[P6] %s: indexed %d nodes into %s", collection_dataset, len(nodes), vfs_table)
