@@ -35,6 +35,14 @@ second from a single parent and passes 150 from thirty-two. `ExecuteSinglePlan` 
 its items into groups of `PLAN_GROUP_SIZE` and runs one `ProcessItemsBatched` per group,
 which costs a start event each and lifts the ceiling in proportion.
 
+A child workflow is keyed by the item hash, so **a plan may not list a hash twice**.
+`get_plan_items_metadata` joins `blobs`, which is a ReplacingMergeTree it does not read
+`FINAL`, so a hash whose rows have not merged yet joins more than once; the query
+collapses that with `LIMIT 1 BY`, and `ExecuteSinglePlan` drops duplicates again before
+grouping. Sequential batches used to tolerate a duplicate — the second start reused a
+completed id — but sibling drivers run them at the same time, where the second is a
+`WorkflowAlreadyStartedError` and the file silently never parses.
+
 `ProcessItemsBatched` also continues as new past `MAX_ITEMS_PER_RUN` items. Each file is
 a child workflow and so a handful of events on that execution's history; Temporal's
 51,200-event cap is a hard failure of the whole plan with nothing partial recorded, not a

@@ -349,9 +349,27 @@ class ExecuteSinglePlan:
         # out near 50 executions a second from one parent and passes 150 from thirty-two.
         # Sibling drivers cost nothing but their own start event and lift that ceiling
         # in proportion.
+        # Deduplicate before splitting. A child workflow is keyed by the item hash, so
+        # the same hash landing in two groups means two concurrent starts of one id --
+        # a WorkflowAlreadyStartedError that loses the file. `get_plan_items_metadata`
+        # is the one that must not produce duplicates and no longer does; this stays as
+        # the guard, because the cost of being wrong here is a file that never parses
+        # and the cost of the guard is a set.
+        seen_hashes: set = set()
+        unique_items = []
+        for it in items:
+            key = (it.get("item_hash") or "") if isinstance(it, dict) else ""
+            if key in seen_hashes:
+                continue
+            seen_hashes.add(key)
+            unique_items.append(it)
+        if len(unique_items) != len(items):
+            log.warning("[P2] plan %s listed %d items for %d distinct hashes",
+                        params.plan_hash, len(items), len(unique_items))
+
         item_groups = [
-            items[i:i + PLAN_GROUP_SIZE]
-            for i in range(0, len(items), PLAN_GROUP_SIZE)
+            unique_items[i:i + PLAN_GROUP_SIZE]
+            for i in range(0, len(unique_items), PLAN_GROUP_SIZE)
         ] or [[]]
 
         def _group_factory(index, group):

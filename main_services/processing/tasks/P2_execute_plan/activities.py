@@ -74,6 +74,13 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
 
+    # `LIMIT 1 BY h.item_hash` is load-bearing, not tidiness. `blobs` is a
+    # ReplacingMergeTree and this join does not read it FINAL, so a hash whose rows have
+    # not merged yet joins more than once and the same item comes back twice. The
+    # caller turns each item into a child workflow keyed by that hash, and two of them
+    # at the same time is a WorkflowAlreadyStartedError -- one file silently unparsed.
+    # Ordering by size descending first keeps the row that actually carries blob
+    # metadata when one of the duplicates joined nothing.
     sql = f"""
         SELECT h.item_hash,
                b.blob_size_bytes,
@@ -83,7 +90,8 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
           ON b.collection_dataset = h.collection_dataset AND b.blob_hash = h.item_hash
         WHERE h.collection_dataset = '{_escape(collection_dataset)}'
           AND h.plan_hash = '{_escape(plan_hash)}'
-        ORDER BY h.item_hash ASC
+        ORDER BY h.item_hash ASC, b.blob_size_bytes DESC NULLS LAST
+        LIMIT 1 BY h.item_hash
     """
 
     with get_collection_client(params.collectionname) as client:
