@@ -1301,7 +1301,18 @@ def compose_reset_temporal(cfg, side, rt):
     # Removal goes through the runtime, not compose: podman-compose has no `rm`
     # subcommand at all. These four carry a fixed `container_name`, so the compose
     # service name and the container name are the same string.
-    rt.run(["rm", "-f", "--depend"] + TEMPORAL_SERVICES, capture_output=True, text=True)
+    #
+    # `--depend` is podman-only -- docker rejects the flag, and because the volume
+    # removal below cannot proceed while a container still holds it, a silently failed
+    # `rm` turns into "volume is in use" several steps later. Fail loudly here instead.
+    args = ["rm", "-f"] + (["--depend"] if rt.name == "podman" else []) + TEMPORAL_SERVICES
+    run = rt.run(args, capture_output=True, text=True)
+    if run.returncode != 0:
+        still = rt.run(["ps", "-a", "--format", "{{.Names}}"],
+                       capture_output=True, text=True).stdout.split()
+        left = [c for c in TEMPORAL_SERVICES if c in still]
+        if left:
+            fail("could not remove %s: %s" % (", ".join(left), run.stderr.strip()))
     volumes = rt.run(["volume", "ls", "--format", "{{.Name}}"],
                      capture_output=True, text=True).stdout.split()
     doomed = [v for v in volumes if v.startswith(proj + "_")
