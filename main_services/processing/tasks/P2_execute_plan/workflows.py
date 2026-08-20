@@ -182,6 +182,36 @@ class ExecutePlans:
             if futs:
                 await asyncio.gather(*futs)
 
+        # Rebuild the tree over what this batch just discovered, then copy it into
+        # Manticore. The pre-loop rebuild cannot see structure the batch's own P3
+        # produced -- an archive member whose content already had a blob adds a
+        # `vfs_files` row without adding a plan, so nothing restarts to pick it up.
+        # Both are dataset-scoped and once per invocation, not once per plan, which
+        # is what made this stage quadratic. Manticore vfs does not need to exist
+        # for the per-plan writers: `plan_shards` creates the table and they write
+        # pages and vectors, not the tree.
+        #
+        # This sits BEFORE the continuation and restart returns on purpose. Placing
+        # it after them means the tree is only ever indexed by whichever invocation
+        # happens to be terminal, so a child that raises -- or one that finds no
+        # plans left to run -- leaves the browser showing the previous ingest.
+        await workflow.execute_activity(
+            build_vfs_nodes,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        await workflow.execute_activity(
+            index_vfs_structure,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+
         if continuation_hash:
             # Use execute_as_new semantics by re-invoking ourselves fresh via child
             return await workflow.execute_child_workflow(
@@ -231,23 +261,6 @@ class ExecutePlans:
             except Exception as e:
                 log.error(f"[P2] Error executing restart plans: {e}")
                 return f"error executing restart plans: {e}"
-
-        # Terminal invocation: no continuation hash, no new-blobs restart. Manticore
-        # vfs does not need to exist for the writers (plan_shards creates the table,
-        # and they write pages/vectors, not the tree). Copy ClickHouse vfs_nodes once
-        # here rather than once per plan. A child ExecutePlans that continues or
-        # restarts is the one that indexes vfs.
-        await workflow.execute_activity(
-            index_vfs_structure,
-            BuildVfsNodesParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-            ),
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
 
         return f"executed {len(plan_hashes)} plans"
 

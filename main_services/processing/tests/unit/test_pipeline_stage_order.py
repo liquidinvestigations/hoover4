@@ -150,9 +150,9 @@ def test_index_dataset_plan_does_not_rebuild_the_dataset_tree():
 
 
 def test_execute_plans_rebuilds_the_tree_once_per_batch():
-    """ClickHouse vfs and canonical types before the per-plan children; Manticore
-    vfs after them, on the terminal path (the call sits after the continuation
-    returns in source, so it only runs when this invocation does not continue)."""
+    """ClickHouse vfs and canonical types before the per-plan children; the rebuild
+    and the Manticore copy after them, and BEFORE the continuation and restart
+    returns so every invocation indexes the tree it just produced."""
     source = open(p2_workflows.__file__).read()
     ordered = [name for _, name in _execute_targets(source, "ExecutePlans")]
     for required in ("build_vfs_nodes", "resolve_canonical_file_type",
@@ -165,4 +165,30 @@ def test_execute_plans_rebuilds_the_tree_once_per_batch():
         < ordered.index("ExecuteSinglePlan") \
         < ordered.index("index_vfs_structure"), (
         f"tree rebuild must wrap the per-plan children: {ordered}"
+    )
+    # The pre-loop rebuild cannot see structure this batch's own P3 produced, so
+    # the tree is rebuilt again between the children and the Manticore copy.
+    assert ordered.count("build_vfs_nodes") == 2, (
+        f"build_vfs_nodes must run before and after the per-plan children: {ordered}"
+    )
+    assert ordered.index("ExecuteSinglePlan") \
+        < len(ordered) - 1 - ordered[::-1].index("build_vfs_nodes") \
+        < ordered.index("index_vfs_structure"), (
+        f"the second build_vfs_nodes must sit between the children and the copy: {ordered}"
+    )
+    # ExecutePlans hands off to a continuation or a restart child instead of
+    # returning normally. Indexing the tree after that hand-off means only whichever
+    # invocation happens to be terminal ever copies it, so a child that raises -- or
+    # one that finds no plans left -- leaves the browser on the previous ingest.
+    index_line = next(
+        line for line, name in _execute_targets(source, "ExecutePlans")
+        if name == "index_vfs_structure"
+    )
+    handoff_line = next(
+        n for n, text in enumerate(source.splitlines(), start=1)
+        if text.strip() == "if continuation_hash:"
+    )
+    assert index_line < handoff_line, (
+        f"index_vfs_structure (line {index_line}) must precede the continuation "
+        f"hand-off (line {handoff_line})"
     )

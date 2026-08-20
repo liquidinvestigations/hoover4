@@ -29,13 +29,17 @@ The dataset tree is rebuilt once per `ExecutePlans` batch, before the per-plan c
 restarts `ExecutePlans` after `ComputePlans`, and that next invocation rebuilds once for
 the new blobs.
 
-Manticore `<coll>_vfs` is upserted once on the **terminal** `ExecutePlans` invocation
-(no continuation hash, no new-blobs restart), after the children have run `plan_shards`
-(which creates the table). A child `ExecutePlans` that continues or restarts is the one
-that indexes vfs. The copy is incremental: `REPLACE` in multi-row chunks of 512, then a
-delete of Manticore rows whose `node_key` is not in the current ClickHouse tree. There
-is no dataset-wide `DELETE` first, so the file browser never sees an empty tree because
-of this activity.
+After the children, the tree is rebuilt a second time and then copied into Manticore
+`<coll>_vfs`. The second rebuild is not redundant: the pre-loop one cannot see structure
+this batch's own P3 produced, and an archive member whose content already had a blob adds
+a `vfs_files` row without adding a plan, so nothing restarts to pick it up. Both calls sit
+**before** the continuation and restart hand-offs, so every invocation indexes the plans
+it executed — indexing only on the terminal invocation means a child that raises, or one
+that finds no plans left, leaves the browser on the previous ingest.
+
+The copy is incremental: `REPLACE` in multi-row chunks of 512, then a delete of Manticore
+rows whose `node_key` is not in the current ClickHouse tree. There is no dataset-wide
+`DELETE` first, so the file browser never sees an empty tree because of this activity.
 
 `build_email_graph` stays inside `IndexDatasetPlan` (collection-scoped, still per plan).
 
