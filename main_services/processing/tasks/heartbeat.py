@@ -32,21 +32,29 @@ from temporalio import activity
 HEARTBEAT_INTERVAL = timedelta(seconds=15)
 
 # What the *caller* declares [user requirement: dropped or dead work is caught in
-# useful time]. With a 15 s beat this is an 8x margin, and the margin is the point.
+# useful time]. A 15 s beat inside a 30 s deadline is a 2x margin, and it is tight on
+# purpose.
 #
-# A beat is not a promise about the body: `activity.heartbeat()` is delivered through
-# the worker's event loop, which in these processes also carries every workflow task,
-# and the common tier runs a full activity slot per thread on a box whose parse burst
-# saturates every core. A deadline close to the beat interval therefore times out
-# activities that are merely waiting their turn -- and since the retry waits its turn
-# too, the activity is killed again: a permanent retry loop that reads exactly like a
-# wedged parser. At a 2x margin that happened to a 20-millisecond activity.
+# **Widening this makes things worse, not safer, and that is not intuitive.** The
+# deadline is not only how long until a dead activity is noticed; it is also how long a
+# wedged slot stays occupied before the fleet can reuse it. Under a parse burst the box
+# is oversubscribed enough that the worker occasionally cannot get a beat out in time,
+# and every second of deadline is then a second that slot is held by an activity nobody
+# is waiting on -- which starves the remaining slots, which makes the next beat late
+# too. It is a feedback loop, and the deadline is its gain.
 #
-# The cost of the wider deadline is bounded and small: every activity here is
-# idempotent on retry (watermark tables and ReplacingMergeTree dedup), so the only
-# thing lost is how quickly a genuinely dead worker is noticed, and two minutes is
-# still far inside "useful time". Raise it here and nowhere else.
-HEARTBEAT_TIMEOUT = timedelta(seconds=120)
+# Measured on the smoke fixture, same code and same fleet, only this number changed:
+#
+#     30 s deadline   ->  106 s wall,   4 retried activities
+#     120 s deadline  ->  220 s wall,  29 retried activities
+#
+# Four times the retries from a wider deadline. Every activity here is idempotent
+# (watermark tables and ReplacingMergeTree dedup), so an early retry costs a little
+# repeated work, while a late one costs the whole deadline of wall clock and takes the
+# rest of the fleet down with it. If timeouts show up under load, the thing to reduce is
+# how much the box is oversubscribed -- `common_workers` x `common_concurrency` -- not
+# the sensitivity of the detector.
+HEARTBEAT_TIMEOUT = timedelta(seconds=30)
 
 HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
 
