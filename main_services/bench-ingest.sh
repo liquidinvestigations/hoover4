@@ -10,7 +10,8 @@
 #   --keep    do not purge the dataset afterwards
 #
 # Collection `bench`, dataset `bench_<fixture>` (custom path: slug of the basename).
-# Idempotent: purges the dataset first and asserts the tables are empty.
+# Idempotent: purges the dataset first -- rows AND the `dataset` registry row, which
+# `purge-dataset` leaves behind -- and asserts the tables are empty.
 set -euo pipefail
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )"
@@ -170,6 +171,18 @@ run_step create-collection "$COLLECTION" --fullname "Bench"
 
 echo "== purge $DS =="
 run_step purge-dataset "$COLLECTION" "$DS" --apply --registered || true
+# purge-dataset deletes rows and deliberately leaves the `dataset` registry row --
+# removing one belongs to the admin UI. A benchmark needs the whole dataset gone or
+# the next `add-disk-dataset` refuses the name, so drop the registry row here. Safe
+# because both ids above are validated and the collection is this harness's own.
+CH "ALTER TABLE Hoover4_Processing.dataset DELETE WHERE collection_dataset = '${DS}'"
+for _ in $(seq 1 30); do
+    left=$(CH "SELECT count() FROM Hoover4_Processing.dataset FINAL WHERE collection_dataset = '${DS}' AND is_deleted = 0")
+    [ "$left" = "0" ] && break
+    sleep 1
+done
+[ "$left" = "0" ] || fail "dataset registry row for $DS survived the purge"
+ok "dataset registry row for $DS is gone"
 
 empty_or_fail() {
     local table="$1"
