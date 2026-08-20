@@ -1,0 +1,31 @@
+# Temporal dynamic config, bind-mounted over the empty file auto-setup ships.
+# Every key here answers a measurement taken against this pipeline; the image's
+# defaults are sized for a single-workflow demo, not for a fan-out of thousands of
+# activities against one task queue.
+
+# A task queue is sharded into partitions and a worker polls one at a time, so the
+# partition count bounds how much of a burst can be matched in parallel. The default
+# of 4 is what pins every task type's p99 queue wait at the same value the moment the
+# pipeline fans out. Reads must be >= writes, or tasks land in a partition nobody polls.
+matching.numTaskqueueWritePartitions:
+  - value: 16
+matching.numTaskqueueReadPartitions:
+  - value: 16
+
+# The batch workflow accumulates one result event per unit of work it dispatches, so a
+# large plan is thousands of events in a single execution. Warn well before the 51,200
+# hard cap, where the failure is the whole plan dying with nothing partial recorded.
+limit.historyCount.warn:
+  - value: 10000
+history.maximumBufferedEventsBatch:
+  - value: 500
+
+# Persistence rate limits, per host. The defaults throttle the history service long
+# before Cassandra is the constraint; on this deployment Cassandra is a 4-core, 4 GB
+# heap node that measures far below its own limits while the ingest runs.
+frontend.persistenceMaxQPS:
+  - value: 4000
+history.persistenceMaxQPS:
+  - value: 4000
+matching.persistenceMaxQPS:
+  - value: 4000

@@ -128,6 +128,7 @@ $EDITOR hoover4.ini      # ports, providers, secret file paths — never key val
 ./deploy --ai-services   # ai_services: the optional GPU tier (needs [ai_services] enabled = true)
 ./deploy --build         # rebuild images (force-recreates)
 ./deploy --reset         # wipe data volumes (model caches preserved unless --reset-caches)
+./deploy --reset-temporal # wipe Temporal's history only, keeping the corpus
 ./deploy --print-env     # show the generated .env, start nothing
 ```
 

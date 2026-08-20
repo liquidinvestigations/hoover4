@@ -14,6 +14,7 @@
 #   ./deploy --reset            down + remove data volumes (model caches preserved)
 #   ./deploy --reset --reset-caches
 #                               also remove the model caches (tens of GB re-download)
+#   ./deploy --reset-temporal   drop Temporal's history/visibility stores only
 #
 # SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
 # NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
@@ -202,6 +203,12 @@ cassandra_version      = 3.11.9
 elasticsearch_version  = 7.17.27
 temporal_version       = 1.23.1
 temporal_ui_version    = 2.26.2
+# Temporal history shards: a single-writer queue each, and their number caps
+# every workflow-history write in the deployment. The image default of 4 holds
+# the pipeline to about a dozen activity dispatches a second no matter how many
+# workers run. FIXED once the store is initialised -- changing it needs
+# `./deploy --reset-temporal`, which drops workflow history and nothing else.
+temporal_history_shards = 512
 minio_version          = RELEASE.2025-07-23T15-54-02Z
 
 # ---- LLM providers --------------------------------------------------------------

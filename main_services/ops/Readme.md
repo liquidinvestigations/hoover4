@@ -22,6 +22,32 @@ The stack includes:
 - Application services: the processing worker, the website, and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
+### Temporal's throughput knobs
+
+Two settings decide how fast the cluster will hand work to the pipeline, and both ship
+from the `auto-setup` image sized for a single-workflow demo.
+
+`persistence.numHistoryShards` comes from `NUM_HISTORY_SHARDS`, rendered from
+`[main_services] temporal_history_shards`. A history shard is a single-writer queue, so
+their number caps every workflow-history write in the deployment regardless of how many
+cores or worker processes exist. At the image default of 4 the pipeline dispatches about
+a dozen activities a second while the workers consume a fraction of one core, and every
+task type's queue wait shares the same p99 — the signature of a fleet that is waiting on
+the server rather than on itself. **The count is fixed for the life of the persistence
+store**: the server refuses to open a keyspace initialised with a different one.
+`deploy.py` preflights the running cluster against the ini and names both numbers rather
+than letting the server die with a Cassandra error, and `./deploy --reset-temporal` drops
+Temporal's Cassandra keyspace and Elasticsearch index so a new count can take. That reset
+loses workflow history, which retention already caps at 24 h with archival off, and
+touches no other volume.
+
+`temporal-dynamicconfig.yaml` is bind-mounted over `/etc/temporal/config/dynamicconfig/docker.yaml`,
+which the image ships as a zero-byte file — so without the mount every matching and
+persistence tunable is at its default too. The task-queue partition counts are the ones
+that matter for a fan-out: a worker polls one partition at a time, so the partition count
+bounds how much of a burst can be matched in parallel, and reads must never be below
+writes or tasks land in a partition nobody polls.
+
 ### Reading memory on the JVM services
 
 `temporal-cassandra` runs with `MAX_HEAP_SIZE=4G` and `HEAP_NEWSIZE=512M`, and a JVM

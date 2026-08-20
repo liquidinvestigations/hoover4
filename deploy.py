@@ -160,6 +160,12 @@ DEFAULTS = {
         "elasticsearch_version": "7.17.27",
         "temporal_version": "1.23.1",
         "temporal_ui_version": "2.26.2",
+        # A history shard is a single-writer queue, and their number caps every
+        # workflow-history write in the deployment no matter how many workers exist.
+        # auto-setup's development default of 4 holds the pipeline to about a dozen
+        # activity dispatches a second while the workers sit idle. This is FIXED for the
+        # life of the persistence store -- see --reset-temporal.
+        "temporal_history_shards": "512",
         "minio_version": "RELEASE.2025-07-23T15-54-02Z",
     },
     "llm_provider.selfhosted": {
@@ -361,6 +367,9 @@ def render_main_env(cfg):
     for key in ("cassandra_version", "elasticsearch_version", "temporal_version",
                 "temporal_ui_version", "minio_version"):
         env[key.upper()] = cfg.get(m, key)
+
+    # Read by auto-setup's config template as `persistence.numHistoryShards`.
+    env["NUM_HISTORY_SHARDS"] = cfg.get(m, "temporal_history_shards")
 
     # Endpoints derived from the provider choices.
     ai_host = container_reachable_host(cfg.get("ai_services", "host"))
@@ -843,6 +852,63 @@ def preflight_ai_enabled(cfg, side):
              "the ini has this tier off")
 
 
+def temporal_shard_count_in_store(rt):
+    """The shard count the Temporal persistence store was initialised with, or None.
+
+    The live server is asked first because it is authoritative and cheap. With the
+    server down, Cassandra still knows: shard-info rows are `type = 0` in
+    `temporal.executions` and their ids run 1..N. Returns None when neither is
+    reachable, which is the ordinary state of a stack that has never been started.
+    """
+    describe = rt.run(["exec", "temporal", "temporal", "operator", "cluster",
+                       "describe", "--address", "temporal:7233", "-o", "json"],
+                      capture_output=True, text=True)
+    if describe.returncode == 0:
+        try:
+            count = int(json.loads(describe.stdout).get("historyShardCount", 0))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            count = 0
+        if count > 0:
+            return count
+    cql = rt.run(["exec", "temporal-cassandra", "cqlsh", "-u", "cassandra",
+                  "-p", "cassandra", "-e",
+                  "SELECT shard_id FROM temporal.executions WHERE type=0 ALLOW FILTERING;"],
+                 capture_output=True, text=True)
+    if cql.returncode != 0:
+        return None
+    ids = [int(tok) for tok in cql.stdout.split() if tok.isdigit()]
+    return max(ids) if ids else None
+
+
+def preflight_temporal_shards(cfg, side, rt):
+    """Refuse to start against a store initialised with a different shard count.
+
+    `numHistoryShards` is immutable for the life of the persistence store: the server
+    will not open a keyspace that was set up with another value. Left to itself it dies
+    with a Cassandra error that names neither number, so catch it here and say what the
+    two values are and how to reconcile them.
+    """
+    if side != "main":
+        return
+    want = cfg.get("main_services", "temporal_history_shards")
+    try:
+        want = int(want)
+    except ValueError:
+        fail("[main_services] temporal_history_shards is not a number: %r" % want)
+    if want < 1:
+        fail("[main_services] temporal_history_shards must be at least 1")
+    have = temporal_shard_count_in_store(rt)
+    if have is None or have == want:
+        return
+    fail("Temporal's store is initialised with %d history shards but hoover4.ini asks "
+         "for %d. The count is fixed for the life of the store, so the server would "
+         "refuse to start.\n"
+         "    ./deploy --reset-temporal    drop Temporal's history and re-initialise "
+         "at %d (leaves ClickHouse, MinIO and Manticore alone)\n"
+         "    set temporal_history_shards = %d in hoover4.ini to keep the store as it is"
+         % (have, want, want, have))
+
+
 def run_preflights(cfg, side, rt, starting):
     preflight_os()
     preflight_runtime(rt)
@@ -855,6 +921,8 @@ def run_preflights(cfg, side, rt, starting):
         preflight_ports(cfg, side, rt)
     preflight_ai_enabled(cfg, side)
     preflight_ner_spacy(cfg, side)
+    if starting:
+        preflight_temporal_shards(cfg, side, rt)
 
 
 # --------------------------------------------------------------------------------------
@@ -1126,6 +1194,43 @@ def compose_reset(cfg, side, rt, reset_caches):
             print("reset: removed volume %s" % vol)
 
 
+# Temporal's own persistence: the workflow history store and its visibility index.
+# Scoped separately from --reset because the shard count can only change by dropping
+# them, and there is no reason to lose the corpus to do it.
+TEMPORAL_SERVICES = ["temporal-ui", "temporal", "temporal-cassandra",
+                     "temporal-elasticsearch"]
+TEMPORAL_VOLUME_SUFFIXES = ("temporal_cassandra", "temporal_elasticsearch")
+
+
+def compose_reset_temporal(cfg, side, rt):
+    """Drop Temporal's history and visibility stores, keeping every other volume.
+
+    What is lost is workflow history, which retention already caps at 24 h with
+    archival off. What is kept is everything the corpus lives in -- ClickHouse, MinIO,
+    Manticore, Redis. Running ingests do not survive: their workflows are gone, and
+    P0 re-scans a dataset from disk on the next run.
+    """
+    if side != "main":
+        fail("--reset-temporal applies to the main stack; drop --ai-services")
+    proj = project_name(side)
+    run_or_fail(compose_command(cfg, side, rt, ["stop"] + TEMPORAL_SERVICES))
+    run_or_fail(compose_command(cfg, side, rt, ["rm", "-f"] + TEMPORAL_SERVICES))
+    volumes = rt.run(["volume", "ls", "--format", "{{.Name}}"],
+                     capture_output=True, text=True).stdout.split()
+    doomed = [v for v in volumes if v.startswith(proj + "_")
+              and any(v.endswith(sfx) for sfx in TEMPORAL_VOLUME_SUFFIXES)]
+    if not doomed:
+        print("reset-temporal: no temporal volumes to remove")
+    else:
+        run = rt.run(["volume", "rm", "-f"] + doomed, capture_output=True, text=True)
+        if run.returncode != 0:
+            fail("could not remove volumes: %s" % run.stderr.strip())
+        for vol in doomed:
+            print("reset-temporal: removed volume %s" % vol)
+    print("reset-temporal: run ./deploy to re-initialise at %s history shards"
+          % cfg.get("main_services", "temporal_history_shards"))
+
+
 def run_or_fail(cmd):
     print("+ %s" % " ".join(cmd))
     result = subprocess.run(cmd)
@@ -1167,6 +1272,10 @@ def main(argv=None):
                              "(model caches and Serena are preserved)")
     parser.add_argument("--reset-caches", action="store_true",
                         help="with --reset: also remove the model-cache volumes")
+    parser.add_argument("--reset-temporal", action="store_true",
+                        help="drop Temporal's history and visibility stores only, "
+                             "keeping ClickHouse/MinIO/Manticore; required to change "
+                             "temporal_history_shards")
     args = parser.parse_args(argv)
 
     side = "ai" if args.ai_services else "main"
@@ -1196,7 +1305,7 @@ def main(argv=None):
             print(" ".join(serena_command(cfg, rt, action)))
         return 0
 
-    starting = not (args.down or args.reset)
+    starting = not (args.down or args.reset or args.reset_temporal)
     run_preflights(cfg, side, rt, starting)
 
     # Render the generated .env next to the compose files.
@@ -1214,6 +1323,10 @@ def main(argv=None):
 
     if args.reset:
         compose_reset(cfg, side, rt, args.reset_caches)
+        return 0
+
+    if args.reset_temporal:
+        compose_reset_temporal(cfg, side, rt)
         return 0
 
     if side == "ai":
