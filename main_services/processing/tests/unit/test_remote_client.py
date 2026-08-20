@@ -24,9 +24,11 @@ def _clean_breaker():
 
 
 class _Response:
-    def __init__(self, payload=None, error=None):
+    def __init__(self, payload=None, error=None, status_code=200, headers=None):
         self._payload = payload or {}
         self._error = error
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self):
         if self._error is not None:
@@ -167,9 +169,25 @@ def test_http_errors_propagate_rather_than_falling_back(monkeypatch):
     """A 500 means the host is alive and broken. Failing the activity makes
     Temporal retry it; degrading to CPU would mask the fault."""
     monkeypatch.setattr(requests, "post", lambda *a, **kw: _Response(
-        error=requests.HTTPError("boom")))
+        error=requests.HTTPError("boom"), status_code=500))
     with pytest.raises(requests.HTTPError):
         remote.post_json([GPU, CPU], {})
+
+
+def test_http_503_is_retryable_and_does_not_fall_back(monkeypatch):
+    """Queue-full is a live, busy GPU. Temporal retries; spaCy is not the answer."""
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append(url)
+        return _Response(status_code=503, headers={"Retry-After": "5"})
+
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(requests.HTTPError) as excinfo:
+        remote.post_json([GPU, CPU], {})
+    assert calls == [GPU[1]], "must not degrade to the CPU twin on 503"
+    assert excinfo.value.response.status_code == 503
+    assert not remote._BREAKER.is_open(GPU[1]), "503 must not open the breaker"
 
 
 def test_no_endpoint_configured_is_a_clear_error(monkeypatch):

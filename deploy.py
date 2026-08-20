@@ -79,6 +79,10 @@ DEFAULTS = {
         "half_precision": "true",
         "torch_compile": "false",
         "hf_token_file": "",
+        # Per-capability GPU admission. NER saturates at 4; embeddings still scale at 8.
+        "ai_server_ner_concurrency": "4",
+        "ai_server_embed_concurrency": "8",
+        "ai_server_rerank_concurrency": "4",
         # GPU OCR
         "easyocr_enabled": "true",
         "easyocr_port": "21962",
@@ -506,6 +510,9 @@ def render_ai_env(cfg):
     env["AI_SERVER_ENABLE_NER"] = cfg.get(a, "ner_enabled")
     env["AI_SERVER_ENABLE_EMBEDDINGS"] = cfg.get(a, "embeddings_enabled")
     env["AI_SERVER_ENABLE_RERANKER"] = cfg.get(a, "reranker_enabled")
+    env["AI_SERVER_NER_CONCURRENCY"] = cfg.get(a, "ai_server_ner_concurrency")
+    env["AI_SERVER_EMBED_CONCURRENCY"] = cfg.get(a, "ai_server_embed_concurrency")
+    env["AI_SERVER_RERANK_CONCURRENCY"] = cfg.get(a, "ai_server_rerank_concurrency")
     env["EMBEDDINGS_MODEL"] = cfg.get(a, "embeddings_model")
     env["EMBEDDINGS_DIM"] = cfg.get(a, "embeddings_dim")
     env["RERANKER_MODEL"] = cfg.get(a, "reranker_model")

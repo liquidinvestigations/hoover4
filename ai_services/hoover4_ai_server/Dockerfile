@@ -63,6 +63,7 @@ RUN python -m venv $VENV_PATH
 # Copy Python project files
 COPY ./hoover4_ai_server/pyproject.toml ./
 COPY ./hoover4_ai_server/hoover4_ai_server.py ./
+COPY ./hoover4_ai_server/admission.py ./
 COPY ./hoover4_ai_server/requirements.txt ./
 
 # Install dependencies in virtual environment
@@ -113,6 +114,7 @@ COPY --from=builder $VENV_PATH $VENV_PATH
 
 # Copy application files
 COPY ./hoover4_ai_server/hoover4_ai_server.py ./
+COPY ./hoover4_ai_server/admission.py ./
 COPY ./hoover4_ai_server/pyproject.toml ./
 
 # Expose the port the app runs on

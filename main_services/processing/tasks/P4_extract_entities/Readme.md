@@ -15,8 +15,8 @@ and worker, and so NER results are reusable when indexing is re-run.
   differ, and that difference is the only evidence an outage happened.
 - Send only the variants worth reading (below) and drop the values that are
   debris rather than entities (`tasks/entity_stoplist.py`).
-- Call the remote NER service in batches of `NLP_BATCH_TEXTS = 64` texts per
-  request, via `tasks.remote.post_json` over an ordered endpoint list
+- Call the remote NER service in batches of `NLP_BATCH_TEXTS = 32` texts per
+  request (and `NLP_BATCH_CHARS = 250_000` characters), via `tasks.remote.post_json` over an ordered endpoint list
   (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin, which is
   rendered only when `[main_services] ner_spacy_enabled = true` — off by default,
   because spaCy's accuracy on real corpora is poor and its noise makes the entity

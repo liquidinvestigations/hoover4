@@ -38,6 +38,9 @@ services:
       - AI_SERVER_ENABLE_NER=${AI_SERVER_ENABLE_NER:-true}
       - AI_SERVER_ENABLE_EMBEDDINGS=${AI_SERVER_ENABLE_EMBEDDINGS:-true}
       - AI_SERVER_ENABLE_RERANKER=${AI_SERVER_ENABLE_RERANKER:-true}
+      - AI_SERVER_NER_CONCURRENCY=${AI_SERVER_NER_CONCURRENCY:-4}
+      - AI_SERVER_EMBED_CONCURRENCY=${AI_SERVER_EMBED_CONCURRENCY:-8}
+      - AI_SERVER_RERANK_CONCURRENCY=${AI_SERVER_RERANK_CONCURRENCY:-4}
       # torch.compile costs several minutes of startup for a modest throughput gain and
       # has been the most common cause of "the AI server never becomes healthy".
       - ENABLE_TORCH_COMPILE=${AI_SERVER_ENABLE_TORCH_COMPILE:-false}

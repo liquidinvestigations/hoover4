@@ -25,7 +25,7 @@ Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-
 
 ### P4 - Extract Entities (NLP/NER)
 
-Runs named-entity recognition over parsed text content via the remote NER service, before indexing. Writes `entity_hit` rows and `nlp_processed` watermarks (including `text_bytes`). Texts are sent to the NER service in batches of `NLP_BATCH_TEXTS = 64`. NER failures are retried and then recorded in `processing_errors` — never silently swallowed.
+Runs named-entity recognition over parsed text content via the remote NER service, before indexing. Writes `entity_hit` rows and `nlp_processed` watermarks (including `text_bytes`). Texts are sent to the NER service in batches of `NLP_BATCH_TEXTS = 32`. NER failures are retried and then recorded in `processing_errors` — never silently swallowed.
 
 A variant that is a worse copy of another variant of the same document is not sent to the
 model at all (`text_sources.ner_reads_variant`: a mail file's MIME envelope beside its

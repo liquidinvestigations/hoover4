@@ -16,6 +16,8 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 import numpy as np
 import uvicorn
 
+from admission import CapabilityGate
+
 # Try to import tiktoken for token decoding (for LangChain compatibility)
 try:
     import tiktoken
@@ -79,6 +81,47 @@ EXPECTED_EMBEDDINGS_DIM = int(os.getenv("EMBEDDINGS_DIM", "384"))
 ENABLE_NER = os.getenv("AI_SERVER_ENABLE_NER", "true").lower() == "true"
 ENABLE_EMBEDDINGS = os.getenv("AI_SERVER_ENABLE_EMBEDDINGS", "true").lower() == "true"
 ENABLE_RERANKER = os.getenv("AI_SERVER_ENABLE_RERANKER", "true").lower() == "true"
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        logger.warning("%s=%r is not an int; using %s", name, raw, default)
+        return default
+
+
+# Per-capability pools. Defaults are the measured saturation points (NER 4,
+# embeddings 8, rerank 4). Rendered from hoover4.ini, never literals at the
+# call site. The event loop must never hold the GPU: handlers are plain def
+# and inference runs on these executors.
+NER_CONCURRENCY = _env_int("AI_SERVER_NER_CONCURRENCY", 4)
+EMBED_CONCURRENCY = _env_int("AI_SERVER_EMBED_CONCURRENCY", 8)
+RERANK_CONCURRENCY = _env_int("AI_SERVER_RERANK_CONCURRENCY", 4)
+QUEUE_DEPTH = _env_int("AI_SERVER_QUEUE_DEPTH", 8)
+
+_ner_gate = CapabilityGate(NER_CONCURRENCY, QUEUE_DEPTH, "ner")
+_embed_gate = CapabilityGate(EMBED_CONCURRENCY, QUEUE_DEPTH, "embed")
+_rerank_gate = CapabilityGate(RERANK_CONCURRENCY, QUEUE_DEPTH, "rerank")
+
+
+def _run_on_gate(gate: CapabilityGate, fn, *args, **kwargs):
+    """Run ``fn`` on ``gate``'s pool, or 503 + Retry-After if the queue is full.
+
+    /health does not go through here: readiness must stay answerable while a
+    capability is at capacity.
+    """
+    if not gate.try_acquire():
+        raise HTTPException(
+            status_code=503,
+            detail=f"{gate.name} queue is full",
+            headers={"Retry-After": "5"},
+        )
+    try:
+        return gate.submit(fn, *args, **kwargs)
+    finally:
+        gate.release()
 
 # Performance optimization settings
 OPTIMAL_BATCH_SIZE = int(os.getenv("OPTIMAL_BATCH_SIZE", "32"))  # Configurable batch size
@@ -326,7 +369,7 @@ async def list_models():
     }
 
 @app.post("/v1/embeddings")
-async def create_embeddings(request: EmbeddingRequest):
+def create_embeddings(request: EmbeddingRequest):
     """Create embeddings (OpenAI compatible API)"""
     global model
     
@@ -394,16 +437,20 @@ async def create_embeddings(request: EmbeddingRequest):
             else:
                 processed_texts.append(text)
         
-        # Generate embeddings with optimized batch processing
-        with torch.no_grad():  # Disable gradient computation for inference
-            embeddings = model.encode(
-                processed_texts,
-                batch_size=min(OPTIMAL_BATCH_SIZE, len(processed_texts)),
-                convert_to_tensor=False,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-                device=model.device  # Ensure consistent device usage
-            )
+        # Generate embeddings with optimized batch processing. Runs on the
+        # embed pool so the event loop stays free for /health.
+        def _encode():
+            with torch.no_grad():
+                return model.encode(
+                    processed_texts,
+                    batch_size=min(OPTIMAL_BATCH_SIZE, len(processed_texts)),
+                    convert_to_tensor=False,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                    device=model.device,
+                )
+
+        embeddings = _run_on_gate(_embed_gate, _encode)
         
         # Convert to list format
         if isinstance(embeddings, np.ndarray):
@@ -440,7 +487,7 @@ async def create_embeddings(request: EmbeddingRequest):
         raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
 
 @app.post("/v1/rerank")
-async def rerank_documents(request: RerankRequest):
+def rerank_documents(request: RerankRequest):
     """Rerank documents based on relevance to query"""
     global reranker
     
@@ -466,12 +513,15 @@ async def rerank_documents(request: RerankRequest):
         pairs = [[request.query, doc] for doc in request.documents]
         
         # Get relevance scores with optimized batch processing
-        with torch.no_grad():  # Disable gradient computation for inference
-            scores = reranker.predict(
-                pairs, 
-                batch_size=min(OPTIMAL_BATCH_SIZE, len(pairs)),
-                show_progress_bar=False
-            )
+        def _predict():
+            with torch.no_grad():
+                return reranker.predict(
+                    pairs,
+                    batch_size=min(OPTIMAL_BATCH_SIZE, len(pairs)),
+                    show_progress_bar=False,
+                )
+
+        scores = _run_on_gate(_rerank_gate, _predict)
         
         # Convert scores to float (in case they're numpy arrays)
         if isinstance(scores, np.ndarray):
@@ -518,7 +568,7 @@ async def rerank_documents(request: RerankRequest):
         raise HTTPException(status_code=500, detail=f"Error reranking documents: {str(e)}")
 
 @app.post("/v1/extract-entities")
-async def extract_entities(request: NERRequest):
+def extract_entities(request: NERRequest):
     """Extract named entities from text or list of texts using Hugging Face NER"""
     global ner_model
     
@@ -549,31 +599,25 @@ async def extract_entities(request: NERRequest):
         model_used = request.model or ner_model_name
         all_entities = []
         total_tokens = 0
-        
-        # Optimized batch processing for NER
-        if len(texts) == 1:
-            # Single text - process directly
-            ner_results = ner_model(texts[0])
-            text_results = [ner_results] if isinstance(ner_results, list) else [[ner_results]]
-        else:
-            # Multiple texts - use batch processing for better efficiency
+
+        def _ner_infer():
+            if len(texts) == 1:
+                ner_results = ner_model(texts[0])
+                return [ner_results] if isinstance(ner_results, list) else [[ner_results]]
             try:
-                # Process all texts in a single batch call
                 ner_results = ner_model(texts)
-                # Ensure results are properly structured
                 if isinstance(ner_results[0], dict):
-                    # Single result per text
-                    text_results = [[result] for result in ner_results]
-                else:
-                    # Multiple results per text (already batched)
-                    text_results = ner_results
+                    return [[result] for result in ner_results]
+                return ner_results
             except Exception as e:
                 logger.warning(f"Batch NER processing failed, falling back to sequential: {e}")
-                # Fallback to sequential processing
                 text_results = []
                 for text in texts:
                     result = ner_model(text)
                     text_results.append(result if isinstance(result, list) else [result])
+                return text_results
+
+        text_results = _run_on_gate(_ner_gate, _ner_infer)
         
         # Process results from all texts
         for text_idx, text_ner_results in enumerate(text_results):
@@ -670,7 +714,11 @@ async def health_check():
             "optimal_batch_size": OPTIMAL_BATCH_SIZE,
             "max_sequence_length": MAX_SEQUENCE_LENGTH,
             "half_precision_enabled": ENABLE_HALF_PRECISION,
-            "torch_compile_enabled": ENABLE_TORCH_COMPILE
+            "torch_compile_enabled": ENABLE_TORCH_COMPILE,
+            "ner_concurrency": NER_CONCURRENCY,
+            "embed_concurrency": EMBED_CONCURRENCY,
+            "rerank_concurrency": RERANK_CONCURRENCY,
+            "queue_depth": QUEUE_DEPTH,
         }
     }
 

@@ -174,6 +174,11 @@ def post_json(
     error does not, because the host is alive and retrying elsewhere would hide
     a real server-side problem behind a silently degraded provider.
 
+    HTTP 503 is the admission-control signal (queue full). It is retryable —
+    Temporal reschedules the activity — and it is **not** a connect failure:
+    the host is alive and busy. It does not open the circuit breaker and it
+    does not fall through to a CPU twin. spaCy is not the answer to a full GPU.
+
     ``service`` names the capability for ``ai_service_telemetry`` (``ocr``, ``ner``,
     ``embeddings``). It is separate from ``provider`` because provider is *which endpoint
     answered* -- under fallback those differ, and that difference is the evidence an
@@ -226,6 +231,13 @@ def post_json(
 
         _BREAKER.record_success(url)
         elapsed_ms = (time.monotonic() - started) * 1000.0
+        if response.status_code == 503:
+            retry_after = response.headers.get("Retry-After", "5")
+            _record(service, provider, elapsed_ms, ok=False, detail="HTTP 503")
+            raise requests.HTTPError(
+                f"{provider} ({url}): queue is full (Retry-After: {retry_after})",
+                response=response,
+            )
         try:
             response.raise_for_status()
         except Exception:

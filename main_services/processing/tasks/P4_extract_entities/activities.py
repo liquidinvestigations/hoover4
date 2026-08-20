@@ -26,24 +26,25 @@ from .params import ExtractEntitiesParams, ExtractEntitiesResult
 
 log = logging.getLogger(__name__)
 
-# Texts per NER-service request. Bounds request size and makes partial progress
+# Texts per NER-service request. Aligns with the server's advertised
+# ``optimal_batch_size`` (32). Bounds request size and makes partial progress
 # possible (today's alternative is the whole activity chunk in one request).
-NLP_BATCH_TEXTS = 64
+NLP_BATCH_TEXTS = 32
 
 # Characters per NER-service request, and the limit that actually matters.
 #
 # A count alone does not bound anything: a text may be up to the service's
-# NER_MAX_TEXT_CHARS (1 M), so 64 of them is up to 64 MB of text in one request — and the
+# NER_MAX_TEXT_CHARS (1 M), so 32 of them is up to 32 MB of text in one request — and the
 # NER server holds a parsed document for every text in the batch at once. On a corpus of
 # large plain-text files that drove the spaCy container past a 4 GB limit, then past a
 # 12 GB one; the cgroup killed uvicorn and every in-flight activity failed with
 # `Connection refused` against a container that looked healthy by the time anyone looked.
 #
 # Budgeting by characters makes the peak a property of this constant instead of a
-# property of the corpus. The value equals the service's per-text ceiling, so the worst
-# batch is the same size as the worst single text — a document already too large to batch
-# with anything simply travels alone.
-NLP_BATCH_CHARS = 1_000_000
+# property of the corpus. The budget is well below one megabyte so a single request
+# cannot occupy a GPU slot for seconds; a document already too large to batch with
+# anything simply travels alone.
+NLP_BATCH_CHARS = 250_000
 
 
 def batch_texts_by_chars(texts, max_texts=NLP_BATCH_TEXTS, max_chars=NLP_BATCH_CHARS):

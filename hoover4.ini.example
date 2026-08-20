@@ -75,6 +75,12 @@ half_precision     = true
 ; torch.compile costs minutes of startup for a modest gain and has been the most
 ; common cause of "the AI server never becomes healthy" — keep false.
 torch_compile      = false
+; Concurrent in-flight inferences per capability. NER saturates at 4; embeddings
+; still scale at 8. The server sheds load with 503 + Retry-After past
+; concurrency + queue depth; /health does not wait for a model slot.
+ai_server_ner_concurrency    = 4
+ai_server_embed_concurrency  = 8
+ai_server_rerank_concurrency = 4
 ; host path to a HuggingFace token file, only for gated models (usually empty)
 hf_token_file      =
 

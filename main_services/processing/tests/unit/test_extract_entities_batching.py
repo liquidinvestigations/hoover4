@@ -51,9 +51,11 @@ class _FakeCHClient:
 
 
 class _FakeResponse:
-    def __init__(self, payload, error=None):
+    def __init__(self, payload, error=None, status_code=200):
         self._payload = payload
         self._error = error
+        self.status_code = status_code
+        self.headers = {}
 
     def raise_for_status(self):
         if self._error is not None:
@@ -260,7 +262,7 @@ class TestEmailEnvelopesDoNotBecomeEntities:
 class TestBatchCharacterBudget:
     """A batch bounded only by COUNT is not bounded at all.
 
-    Each text may be as long as the NER service's per-text ceiling, so 64 of them is
+    Each text may be as long as the NER service's per-text ceiling, so many of them is
     tens of megabytes in one request — and the service holds a parsed document for every
     text in the batch simultaneously. On a corpus of large plain-text files that walked
     the spaCy container through a 4 GB memory limit and then a 12 GB one, and each time

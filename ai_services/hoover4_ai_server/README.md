@@ -98,6 +98,11 @@ You can configure the server using these environment variables:
 - `ENABLE_HALF_PRECISION`: Enable FP16 for 2x speed boost (default: true)
 - `ENABLE_TORCH_COMPILE`: Enable PyTorch compilation (default: true)
 - `MAX_SEQUENCE_LENGTH`: Maximum token length (default: 512)
+- `AI_SERVER_NER_CONCURRENCY` / `AI_SERVER_EMBED_CONCURRENCY` /
+  `AI_SERVER_RERANK_CONCURRENCY`: in-flight inferences per capability (defaults
+  4 / 8 / 4). Rendered from `hoover4.ini`. Past `concurrency + queue_depth` the
+  handler returns 503 + `Retry-After` rather than blocking `/health`. Inference
+  runs on a per-capability thread pool so the event loop never holds the GPU.
 
 ## Requirements
 
