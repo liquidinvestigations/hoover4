@@ -14,6 +14,11 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 - Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `build_email_graph`, `optimize_shard_tables` in `activities.py`
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
+`build_vfs_nodes` and `resolve_canonical_file_type` run once per `ExecutePlans` batch,
+before the per-plan `IndexDatasetPlan` children. `index_vfs_structure` runs once on the
+terminal `ExecutePlans` batch. `IndexDatasetPlan` itself writes shards and the email
+graph.
+
 ## Technical Details
 
 A shard is ONE Manticore table, `<shard>_pages`, and the document's metadata is denormalized onto each of its rows. That is why `index_text_pages` writes both the text rows and the synthetic `filename_index` row: the result list reads the metadata off whichever row of a `GROUP BY file_hash` Manticore returns, so a row written with different values than its siblings is a document with a non-deterministic date and size. See [`../../database/Readme.md`](../../database/Readme.md) for why the alternative — a per-document table joined at query time — is both slower and wrong.
@@ -23,6 +28,12 @@ Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The col
 Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch — so a single file can present as dozens of unindexable ones.
 
 Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit` and are per SEGMENT, not per document; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
+
+`index_vfs_structure` copies ClickHouse `vfs_nodes` into `<coll>_vfs` with one multi-row
+`REPLACE INTO … VALUES (…),(…),…` per 512-node chunk. Deterministic ids make REPLACE
+idempotent, so there is no dataset-wide DELETE first. A reconciliation pass then deletes
+Manticore rows whose `node_key` is not in the current ClickHouse tree, by id. During an
+ingest the `_vfs` row count never falls to zero because of this activity.
 
 `optimize_shard_tables` runs once at the end of the workflow, per shard the plan wrote to, and compacts a table whose `killed_rate` is over 20% or whose `disk_chunks` is over 12 (`OPTIMIZE TABLE … OPTION cutoff=1`, asynchronous). It is a **storage** win — a re-ingested corpus reclaimed 32–58% of its disk — and not a latency one: killed rows are cheap to skip at query time. It skips itself entirely while another plan of the same collection is still in flight, because a merge competing with a write batch for I/O turns seconds into minutes.
 
@@ -59,10 +70,10 @@ records is the TRUE size of the component, never the reader's render budget.
 
 ## The canonical file type
 
-`resolve_canonical_file_type` runs once per dataset, after the VFS tree and before the
-shard writers. It reads every detector's `file_types` row and every parser's output, and
-writes one row per document to `file_type_canonical`: the winning MIME, the winning
-coarse type, the rule that chose it, and every detection that lost.
+`resolve_canonical_file_type` runs once per `ExecutePlans` batch, after the VFS tree and
+before the shard writers. It reads every detector's `file_types` row and every parser's
+output, and writes one row per document to `file_type_canonical`: the winning MIME, the
+winning coarse type, the rule that chose it, and every detection that lost.
 
 The rank table is in `canonical_file_type.py`. The rule that matters is the first one: a
 document is a docx because the docx parser read text out of it, not because a lookup

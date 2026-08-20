@@ -42,7 +42,17 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
     from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan, ChunkEmbedForPlanParams
-    from tasks.P6_index_data.workflows import IndexDatasetPlan, IndexDatasetPlanParams
+    from tasks.P6_index_data.workflows import (
+        INDEXING_TASK_QUEUE,
+        IndexDatasetPlan,
+        IndexDatasetPlanParams,
+    )
+    from tasks.P6_index_data.activities import (
+        build_vfs_nodes,
+        index_vfs_structure,
+        resolve_canonical_file_type,
+    )
+    from tasks.P6_index_data.params import BuildVfsNodesParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -127,6 +137,33 @@ class ExecutePlans:
             plan_hashes = plan_hashes[:1000]
             log.info(f"[P2] Continuation hash: {continuation_hash}")
 
+        # Dataset-scoped tree, once per ExecutePlans invocation, before any per-plan
+        # writer. document_metadata builds ancestor closures from ClickHouse vfs_nodes,
+        # so those writers must not run against an empty tree. Nested extraction
+        # restarts ExecutePlans after ComputePlans, and that next invocation rebuilds
+        # once for the new blobs. Canonical file type follows the tree (the empty-archive
+        # demotion counts a container's real members) and still precedes the writers.
+        vfs_params = BuildVfsNodesParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+        )
+        await workflow.execute_activity(
+            build_vfs_nodes,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        await workflow.execute_activity(
+            resolve_canonical_file_type,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+
         # 3) Run per-plan child workflows, in parallel batches of 16
         CONCURRENCY = 16
         for i in range(0, len(plan_hashes), CONCURRENCY):
@@ -194,6 +231,23 @@ class ExecutePlans:
             except Exception as e:
                 log.error(f"[P2] Error executing restart plans: {e}")
                 return f"error executing restart plans: {e}"
+
+        # Terminal invocation: no continuation hash, no new-blobs restart. Manticore
+        # vfs does not need to exist for the writers (plan_shards creates the table,
+        # and they write pages/vectors, not the tree). Copy ClickHouse vfs_nodes once
+        # here rather than once per plan. A child ExecutePlans that continues or
+        # restarts is the one that indexes vfs.
+        await workflow.execute_activity(
+            index_vfs_structure,
+            BuildVfsNodesParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
 
         return f"executed {len(plan_hashes)} plans"
 

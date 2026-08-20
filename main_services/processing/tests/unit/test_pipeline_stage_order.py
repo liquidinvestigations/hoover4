@@ -1,9 +1,8 @@
-"""Static regression guard: inside ExecuteSinglePlan, ExtractEntitiesForPlan
-must be awaited strictly before IndexDatasetPlan.
+"""Static regression guard: stage order inside ExecuteSinglePlan and ExecutePlans.
 
-This is the exact tangle plan part 5 untangles (NER used to run *inside* the
-indexing activity), so the stage order is pinned by an AST assertion over
-tasks/P2_execute_plan/workflows.py rather than by convention.
+ExtractEntitiesForPlan must be awaited strictly before IndexDatasetPlan. The same
+AST walk pins the dataset-scoped VFS activities on ExecutePlans (once per batch)
+and asserts IndexDatasetPlan no longer drives them.
 """
 
 import ast
@@ -110,4 +109,60 @@ def test_date_resolution_runs_after_parsing_and_before_indexing():
     assert order.index("ProcessItemsBatched") < order.index("resolve_document_dates") \
         < order.index("IndexDatasetPlan"), (
         f"date resolution must sit between parsing and indexing: {order}"
+    )
+
+
+def _execute_targets(source: str, class_name: str) -> list[tuple[int, str]]:
+    """``execute_activity`` / ``execute_child_workflow`` targets in ``Class.run``,
+    in source order (line number, name)."""
+    tree = ast.parse(source)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ClassDef) and node.name == class_name):
+            continue
+        for child in ast.walk(node):
+            if not (isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)):
+                continue
+            if not child.args:
+                continue
+            target = child.args[0]
+            if child.func.attr == "execute_child_workflow":
+                if isinstance(target, ast.Attribute) and target.attr == "run" \
+                        and isinstance(target.value, ast.Name):
+                    found.append((child.lineno, target.value.id))
+            elif child.func.attr == "execute_activity":
+                if isinstance(target, ast.Name):
+                    found.append((child.lineno, target.id))
+    return sorted(found)
+
+
+def test_index_dataset_plan_does_not_rebuild_the_dataset_tree():
+    """build_vfs_nodes / resolve_canonical_file_type / index_vfs_structure are
+    dataset-scoped. Driving them per plan is O(nodes x plans)."""
+    import tasks.P6_index_data.workflows as p6_workflows
+    names = [name for _, name in _execute_targets(
+        open(p6_workflows.__file__).read(), "IndexDatasetPlan"
+    )]
+    for forbidden in ("build_vfs_nodes", "resolve_canonical_file_type", "index_vfs_structure"):
+        assert forbidden not in names, (
+            f"IndexDatasetPlan must not execute {forbidden}: {names}"
+        )
+
+
+def test_execute_plans_rebuilds_the_tree_once_per_batch():
+    """ClickHouse vfs and canonical types before the per-plan children; Manticore
+    vfs after them, on the terminal path (the call sits after the continuation
+    returns in source, so it only runs when this invocation does not continue)."""
+    source = open(p2_workflows.__file__).read()
+    ordered = [name for _, name in _execute_targets(source, "ExecutePlans")]
+    for required in ("build_vfs_nodes", "resolve_canonical_file_type",
+                     "ExecuteSinglePlan", "index_vfs_structure"):
+        assert required in ordered, (
+            f"{required} is not executed by ExecutePlans: {ordered}"
+        )
+    assert ordered.index("build_vfs_nodes") \
+        < ordered.index("resolve_canonical_file_type") \
+        < ordered.index("ExecuteSinglePlan") \
+        < ordered.index("index_vfs_structure"), (
+        f"tree rebuild must wrap the per-plan children: {ordered}"
     )

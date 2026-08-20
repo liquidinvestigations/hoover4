@@ -18,7 +18,6 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .params import (
         BuildEmailGraphParams,
-        BuildVfsNodesParams,
         FinalizeIndexBatchParams,
         IndexDatasetPlanParams,
         IndexShardParams,
@@ -27,12 +26,9 @@ with workflow.unsafe.imports_passed_through():
     )
     from .activities import (
         build_email_graph,
-        build_vfs_nodes,
         index_text_pages,
         index_vectors,
-        index_vfs_structure,
         optimize_shard_tables,
-        resolve_canonical_file_type,
     )
     from .params import OptimizeShardsParams
     from .shard_planner import finalize_index_batch, plan_shards, record_indexed
@@ -73,31 +69,10 @@ class IndexDatasetPlan:
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
 
-        # The VFS tree, before anything reads it. `index_metadata` builds each document's
-        # ancestor closure from `vfs_nodes`, so a document indexed against a stale tree
-        # gets a closure missing whatever this plan just ingested — and nothing
-        # re-indexes it later. Dataset-scoped and idempotent, so running it once per plan
-        # is redundant work rather than wrong work.
-        await workflow.execute_activity(
-            build_vfs_nodes,
-            BuildVfsNodesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-
-        # The one definitive file type per document, from what the parsers produced.
-        # After the tree (the empty-archive demotion counts a container's real members)
-        # and before the writers, because `document_metadata` reads its output.
-        await workflow.execute_activity(
-            resolve_canonical_file_type,
-            BuildVfsNodesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
+        # ClickHouse vfs_nodes and the canonical file type are built once per
+        # ExecutePlans batch, before these per-plan children run. Manticore vfs is
+        # upserted once on the terminal batch. This workflow writes shards and the
+        # email graph.
 
         assignments = await workflow.execute_activity(
             plan_shards,
@@ -106,17 +81,6 @@ class IndexDatasetPlan:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=PLANNER_TASK_QUEUE,
-        )
-
-        # After plan_shards, which is what creates `<coll>_vfs`, and before the writers
-        # only because there is nothing to gain from overlapping them.
-        await workflow.execute_activity(
-            index_vfs_structure,
-            BuildVfsNodesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
         )
 
         chunks: list[ScheduledChunk] = []

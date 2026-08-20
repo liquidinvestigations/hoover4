@@ -80,9 +80,12 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   A file counts as a container only if something is inside it — being sniffed as an
   archive, or being an email, is a guess, and an email with no attachments rendered as a
   folder that opens onto nothing. What is inside a container hangs off the container FILE;
-  there is no `/` node in between.
-* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table,
-  clearing the dataset's rows first for the same reason.
+  there is no `/` node in between. `ExecutePlans` runs it once per batch, before the
+  per-plan writers.
+* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table
+  with multi-row REPLACE, then deletes Manticore rows whose `node_key` is not in the
+  current ClickHouse tree. No dataset-wide DELETE first. Once per terminal `ExecutePlans`
+  batch.
 * `index_text_pages` — one row per text segment plus one synthetic `filename_index` row
   per document carrying its basenames, each row also carrying the document's typed
   attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,
