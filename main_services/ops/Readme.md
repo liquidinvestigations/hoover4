@@ -22,6 +22,26 @@ The stack includes:
 - Application services: the processing worker, the website, and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
+### Reading memory on the JVM services
+
+`temporal-cassandra` runs with `MAX_HEAP_SIZE=4G` and `HEAP_NEWSIZE=512M`, and a JVM
+commits its whole heap at startup. `docker stats` therefore reports the container at
+almost its full memory limit from boot onwards, idle or not, and that number says nothing
+about pressure. `temporal-elasticsearch` behaves the same way.
+
+Ask the process instead:
+
+```
+docker exec temporal-cassandra nodetool info      # Heap Memory (MB): used / max
+docker exec temporal-cassandra nodetool gcstats   # Total GC Elapsed vs uptime
+docker exec temporal-cassandra nodetool tpstats   # dropped messages, per stage
+```
+
+A healthy node uses a small fraction of its heap, spends well under 1% of wall time in
+GC, and drops nothing. If a container-side figure is wanted, read `anon` from
+`/sys/fs/cgroup/memory.stat` — the `docker stats` total counts reclaimable page cache as
+usage.
+
 ## Common Endpoints (Local)
 
 Ports are ini keys in `hoover4.ini` (rendered by `deploy.py`); the values below are the
