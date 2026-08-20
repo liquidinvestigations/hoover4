@@ -41,12 +41,14 @@ Temporal's Cassandra keyspace and Elasticsearch index so a new count can take. T
 loses workflow history, which retention already caps at 24 h with archival off, and
 touches no other volume.
 
-`temporal-dynamicconfig.yaml` is bind-mounted over `/etc/temporal/config/dynamicconfig/docker.yaml`,
-which the image ships as a zero-byte file — so without the mount every matching and
-persistence tunable is at its default too. The task-queue partition counts are the ones
-that matter for a fan-out: a worker polls one partition at a time, so the partition count
-bounds how much of a burst can be matched in parallel, and reads must never be below
-writes or tasks land in a partition nobody polls.
+`temporal-dynamicconfig/` is bind-mounted over `/etc/temporal/config/dynamicconfig/`,
+whose `docker.yaml` the image ships as a zero-byte file. The DIRECTORY is mounted, not
+the file: a single-file bind mount follows the inode it was created with, so any editor
+that writes-and-renames leaves the container silently reading the old contents. The file
+is deliberately near-empty — measured against this pipeline, raising the task-queue
+partition counts above their default of 4 made a fan-out across many concurrent
+workflows slower, and `history.persistenceMaxQPS` already defaults above anything worth
+writing there, so setting it would throttle rather than lift.
 
 ### Reading memory on the JVM services
 
