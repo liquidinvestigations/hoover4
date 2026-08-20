@@ -50,6 +50,21 @@ partition counts above their default of 4 made a fan-out across many concurrent
 workflows slower, and `history.persistenceMaxQPS` already defaults above anything worth
 writing there, so setting it would throttle rather than lift.
 
+### `memswap_limit` is not the total here
+
+Every service in this file sets `mem_limit` and `memswap_limit` to the same value.
+Under Docker that spells "this much memory and no swap"; under podman-compose it does
+not — the rendered container gets `MemorySwap = 2 x Memory`, i.e. that much RAM *plus*
+that much swap. Nothing depends on the stricter reading today, but do not add something
+that does without checking the container rather than the file:
+
+```
+docker inspect <container> --format '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}'
+```
+
+`deploy.resources.limits`, which six services in this file still use, is ignored
+entirely by the v2 compose spec outside Swarm — those services have no limit at all.
+
 ### Reading memory on the JVM services
 
 `temporal-cassandra` runs with `MAX_HEAP_SIZE=4G` and `HEAP_NEWSIZE=512M`, and a JVM

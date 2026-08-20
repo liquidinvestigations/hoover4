@@ -276,10 +276,10 @@ services:
       # GARAGE_RPC_SECRET must be 32 bytes of hex even on a single node.
       - GARAGE_RPC_SECRET=${GARAGE_RPC_SECRET:-cbc5a1dbd1c832a3bdcb0abff4e5ffc950035febf867de39e9b079cec8863e1d}
       - GARAGE_ADMIN_TOKEN=${GARAGE_ADMIN_TOKEN:-hoover4-garage-admin-token}
-    # mem_limit + memswap_limit set to the same value is what actually gives "4 GB, no
-    # swap" here; `deploy.resources.limits` is ignored by the v2 compose spec outside
-    # Swarm. LMDB is mmap-backed, so the container's total reads near the limit as page
-    # cache -- see garage/Readme.md.
+    # `mem_limit`/`memswap_limit` are the pair that actually applies here;
+    # `deploy.resources.limits` is ignored by the v2 compose spec outside Swarm. LMDB is
+    # mmap-backed, so the container's total reads near the limit as page cache -- see
+    # garage/Readme.md.
     mem_limit: 4000M
     memswap_limit: 4000M
     healthcheck:
@@ -350,9 +350,13 @@ services:
     networks:
       - hoover4
     restart: unless-stopped
-    # Both, and equal: that is what gives "this much memory, no swap". The number is an
-    # ini key because it and the common-worker count have to be chosen together -- each
-    # worker process carries its own interpreter and its own Magika model.
+    # An ini key because this and the common-worker count have to be chosen together:
+    # each worker process carries its own interpreter and its own Magika model.
+    #
+    # podman-compose renders `memswap_limit` as memory PLUS swap, not as the total, so
+    # equal values give "N of RAM and N of swap" rather than "N and no swap" -- confirm
+    # with `docker inspect <c> --format '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}'`
+    # rather than reading the intent off this file.
     memswap_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
     mem_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
     volumes:
