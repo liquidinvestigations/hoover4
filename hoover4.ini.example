@@ -187,8 +187,8 @@ clickhouse_http_port      = 21900
 clickhouse_native_port    = 21901
 manticore_sql_port        = 21902
 manticore_http_port       = 21903
-minio_api_port            = 21904
-minio_console_port        = 21905
+garage_s3_port            = 21904   ; S3 API
+garage_admin_port         = 21905   ; admin API, bound to 127.0.0.1 only
 redis_port                = 21906
 temporal_grpc_port        = 21907
 temporal_http_port        = 21908
@@ -223,6 +223,13 @@ temporal_ui_version    = 2.26.2
 # `./deploy --reset-temporal`, which drops workflow history and nothing else.
 temporal_history_shards = 512
 minio_version          = RELEASE.2025-07-23T15-54-02Z
+# Garage, the S3 blob store. Pinned by tag AND manifest-LIST digest -- a
+# platform digest makes the image unresolvable on an aarch64 host.
+garage_version         = v2.3.0
+garage_image_digest    = sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
+# Declared, not measured: Garage sizes its partitions from this and reports the
+# store full past it. Getting it wrong surfaces as ingest errors hours in.
+garage_capacity        = 300G
 
 # ---- LLM providers --------------------------------------------------------------
 # Repeatable by name, several active at once. main_services talks to the selfhosted

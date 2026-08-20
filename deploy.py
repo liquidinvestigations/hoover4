@@ -143,8 +143,8 @@ DEFAULTS = {
         "clickhouse_native_port": "21901",
         "manticore_sql_port": "21902",
         "manticore_http_port": "21903",
-        "minio_api_port": "21904",
-        "minio_console_port": "21905",
+        "garage_s3_port": "21904",
+        "garage_admin_port": "21905",
         "redis_port": "21906",
         "temporal_grpc_port": "21907",
         "temporal_http_port": "21908",
@@ -176,7 +176,14 @@ DEFAULTS = {
         # activity dispatches a second while the workers sit idle. This is FIXED for the
         # life of the persistence store -- see --reset-temporal.
         "temporal_history_shards": "512",
-        "minio_version": "RELEASE.2025-07-23T15-54-02Z",
+        # Pinned by tag AND manifest-list digest. The LIST digest, not a platform one:
+        # pinning the amd64 digest makes the image unresolvable on the aarch64 host.
+        "garage_version": "v2.3.0",
+        "garage_image_digest":
+            "sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690",
+        # Declared, not measured: Garage sizes partitions from it and reports the store
+        # full past it. A wrong value surfaces as ingest errors hours in, not at deploy.
+        "garage_capacity": "300G",
     },
     "llm_provider.selfhosted": {
         "enabled": "false",
@@ -233,8 +240,8 @@ MAIN_PUBLISHED = [
     ("clickhouse", "main_services", "clickhouse_native_port"),
     ("manticore", "main_services", "manticore_sql_port"),
     ("manticore", "main_services", "manticore_http_port"),
-    ("minio-s3", "main_services", "minio_api_port"),
-    ("minio-s3", "main_services", "minio_console_port"),
+    ("garage", "main_services", "garage_s3_port"),
+    ("garage", "main_services", "garage_admin_port"),
     ("redis", "main_services", "redis_port"),
     ("temporal", "main_services", "temporal_grpc_port"),
     ("temporal", "main_services", "temporal_http_port"),
@@ -375,8 +382,12 @@ def render_main_env(cfg):
     env["SERENA_PORT"] = cfg.get(m, "serena_port")
 
     for key in ("cassandra_version", "elasticsearch_version", "temporal_version",
-                "temporal_ui_version", "minio_version"):
+                "temporal_ui_version", "garage_version", "garage_image_digest",
+                "garage_capacity"):
         env[key.upper()] = cfg.get(m, key)
+    # MinIO still runs on the network for the clients that have not moved yet; it no
+    # longer publishes a host port, so only its image pin is rendered.
+    env["MINIO_VERSION"] = "RELEASE.2025-07-23T15-54-02Z"
 
     # Read by auto-setup's config template as `persistence.numHistoryShards`.
     env["NUM_HISTORY_SHARDS"] = cfg.get(m, "temporal_history_shards")
