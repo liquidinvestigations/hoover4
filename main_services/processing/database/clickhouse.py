@@ -13,14 +13,21 @@ Pick the client by what you are reading, never by convenience:
 :func:`get_global_client` for global tables, :func:`get_collection_client` when the
 collection is known, :func:`get_client_for_dataset` when only a ``collection_dataset``
 is in hand.
+
+Clients are pooled per ``(thread, database)`` for the process lifetime. Insert
+durability is per table: :func:`insert_idempotent` / :func:`insert_arrow_idempotent`
+skip the async-insert wait; everything else waits, including unmarked
+``client.insert`` calls.
 """
 
 import logging
 import pathlib
 import re
+import threading
 from contextlib import contextmanager
 
 import clickhouse_connect
+from clickhouse_connect.driver.httputil import get_pool_manager
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +44,109 @@ COLLECTION_MIGRATIONS_PATH = str(_MIGRATIONS_ROOT / 'db_collection_migrations')
 
 CLIENT_SETTINGS = {
     'async_insert': 1,
+    # Default: wait so an unmarked insert stays durable across a ClickHouse restart.
+    # Idempotent pipeline tables opt out per call via insert_idempotent /
+    # insert_arrow_idempotent; see those helpers and database/Readme.md.
     'wait_for_async_insert': 1,
 }
+
+# Pipeline data written inside a re-runnable activity. A restart can lose the
+# async-insert buffer; the stage re-runs and the anti-joins converge.
+IDEMPOTENT_INSERT_TABLES = frozenset({
+    'file_types',
+    'text_content',
+    'tika_metadata',
+    'entity_hit',
+    'nlp_processed',
+    'processing_task_runs',
+    'ai_service_telemetry',
+})
+
+# Ledgers and watermarks whose loss silently strands work. Unmarked inserts
+# also wait (CLIENT_SETTINGS); this set is the documented durable side.
+DURABLE_INSERT_TABLES = frozenset({
+    'processing_plan_finished',
+    'index_state',
+    'manticore_shards',
+    'manticore_shard_assignments',
+    'dataset',
+    'processing_plans',
+    'schema_versions',
+})
+
+_INSERT_WAIT = {'wait_for_async_insert': 1}
+_INSERT_NO_WAIT = {'wait_for_async_insert': 0}
+
+# Common and tika workers run 8 concurrent activities; nested resolve_collection
+# holds a second client on the same thread. urllib3's default maxsize is 8 and
+# discards the extra TCP connections under that load.
+HTTP_POOL_MAXSIZE = 32
+HTTP_POOL_NUM_POOLS = 8
+
+_http_pool = None
+_http_pool_lock = threading.Lock()
+_tls = threading.local()
+
+
+def _shared_pool_manager():
+    """One urllib3 pool for the process, sized above the activity-slot count."""
+    global _http_pool
+    if _http_pool is not None:
+        return _http_pool
+    with _http_pool_lock:
+        if _http_pool is None:
+            _http_pool = get_pool_manager(
+                maxsize=HTTP_POOL_MAXSIZE,
+                num_pools=HTTP_POOL_NUM_POOLS,
+            )
+        return _http_pool
+
+
+class _ThreadClients:
+    def __init__(self):
+        self.by_db: dict[str, object] = {}
+        self.refs: dict[str, int] = {}
+
+
+def _thread_clients() -> _ThreadClients:
+    state = getattr(_tls, 'state', None)
+    if state is None:
+        state = _ThreadClients()
+        _tls.state = state
+    return state
+
+
+def reset_client_pool_for_tests() -> None:
+    """Drop this thread's pooled clients so a test can re-record ``get_client``."""
+    _tls.state = _ThreadClients()
+
+
+def insert_idempotent(client, table, data, **kwargs):
+    """Insert that may be lost on a ClickHouse restart; the writer is re-runnable."""
+    settings = dict(kwargs.pop('settings', None) or {})
+    settings.update(_INSERT_NO_WAIT)
+    return client.insert(table, data, settings=settings, **kwargs)
+
+
+def insert_arrow_idempotent(client, table, arrow_table, **kwargs):
+    """Arrow insert that may be lost on a ClickHouse restart; the writer is re-runnable."""
+    settings = dict(kwargs.pop('settings', None) or {})
+    settings.update(_INSERT_NO_WAIT)
+    return client.insert_arrow(table, arrow_table, settings=settings, **kwargs)
+
+
+def insert_durable(client, table, data, **kwargs):
+    """Insert that waits for the async buffer to land before returning."""
+    settings = dict(kwargs.pop('settings', None) or {})
+    settings.update(_INSERT_WAIT)
+    return client.insert(table, data, settings=settings, **kwargs)
+
+
+def insert_arrow_durable(client, table, arrow_table, **kwargs):
+    """Arrow insert that waits for the async buffer to land before returning."""
+    settings = dict(kwargs.pop('settings', None) or {})
+    settings.update(_INSERT_WAIT)
+    return client.insert_arrow(table, arrow_table, settings=settings, **kwargs)
 
 # Mirrors website/backend/src/api/admin/collections.rs::collectionname_valid.
 # Duplicated deliberately: the two runtimes must independently refuse a bad name.
@@ -107,19 +215,31 @@ def _client(database: str):
         password=CLICKHOUSE_PASS,
         database=database,
         settings=dict(CLIENT_SETTINGS),
+        pool_mgr=_shared_pool_manager(),
     )
 
 
 @contextmanager
 def _client_ctx(database: str):
-    client = _client(database)
+    """One client per ``(thread, database)``, kept for the process lifetime.
+
+    Nested ``with`` blocks on the same thread and database share that client and
+    must not close it when the inner block exits — ``resolve_collection`` opens
+    the global client while a caller may already hold a collection client
+    (different database, two pooled entries) and some call sites nest the same
+    database.
+    """
+    state = _thread_clients()
+    client = state.by_db.get(database)
+    if client is None:
+        client = _client(database)
+        state.by_db[database] = client
+        state.refs[database] = 0
+    state.refs[database] = state.refs.get(database, 0) + 1
     try:
         yield client
     finally:
-        try:
-            client.close()
-        except Exception:
-            pass
+        state.refs[database] -= 1
 
 
 @contextmanager

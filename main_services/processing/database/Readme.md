@@ -46,6 +46,26 @@ Never read a per-collection table through the global client or vice versa. The r
 raises `UnknownDatasetError` for a dataset with no registry row rather than silently
 falling back to the global database.
 
+`get_*_client` keeps one ClickHouse client per `(thread, database)` for the process
+lifetime. Nested `with` blocks on the same thread and database share that client;
+the inner exit does not close it. The HTTP pool is sized above the worker's activity
+slot count (common and tika are 8) so concurrent activities do not discard TCP
+connections.
+
+## Insert durability
+
+`CLIENT_SETTINGS` waits for async inserts (`wait_for_async_insert=1`). An unmarked
+`client.insert` / `insert_arrow` stays durable. Pipeline tables written inside a
+re-runnable activity opt out through `insert_idempotent` / `insert_arrow_idempotent`
+(`wait_for_async_insert=0`): a ClickHouse restart can lose the buffer, and the stage
+re-runs until the anti-joins converge. Ledgers and watermarks go through
+`insert_durable` / `insert_arrow_durable`, or through unmarked inserts which wait.
+
+| Wait | Tables |
+|---|---|
+| Do not wait | `file_types`, `text_content`, `tika_metadata`, `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry` |
+| Wait | `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+
 ## Migrations
 
 Migrations are run by `main.py migrate`, which applies `db_global_migrations/` to
