@@ -24,6 +24,11 @@ tracing = "0.1"
 # The client Garage tests its own S3 implementation against. Fully async: nothing in
 # the request path blocks, which is what a Dioxus server function requires.
 aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "sigv4a", "rustls"] }
+# `byte-stream-poll-next` is what makes a GetObject body a `Stream`, which the two
+# streaming download routes hand straight to axum's `Body::from_stream`. Without it
+# `ByteStream` has no `Stream` impl at all and the only way to serve an object is to
+# buffer it whole.
+aws-smithy-types = { version = "1", features = ["byte-stream-poll-next"] }
 serde_bytes="0.11"
 base64 = "0.22"
 

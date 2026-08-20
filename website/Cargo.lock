@@ -518,9 +518,9 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-xml"
-version = "0.60.15"
+version = "0.60.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce02add1aa3677d022f8adf81dcbe3046a95f17a1b1e8979c145cd21d3d22b3"
+checksum = "b53543b4b86ed43f051644f704a98c7291b3618b67adf057ee77a366fa52fcaa"
 dependencies = [
  "xmlparser",
 ]
@@ -637,6 +637,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "aws-sdk-s3",
+ "aws-smithy-types",
  "axum",
  "axum-extra",
  "base64",

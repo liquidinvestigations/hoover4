@@ -53,9 +53,13 @@ async fn get_document_content_stream(
     let object_size = object.content_length().unwrap_or_default() as usize;
     assert_eq!(object_size, blob_info.blob_size_bytes as usize);
 
-    // The body streams; nothing here buffers the object. `ByteStream` yields
-    // `aws_smithy_types::byte_stream::error::Error`, mapped to the anyhow the route wants.
-    let stream = object.body.map_err(anyhow::Error::from);
+    // `ByteStream` has a `Stream` impl only through a `futures-core` version that is not
+    // the one this workspace's `futures` resolves to, so `TryStreamExt` does not reach
+    // it. Reading it as an `AsyncBufRead` and framing that back into chunks is the
+    // conversion that does not depend on which `futures` won, and it still streams --
+    // nothing here buffers the object.
+    let stream = tokio_util::io::ReaderStream::new(object.body.into_async_read())
+        .map_err(anyhow::Error::from);
 
     Ok((object_size, Box::pin(stream)))
 }

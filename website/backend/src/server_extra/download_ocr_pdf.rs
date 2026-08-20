@@ -85,7 +85,14 @@ async fn _download_ocr_pdf(
         .await
         .with_context(|| format!("Failed to get {blob_key}"))?;
     let object_size = object.content_length().unwrap_or_default() as usize;
-    let stream = object.body;
+    // `ByteStream` has a `Stream` impl only through a `futures-core` version that is not
+    // the one this workspace's `futures` resolves to, so `TryStreamExt` does not reach
+    // it. Reading it as an `AsyncBufRead` and framing that back into chunks is the
+    // conversion that does not depend on which `futures` won, and it still streams --
+    // nothing here buffers the object.
+    let stream = tokio_util::io::ReaderStream::new(object.body.into_async_read())
+        .map_err(anyhow::Error::from);
+
 
     // `inline`, not `attachment`: this is the source the PDF viewer swaps to, so it has to
     // render in place rather than start a download.
@@ -100,7 +107,7 @@ async fn _download_ocr_pdf(
             format!("{}", if object_size > 0 { object_size } else { size_bytes as usize }),
         ),
     ];
-    Ok((headers, Body::from_stream(stream.map_err(anyhow::Error::from))).into_response())
+    Ok((headers, Body::from_stream(stream)).into_response())
 }
 
 pub async fn download_ocr_pdf(
