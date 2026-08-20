@@ -350,8 +350,11 @@ services:
     networks:
       - hoover4
     restart: unless-stopped
-    memswap_limit: 29000M
-    mem_limit: 29000M
+    # Both, and equal: that is what gives "this much memory, no swap". The number is an
+    # ini key because it and the common-worker count have to be chosen together -- each
+    # worker process carries its own interpreter and its own Magika model.
+    memswap_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
+    mem_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
     volumes:
       # Host path for ingest test data. Defaults to the in-repo (git-tracked)
       # testdata dir so the stack comes up out of the box; override with

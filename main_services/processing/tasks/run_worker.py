@@ -5,20 +5,46 @@ import concurrent.futures
 import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
+from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from .task_timing import TaskTimingInterceptor, attach_temporal_client
 
 log = logging.getLogger(__name__)
 
 
+def sandboxed_runner() -> SandboxedWorkflowRunner:
+    """The workflow sandbox, with this repo's own packages passed through.
+
+    The sandbox re-imports a workflow's module graph for every workflow INSTANCE it
+    creates, and this pipeline creates one per file. Passing `tasks` and `database`
+    through takes that from ~1.5 ms to ~0.2 ms per instance, and it costs no safety
+    that was being relied on: every workflow module already wraps its own imports in
+    `workflow.unsafe.imports_passed_through()`, so these modules were never being
+    re-imported for isolation -- only for nothing. The sandbox keeps doing its real job,
+    which is catching non-deterministic use of the standard library.
+    """
+    return SandboxedWorkflowRunner(
+        restrictions=SandboxRestrictions.default.with_passthrough_modules(
+            "tasks", "database",
+        )
+    )
+
+
 def worker_concurrency(name: str, default: int) -> int:
     """Activity slots for one worker tier, from `HOOVER4_<NAME>_CONCURRENCY`.
 
-    The defaults below are shaped by what each tier is waiting on, not by the host: the
-    common tier runs local work and wants roughly a slot per core, tika holds a
-    subprocess helper per slot, and the NLP and embed tiers pipeline HTTP against a
-    remote GPU that has its own admission control -- more slots there only deepen a
+    The defaults below are shaped by what each tier is waiting on, not by the host: tika
+    holds a subprocess helper per slot, and the NLP and embed tiers pipeline HTTP against
+    a remote GPU that has its own admission control -- more slots there only deepen a
     queue somebody else is already bounding.
+
+    The common tier is the one to be careful with. Its slots multiply by the process
+    count, and each slot's work is not one thread: a single detection forks several
+    `file` processes and runs an ONNX model. Measured on a sixteen-core host, 4 processes
+    of 8 slots demanded 22 cores during the parse burst -- the activities do not fail
+    there, they just all take twice as long and the box has nothing left for anything
+    else. Prefer more processes with fewer slots each: it is the same admission width
+    with less contention inside any one interpreter.
     """
     import os
     raw = os.environ.get("HOOVER4_%s_CONCURRENCY" % name.upper(), "").strip()
@@ -32,13 +58,20 @@ def worker_concurrency(name: str, default: int) -> int:
     return max(1, value)
 
 
-def common_worker_processes() -> int:
-    """How many common-worker processes to spawn: `HOOVER4_COMMON_WORKERS`, else cores/4.
+#: Common-worker processes when `HOOVER4_COMMON_WORKERS` says nothing.
+#:
+#: Deliberately a CONSTANT and not a function of `os.cpu_count()`. The fleet's cost is
+#: memory, not cores -- every process carries its own interpreter and its own Magika
+#: model -- so a core-derived number quietly multiplies memory on a large host and
+#: busts the container's limit there while looking fine on a laptop. The number that
+#: decides CPU load is this times `common_concurrency`, and both are explicit for the
+#: same reason: the two together are what has to fit the box, and neither is safe to
+#: infer from the other.
+DEFAULT_COMMON_WORKERS = 10
 
-    The common tier is where the fan-out lands. Two processes was a constant that
-    happened to suit a four-core laptop; on a sixteen-core host it left the machine
-    idle. Bounded at 2..8 because past that the constraint stops being local slots.
-    """
+
+def common_worker_processes() -> int:
+    """How many common-worker processes to spawn: `HOOVER4_COMMON_WORKERS`, else 10."""
     import os
     raw = os.environ.get("HOOVER4_COMMON_WORKERS", "").strip()
     if raw:
@@ -46,7 +79,7 @@ def common_worker_processes() -> int:
             return max(1, int(raw))
         except ValueError:
             log.warning("HOOVER4_COMMON_WORKERS is not a number: %r", raw)
-    return max(2, min(8, (os.cpu_count() or 4) // 4))
+    return DEFAULT_COMMON_WORKERS
 
 
 async def _probe_embeddings_at_startup(worker_name: str) -> None:
@@ -172,11 +205,12 @@ async def run_common_worker():
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
 
-    CONCURRENCY = worker_concurrency("common", 8)
+    CONCURRENCY = worker_concurrency("common", 3)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
           interceptors=[TaskTimingInterceptor()],
+          workflow_runner=sandboxed_runner(),
           task_queue="processing-common-queue",
           workflows=[
             IngestDiskDataset,
@@ -281,6 +315,7 @@ async def run_tika_worker():
         worker = Worker(
           client,
           interceptors=[TaskTimingInterceptor()],
+          workflow_runner=sandboxed_runner(),
           task_queue="processing-tika-queue",
           workflows=[],
           activities=[run_tika_and_store],
@@ -315,6 +350,7 @@ async def run_ocr_worker():
         worker = Worker(
           client,
           interceptors=[TaskTimingInterceptor()],
+          workflow_runner=sandboxed_runner(),
           task_queue="processing-ocr-queue",
           workflows=[],
           activities=[run_ocr_and_store, run_ocr_pdf_and_store],
@@ -346,6 +382,7 @@ async def run_nlp_worker():
     worker = Worker(
       client,
       interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
       task_queue="processing-nlp-queue",
       workflows=[],
       activities=[extract_entities_for_hashes],
@@ -373,6 +410,7 @@ async def run_embed_worker():
     worker = Worker(
       client,
       interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
       task_queue="processing-embed-queue",
       workflows=[],
       activities=[chunk_embed_for_hashes],
@@ -399,6 +437,7 @@ async def run_indexing_worker():
     worker = Worker(
       client,
       interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
       task_queue="processing-indexing-queue",
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
@@ -425,6 +464,7 @@ async def run_index_planner_worker():
     worker = Worker(
       client,
       interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
       task_queue="processing-index-planner-queue",
       workflows=[],
       activities=[plan_shards, finalize_index_batch, record_indexed],

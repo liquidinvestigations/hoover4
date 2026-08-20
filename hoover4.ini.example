@@ -131,8 +131,13 @@ search_timeout_seconds =
 ; measurement of what that tier waits on, and the common tier -- where the parse
 ; fan-out lands -- already sizes its process count from the host's cores. Set one
 ; only to override a measurement on a particular host.
-common_workers        =            ; common-worker processes (default: cores/4, 2..8)
-common_concurrency    =            ; activity slots per common worker (default 8)
+; The two that decide the parse burst's load, and they multiply. More processes
+; with fewer slots each beats the reverse -- same admission width, less contention
+; inside any one interpreter. NOT derived from the core count: the fleet's cost is
+; memory, and a core-derived number busts worker_mem_limit on a large host.
+common_workers        =            ; common-worker processes (default 10)
+common_concurrency    =            ; activity slots per common worker (default 3)
+worker_mem_limit      =            ; hard ceiling for the worker container (default 29000M)
 tika_concurrency      =            ; default 8; one extractous helper per slot
 ocr_concurrency       =            ; default 4
 nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency

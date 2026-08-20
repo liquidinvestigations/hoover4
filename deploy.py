@@ -111,6 +111,10 @@ DEFAULTS = {
         # that tier waits on. Set one only to override a measurement.
         "common_workers": "",
         "common_concurrency": "",
+        # Hard memory ceiling for the worker container. Explicit because the fleet's
+        # cost is memory: every worker process carries its own interpreter and its own
+        # Magika model, so the count and this number have to be chosen together.
+        "worker_mem_limit": "29000M",
         "tika_concurrency": "",
         "ocr_concurrency": "",
         "nlp_concurrency": "",
@@ -508,6 +512,10 @@ def render_main_env(cfg):
 
     # Worker fleet sizing. Rendered only when set: an empty value would reach the worker
     # as the string "" and every tier has a default it is better off keeping.
+    # Rendered only when set: the compose file carries the same default, and an empty
+    # value there would reach podman as a memory limit of "".
+    if cfg.get(m, "worker_mem_limit"):
+        env["HOOVER4_WORKER_MEM_LIMIT"] = cfg.get(m, "worker_mem_limit")
     if cfg.get(m, "common_workers"):
         env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
     for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing"):
