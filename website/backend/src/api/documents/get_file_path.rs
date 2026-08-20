@@ -106,3 +106,27 @@ pub async fn get_file_locations(
 
     Ok(VfsFileLocations { locations, total })
 }
+
+/// The document's canonical file type, for the title bar's glyph.
+///
+/// `""` for a document `file_type_canonical` has no row for — a file indexed before the
+/// type resolver ran, or one still being processed. The glyph draws that as the generic
+/// file icon, which is what the title bar drew for everything before.
+pub async fn get_canonical_file_type(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<String> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let rows: Vec<String> = client
+        .query(
+            "SELECT file_type FROM file_type_canonical FINAL \
+             WHERE collection_dataset = ? AND hash = ? LIMIT 1",
+        )
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .fetch_all()
+        .await
+        .unwrap_or_default();
+    Ok(rows.into_iter().next().unwrap_or_default())
+}

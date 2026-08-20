@@ -17,11 +17,10 @@ use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::{
-        md_action_icons::{MdDescription, MdOpenInNew},
+        md_action_icons::MdOpenInNew,
         md_communication_icons::MdEmail,
         md_content_icons::{MdForward, MdReply},
         md_editor_icons::MdAttachFile,
-        md_image_icons::{MdImage, MdPictureAsPdf},
         md_navigation_icons::{MdExpandLess, MdExpandMore},
     },
 };
@@ -368,13 +367,10 @@ fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
 /// and a precise MIME icon set would be a lot of bytes on the wire for a 20 px square.
 #[component]
 fn AttachmentGlyph(coarse_type: String) -> Element {
-    let style = "width: 22px; height: 22px; flex: 0 0 auto; color: rgba(0,0,0,0.55);";
     rsx! {
-        match coarse_type.as_str() {
-            "pdf" => rsx! { Icon { icon: MdPictureAsPdf, style } },
-            "image" => rsx! { Icon { icon: MdImage, style } },
-            "email" => rsx! { Icon { icon: MdEmail, style } },
-            _ => rsx! { Icon { icon: MdDescription, style } },
+        span {
+            style: "flex: 0 0 auto; color: rgba(0,0,0,0.55);",
+            crate::components::file_type_icon::FileTypeGlyphIcon { file_type: coarse_type, size: 22 }
         }
     }
 }

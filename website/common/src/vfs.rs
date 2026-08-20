@@ -69,6 +69,11 @@ pub struct VfsFileEntry {
     pub hash: String,
     pub file_size_bytes: u64,
     pub is_container: bool,
+    /// The canonical file type (`table`, `pdf`, `email`, …), for the row's glyph. Same
+    /// source as the search card's and the viewer's, so one document is one symbol
+    /// everywhere. Empty for a file the type resolver has not reached.
+    #[serde(default)]
+    pub file_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

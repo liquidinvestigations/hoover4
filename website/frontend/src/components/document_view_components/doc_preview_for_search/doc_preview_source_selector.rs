@@ -8,6 +8,7 @@ use dioxus_free_icons::{
     icons::{
         md_action_icons::MdQuestionAnswer,
         md_communication_icons::MdEmail,
+        md_editor_icons::MdTableChart,
         md_file_icons::MdTextSnippet,
         md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
         md_navigation_icons::MdCheck,
@@ -221,6 +222,9 @@ fn SourceItemRow(
         // selector that cannot be used.
         DocumentSourceItem::Pdf(source) => (_item_icon_rsx(MdPictureAsPdf), source.label()),
         DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),
+        // The grid, above the text sources: a workbook flattened to tab-separated text is
+        // a fallback, not the thing a reader came for.
+        DocumentSourceItem::Table(source) => (_item_icon_rsx(MdTableChart), source.label()),
         DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),
         DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), "Audio".to_string()),
         DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), "Video".to_string()),

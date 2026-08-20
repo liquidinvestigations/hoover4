@@ -169,6 +169,42 @@ mod tests {
         assert_ne!(a, b);
     }
 
+    /// `get_document_sources` sorts by declaration order, so a workbook opens on its
+    /// grid rather than on the tab-separated flattening of it that the text extractor
+    /// also produced for the same document. That is the whole reason `Table` sits where
+    /// it sits in the enum, and nothing else pins it.
+    #[test]
+    fn the_source_list_sorts_table_above_text() {
+        let table = DocumentSourceItem::Table(DocumentTableSourceItem {
+            sheet_count: 1,
+            row_count: 701,
+            column_count: 16,
+            table_format: "csv".into(),
+        });
+        let text = DocumentSourceItem::Text(DocumentTextSourceItem {
+            extracted_by: "extractous".into(),
+            min_page: 1,
+            max_page: 1,
+        });
+        let mut sources = vec![text.clone(), table.clone()];
+        sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        assert_eq!(sources.first(), Some(&table));
+        assert_eq!(sources.last(), Some(&text));
+    }
+
+    #[test]
+    fn a_table_source_names_its_format_and_its_sheets() {
+        let one = DocumentTableSourceItem {
+            sheet_count: 1,
+            row_count: 6,
+            column_count: 300,
+            table_format: "csv".into(),
+        };
+        assert_eq!(one.label(), "Table \u{b7} csv");
+        let two = DocumentTableSourceItem { sheet_count: 2, table_format: "xlsx".into(), ..one };
+        assert_eq!(two.label(), "Table \u{b7} xlsx \u{b7} 2 sheets");
+    }
+
     /// Viewer state is URL-encoded and outlives the build that wrote it, so every field
     /// added to it has to decide what an absent value means. For `has_body` that is
     /// "present": a bookmark written before the field existed describes a document the
@@ -352,10 +388,47 @@ pub struct DocumentAudioSourceItem {
     pub duration_seconds: f32,
 }
 
+/// A tabular document the pipeline read into cells, as the source selector names it.
+///
+/// **Identity, not view state.** This variant is the key of [`ItemHitCounts`]' map and the
+/// value `sources.iter().find(|s| *s == &selected_source)` compares, so it holds only what
+/// makes this source *this* source. The selected sheet, the sort, the filters and the
+/// hidden columns live in the viewer state that goes into the URL; a variant that changed
+/// when the reader clicked a column header would stop matching the selected source and
+/// deselect itself on every interaction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub struct DocumentTableSourceItem {
+    pub sheet_count: u16,
+    /// Rows summed across every sheet, as `table_documents` records it.
+    pub row_count: u64,
+    /// Widest column ordinal across every sheet.
+    pub column_count: u32,
+    /// `csv` | `tsv` | `xlsx` | `xls` | `ods` | ...
+    pub table_format: String,
+}
+
+impl DocumentTableSourceItem {
+    /// The label in the source selector: `Table · xlsx · 2 sheets`.
+    pub fn label(&self) -> String {
+        let mut label = "Table".to_string();
+        if !self.table_format.is_empty() {
+            label.push_str(&format!(" \u{b7} {}", self.table_format));
+        }
+        if self.sheet_count > 1 {
+            label.push_str(&format!(" \u{b7} {} sheets", self.sheet_count));
+        }
+        label
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub enum DocumentSourceItem {
     Pdf(DocumentPdfSourceItem),
     Email(DocumentEmailSourceItem),
+    /// Declared before `Text` on purpose: variants sort by declaration order and
+    /// `get_document_sources` sorts the list, so a workbook opens on its grid rather than
+    /// on the tab-separated flattening of it that the text extractor also produced.
+    Table(DocumentTableSourceItem),
     Image(DocumentImageSourceItem),
     Video(DocumentVideoSourceItem),
     Audio(DocumentAudioSourceItem),

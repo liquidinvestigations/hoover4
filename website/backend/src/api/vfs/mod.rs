@@ -130,6 +130,16 @@ pub async fn list_folder_children(
         .await
         .unwrap_or_default();
 
+    // The row's glyph, from the same table the search card and the viewer read. One
+    // query, for this one dataset. A file with no row yet gets the generic icon.
+    let file_types = crate::db_utils::clickhouse_utils::canonical_file_types(
+        std::collections::BTreeMap::from([(
+            collection_dataset.clone(),
+            file_rows.iter().map(|(_, hash, _)| hash.clone()).collect::<Vec<_>>(),
+        )]),
+    )
+    .await;
+
     let files = file_rows
         .into_iter()
         .map(|(full_path, hash, file_size_bytes)| {
@@ -140,6 +150,10 @@ pub async fn list_folder_children(
                     container_hash: path.container_hash.clone(),
                     path: full_path,
                 },
+                file_type: file_types
+                    .get(&(collection_dataset.clone(), hash.clone()))
+                    .cloned()
+                    .unwrap_or_default(),
                 hash: hash.clone(),
                 file_size_bytes,
                 is_container: container_hashes.contains(&hash),

@@ -37,6 +37,9 @@ pub async fn search_document_item_count(
     let has_txt = sources
         .iter()
         .any(|source| matches!(source, DocumentSourceItem::Text(_)));
+    let has_table = sources
+        .iter()
+        .any(|source| matches!(source, DocumentSourceItem::Table(_)));
     let has_email = sources
         .iter()
         .filter(|source| matches!(source, DocumentSourceItem::Email(_)))
@@ -73,6 +76,20 @@ pub async fn search_document_item_count(
     } else {
         vec![]
     };
+    // Cells whose text contains the find query, across every sheet of the document. The
+    // count goes beside the Table source the way page hits go beside a text source, and a
+    // failure here costs that one number rather than the whole hit-count response.
+    let _table_count = if has_table {
+        crate::api::documents::table_browse::count_table_cell_matches(
+            user,
+            &document_identifier,
+            &find_query,
+        )
+        .await
+        .unwrap_or(0)
+    } else {
+        0
+    };
     let _pdf_count = if let Some(pdf_task) = pdf_task {
         if let Ok(Ok(pdf_search)) = pdf_task.await {
             pdf_search.results.len() as u64
@@ -92,6 +109,9 @@ pub async fn search_document_item_count(
         match &source {
             DocumentSourceItem::Pdf(_i) => {
                 rv.push((source, _pdf_count));
+            }
+            DocumentSourceItem::Table(_i) => {
+                rv.push((source, _table_count));
             }
             DocumentSourceItem::Text(_i) => {
                 let mut _txt = 0;

@@ -3,6 +3,7 @@
 use common::{
     document_metadata::DocumentMetadataTableInfo,
     document_provenance::{DocumentDates, DocumentEmail, format_epoch_utc},
+    document_tables::TableOverview,
     search_result::DocumentIdentifier,
 };
 use dioxus::prelude::*;
@@ -12,6 +13,7 @@ use dioxus_free_icons::{
         go_icons::GoCopy,
         md_action_icons::MdDateRange,
         md_communication_icons::MdEmail,
+        md_editor_icons::MdTableChart,
         md_file_icons::MdAttachment,
     },
 };
@@ -43,6 +45,12 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
         DocumentMetadataTableInfo::new("pdfs", "pdf_hash"),
         DocumentMetadataTableInfo::new3("video_metadata", "hash", vec!["video_metadata_json"]),
         DocumentMetadataTableInfo::new3("raw_ocr_results", "image_hash", vec!["raw_json"]),
+        // The three tables that describe a parsed spreadsheet. `table_cells` is NOT here:
+        // it is the data, not a description of it, and one document's rows would be the
+        // whole tab.
+        DocumentMetadataTableInfo::new("table_documents", "hash"),
+        DocumentMetadataTableInfo::new("table_sheets", "hash"),
+        DocumentMetadataTableInfo::new("table_columns", "hash"),
         DocumentMetadataTableInfo::new("processing_errors", "hash"),
     ];
 
@@ -86,6 +94,7 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
             // arrive with; the tables below answer "what else is there".
             DatesSection { document_identifier }
             EmailSection { document_identifier }
+            TableSection { document_identifier }
             {sections}
         }
     }
@@ -491,6 +500,127 @@ async fn get_document_email(
 ) -> Result<Option<DocumentEmail>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::get_document_provenance::get_document_email(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+/// What the pipeline read out of a spreadsheet: the format, the sheets and their sizes,
+/// the per-column types and ranges, and any cap that fired.
+///
+/// Rendered only when the document HAS a `table_documents` row — unlike Dates, an absent
+/// Table section on a PDF is the correct answer rather than a missing one. The three raw
+/// dumps below carry the same values row by row; this is the reading of them.
+#[component]
+fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let overview = use_resource(use_reactive!(|document_identifier_value| {
+        async move { get_document_table_overview(document_identifier_value).await }
+    }));
+
+    let value: TableOverview = match overview().clone() {
+        None => return rsx! {},
+        Some(Err(error)) => {
+            return rsx! {
+                li {
+                    style: SECTION_STYLE,
+                    h1 {
+                        style: SECTION_HEADER_STYLE,
+                        Icon { icon: MdTableChart, style: "width: 26px; height: 26px;" }
+                        "Table"
+                    }
+                    div {
+                        class: "x-error-display",
+                        style: "color: rgb(160,30,30);",
+                        "Could not load the table structure: {error}"
+                    }
+                }
+            };
+        }
+        Some(Ok(None)) => return rsx! {},
+        Some(Ok(Some(value))) => value,
+    };
+
+    let sheet_summary = value
+        .sheets
+        .iter()
+        .map(|s| format!("{} {}", s.label(), s.row_count))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let banner = value.truncation_banner();
+
+    rsx! {
+        li {
+            style: SECTION_STYLE,
+            h1 {
+                style: SECTION_HEADER_STYLE,
+                Icon { icon: MdTableChart, style: "width: 26px; height: 26px;" }
+                "Table"
+            }
+            table {
+                style: "width: 100%; border-collapse: collapse;",
+                tbody {
+                    tr {
+                        td { style: METADATA_KEY_STYLE, "Format" }
+                        td { style: "padding: 4px 0;", "{value.table_format} \u{00b7} read by {value.reader}" }
+                    }
+                    tr {
+                        td { style: METADATA_KEY_STYLE, "Sheets" }
+                        td { style: "padding: 4px 0;", "{value.sheet_count} ({sheet_summary})" }
+                    }
+                    tr {
+                        td { style: METADATA_KEY_STYLE, "Rows" }
+                        td { style: "padding: 4px 0;", "{value.row_count} across every sheet" }
+                    }
+                    tr {
+                        td { style: METADATA_KEY_STYLE, "Columns" }
+                        td { style: "padding: 4px 0;", "{value.column_count} in the widest sheet" }
+                    }
+                    tr {
+                        td { style: METADATA_KEY_STYLE, "Cells stored" }
+                        td { style: "padding: 4px 0;", "{value.cell_count} ({value.stored_bytes} bytes of text)" }
+                    }
+                }
+            }
+            if let Some(banner) = banner {
+                div {
+                    style: "margin-top: 8px; padding: 6px 10px; background: rgba(220,160,0,0.12); border-radius: 6px; font-size: 14px;",
+                    "{banner}"
+                }
+            }
+            for sheet in value.sheets.iter() {
+                {
+                    let columns = value.columns_of(sheet.sheet_id);
+                    rsx! {
+                        div {
+                            key: "{sheet.sheet_id}",
+                            style: "margin-top: 10px;",
+                            div { style: "font-weight: 600;", "{sheet.label()}" }
+                            div {
+                                style: "color: rgba(0,0,0,0.7); font-size: 14px;",
+                                for column in columns {
+                                    div {
+                                        key: "{column.column_id}",
+                                        "{column.letter} \u{00b7} {column.label()} ({column.column_type}, {column.min_value} \u{2013} {column.max_value})"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+const METADATA_KEY_STYLE: &str =
+    "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;";
+
+#[server]
+async fn get_document_table_overview(
+    document_identifier: DocumentIdentifier,
+) -> Result<Option<TableOverview>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::table_browse::get_table_overview(&user, document_identifier)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)
 }

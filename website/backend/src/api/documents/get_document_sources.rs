@@ -5,8 +5,8 @@ use common::{
     current_user::CurrentUser,
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
-        DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceItem, DocumentVideoSourceItem,
-        EMAIL_TEXT_EXTRACTOR,
+        DocumentPdfSourceItem, DocumentSourceItem, DocumentTableSourceItem,
+        DocumentTextSourceItem, DocumentVideoSourceItem, EMAIL_TEXT_EXTRACTOR,
     },
     search_result::DocumentIdentifier,
 };
@@ -258,6 +258,28 @@ async fn get_audio_sources(
     }))
 }
 
+/// The grid source, for a document the pipeline read into cells.
+///
+/// One `table_documents` lookup and nothing else: the variant carries identity only, so
+/// the sheets and columns are not needed until the explorer asks for them. `None` is the
+/// ordinary answer — most documents are not tables.
+async fn get_table_sources(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<Option<DocumentTableSourceItem>> {
+    let manifest = crate::api::documents::table_browse::load_table_manifest(
+        user,
+        &document_identifier,
+    )
+    .await?;
+    Ok(manifest.map(|manifest| DocumentTableSourceItem {
+        sheet_count: manifest.sheet_count,
+        row_count: manifest.row_count,
+        column_count: manifest.column_count,
+        table_format: manifest.table_format,
+    }))
+}
+
 #[allow(for_loops_over_fallibles)]
 pub async fn get_document_sources(
     user: &CurrentUser,
@@ -265,13 +287,14 @@ pub async fn get_document_sources(
 ) -> anyhow::Result<Vec<DocumentSourceItem>> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let (txt, pdf, email, img, vid, aud) = tokio::join!(
+    let (txt, pdf, email, img, vid, aud, table) = tokio::join!(
         get_text_sources(user, document_identifier.clone()),
         get_pdf_sources(user, document_identifier.clone()),
         get_email_sources(user, document_identifier.clone()),
         get_image_sources(user, document_identifier.clone()),
         get_video_sources(user, document_identifier.clone()),
         get_audio_sources(user, document_identifier.clone()),
+        get_table_sources(user, document_identifier.clone()),
     );
 
     let mut sources = vec![];
@@ -310,6 +333,12 @@ pub async fn get_document_sources(
     }
     for source in aud.unwrap_or_default() {
         sources.push(DocumentSourceItem::Audio(source));
+    }
+    // Declared before `Text` in the enum and therefore sorted above it below, so a
+    // workbook opens on its grid rather than on the tab-separated flattening of it that
+    // the text extractor also produced for the same file.
+    for source in table.unwrap_or_default() {
+        sources.push(DocumentSourceItem::Table(source));
     }
     // Nothing else is pushed here. `Metadata` and the file locations are DESCRIPTIONS of
     // the document, not renderings of it, and each has its own right-hand tab in the

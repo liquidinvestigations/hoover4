@@ -19,6 +19,7 @@ use common::{
 use crate::auth::permissions;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct SearchForResultsResponse {
@@ -253,6 +254,8 @@ pub async fn search_for_results(
                 highlight_filenames_spans: decompose_text_into_spans(highlighted_filename),
                 result_index_in_page: 0_u64,
                 matched_by_filename: hit._source.has_text_match == 0,
+                // Filled in below, from `file_type_canonical`.
+                file_type: String::new(),
             }
         })
         .collect::<Vec<_>>();
@@ -284,6 +287,28 @@ pub async fn search_for_results(
 
     for (i, result) in search_results.iter_mut().enumerate() {
         result.result_index_in_page = i as u64;
+    }
+
+    // The card's glyph. One ClickHouse read per dataset on the page, after the cursor
+    // rows have been dropped so nothing is looked up that will not be drawn. Manticore
+    // already returns a `file_types` multi64 of term ids and nothing reads it; decoding
+    // those would need the term dictionary and could disagree with the type the document
+    // viewer draws for the same file, which is the one thing a glyph must never do.
+    let mut hashes_by_dataset: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for result in &search_results {
+        hashes_by_dataset
+            .entry(result.collection_dataset.clone())
+            .or_default()
+            .push(result.file_hash.clone());
+    }
+    let file_types =
+        crate::db_utils::clickhouse_utils::canonical_file_types(hashes_by_dataset).await;
+    for result in search_results.iter_mut() {
+        if let Some(file_type) =
+            file_types.get(&(result.collection_dataset.clone(), result.file_hash.clone()))
+        {
+            result.file_type = file_type.clone();
+        }
     }
 
     let result = SearchResultDocuments {

@@ -367,6 +367,47 @@ pub async fn check_clickhouse_health() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The canonical file type of each of a page's documents, keyed by
+/// `(collection_dataset, hash)`.
+///
+/// One query per dataset present on the page — a search result page spans at most a
+/// handful, and a storage listing spans exactly one. `file_type_canonical` is the only
+/// table that holds ONE type per document; the per-detector `file_types` rows disagree
+/// with each other by design, and Manticore's `file_types` term ids would have to be
+/// decoded through a dictionary that can drift. Reading the same table the document
+/// viewer reads is what keeps a file's glyph identical in the result list, the storage
+/// browser and the title bar.
+///
+/// A dataset that cannot be read contributes nothing rather than failing the page: a
+/// missing glyph is a generic icon, and a result list is worth more than a symbol.
+pub async fn canonical_file_types(
+    hashes_by_dataset: std::collections::BTreeMap<String, Vec<String>>,
+) -> std::collections::HashMap<(String, String), String> {
+    let mut out = std::collections::HashMap::new();
+    for (collection_dataset, hashes) in hashes_by_dataset {
+        if hashes.is_empty() {
+            continue;
+        }
+        let Ok(client) = get_client_for_dataset(&collection_dataset).await else {
+            continue;
+        };
+        let rows: Vec<(String, String)> = client
+            .query(
+                "SELECT hash, file_type FROM file_type_canonical FINAL \
+                 WHERE collection_dataset = ? AND hash IN ?",
+            )
+            .bind(&collection_dataset)
+            .bind(&hashes)
+            .fetch_all()
+            .await
+            .unwrap_or_default();
+        for (hash, file_type) in rows {
+            out.insert((collection_dataset.clone(), hash), file_type);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

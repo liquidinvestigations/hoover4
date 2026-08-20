@@ -7,7 +7,6 @@ use common::vfs::{PathDescriptor, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::go_icons::GoDatabase;
-use dioxus_free_icons::icons::md_editor_icons::MdInsertDriveFile;
 use dioxus_free_icons::icons::go_icons::GoFileZip;
 use dioxus_free_icons::icons::md_action_icons::{MdOpenInNew, MdSearch};
 use dioxus_free_icons::icons::md_device_icons::MdStorage;
@@ -960,13 +959,11 @@ fn container_icon() -> Element {
     }
 }
 
-#[component]
-fn file_icon() -> Element {
+/// Not a `#[component]`: it is called as a plain function from two row renderers, the way
+/// `container_icon` and `folder_icon` beside it are.
+fn file_icon(file_type: String) -> Element {
     rsx! {
-        Icon {
-            icon: MdInsertDriveFile,
-            style: "width: 20px; height: 20px;"
-        }
+        crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 20 }
     }
 }
 
@@ -1019,7 +1016,7 @@ fn FileRow(
                     style: NAME_INNER_STYLE,
                     span {
                         style: ICON_STYLE,
-                        if is_container { {container_icon()} } else { {file_icon()} }
+                        if is_container { {container_icon()} } else { {file_icon(file.file_type.clone())} }
                     }
                     span { style: FILE_NAME_STYLE, "{file.name}" }
                 }
@@ -1273,7 +1270,9 @@ fn FolderSearchResults(
                                             style: ICON_STYLE,
                                             if node.kind == VfsNodeKind::Container { {container_icon()} }
                                             else if node.kind == VfsNodeKind::Dir { {folder_icon()} }
-                                            else { {file_icon()} }
+                                            // The tree search returns VFS nodes, which carry no
+                                            // canonical type; the generic glyph is the honest answer.
+                                            else { {file_icon(String::new())} }
                                         }
                                         span { style: FILE_NAME_STYLE, "{node.display_name()}" }
                                     }

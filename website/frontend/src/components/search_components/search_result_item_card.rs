@@ -4,7 +4,7 @@ use common::{search_result::SearchResultDocumentItem, text_highlight::HighlightT
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile},
+    icons::go_icons::GoDatabase,
 };
 
 use crate::components::search_components::{
@@ -84,7 +84,7 @@ pub fn SearchResultItemCard(
                     "{item_index}."
                 }
                 // ICON FOR TITLE
-                FileTypeIcon {}
+                FileTypeIcon { file_type: result().file_type.clone() }
                 // TITLE
                 CardTitleSection {highlight_filenames_spans}
 
@@ -134,8 +134,12 @@ pub fn SearchResultItemCard(
     }
 }
 
+/// The card's file-type glyph, from the document's canonical type.
+///
+/// Empty type draws the generic file icon, which is what this drew unconditionally
+/// before — a document the type resolver has not reached loses nothing.
 #[component]
-fn FileTypeIcon() -> Element {
+fn FileTypeIcon(file_type: String) -> Element {
     rsx! {
         div {
             style: "
@@ -151,10 +155,7 @@ fn FileTypeIcon() -> Element {
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
-            Icon {
-                icon: MdInsertDriveFile,
-                style: "width: 18px; height: 18px;"
-            }
+            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 18 }
         }
     }
 }

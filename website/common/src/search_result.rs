@@ -49,6 +49,13 @@ pub struct SearchResultDocumentItem {
     /// says what happened instead of echoing the title.
     #[serde(default)]
     pub matched_by_filename: bool,
+    /// The document's canonical file type (`table`, `pdf`, `email`, …), for the card's
+    /// glyph. Read from `file_type_canonical` rather than decoded from Manticore's
+    /// `file_types` term ids: the viewer draws its glyph from that same table, and two
+    /// sources for one symbol is two ways for the list and the document to disagree
+    /// about what a file is. Empty for a document the type resolver has not reached.
+    #[serde(default)]
+    pub file_type: String,
 }
 
 impl SearchResultDocumentItem {

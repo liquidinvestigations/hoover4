@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use common::search_result::DocumentIdentifier;
 use dioxus_free_icons::{
     Icon,
-    icons::{go_icons::GoDatabase, md_editor_icons::MdInsertDriveFile},
+    icons::go_icons::GoDatabase,
 };
 
 use crate::components::search_components::card_action_buttons::{
@@ -87,7 +87,7 @@ fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifi
             div {
             "/"
             }
-            FileTypeIcon {}
+            FileTypeIcon { document_identifier }
             FilenameText {document_identifier: document_identifier()}
         }
     }
@@ -156,8 +156,21 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     }
 }
 
+/// The title bar's glyph, from the document's own canonical type.
+///
+/// One point lookup per opened document, and `""` while it is in flight — the icon
+/// settles from generic to specific rather than popping in from nothing.
 #[component]
-fn FileTypeIcon() -> Element {
+fn FileTypeIcon(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let file_type = use_resource(use_reactive!(|document_identifier_value| {
+        async move {
+            get_canonical_file_type(document_identifier_value)
+                .await
+                .unwrap_or_default()
+        }
+    }));
+    let file_type = file_type().unwrap_or_default();
     rsx! {
         div {
             style: "
@@ -173,12 +186,21 @@ fn FileTypeIcon() -> Element {
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
-            Icon {
-                icon: MdInsertDriveFile,
-                style: "width: 18px; height: 18px;"
-            }
+            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 18 }
         }
     }
+}
+
+/// `""` for a document with no `file_type_canonical` row yet, which the glyph draws as
+/// the generic file icon.
+#[server]
+async fn get_canonical_file_type(
+    document_identifier: DocumentIdentifier,
+) -> Result<String, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_file_path::get_canonical_file_type(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 /// `Ok(None)` is "this dataset has no file with that hash" — a dead bookmark, not a

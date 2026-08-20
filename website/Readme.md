@@ -763,6 +763,65 @@ content-addressed container that sits at two paths contributes both ancestries �
 `zip-in-multiple-locations` fixture, which `verify-stack.sh` asserts on. `vfs_nodes.parent_key`
 is single-valued and is only for breadcrumbs; membership always uses the full closure.
 
+### Browsing a tabular document
+
+A spreadsheet or delimited-text file that the pipeline read into cells has a
+`table_documents` row and is `file_type = 'table'` in `file_type_canonical`. The viewer
+offers it a **Table** source, declared before `Text` in `DocumentSourceItem` so a workbook
+opens on its grid rather than on the tab-separated flattening of it that the text
+extractor also produced.
+
+`api/documents/table_browse.rs` is the whole query surface: `get_table_overview` (the
+sheets, the columns and their statistics, the caps that fired), `get_table_page` (one
+window of one sheet) and `get_table_column_values` (a filter popover's value list).
+
+**`table_cells` is keyed by content hash alone.** It has no `collection_dataset` column,
+because the same spreadsheet ingested into five datasets is one set of cells. So every one
+of those three functions calls `permissions::assert_can_read`, then looks
+`(collection_dataset, hash)` up in `table_documents` with `status = 'ok'`, and only then
+touches `table_cells`. A hash with no manifest row for that dataset is a 404 that never
+reaches a cell query; skipping the lookup would let a reader who may see one dataset read
+the cells of a document that only exists in another by pasting its hash.
+
+Three more rules those functions share:
+
+* `limit` and the visible-column set are clamped server-side (`MAX_TABLE_PAGE_ROWS` 200,
+  `MAX_TABLE_VISIBLE_COLUMNS` 60) and the clamp is **reported back** in `TablePage.clamps`.
+  A grid that quietly returns 200 of the 5 000 rows it was asked for looks exactly like a
+  grid whose document ends at row 200.
+* every column id — visible, sorted, filtered — is validated against the sheet's own
+  columns before it reaches SQL.
+* every reader-supplied string is a bound parameter. This is ClickHouse, not Manticore:
+  `db_utils/manticore_match.rs`'s escaping exists because Manticore has nothing to bind,
+  and copying it here would be a second, worse escaping layer.
+
+Sorting is two phases. Phase 1 orders one contiguous primary-key range — the sort column
+of one sheet — and returns `row_id`s; phase 2 fetches those rows' cells by `row_id IN (…)`
+and re-orders them into phase 1's order in Rust, so the two phases cannot disagree about
+the comparator. Rows with **no cell in the sort column** are not in phase 1's range at all
+and are appended after the sorted rows in `row_id` order, in both directions.
+
+The grid draws `source_row`, the row number the file itself gives, in its `#` column —
+not the dense `row_id`, which is pagination arithmetic and would be off by every empty row
+above. Sheet ordinals are the workbook's own and are not contiguous, so the sheet picker is
+built from the stored sheet rows and never from a range.
+
+The selected sheet, sort, filters, hidden columns and page live in
+`DocViewerState::table_state` and therefore in the URL, not in the `DocumentSourceItem`
+variant: that variant is the key of `ItemHitCounts` and the value the source selector
+compares against the selected source, so one carrying view state would deselect the grid
+on every click.
+
+### The file-type glyph
+
+`common/file_type_icons.rs` maps a canonical file type to a glyph name and a label, and
+`components/file_type_icon.rs` maps that one enum to one icon. Five sites draw it: the
+search result card, the storage browser's file rows, the viewer's title bar, an email's
+attachment cards and the preview source selector. `SearchResultDocumentItem.file_type` and
+`VfsFileEntry.file_type` are filled from `file_type_canonical` — one ClickHouse read per
+dataset on the page — rather than decoded from Manticore's `file_types` term ids, because
+the viewer draws its glyph from that same table and a symbol must not disagree with itself.
+
 ### Cache invalidation
 
 Every search response is cached under a salt made of the collection's shard-ledger

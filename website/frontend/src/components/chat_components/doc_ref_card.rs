@@ -60,6 +60,8 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         // The chat tool hands back a snippet it chose; whether the underlying hit was
         // filename-only is not part of that contract, so the card shows the snippet.
         matched_by_filename: false,
+        // The chat's document card draws no type glyph of its own.
+        file_type: String::new(),
     };
 
     rsx! {

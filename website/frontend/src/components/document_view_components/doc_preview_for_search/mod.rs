@@ -3,6 +3,7 @@
 pub mod doc_preview_find_query;
 pub mod doc_preview_for_email;
 pub mod doc_preview_for_pdf;
+pub mod doc_preview_for_table;
 pub mod doc_preview_for_text;
 pub mod doc_preview_source_selector;
 pub mod no_document_selected;
