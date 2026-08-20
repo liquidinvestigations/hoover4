@@ -50,29 +50,8 @@ CLIENT_SETTINGS = {
     'wait_for_async_insert': 1,
 }
 
-# Pipeline data written inside a re-runnable activity. A restart can lose the
-# async-insert buffer; the stage re-runs and the anti-joins converge.
-IDEMPOTENT_INSERT_TABLES = frozenset({
-    'file_types',
-    'text_content',
-    'tika_metadata',
-    'entity_hit',
-    'nlp_processed',
-    'processing_task_runs',
-    'ai_service_telemetry',
-})
-
-# Ledgers and watermarks whose loss silently strands work. Unmarked inserts
-# also wait (CLIENT_SETTINGS); this set is the documented durable side.
-DURABLE_INSERT_TABLES = frozenset({
-    'processing_plan_finished',
-    'index_state',
-    'manticore_shards',
-    'manticore_shard_assignments',
-    'dataset',
-    'processing_plans',
-    'schema_versions',
-})
+# Which table takes which side is in database/Readme.md, under "Insert durability".
+# A list of names here would be a second copy of it that nothing reads.
 
 _INSERT_WAIT = {'wait_for_async_insert': 1}
 _INSERT_NO_WAIT = {'wait_for_async_insert': 0}
