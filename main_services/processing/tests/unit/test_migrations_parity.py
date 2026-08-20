@@ -46,6 +46,7 @@ EXPECTED_GLOBAL_TABLES = {
     "ai_service_telemetry",
     "bench_runs",
     "processing_eta_samples",
+    "processing_queue_backlog",
     "processing_task_runs",
     "search_manticore_cache",
     "server_settings",

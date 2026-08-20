@@ -15,12 +15,18 @@ that wraps every activity without exception:
 Temporal sets the activity context (``temporalio/worker/_activity.py``, ``_Context.set``)
 *before* it invokes the interceptor chain, for sync and async activities alike, so
 ``activity.info()`` is available here and is where ``task_name``/``attempt``/``task_queue``
-come from.
+come from, and also ``scheduled_time`` / ``started_time`` (queue wait) and the parent
+workflow identity.
 
 **What is measured.** Wall time from the moment this worker accepts the task to the
 moment the body returns or raises. For a sync activity that includes the hand-off to the
 thread-pool executor -- see the note in ``00035_processing_task_runs.sql``. It is not CPU
-time and does not claim to be.
+time and does not claim to be. ``schedule_to_start_ms`` is the complementary number:
+``started_time - scheduled_time``, the time the task was eligible on its queue before
+this worker accepted it. ``retry_backoff_ms`` is ``current_attempt_scheduled_time -
+scheduled_time``. When ``activity.info()`` is missing (unit tests, a broken context)
+those three are 0 / the Unix epoch and the workflow identity columns are empty -- the
+activity still runs.
 
 **Routing.** Per-collection rows go to that collection's own database. The collection
 is read off the activity's parameter dataclass (virtually all of them carry
@@ -42,17 +48,24 @@ buffer and `ai_telemetry.py`'s fire-and-forget writes.
 
 The same thread samples what is *running* into ``processing_task_inflight``: a finished-row
 table cannot show a task that has been stuck for twenty minutes, and that is the one the
-live view most needs to name.
+live view most needs to name. Inflight is busy slots. Queue *waiters* are a different
+table, ``Hoover4_Processing.processing_queue_backlog``, filled from Temporal
+``DescribeTaskQueue`` on the same cadence: levels, nothing written while every queue's
+backlog is 0. DescribeTaskQueue is async and must not run on the activity path -- the
+common worker hands this recorder its client and event loop at startup, and the daemon
+schedules the RPCs onto that loop.
 """
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import logging
 import os
 import socket
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -81,6 +94,25 @@ MAX_BUFFERED_ROWS = 100_000
 #: The count is carried in the message, so nothing is hidden by the rate limit.
 WARN_EVERY_SECONDS = 30.0
 
+#: Queue-backlog sampling is coarser than inflight: DescribeTaskQueue is an RPC per
+#: queue, and 10 s is inside the 10-15 s window the table is designed for.
+BACKLOG_INTERVAL_SECONDS = 10.0
+
+#: Unix epoch as a naive datetime, matching DateTime64(3) DEFAULT toDateTime64(0, 3).
+_EPOCH = datetime(1970, 1, 1)
+
+#: Every queue a worker in ``run_worker.py`` polls. Sampled as a set so a dead worker
+#: still shows up as waiters-without-pollers rather than as a missing row.
+KNOWN_TASK_QUEUES: Tuple[str, ...] = (
+    "processing-common-queue",
+    "processing-tika-queue",
+    "processing-ocr-queue",
+    "processing-nlp-queue",
+    "processing-embed-queue",
+    "processing-indexing-queue",
+    "processing-index-planner-queue",
+)
+
 #: Parameter attributes that identify the artifact an execution worked on, most specific
 #: first. ``plan_hash`` is last and is a deliberate fallback: the P4/P5/P6 activities
 #: operate on a whole plan and have no document of their own, and an empty column there
@@ -107,6 +139,12 @@ _RUNS_COLUMNS = [
     "attempt",
     "task_queue",
     "worker_id",
+    "scheduled_at",
+    "schedule_to_start_ms",
+    "retry_backoff_ms",
+    "workflow_id",
+    "workflow_run_id",
+    "workflow_type",
 ]
 
 _INFLIGHT_COLUMNS = [
@@ -116,6 +154,26 @@ _INFLIGHT_COLUMNS = [
     "sampled_at",
     "in_flight",
     "oldest_age_ms",
+]
+
+_BACKLOG_COLUMNS = [
+    "task_queue",
+    "sampled_at",
+    "backlog_count",
+    "backlog_age_ms",
+    "add_rate",
+    "dispatch_rate",
+    "pollers",
+]
+
+_AI_COLUMNS = [
+    "service",
+    "provider",
+    "username",
+    "session_id",
+    "latency_ms",
+    "ok",
+    "detail",
 ]
 
 
@@ -151,6 +209,125 @@ def identify(args: Sequence[Any]) -> Tuple[str, str, str]:
     )
 
 
+def _naive_utc(dt: datetime | None) -> datetime | None:
+    """Temporal timestamps are timezone-aware UTC; ClickHouse columns are naive UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _delta_ms(later: datetime | None, earlier: datetime | None) -> int:
+    """``later - earlier`` in milliseconds, 0 if either side is missing, never negative."""
+    if later is None or earlier is None:
+        return 0
+    a = _naive_utc(later)
+    b = _naive_utc(earlier)
+    if a is None or b is None:
+        return 0
+    ms = int((a - b).total_seconds() * 1000)
+    return min(max(ms, 0), 4_294_967_295)
+
+
+@dataclass(frozen=True)
+class _ActivityFields:
+    task_name: str
+    attempt: int
+    task_queue: str
+    scheduled_at: datetime
+    schedule_to_start_ms: int
+    retry_backoff_ms: int
+    workflow_id: str
+    workflow_run_id: str
+    workflow_type: str
+
+
+def _activity_fields(input: ExecuteActivityInput) -> _ActivityFields:
+    """Identity plus queue-wait fields. Empty/0 when ``activity.info()`` is missing."""
+    fallback_name = getattr(input.fn, "__name__", "unknown_task")
+    try:
+        info = activity.info()
+    except Exception:  # noqa: BLE001 - not in an activity context
+        return _ActivityFields(
+            task_name=fallback_name,
+            attempt=1,
+            task_queue="",
+            scheduled_at=_EPOCH,
+            schedule_to_start_ms=0,
+            retry_backoff_ms=0,
+            workflow_id="",
+            workflow_run_id="",
+            workflow_type="",
+        )
+    scheduled = _naive_utc(getattr(info, "scheduled_time", None))
+    started = _naive_utc(getattr(info, "started_time", None))
+    retry_at = _naive_utc(getattr(info, "current_attempt_scheduled_time", None))
+    return _ActivityFields(
+        task_name=info.activity_type,
+        attempt=int(info.attempt),
+        task_queue=info.task_queue or "",
+        scheduled_at=scheduled or _EPOCH,
+        schedule_to_start_ms=_delta_ms(started, scheduled),
+        retry_backoff_ms=_delta_ms(retry_at, scheduled),
+        workflow_id=getattr(info, "workflow_id", None) or "",
+        workflow_run_id=getattr(info, "workflow_run_id", None) or "",
+        workflow_type=getattr(info, "workflow_type", None) or "",
+    )
+
+
+def _duration_ms(age: Any) -> int:
+    """Protobuf Duration to milliseconds; 0 when the field is missing or zero."""
+    if age is None:
+        return 0
+    seconds = int(getattr(age, "seconds", 0) or 0)
+    nanos = int(getattr(age, "nanos", 0) or 0)
+    return min(max(seconds * 1000 + nanos // 1_000_000, 0), 4_294_967_295)
+
+
+def row_from_describe(queue: str, resp: Any, sampled_at: datetime) -> list:
+    """One ``processing_queue_backlog`` row from a DescribeTaskQueue response.
+
+    Prefers the enhanced ``stats`` block when the server fills it, falls back to
+    ``task_queue_status.backlog_count_hint`` (Temporal 1.23 reports the hint and
+    pollers, and leaves add/dispatch rates and backlog age at 0).
+    """
+    stats = getattr(resp, "stats", None)
+    status = getattr(resp, "task_queue_status", None)
+    backlog = 0
+    age_ms = 0
+    add_rate = 0.0
+    dispatch_rate = 0.0
+    if stats is not None:
+        backlog = int(getattr(stats, "approximate_backlog_count", 0) or 0)
+        age_ms = _duration_ms(getattr(stats, "approximate_backlog_age", None))
+        add_rate = float(getattr(stats, "tasks_add_rate", 0.0) or 0.0)
+        dispatch_rate = float(getattr(stats, "tasks_dispatch_rate", 0.0) or 0.0)
+    if backlog == 0 and status is not None:
+        backlog = int(getattr(status, "backlog_count_hint", 0) or 0)
+    pollers = len(list(getattr(resp, "pollers", None) or ()))
+    return [
+        queue,
+        sampled_at,
+        min(max(backlog, 0), 4_294_967_295),
+        age_ms,
+        add_rate,
+        dispatch_rate,
+        min(max(pollers, 0), 65535),
+    ]
+
+
+def backlog_rows_to_write(rows: Sequence[list]) -> list[list]:
+    """Drop the whole sample when every queue's backlog_count is 0.
+
+    Same discipline as inflight: idle costs zero rows, so "no fresh samples" means
+    idle rather than a hole in the data.
+    """
+    if not rows or not any(int(row[2] or 0) for row in rows):
+        return []
+    return list(rows)
+
+
 class _Recorder:
     """The buffer, its flusher thread, and the in-flight registry.
 
@@ -170,12 +347,24 @@ class _Recorder:
         self._next_token = 0
 
         self._unroutable: Dict[str, int] = {}
+        self._ai_rows: List[list] = []
+
+        self._temporal_client: Any = None
+        self._loop: Any = None
+        self._last_backlog_at = 0.0
+        self._backlog_logged = False
 
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     # -- lifecycle ---------------------------------------------------------
+
+    def attach_client(self, client: Any, loop: Any) -> None:
+        """Hand the Temporal client to the backlog sampler. Never raises."""
+        with self._lock:
+            self._temporal_client = client
+            self._loop = loop
 
     def ensure_started(self) -> None:
         if self._thread is not None:
@@ -195,6 +384,7 @@ class _Recorder:
             self._wake.clear()
             self.flush()
             self._sample_inflight()
+            self._sample_backlog()
 
     # -- recording ---------------------------------------------------------
 
@@ -234,6 +424,12 @@ class _Recorder:
         if flush_now:
             self._wake.set()
 
+    def record_ai(self, row: list) -> None:
+        """Buffer one ``ai_service_telemetry`` row. Same process, same daemon, never raises."""
+        self.ensure_started()
+        with self._lock:
+            self._ai_rows.append(row)
+
     def note_unroutable(self, task_name: str) -> None:
         """An activity whose parameters name no collection: recorded in the global table."""
         with self._lock:
@@ -263,6 +459,7 @@ class _Recorder:
             self._rows = {}
             self._row_count = 0
             overflow, self._overflow_dropped = self._overflow_dropped, 0
+            ai_rows, self._ai_rows = self._ai_rows, []
 
         if overflow:
             self._warn(
@@ -273,6 +470,8 @@ class _Recorder:
 
         for collectionname, rows in pending.items():
             self._insert(collectionname, "processing_task_runs", _RUNS_COLUMNS, rows)
+        if ai_rows:
+            self._insert("", "ai_service_telemetry", _AI_COLUMNS, ai_rows)
 
     def _insert(
         self, collectionname: str, table: str, columns: List[str], rows: List[list]
@@ -339,36 +538,104 @@ class _Recorder:
                 collectionname, "processing_task_inflight", _INFLIGHT_COLUMNS, rows
             )
 
+    def _sample_backlog(self) -> None:
+        """Describe every known queue. Never raises, never runs on the activity path."""
+        now = time.monotonic()
+        with self._lock:
+            client = self._temporal_client
+            loop = self._loop
+            last = self._last_backlog_at
+        if client is None or loop is None:
+            return
+        if last and (now - last) < BACKLOG_INTERVAL_SECONDS:
+            return
+        with self._lock:
+            self._last_backlog_at = now
+        try:
+            future = asyncio.run_coroutine_threadsafe(_describe_all_queues(client), loop)
+            samples = future.result(timeout=8)
+        except Exception as exc:  # noqa: BLE001 - telemetry never fails an ingest
+            if not self._backlog_logged:
+                self._backlog_logged = True
+                log.warning(
+                    "task_timing: DescribeTaskQueue failed, queue backlog not sampled: %s",
+                    exc,
+                )
+            return
+        rows = backlog_rows_to_write(samples)
+        if rows:
+            self._insert("", "processing_queue_backlog", _BACKLOG_COLUMNS, rows)
+
 
 _recorder = _Recorder()
 
 
-def _activity_identity(input: ExecuteActivityInput) -> Tuple[str, int, str]:
-    """``(task_name, attempt, task_queue)``.
+async def _describe_all_queues(client: Any) -> list[list]:
+    """One DescribeTaskQueue RPC per known queue. Failures of a single queue are skipped."""
+    from temporalio.api.enums.v1 import TaskQueueType
+    from temporalio.api.taskqueue.v1 import TaskQueue
+    from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
 
-    ``activity.info()`` is the authority -- it carries the *registered* activity type,
-    which may differ from the Python function name. The function name is the fallback
-    for the unit tests, which call the interceptor outside an activity context.
+    sampled_at = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    namespace = getattr(client, "namespace", None) or "default"
+    rows: list[list] = []
+    for name in KNOWN_TASK_QUEUES:
+        try:
+            resp = await client.workflow_service.describe_task_queue(
+                DescribeTaskQueueRequest(
+                    namespace=namespace,
+                    task_queue=TaskQueue(name=name),
+                    task_queue_type=TaskQueueType.TASK_QUEUE_TYPE_ACTIVITY,
+                    include_task_queue_status=True,
+                    report_stats=True,
+                    report_pollers=True,
+                )
+            )
+            rows.append(row_from_describe(name, resp, sampled_at))
+        except Exception as exc:  # noqa: BLE001 - one dead queue must not drop the rest
+            if not _recorder._backlog_logged:
+                _recorder._backlog_logged = True
+                log.warning(
+                    "task_timing: DescribeTaskQueue(%s) failed, queue backlog not sampled: %s",
+                    name,
+                    exc,
+                )
+    return rows
+
+
+def attach_temporal_client(client: Any) -> None:
+    """Give the recorder the common worker's Temporal client for queue-backlog samples.
+
+    Other workers leave this unset: DescribeTaskQueue is cluster-wide, so the two
+    common-worker processes sampling every queue is enough (a reader takes the newest
+    row per task_queue). Starts the daemon so an idle fleet still records waiters.
+    Never raises.
     """
     try:
-        info = activity.info()
-        return (info.activity_type, int(info.attempt), info.task_queue)
-    except Exception:  # noqa: BLE001 - not in an activity context
-        return (getattr(input.fn, "__name__", "unknown_task"), 1, "")
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    try:
+        _recorder.attach_client(client, loop)
+        _recorder.ensure_started()
+    except Exception:  # noqa: BLE001 - attaching telemetry must not fail a worker boot
+        log.warning("task_timing: failed to attach Temporal client for queue backlog", exc_info=True)
 
 
 class _TimingActivityInbound(ActivityInboundInterceptor):
     """Times one activity execution and hands the row to the buffer."""
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
-        task_name, attempt, task_queue = _activity_identity(input)
+        fields = _activity_fields(input)
         collectionname, dataset, item_hash = identify(input.args)
 
         unroutable = not collectionname
         if unroutable:
-            _recorder.note_unroutable(task_name)
+            _recorder.note_unroutable(fields.task_name)
 
-        token = None if unroutable else _recorder.begin(collectionname, dataset, task_name)
+        token = None if unroutable else _recorder.begin(
+            collectionname, dataset, fields.task_name
+        )
         started_at = datetime.now(timezone.utc).replace(tzinfo=None)
         start = time.monotonic()
         outcome = "ok"
@@ -386,14 +653,20 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
                 collectionname,
                 [
                     dataset,
-                    task_name,
+                    fields.task_name,
                     item_hash,
                     outcome,
                     min(run_time_ms, 4_294_967_295),
                     started_at,
-                    min(max(attempt, 0), 65535),
-                    task_queue,
+                    min(max(fields.attempt, 0), 65535),
+                    fields.task_queue,
                     WORKER_ID,
+                    fields.scheduled_at,
+                    fields.schedule_to_start_ms,
+                    fields.retry_backoff_ms,
+                    fields.workflow_id,
+                    fields.workflow_run_id,
+                    fields.workflow_type,
                 ],
             )
 
@@ -410,3 +683,11 @@ class TaskTimingInterceptor(Interceptor):
 def flush_now() -> None:
     """Drain the buffer synchronously. For tests and for shutdown paths."""
     _recorder.flush()
+
+
+def record_ai_service(row: list) -> None:
+    """Enqueue one ``ai_service_telemetry`` row onto the timing daemon. Never raises."""
+    try:
+        _recorder.record_ai(row)
+    except Exception:  # noqa: BLE001 - telemetry is never worth a failed activity
+        log.debug("task_timing: ai_service_telemetry buffer failed", exc_info=True)

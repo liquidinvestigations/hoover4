@@ -337,6 +337,8 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     rt_vals: List[int] = []
     logs_vals: List[str] = []
     ts_vals: List[datetime] = []
+    attempt_vals: List[int] = []
+    run_id_vals: List[str] = []
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -353,6 +355,14 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
         rt_vals.append(ms)
         logs_vals.append((e.get("error_logs") or ""))
         ts_vals.append(now)
+        try:
+            attempt = int(e.get("attempt") or 0)
+            if attempt < 0:
+                attempt = 0
+        except Exception:
+            attempt = 0
+        attempt_vals.append(min(attempt, 65535))
+        run_id_vals.append((e.get("workflow_run_id") or ""))
 
     with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
@@ -362,6 +372,8 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
             "run_time_ms": pa.array(rt_vals, type=pa.uint32()),
             "error_logs": pa.array(logs_vals, type=pa.string()),
             "timestamp": pa.array(ts_vals, type=pa.timestamp("s")),
+            "attempt": pa.array(attempt_vals, type=pa.uint16()),
+            "workflow_run_id": pa.array(run_id_vals, type=pa.string()),
         })
         client.insert_arrow("processing_errors", tbl)
 

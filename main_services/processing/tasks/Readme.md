@@ -138,8 +138,10 @@ a read timeout does not. `RemoteResult.provider` records which endpoint actually
 
 Every worker installs `TaskTimingInterceptor` — a Temporal **activity inbound
 interceptor** — so one row lands in the collection's `processing_task_runs` per activity
-execution: task name, dataset, artifact hash, wall duration, outcome, attempt, queue and
-worker process. The interceptor is the hook rather than the 55 call sites or
+execution: task name, dataset, artifact hash, wall duration, outcome, attempt, queue,
+worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
+`retry_backoff_ms`) and the parent workflow identity (`workflow_id`, `workflow_run_id`,
+`workflow_type`). The interceptor is the hook rather than the 55 call sites or
 `@with_heartbeat` for one reason: it cannot be forgotten by the next activity someone
 adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
 
@@ -155,12 +157,17 @@ Three properties are load-bearing:
 - **Never silent.** Instrumentation may not fail an ingest, so every write is wrapped —
   but every drop is logged with a count: a failed insert, an overflowing buffer, and the
   handful of activities whose parameters carry no `collectionname`
-  (`ensure_temp_dir_exists`, `cleanup_temp_dir`, the P_agent chat activities), which
-  cannot be routed to a collection database and are therefore not recorded at all.
+  (`ensure_temp_dir_exists`, `cleanup_temp_dir`, `collect_eta_samples`, the P_agent chat
+  activities), which are recorded in the global `Hoover4_Processing` copy of
+  `processing_task_runs` with an empty `collection_dataset`.
 
 The same thread samples what is *running* into `processing_task_inflight`, because a
 finished-rows table cannot show the twenty-minute activity that has not finished yet.
 Samples are levels, not counters: a reader takes the newest per worker and sums those.
+Inflight is busy slots inside a worker process. Queue *waiters* are
+`Hoover4_Processing.processing_queue_backlog`, sampled from Temporal `DescribeTaskQueue`
+every 10 s by the common worker: one row per known queue, nothing written while every
+queue's backlog is 0, TTL 2 days like inflight.
 
 Read it back with `main_services/task-time-report.sh` (per-task totals, shares, p95, wall
 clock, achieved parallelism) or on `/admin/collections/<name>/processing`, which has both
@@ -182,6 +189,8 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `processing-ocr-queue` — OCR.
 - `processing-nlp-queue` — P4 entity extraction against the remote NER service
   (`main.py worker nlp`, concurrency 2 — concurrency here pipelines HTTP, not local CPU).
+- `processing-embed-queue` — P5 chunk+embed against the remote embeddings service
+  (`main.py worker embed`, concurrency 2).
 - `processing-indexing-queue` — P6 Manticore writes.
 - `processing-index-planner-queue` — P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger

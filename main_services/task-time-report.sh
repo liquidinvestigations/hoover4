@@ -188,6 +188,20 @@ if [ -n "$repeats" ]; then
     printf '%s\n' "$repeats"
 fi
 
+# schedule_to_start_ms is the ALTER in 00047 / 00027. Skip the section on a
+# collection database that has not been migrated yet rather than failing the report.
+queue_wait=$(CH_try "SELECT task_queue,
+       round(quantileExact(0.50)(schedule_to_start_ms)) AS p50_schedule_to_start_ms,
+       round(quantileExact(0.95)(schedule_to_start_ms)) AS p95_schedule_to_start_ms,
+       count() AS executions
+FROM processing_task_runs $WHERE
+GROUP BY task_queue
+ORDER BY p95_schedule_to_start_ms DESC")
+if [ -n "$queue_wait" ]; then
+    section "Queue wait: schedule_to_start_ms by task_queue"
+    printf '%s\n' "$queue_wait"
+fi
+
 if [ "$FORMAT" != "CSVWithNames" ]; then
     printf '\nRun with --csv to pipe these into a spreadsheet, and with\n'
     printf "  --since '<UTC timestamp>' to scope the report to a single ingest.\n"

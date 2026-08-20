@@ -6,7 +6,7 @@ import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from .task_timing import TaskTimingInterceptor
+from .task_timing import TaskTimingInterceptor, attach_temporal_client
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ async def run_common_worker():
 
     log.info("Starting common worker...")
     client = await Client.connect("temporal:7233")
+    attach_temporal_client(client)
     await ensure_search_attributes(client)
 
     # Self-scheduling ETA sampler for the admin processing page. A singleton:

@@ -304,6 +304,10 @@ async def record_errors_from_results(
     from temporalio import workflow as _wf
 
     now_ts = _wf.now()
+    try:
+        run_id = _wf.info().run_id or ""
+    except Exception:
+        run_id = ""
     error_rows: List[Dict[str, Any]] = []
     for idx, res in enumerate(results):
         if isinstance(res, Exception):
@@ -320,6 +324,8 @@ async def record_errors_from_results(
                 "task_name": task_name,
                 "run_time_ms": dur_ms,
                 "error_logs": err_str,
+                "attempt": 0,
+                "workflow_run_id": run_id,
             })
 
     if not error_rows:

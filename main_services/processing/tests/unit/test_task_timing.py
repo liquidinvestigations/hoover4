@@ -23,9 +23,13 @@ from tasks import task_timing
 from tasks.task_timing import (
     MAX_BUFFERED_ROWS,
     TaskTimingInterceptor,
+    _EPOCH,
+    _RUNS_COLUMNS,
     _Recorder,
     _TimingActivityInbound,
+    backlog_rows_to_write,
     identify,
+    row_from_describe,
 )
 from temporalio.worker import ActivityInboundInterceptor, ExecuteActivityInput
 
@@ -272,3 +276,83 @@ def test_every_worker_installs_the_timing_interceptor():
 def test_the_interceptor_returns_the_timing_wrapper():
     wrapped = TaskTimingInterceptor().intercept_activity(_FakeNext())
     assert isinstance(wrapped, _TimingActivityInbound)
+
+
+def test_queue_wait_columns_are_empty_without_activity_info(recorder):
+    """Unit tests call the interceptor outside an activity context. Missing info
+    must not fail the activity, and the new columns stay at their empty defaults."""
+    interceptor = _TimingActivityInbound(_FakeNext(result=1))
+    assert asyncio.run(interceptor.execute_activity(_input("t", _DocParams()))) == 1
+    named = dict(zip(_RUNS_COLUMNS, _row(recorder)[0]))
+    assert named["scheduled_at"] == _EPOCH
+    assert named["schedule_to_start_ms"] == 0
+    assert named["retry_backoff_ms"] == 0
+    assert named["workflow_id"] == ""
+    assert named["workflow_run_id"] == ""
+    assert named["workflow_type"] == ""
+
+
+class _FakeDescribe:
+    def __init__(self, backlog=0, hint=0, pollers=(), add_rate=0.0, dispatch_rate=0.0, age=None):
+        self.stats = type(
+            "S",
+            (),
+            {
+                "approximate_backlog_count": backlog,
+                "approximate_backlog_age": age,
+                "tasks_add_rate": add_rate,
+                "tasks_dispatch_rate": dispatch_rate,
+            },
+        )()
+        self.task_queue_status = type("T", (), {"backlog_count_hint": hint})()
+        self.pollers = pollers
+
+
+def test_backlog_sample_is_dropped_when_every_queue_is_idle():
+    sampled_at = _EPOCH
+    rows = [
+        row_from_describe("processing-common-queue", _FakeDescribe(pollers=["a"]), sampled_at),
+        row_from_describe("processing-indexing-queue", _FakeDescribe(hint=0), sampled_at),
+    ]
+    assert backlog_rows_to_write(rows) == []
+
+
+def test_backlog_sample_is_kept_when_any_queue_has_waiters():
+    sampled_at = _EPOCH
+    idle = row_from_describe("processing-common-queue", _FakeDescribe(), sampled_at)
+    busy = row_from_describe(
+        "processing-indexing-queue",
+        _FakeDescribe(backlog=12, pollers=["w1"], add_rate=1.5, dispatch_rate=0.5),
+        sampled_at,
+    )
+    kept = backlog_rows_to_write([idle, busy])
+    assert len(kept) == 2
+    assert kept[1][0] == "processing-indexing-queue"
+    assert kept[1][2] == 12
+    assert kept[1][6] == 1
+
+
+def test_backlog_falls_back_to_the_count_hint():
+    row = row_from_describe(
+        "processing-ocr-queue",
+        _FakeDescribe(backlog=0, hint=7, pollers=["a", "b"]),
+        _EPOCH,
+    )
+    assert row[2] == 7
+    assert row[6] == 2
+
+
+def test_idle_worker_writes_no_backlog_rows(recorder):
+    recorder._sample_backlog()
+    assert recorder.inserts == []
+
+
+def test_ai_telemetry_shares_the_timing_buffer(recorder):
+    task_timing.record_ai_service(["ocr", "gpu", "pipeline", "", 12, 1, "ok"])
+    recorder.flush()
+    rows = [
+        r for (_c, t, _cols, rs) in recorder.inserts
+        if t == "ai_service_telemetry" for r in rs
+    ]
+    assert rows == [["ocr", "gpu", "pipeline", "", 12, 1, "ok"]]
+    assert recorder.inserts[0][0] == ""

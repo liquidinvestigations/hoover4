@@ -9,6 +9,10 @@ same column meanings — keep them agreeing.
 Until the worker wrote to it, OCR and NER — the two capabilities that do the most work in
 this stack — rendered as "no traffic", which is indistinguishable from "broken".
 
+Rows go through the same in-process buffer as `processing_task_runs` (`task_timing.py`):
+a synchronous one-row insert on the activity path would add a ClickHouse round trip to
+every OCR/NER call. The function signature is unchanged and still never raises.
+
 **Never in the way.** Every failure here is swallowed: a telemetry row is not worth
 failing an OCR page over, and this runs inside Temporal activities whose retries are
 expensive.
@@ -32,28 +36,22 @@ def record(
     username: str = "",
     session_id: str = "",
 ) -> None:
-    """Insert one row. Never raises."""
+    """Buffer one row onto the worker's task-timing daemon. Never raises."""
     if not service:
         return
     try:
-        from database.clickhouse import get_global_client
+        from tasks.task_timing import record_ai_service
 
-        with get_global_client() as client:
-            client.insert(
-                "ai_service_telemetry",
-                [[
-                    service,
-                    provider or "",
-                    # The pipeline has no user: its work is not on anyone's behalf, and
-                    # the literal `guest` would be a lie rather than a default.
-                    username or "pipeline",
-                    session_id or "",
-                    max(0, int(latency_ms)),
-                    1 if ok else 0,
-                    (detail or "")[:200],
-                ]],
-                column_names=["service", "provider", "username", "session_id",
-                              "latency_ms", "ok", "detail"],
-            )
+        record_ai_service([
+            service,
+            provider or "",
+            # The pipeline has no user: its work is not on anyone's behalf, and
+            # the literal `guest` would be a lie rather than a default.
+            username or "pipeline",
+            session_id or "",
+            max(0, int(latency_ms)),
+            1 if ok else 0,
+            (detail or "")[:200],
+        ])
     except Exception as exc:  # noqa: BLE001 - telemetry is never worth a failed activity
         log.debug("ai_service_telemetry insert failed: %s", exc)

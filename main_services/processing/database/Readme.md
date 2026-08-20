@@ -16,7 +16,7 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `bench_runs` |
+| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs` |
 | Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `collectionname` is a slug matching `[a-z0-9_]{1,48}` that may not end in `_<digits>`
@@ -201,6 +201,8 @@ appended tables and column-adding migrations; the global set does the same.
 | `00024_eta_samples_ttl.sql` | Global. `processing_eta_samples` TTL is 3 days. `sampled_at` stays in the sort key so the admin page can plot the newest 100 samples per stage. |
 | `00025_processing_task_runs.sql` | Global. Same columns as the collection table of this name. Activities whose parameters name no collection write here with an empty `collection_dataset`. |
 | `00026_bench_runs.sql` | Global. One row per `bench-ingest.sh` run, sorted `(fixture, started_at)`. |
+| `00027_task_runs_queue_wait.sql` | Global. Same queue-wait columns as collection `00047` on the unroutable `processing_task_runs` copy. |
+| `00028_processing_queue_backlog.sql` | Global. Sampled Temporal queue waiters (`DescribeTaskQueue`): backlog count, age, add/dispatch rates, pollers. Level samples, nothing written while every queue is idle. TTL 2 days. Distinct from `processing_task_inflight`, which is busy slots inside a worker process. |
 | `00032_email_addresses.sql` | Structured sender/recipient rows written by `parse_email`. |
 | `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
 | `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
@@ -212,14 +214,19 @@ appended tables and column-adding migrations; the global set does the same.
 | `00044_table_sheets.sql` | Per-sheet extents. Every cell read is bounded by these, which is how a re-parse that produces fewer rows leaves the old tail unreachable rather than needing a mutation. |
 | `00045_table_columns.sql` | Per-column header, inferred type, per-kind counts, value range and samples. Real columns rather than JSON, so "every document with a column called IBAN" is a SQL query. |
 | `00046_text_content_bytes.sql` | `text_bytes` on `text_content`: byte length of `text`, written at insert so size queries never scan the body. |
+| `00047_task_runs_queue_wait.sql` | Queue wait on `processing_task_runs`: `scheduled_at`, `schedule_to_start_ms`, `retry_backoff_ms`, plus `workflow_id` / `workflow_run_id` / `workflow_type`. Defaults keep older rows readable. |
+| `00048_processing_errors_join.sql` | `attempt` and `workflow_run_id` on `processing_errors`, so an `outcome = error` row in `processing_task_runs` can join its stack trace without a hash+time window. |
 
-The last two are written by `tasks/task_timing.py` (a Temporal activity interceptor,
-batched, best-effort but never silent) and read by the admin processing page and
-`main_services/task-time-report.sh`. Volume, so nobody is surprised by it: a full ~200k-file
-ingest produces single-digit millions of `processing_task_runs` rows (a handful of
-activities per file), which is a fraction of a second to aggregate and a few tens of
-megabytes on disk. The in-flight table is thousands of rows for the same run, and zero
-while nothing is being processed.
+`processing_task_runs` and `processing_task_inflight` are written by `tasks/task_timing.py`
+(a Temporal activity interceptor, batched, best-effort but never silent) and read by the
+admin processing page and `main_services/task-time-report.sh`. Queue waiters are a third
+table, global `processing_queue_backlog`, sampled from Temporal `DescribeTaskQueue` by
+the same daemon. Volume, so nobody is surprised by it: a full ~200k-file ingest produces
+single-digit millions of `processing_task_runs` rows (a handful of activities per file),
+which is a fraction of a second to aggregate and a few tens of megabytes on disk. The
+in-flight table is thousands of rows for the same run, and zero while nothing is being
+processed. The backlog table is a handful of rows per sample while any queue has waiters,
+and zero while every queue is idle.
 
 Two baseline files carry edits made in place: `00005_vfs_files.sql` (`container_hash` in
 the sort key, plus `mtime`/`mtime_source`) and `00008_email_headers.sql`
