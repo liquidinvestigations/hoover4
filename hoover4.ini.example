@@ -135,8 +135,8 @@ common_workers        =            ; common-worker processes (default: cores/4, 
 common_concurrency    =            ; activity slots per common worker (default 8)
 tika_concurrency      =            ; default 8; one extractous helper per slot
 ocr_concurrency       =            ; default 4
-nlp_concurrency       =            ; default 2; pipelines HTTP to a remote GPU
-embed_concurrency     =            ; default 2; same
+nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
+embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
 indexing_concurrency  =            ; default 1
 
 # ---- runtime behaviour when the GPU host is unreachable -------------------------
