@@ -310,7 +310,7 @@ missing_index=$(CH "SELECT uniqExact(blob_hash) FROM ${DB}.blobs FINAL WHERE col
     || fail "$missing_index file(s) missing from index_state"
 
 vfs_ch=$(CH "SELECT count() FROM ${DB}.vfs_nodes FINAL WHERE collection_dataset = '${DS}'")
-vfs_mc=$(MC "SELECT count(*) FROM ${COLLECTION}_vfs WHERE collection_dataset='${DS}'" || echo "")
+vfs_mc=$(MC "SELECT count(*) FROM ${COLLECTION}_vfs WHERE collection_dataset='${DS}'" | grep -oE '[0-9]+' | head -1)
 [ "$vfs_ch" = "$vfs_mc" ] && [ -n "$vfs_mc" ] \
     && ok "${COLLECTION}_vfs count=$vfs_mc equals vfs_nodes" \
     || fail "${COLLECTION}_vfs count=${vfs_mc:-missing} but vfs_nodes=$vfs_ch"
