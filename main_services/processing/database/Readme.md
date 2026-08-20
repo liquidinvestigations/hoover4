@@ -205,6 +205,10 @@ five appended tables and one column-adding migration:
 | `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only records failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
 | `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters — read the newest per worker and sum those. TTL 2 days. |
 | `00037_shard_row_budget.sql` | `row_count` on `manticore_shards` and `manticore_shard_assignments`: the shard planner caps a shard on Manticore rows as well as on text bytes. An `ALTER`, because both tables are in the collapsed baseline. |
+| `00042_table_cells.sql` | One row per non-empty cell of a tabular document, keyed `(file_hash, sheet_id, column_id, row_id)` — column-major, because every operation the grid performs is scoped to one column. No `collection_dataset` column: one parse serves every dataset in the collection holding the same file. |
+| `00043_table_documents.sql` | The per-`(collection_dataset, hash)` manifest for those cells: reader, format, counts, and the truncation record. The only thing that authorises a cell read. |
+| `00044_table_sheets.sql` | Per-sheet extents. Every cell read is bounded by these, which is how a re-parse that produces fewer rows leaves the old tail unreachable rather than needing a mutation. |
+| `00045_table_columns.sql` | Per-column header, inferred type, per-kind counts, value range and samples. Real columns rather than JSON, so "every document with a column called IBAN" is a SQL query. |
 
 The last two are written by `tasks/task_timing.py` (a Temporal activity interceptor,
 batched, best-effort but never silent) and read by the admin processing page and
@@ -229,12 +233,31 @@ ReplacingMergeTree row and the second container loses its children. The P0 dedup
 carries the same filter for the same reason.
 
 **The readiness sentinel names whatever the LAST table-creating migration creates**,
-because "ready" means the schema is fully built. It is currently `processing_task_inflight`
+because "ready" means the schema is fully built. It is currently `table_columns`
 and must be updated in both copies (`db_collection_migrations/READINESS_SENTINEL` and
 `website/backend/src/db_auth/READINESS_SENTINEL`) whenever a table-creating migration is
 appended. `00034_vfs_nodes.sql` contains a comment claiming it must stay last; that
 sentence is wrong and is **left alone on purpose**, because it is applied history whose md5
 is recorded. The rule it states still holds — that is why the sentinel is not there.
+
+## `table_cells` is keyed by hash, and that is why it needs a sweeper
+
+`purge_dataset_from_clickhouse` enumerates `SHOW TABLES`, runs `DESCRIBE TABLE` on each,
+and **skips every table with no `collection_dataset` column**. `table_cells` has none, on
+purpose: cells are shared by every dataset in the collection that holds the same file, so
+one workbook mailed to forty people is parsed once. A dataset purge therefore reaches
+`table_documents`, `table_sheets` and `table_columns` and leaves the cells alone — which
+is correct while another dataset still claims them, and a leak once none does.
+
+`sweep_orphan_table_cells` closes that: it deletes the cells of every hash with no
+`table_documents` row in `('ok', 'parsing')`, in bounded batches, and it **refuses to run
+against an empty manifest** and logs the refusal. An authority table with no rows is a
+symptom — an unapplied migration, a failed query — and never a licence to delete every
+cell in the collection. `'parsing'` counts as a claim so a sweep cannot race an in-flight
+parse, and a `parsing` row older than a day is tombstoned to `failed` by the same pass,
+which is what releases a genuinely abandoned parse's cells on the next one.
+
+Collection deletion needs none of this: `drop_collection_db` drops the whole database.
 
 ## Navigation
 

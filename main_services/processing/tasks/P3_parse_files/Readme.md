@@ -6,6 +6,8 @@ This stage parses downloaded files by type and writes structured content and met
 
 - Detect MIME types using GNU `file`, Tika/Extractous, and Magika.
 - Parse archives, emails, PDFs, images, audio, video, and raw text.
+- Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS) into individual
+  cells (`parse_table.py`), alongside the text extraction of the same file.
 - Run OCR for images and extract text for indexing.
 - Assemble a searchable PDF per engine for every PDF (`parse_ocr_pdf.py`), through the
   `hoover4-ocr-pdf` service.
@@ -17,6 +19,9 @@ This stage parses downloaded files by type and writes structured content and met
 - Activities: `parse_*` modules (e.g., `parse_pdf.py`, `parse_email.py`, `parse_image.py`)
 - OCR: `parse_ocr.py` (images -> `raw_ocr_results` + text) and `parse_ocr_pdf.py`
   (PDFs -> a derived searchable PDF + a `pdf_ocr_results` row)
+- Tables: `parse_table.py` (cells -> `table_cells` + `table_documents`/`table_sheets`/
+  `table_columns`), with the format list in `table_formats.py`, the readers in
+  `table_readers.py` and the delimited-text sniff in `sniff_table.py`
 - Helpers: `parse_common.py` for text page/segment writing and error recording
 
 ## How text is stored — `page_id` is a page number
@@ -93,7 +98,15 @@ allowed to disagree — processing is attempted on the union of what they say, w
 a `.docx` gets its office text extracted out of a file libmagic calls a zip, and how a
 mail file gets both its headers parsed and its body extracted as text.
 
-`content_sniff` is the one that reads content nothing else can name. `sniff_email.py`
+`content_sniff` is the one that reads content nothing else can name. `sniff_table.py`
+recognises delimited text the same way, and runs only after `sniff_email` has declined:
+an RFC 822 header block is a rectangular two-column table to any sniff that accepts `:`
+as a delimiter, so `:` is excluded from the candidate set permanently and a message the
+email sniff accepted is never offered to the table sniff at all.
+`tests/integration/test_table_sniff_corpus.py` is the measurement that keeps both rules
+honest — zero acceptances across the 21 291 messages of `enron-kaminski-v`.
+
+`sniff_email.py`
 recognises an RFC 822 message from its header block, which is the only way to classify an
 extension-less maildir: every other detector calls those files `text/plain`. It also
 strips Apple Mail's `.emlx` byte-count prefix and a leading BOM before the message is
@@ -105,6 +118,44 @@ confidently named.
 The disagreement is resolved once, at the end, by `resolve_canonical_file_type` in
 `P6_index_data` — that is where a document gets the single type the search index and the
 filter pane use. Nothing here picks a winner.
+
+## A tabular document is read twice: as text, and as a grid
+
+A `.xlsx` gets its office-XML flattening, its Tika text **and** `parse_table_and_store`.
+Nothing is replaced: a search for a value inside cell G4713 still finds the file through
+the text path. What the table reader adds is structure — which columns exist, what type
+each one is, and a grid that can be sorted, filtered and paged without loading the
+document.
+
+Cells go into `table_cells`, keyed by **hash alone**, so one parse serves every dataset in
+the collection that holds the same file. The per-dataset manifest is `table_documents`,
+and it is what authorises a read: a hash with no manifest row for the requesting dataset
+is a 404, because permissions here are resolved per `collection_dataset` and a hash is a
+lookup key rather than a capability. `table_sheets` and `table_columns` carry the extents,
+the headers and the per-column statistics.
+
+The manifest row is written **before** the cells, which is the opposite of
+`parse_ocr_pdf.py`'s object-before-row rule and is the mirrored reason: a cell with no
+manifest row is invisible to the permission check and to `sweep_orphan_table_cells` alike.
+
+Two rules decide whether something is a table at all, and the asymmetry is the point. A
+binary spreadsheet is a table on the strength of its format, so one non-empty cell is
+enough. Delimited text has to be at least 2 rows by 2 columns, because its bytes are also
+the bytes of prose, of mail and of a log file — a single-column list is a text file and a
+single-line file is a text file. Below the threshold no manifest row is written and the
+outcome is recorded as `table_not_a_table` in `processing_errors`, which means no
+evidence, no `table` canonical type, no glyph and no grid.
+
+Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
+manifest row — the limit's stable name, its maximum and the sheet it fired on — so the
+grid can say what was dropped. A cap that is invisible in the UI reads as "this file has
+300 columns", which is a lie about the corpus.
+
+`python_calamine` is a Rust extension and fails by **panicking** rather than raising: a
+`PanicException` derives from `BaseException` and an ordinary `except Exception` does not
+see it. A workbook with one blank sheet — a pivot-table template, entirely ordinary — is
+enough to trigger it. `parse_table.py` therefore catches `BaseException` and re-raises
+only the interpreter's own, and the calamine reader skips a sheet with no used range.
 
 ## PDF images are children, and their text is indexed twice
 

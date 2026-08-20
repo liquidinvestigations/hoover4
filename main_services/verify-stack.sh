@@ -671,6 +671,25 @@ else
     fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the derived prefix"
 fi
 
+# 7f. No `table_cells` row survives whose hash no `table_documents` row claims.
+#     `table_cells` is keyed by hash alone so one parse serves every dataset in the
+#     collection that holds the same file, which also means `purge_dataset_from_clickhouse`
+#     cannot see the table at all -- it enumerates tables by their `collection_dataset`
+#     column. `sweep_orphan_table_cells` is what releases the cells a purged dataset left
+#     behind, and an orphan here is that sweep not having run or having refused.
+orphan_cells=0
+for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
+    has_cells=$(CH "SELECT count() FROM system.tables WHERE database = '${db}' AND name = 'table_cells'" 2>/dev/null || echo 0)
+    [ "$has_cells" -eq 0 ] && continue
+    count=$(CH "SELECT count() FROM ${db}.table_cells WHERE file_hash NOT IN (SELECT hash FROM ${db}.table_documents FINAL WHERE status IN ('ok', 'parsing'))" 2>/dev/null || echo 0)
+    orphan_cells=$((orphan_cells + count))
+done
+if [ "$orphan_cells" -eq 0 ]; then
+    ok "no table_cells row outlives the table_documents row that authorises reading it"
+else
+    fail "$orphan_cells table_cells row(s) have no table_documents row -- the orphan sweep did not run"
+fi
+
 # 8. A search through the site's HTTP API returns >0 hits for a word known to
 #    be in the fixture data. The server-function URL carries a build hash, so it is
 #    discovered from the served WASM bundle rather than written down.

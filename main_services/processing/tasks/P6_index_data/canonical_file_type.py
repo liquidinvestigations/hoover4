@@ -30,8 +30,15 @@ from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type, is_zip_based_d
 
 #: Most specific first. A document that is both an email and text is an email, an image
 #: encoded as text is an image, and a docx that is also a zip is a document.
+#:
+#: `table` sits above `doc`/`xls` and above `text` because it is the strongest statement
+#: available about a document: we did not guess from a MIME, we read a grid out of it. It
+#: sits below `email` and `pdf`, the two it can never collide with. A spreadsheet we could
+#: read therefore leaves the `xls` bucket of the file-type facet, and a CSV we could read
+#: leaves `text` -- which is the point: those buckets now hold exactly the spreadsheets
+#: and the text files that are NOT browsable as tables.
 SPECIFICITY = (
-    "email", "pdf", "doc", "xls", "ppt", "image", "video", "audio",
+    "email", "pdf", "table", "doc", "xls", "ppt", "image", "video", "audio",
     "archive", "html", "text", "other",
 )
 
@@ -69,7 +76,15 @@ def _most_specific(coarse_types) -> str:
 
 
 def _pick_mime(detections: dict[str, list[str]], coarse: str) -> str:
-    """A representative MIME for the winning coarse type."""
+    """A representative MIME for the winning coarse type.
+
+    Falls back to the most specific non-vague MIME any detector reported when *no*
+    detected MIME maps to the winner. `table` is the case that needs it: no MIME maps to
+    it -- `coarse_file_type` deliberately still calls a spreadsheet `xls` and a CSV
+    `text` -- so without the fallback a parsed workbook would carry an empty
+    `mime_type`, `document_metadata` would build an empty `file_mime_types` MVA from it,
+    and the metadata tab would show a blank where the spreadsheet MIME belongs.
+    """
     matching: list[tuple[int, int, str]] = []
     for index, detector in enumerate(_DETECTOR_PREFERENCE):
         for mime in detections.get(detector, ()):
@@ -82,8 +97,30 @@ def _pick_mime(detections: dict[str, list[str]], coarse: str) -> str:
             if coarse_file_type(mime) == coarse:
                 matching.append((0 if mime not in _VAGUE_MIMES else 1, len(_DETECTOR_PREFERENCE), mime))
     if not matching:
-        return ""
+        return _most_specific_mime(detections)
     return min(matching)[2]
+
+
+def _most_specific_mime(detections: dict[str, list[str]]) -> str:
+    """The best MIME any detector reported, ranked by its coarse type then by detector."""
+    ranked: list[tuple[int, int, int, str]] = []
+    for detector, mimes in detections.items():
+        try:
+            preference = _DETECTOR_PREFERENCE.index(detector)
+        except ValueError:
+            preference = len(_DETECTOR_PREFERENCE)
+        for mime in mimes:
+            if not mime:
+                continue
+            ranked.append((
+                0 if mime not in _VAGUE_MIMES else 1,
+                _rank(coarse_file_type(mime)),
+                preference,
+                mime,
+            ))
+    if not ranked:
+        return ""
+    return min(ranked)[3]
 
 
 def resolve_canonical(

@@ -310,6 +310,7 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
         purge_dataset_from_clickhouse,
         purge_dataset_from_manticore,
         recompute_shard_ledger_activity,
+        sweep_orphan_table_cells,
     )
 
     try:
@@ -355,6 +356,7 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
         collectionname=collectionname, collection_dataset=collection_dataset))
     purge_dataset_from_clickhouse(PurgeDatasetParams(
         collectionname=collectionname, collection_dataset=collection_dataset))
+    sweep_orphan_table_cells(CollectionDatabaseParams(collectionname=collectionname))
     recompute_shard_ledger_activity(CollectionDatabaseParams(collectionname=collectionname))
 
     # ClickHouse lightweight deletes are asynchronous, so the after-count is polled

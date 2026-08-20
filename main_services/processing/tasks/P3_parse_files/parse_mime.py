@@ -334,12 +334,18 @@ def detect_mime_by_content(params: DetectMimeParams) -> Dict[str, Any]:
     runs only behind its cheap gate (`should_check_email`), which keeps it off the ~98%
     of a mixed corpus that no amount of header reading will turn into mail.
 
+    Delimited text is sniffed after email and only when the email sniff declined: an
+    extension-less export is `text/plain` to every other detector too, and an RFC 822
+    message read with `:` as a delimiter is a perfectly rectangular two-column table. The
+    table sniff excludes `:` outright and is never offered a message this one accepted.
+
     The other two rules are inherited from the previous generation of this codebase and
     are still true: libmagic names a PST file only in its human-readable output, and it
     calls a legacy Excel workbook a generic OLE container.
     """
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     from tasks.P3_parse_files.sniff_email import should_check_email, sniff_email_path
+    from tasks.P3_parse_files.sniff_table import should_check_table, sniff_table_path
 
     magic_output = _magic_output(params.file_path)
     base_mimes, _encodings, _exts = _run_file_multi(params.file_path)
@@ -347,12 +353,21 @@ def detect_mime_by_content(params: DetectMimeParams) -> Dict[str, Any]:
     mime_types: Set[str] = set()
     details: Dict[str, Any] = {}
 
+    is_email = False
     if should_check_email(base_mimes, magic_output):
         sniff = sniff_email_path(params.file_path)
         if sniff is not None:
+            is_email = True
             mime_types.add(sniff.mime_type)
             details["email_headers_seen"] = sniff.headers
             details["emlx_prefix_bytes"] = sniff.emlx_prefix_bytes
+
+    if should_check_table(base_mimes, is_email=is_email):
+        table = sniff_table_path(params.file_path)
+        if table is not None:
+            mime_types.add(table.mime_type)
+            details["table_delimiter"] = table.delimiter
+            details["table_field_count"] = table.field_count
 
     if magic_output.startswith("Microsoft Outlook email folder") \
             or magic_output.startswith("Microsoft Outlook Personal"):

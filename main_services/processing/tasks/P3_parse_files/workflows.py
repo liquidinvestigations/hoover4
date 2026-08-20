@@ -35,6 +35,8 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_video import VideoProcessingAndScan
     from tasks.P3_parse_files.parse_ocr import run_ocr_and_store, RunOcrParams
     from tasks.P3_parse_files.parse_office_xml import parse_office_xml_and_store, ParseOfficeXmlParams
+    from tasks.P3_parse_files.parse_table import parse_table_and_store, ParseTableParams
+    from tasks.P3_parse_files.table_formats import is_table_mime
     from tasks.text_sources import OCR_ENGINES
     from tasks.P0_scan_disk.mime_type_mapper import is_zip_based_document_mime, should_expand_as_archive
     from tasks.visibility import dataset_search_attributes
@@ -285,6 +287,34 @@ class ParseSingleFile:
                 )
             )
             task_ids.append("parse_office_xml_and_store")
+            starts.append(workflow.now())
+
+        # A tabular document gets a THIRD reading, structural rather than textual: the
+        # same .xlsx is flattened to text by the office extractor and by Tika, and read
+        # into cells here. Nothing is replaced -- a search for a value inside a cell still
+        # goes through the text path, and this is what makes the columns browsable.
+        #
+        # It runs on the common queue with the other parse activities and relies on the
+        # caps in `table_formats` rather than on a queue of its own.
+        if any(is_table_mime(m) for m in mime_types):
+            futs.append(
+                workflow.execute_activity(
+                    parse_table_and_store,
+                    ParseTableParams(
+                        collectionname=params.collectionname,
+                        collection_dataset=params.collection_dataset,
+                        file_hash=params.item_hash,
+                        file_path=params.file_path,
+                        timeout_seconds=proc_secs,
+                        mime_types=mime_types,
+                        mime_encodings=mime_encodings,
+                    ),
+                    start_to_close_timeout=timedelta(seconds=proc_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=3),
+                )
+            )
+            task_ids.append("parse_table_and_store")
             starts.append(workflow.now())
 
         if "pdf" in coarse_types:

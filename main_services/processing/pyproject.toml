@@ -21,6 +21,7 @@ dependencies = [
     # "pandas>=2.3.0",
     # "pandas-stubs>=2.3.2.250827",
     "pyarrow>=21.0.0",
+    "python-calamine>=0.8.2",
     "temporalio>=1.16.0",
     "tika>=3.1.0",
     "torch>=2.6.0",

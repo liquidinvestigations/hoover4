@@ -59,6 +59,7 @@ async def run_common_worker():
     from .P3_parse_files.document_dates import resolve_document_dates
     from .P3_parse_files.parse_text import extract_plaintext_chunks
     from .P3_parse_files.parse_office_xml import parse_office_xml_and_store
+    from .P3_parse_files.parse_table import parse_table_and_store
     from .P3_parse_files.parse_mime import (
         detect_mime_with_gnu_file, detect_mime_with_magika, detect_mime_from_name,
         detect_mime_by_content,
@@ -79,6 +80,7 @@ async def run_common_worker():
         purge_dataset_from_manticore,
         recompute_shard_ledger_activity,
         sweep_chat_artifacts,
+        sweep_orphan_table_cells,
     )
     from .P_admin.ocr_languages import (
         begin_ocr_language_job,
@@ -184,6 +186,7 @@ async def run_common_worker():
             resolve_document_dates,
             extract_plaintext_chunks,
             parse_office_xml_and_store,
+            parse_table_and_store,
             pdf_get_metadata_and_store,
             pdf_small_extract_text_and_images,
             pdf_large_split_to_chunks,
@@ -205,6 +208,7 @@ async def run_common_worker():
             purge_dataset_from_manticore,
             purge_dataset_from_clickhouse,
             recompute_shard_ledger_activity,
+            sweep_orphan_table_cells,
             collect_eta_samples,
             sweep_chat_artifacts,
 

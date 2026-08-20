@@ -19,6 +19,7 @@ with workflow.unsafe.imports_passed_through():
         purge_dataset_from_manticore,
         recompute_shard_ledger_activity,
         sweep_chat_artifacts,
+        sweep_orphan_table_cells,
     )
     from tasks.P_admin.ocr_languages import (
         ApplyOcrLanguagesParams,
@@ -97,6 +98,16 @@ class PurgeDataset:
         await workflow.execute_activity(
             purge_dataset_from_clickhouse,
             PurgeDatasetParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+        # The cell table has no `collection_dataset` column -- one parse serves every
+        # dataset holding the same file -- so the purge above cannot reach it and the
+        # sweeper is what releases the cells no surviving dataset claims.
+        await workflow.execute_activity(
+            sweep_orphan_table_cells,
+            CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),

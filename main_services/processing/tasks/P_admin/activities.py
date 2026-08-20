@@ -156,6 +156,84 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
     return "ok"
 
 
+#: Cell batches one sweep pass releases. Bounded so a purge of a large dataset does not
+#: turn into a single unbounded DELETE over the whole cell table.
+SWEEP_ORPHAN_HASH_BATCH = 1000
+
+#: Passes one sweep runs before it stops and leaves the rest to the next one.
+SWEEP_ORPHAN_MAX_BATCHES = 100
+
+
+@activity.defn
+@with_heartbeat
+def sweep_orphan_table_cells(params: CollectionDatabaseParams) -> str:
+    """Release cells no dataset claims any more.
+
+    `table_cells` is keyed by hash alone so one parse serves every dataset in the
+    collection that holds the same file. The price is that `purge_dataset_from_clickhouse`
+    cannot see the table at all -- it enumerates tables by their `collection_dataset`
+    column -- so a purged dataset leaves its cells behind unless something looks for them.
+    That something is this.
+
+    It refuses to run against an empty manifest, and says so. An authority table with no
+    rows is a symptom -- a migration that has not applied, a collection whose datasets
+    were all purged in the same breath, a query that failed -- and never a licence to
+    delete every cell in the collection.
+
+    `parsing` counts as a claim, so a sweep cannot race an in-flight parse. A `parsing`
+    row that has outlived any plausible parse is tombstoned to `failed` first, which is
+    what releases a genuinely abandoned parse's cells on the following pass.
+    """
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(params.collectionname) as client:
+        tables = {row[0] for row in client.query("SHOW TABLES").result_rows}
+        if not {"table_cells", "table_documents"} <= tables:
+            log.info("[P_admin] %s has no table storage, nothing to sweep",
+                     params.collectionname)
+            return "ok"
+
+        client.command("""
+            ALTER TABLE table_documents UPDATE status = 'failed',
+                parse_error = 'abandoned parse, no cells claimed'
+            WHERE status = 'parsing' AND updated_at < now() - INTERVAL 1 DAY
+        """)
+
+        claimed = client.query(
+            "SELECT count() FROM table_documents FINAL WHERE status = 'ok'"
+        ).result_rows[0][0]
+        if not claimed:
+            log.warning(
+                "[P_admin] %s: table_documents holds no completed parse, refusing to "
+                "sweep table_cells -- an empty authority table is a symptom, not a "
+                "licence to delete every cell in the collection",
+                params.collectionname,
+            )
+            return "refused: empty manifest"
+
+        released = 0
+        for _ in range(SWEEP_ORPHAN_MAX_BATCHES):
+            orphans = [row[0] for row in client.query("""
+                SELECT DISTINCT file_hash FROM table_cells
+                WHERE file_hash NOT IN (
+                    SELECT hash FROM table_documents FINAL
+                    WHERE status IN ('ok', 'parsing')
+                )
+                LIMIT {n:UInt32}
+            """, parameters={"n": SWEEP_ORPHAN_HASH_BATCH}).result_rows]
+            if not orphans:
+                break
+            client.command(
+                "DELETE FROM table_cells WHERE file_hash IN {hashes:Array(String)}",
+                parameters={"hashes": orphans},
+            )
+            released += len(orphans)
+
+    log.info("[P_admin] %s: released the cells of %d unclaimed table document(s)",
+             params.collectionname, released)
+    return f"released {released}"
+
+
 @activity.defn
 @with_heartbeat
 def recompute_shard_ledger_activity(params: CollectionDatabaseParams) -> str:

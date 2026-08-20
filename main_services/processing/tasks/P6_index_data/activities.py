@@ -1159,6 +1159,9 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
             UNION ALL
             SELECT file_hash AS hash, 'office' AS kind FROM text_content FINAL
                 WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'
+            UNION ALL
+            SELECT hash, 'table' AS kind FROM table_documents FINAL
+                WHERE collection_dataset = {cd:String} AND status = 'ok'
         """, {"cd": collection_dataset}).to_pylist()
 
         # How many members each container actually produced. An archive that exploded
@@ -1202,6 +1205,13 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
     for file_hash in hashes:
         by_detector = detections.get(file_hash, {})
         kinds = set(evidence.get(file_hash, ()))
+        if 'table' in kinds:
+            # A table beats the office extractor's answer about the same file: both are
+            # rank-1 evidence, and `table` is the more specific of the two. Keeping
+            # `office` alongside it would leave the resolution to the specificity ladder,
+            # which already ranks `table` above `xls` -- but dropping it here makes the
+            # `decided_by` value read as the reason it actually is.
+            kinds.discard('office')
         if 'office' in kinds:
             kinds.discard('office')
             all_mimes = {m for mimes in by_detector.values() for m in mimes}
