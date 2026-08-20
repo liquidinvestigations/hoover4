@@ -17,10 +17,41 @@ This stage executes processing plans by downloading planned blobs, coordinating 
 
 ## Technical Details
 
-Plan execution runs in parallel batches of 16 and uses continuation to avoid large
-histories. Download timeouts scale by total plan size; cleanup mirrors the same budget.
-The stage records failures into `processing_errors` and relies on P3 for actual file
-parsing.
+### Nothing here waits for a batch to drain
+
+Every fan-out in this stage keeps K in flight rather than starting K and gathering them
+(`tasks/workflow_window.py`). The difference is not stylistic: per-file wall time on this
+pipeline has a p99 roughly fifteen times its p50, so a barrier makes every group cost its
+slowest member, and a handful of large files idle a whole group's worth of slots for tens
+of seconds each. `ExecutePlans` keeps 16 plans in flight, `ProcessItemsBatched` 32 files.
+
+### A plan is driven by several sibling workflows, not one
+
+Temporal serialises workflow tasks *within* an execution — a workflow makes one decision
+at a time no matter how many workers are idle — and a per-file chain is about a dozen of
+those round trips deep. One driver is therefore a latency ceiling rather than a capacity
+one, and measurably so: a synthetic fan-out on this cluster tops out near 50 executions a
+second from a single parent and passes 150 from thirty-two. `ExecuteSinglePlan` splits
+its items into groups of `PLAN_GROUP_SIZE` and runs one `ProcessItemsBatched` per group,
+which costs a start event each and lifts the ceiling in proportion.
+
+`ProcessItemsBatched` also continues as new past `MAX_ITEMS_PER_RUN` items. Each file is
+a child workflow and so a handful of events on that execution's history; Temporal's
+51,200-event cap is a hard failure of the whole plan with nothing partial recorded, not a
+slowdown.
+
+Download timeouts scale by total plan size; cleanup mirrors the same budget. The stage
+records failures into `processing_errors` and relies on P3 for actual file parsing.
+
+### P4 and P5 run together
+
+`ExecuteSinglePlan` starts `ExtractEntitiesForPlan` and `ChunkEmbedForPlan` in one
+gather. They read the same `text_content` and write disjoint tables — entities and the
+`nlp_processed` watermark against `text_chunks` and `text_chunk_vectors` — and they run
+on different worker queues, so in sequence each left the other tier idle for its whole
+stage. Both must still complete before `IndexDatasetPlan`: P6 reads the `entity_hit` rows
+and copies the vectors into the shard's HNSW table.
+`tests/unit/test_pipeline_stage_order.py` pins both the ordering and the pairing.
 
 The dataset tree is rebuilt once per `ExecutePlans` batch, before the per-plan children:
 `build_vfs_nodes` then `resolve_canonical_file_type`, both on `processing-indexing-queue`.

@@ -192,13 +192,32 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `processing-tika-queue` — Tika parsing.
 - `processing-ocr-queue` — OCR.
 - `processing-nlp-queue` — P4 entity extraction against the remote NER service
-  (`main.py worker nlp`, concurrency 2 — concurrency here pipelines HTTP, not local CPU).
+  (`main.py worker nlp`, concurrency 4).
 - `processing-embed-queue` — P5 chunk+embed against the remote embeddings service
-  (`main.py worker embed`, concurrency 2).
+  (`main.py worker embed`, concurrency 6).
 - `processing-indexing-queue` — P6 Manticore writes.
 - `processing-index-planner-queue` — P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger
   and assignments, which is only race-free when serialized.
+
+### How the numbers are chosen
+
+Every tier's slot count comes from what that tier waits on, and `worker_concurrency()`
+lets `hoover4.ini` override any of them — the ini keys are all empty by default, because
+a default that is a measurement is better than one a deployment guessed.
+
+The two remote tiers pipeline HTTP against a GPU that has its own admission control, so
+their number is the *server's* window (`ai_server_ner_concurrency`,
+`ai_server_embed_concurrency`), not anything about this host. Below it the GPU idles
+between batches; above it the server sheds with 503 + `Retry-After`, which
+`tasks/remote.py` retries — an asymmetry that argues for sitting at the window rather
+than under it. A plan's chunk+embed work arrives as a handful of long activities, so
+slots below the window turned one stage into several serial waves at the end of every
+plan.
+
+The common tier is where the parse fan-out lands, and its *process* count follows the
+host: `common_worker_processes()` gives `cores/4`, bounded to 2..8. A constant there
+suited the four-core machine it was written on and left a sixteen-core host idle.
 
 ## Database Routing
 

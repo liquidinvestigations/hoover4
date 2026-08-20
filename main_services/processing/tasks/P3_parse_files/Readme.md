@@ -115,6 +115,20 @@ allowed to disagree — processing is attempted on the union of what they say, w
 a `.docx` gets its office text extracted out of a file libmagic calls a zip, and how a
 mail file gets both its headers parsed and its body extracted as text.
 
+Five detectors, **two** Temporal activities. The four local ones run together inside
+`detect_mime_all`, which invokes `file` once for the two detectors that need it and
+writes all four rows in a single insert. Each of them costs tens of milliseconds, so a
+Temporal activity per detector spent several times more on the round trip than on the
+detection. Failure is still per detector: one that raises contributes no row and reports
+under its own name in the result's `errors`, which is what the caller records in
+`processing_errors` — exactly what a failed activity in the old fan-out produced.
+
+`run_tika_and_store` stays a separate activity on `processing-tika-queue`, because it
+holds an extractous helper and that helper belongs to that tier, not to the common
+worker. The four local detectors keep their distinct `extracted_by` values: the rows are
+what `resolve_canonical_file_type` weighs against each other, and merging them would
+throw the disagreement away.
+
 `content_sniff` is the one that reads content nothing else can name. `sniff_table.py`
 recognises delimited text the same way, and runs only after `sniff_email` has declined:
 an RFC 822 header block is a rectangular two-column table to any sniff that accepts `:`
@@ -135,6 +149,19 @@ confidently named.
 The disagreement is resolved once, at the end, by `resolve_canonical_file_type` in
 `P6_index_data` — that is where a document gets the single type the search index and the
 filter pane use. Nothing here picks a winner.
+
+## A container that extracted nothing is not scanned
+
+`extract_email_attachments_to_temp` and `extract_archive_to_temp` both return how many
+files they actually wrote, and both remove the temp directory themselves when that count
+is zero. Their callers then skip the `HandleFolders` child workflow *and* the
+`cleanup_temp_dir` activity entirely.
+
+The case this exists for is the ordinary one: most messages in a mail corpus carry no
+attachment, so the old unconditional scan spent a child workflow, a `list_disk_folder`
+and a `cleanup_temp_dir` per message to discover an empty folder. On a maildir that was
+roughly a third of every Temporal execution the whole ingest made, and Temporal
+executions — not the work inside them — are what this pipeline's throughput is made of.
 
 ## A tabular document is read twice: as text, and as a grid
 
