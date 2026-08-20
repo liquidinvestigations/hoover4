@@ -161,6 +161,40 @@ def vfs_replace_sql(vfs_table: str, rows: list[dict]) -> tuple[str, tuple]:
     )
 
 
+#: Rows per keyset page of the stale scan, and the ``max_matches`` that page needs.
+#: A bare ``SELECT`` returns Manticore's implicit ``LIMIT 20``, which would silently
+#: reduce the stale sweep to an arbitrary twenty nodes out of the whole tree.
+VFS_SCAN_PAGE = 1000
+
+
+def vfs_scan_page_sql(vfs_table: str) -> str:
+    """One keyset page of ``(id, node_key)``, ordered by id, bounded by ``max_matches``.
+
+    Keyset rather than OFFSET: a deep offset needs ``max_matches`` to cover
+    ``offset + page``, so paging a large tree that way costs more with every page.
+    """
+    return (
+        f"SELECT id, node_key FROM {vfs_table} "
+        "WHERE collection_dataset = %s AND id > %s "
+        f"ORDER BY id ASC LIMIT {VFS_SCAN_PAGE} OPTION max_matches={VFS_SCAN_PAGE}"
+    )
+
+
+def _scan_indexed_vfs_rows(cur, vfs_table: str, collection_dataset: str) -> list:
+    """Every indexed ``(id, node_key)`` of one dataset, a page at a time."""
+    rows: list = []
+    last_id = 0
+    while True:
+        cur.execute(vfs_scan_page_sql(vfs_table), (collection_dataset, last_id))
+        page = cur.fetchall() or []
+        if not page:
+            return rows
+        rows.extend(page)
+        last_id = max(int(row[0]) for row in page)
+        if len(page) < VFS_SCAN_PAGE:
+            return rows
+
+
 def vfs_stale_ids(indexed: list, current_keys: set[str]) -> list[int]:
     """Manticore row ids whose ``node_key`` is not in the current ClickHouse tree."""
     stale: list[int] = []
@@ -1009,11 +1043,9 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
         # Reads of attribute columns are safe on a cursor; writes of corpus text are
         # not. node_key is an identifier we minted, not document text.
         cur = client.cursor()
-        cur.execute(
-            f"SELECT id, node_key FROM {vfs_table} WHERE collection_dataset = %s",
-            (collection_dataset,),
+        stale = vfs_stale_ids(
+            _scan_indexed_vfs_rows(cur, vfs_table, collection_dataset), current_keys
         )
-        stale = vfs_stale_ids(cur.fetchall() or [], current_keys)
         for chunk in chunks(stale, INDEX_ROW_CHUNK_SIZE):
             manticore_execute(client, vfs_delete_ids_sql(vfs_table, list(chunk)))
             client.commit()

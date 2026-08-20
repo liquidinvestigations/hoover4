@@ -15,9 +15,9 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 `build_vfs_nodes` and `resolve_canonical_file_type` run once per `ExecutePlans` batch,
-before the per-plan `IndexDatasetPlan` children. `index_vfs_structure` runs once on the
-terminal `ExecutePlans` batch. `IndexDatasetPlan` itself writes shards and the email
-graph.
+before the per-plan `IndexDatasetPlan` children; `build_vfs_nodes` then
+`index_vfs_structure` run once more after them. `IndexDatasetPlan` itself writes shards
+and the email graph.
 
 ## Technical Details
 
@@ -34,6 +34,12 @@ Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to li
 idempotent, so there is no dataset-wide DELETE first. A reconciliation pass then deletes
 Manticore rows whose `node_key` is not in the current ClickHouse tree, by id. During an
 ingest the `_vfs` row count never falls to zero because of this activity.
+
+That pass reads the indexed ids a keyset page at a time, with an explicit `LIMIT` and a
+matching `OPTION max_matches`. A Manticore `SELECT` with no limit clause returns twenty
+rows and any result set is capped at `max_matches` (default 1000), so an unbounded scan
+would compare twenty arbitrary nodes against the tree and leave every other removed node
+in the index.
 
 `optimize_shard_tables` runs once at the end of the workflow, per shard the plan wrote to, and compacts a table whose `killed_rate` is over 20% or whose `disk_chunks` is over 12 (`OPTIMIZE TABLE … OPTION cutoff=1`, asynchronous). It is a **storage** win — a re-ingested corpus reclaimed 32–58% of its disk — and not a latency one: killed rows are cheap to skip at query time. It skips itself entirely while another plan of the same collection is still in flight, because a merge competing with a write batch for I/O turns seconds into minutes.
 

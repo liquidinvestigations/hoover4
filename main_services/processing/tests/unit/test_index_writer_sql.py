@@ -9,6 +9,8 @@ import pytest
 
 from tasks.P6_index_data.activities import (
     FILENAME_EXTRACTED_BY,
+    VFS_SCAN_PAGE,
+    _scan_indexed_vfs_rows,
     FILENAME_PAGE_ID,
     OPTIMIZE_DISK_CHUNKS,
     OPTIMIZE_KILLED_RATE_PERCENT,
@@ -22,6 +24,7 @@ from tasks.P6_index_data.activities import (
     should_optimize,
     vfs_delete_ids_sql,
     vfs_replace_sql,
+    vfs_scan_page_sql,
     vfs_stale_ids,
 )
 from tasks.P6_index_data.string_term_encodings import hash_string_to_uint63
@@ -295,3 +298,57 @@ class TestVfsReconciliation:
         assert "DELETE FROM {vfs_table} WHERE collection_dataset" not in src
         assert "vfs_delete_ids_sql" in src
         assert "vfs_replace_sql" in src
+
+
+class TestVfsStaleScan:
+    """The stale sweep must see the WHOLE tree.
+
+    Manticore applies an implicit ``LIMIT 20`` to a SELECT with no limit clause,
+    and caps any result set at ``max_matches`` (default 1000). A sweep that reads
+    an unbounded SELECT therefore inspects twenty arbitrary nodes and silently
+    leaves every other removed node in the index.
+    """
+
+    def test_page_sql_bounds_the_result_set_it_asks_for(self):
+        sql = _normalize(vfs_scan_page_sql("bench_vfs"))
+        assert sql == (
+            "SELECT id, node_key FROM bench_vfs "
+            "WHERE collection_dataset = %s AND id > %s "
+            f"ORDER BY id ASC LIMIT {VFS_SCAN_PAGE} OPTION max_matches={VFS_SCAN_PAGE}"
+        )
+
+    def test_scan_pages_past_the_first_result_set(self):
+        rows = [(i, f"key-{i}") for i in range(1, 2 * VFS_SCAN_PAGE + 7)]
+
+        class Cursor:
+            def __init__(self):
+                self.page = []
+                self.calls = []
+
+            def execute(self, sql, params):
+                self.calls.append(params)
+                last_id = params[1]
+                self.page = [r for r in rows if r[0] > last_id][:VFS_SCAN_PAGE]
+
+            def fetchall(self):
+                return self.page
+
+        cursor = Cursor()
+        assert _scan_indexed_vfs_rows(cursor, "bench_vfs", "bench_smoke") == rows
+        # First page starts at 0, each later page resumes past the highest id seen.
+        assert [p[1] for p in cursor.calls] == [0, VFS_SCAN_PAGE, 2 * VFS_SCAN_PAGE]
+
+    def test_a_short_page_ends_the_scan_without_another_round_trip(self):
+        class Cursor:
+            def __init__(self):
+                self.calls = 0
+
+            def execute(self, sql, params):
+                self.calls += 1
+
+            def fetchall(self):
+                return [(1, "only")]
+
+        cursor = Cursor()
+        assert _scan_indexed_vfs_rows(cursor, "bench_vfs", "bench_smoke") == [(1, "only")]
+        assert cursor.calls == 1
