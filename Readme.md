@@ -45,7 +45,7 @@ Files are classified by MIME type using multiple detectors ([`file`/`libmagic`](
 
 ### Deduplication and blob-level storage.
 
-File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a single streaming pass. Small blobs are stored inline in ClickHouse; large blobs are offloaded to MinIO. Processing operates on deduplicated blobs, not raw files. In ClickHouse this data is partitioned per collection into `Hoover4_Collection_<collectionname>` databases, with only global state (users, groups, collections, the dataset registry, sessions, settings, search cache) in `Hoover4_Processing`.
+File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a single streaming pass. Small blobs are stored inline in ClickHouse; large blobs are offloaded to Garage. Processing operates on deduplicated blobs, not raw files. In ClickHouse this data is partitioned per collection into `Hoover4_Collection_<collectionname>` databases, with only global state (users, groups, collections, the dataset registry, sessions, settings, search cache) in `Hoover4_Processing`.
 
 ### Sharded full-text indexes.
 
@@ -67,7 +67,7 @@ The system is composed of three layers:
 
 ### [Main Services](main_services/Readme.md)
 
-Data ingestion pipelines orchestrated by [Temporal](https://temporal.io/), backed by [ClickHouse](https://clickhouse.com/) (analytics/structured storage), [Manticore](https://manticoresearch.com/) (full-text search, vector search), [MinIO](https://www.min.io/) (object storage), [Tika](https://tika.apache.org/)/[Extractous](https://github.com/yobix-ai/extractous) (metadata/text extraction). A multi-stage [processing pipeline](main_services/processing/Readme.md) scans datasets, builds processing plans, parses files by type, runs OCR, and indexes results.
+Data ingestion pipelines orchestrated by [Temporal](https://temporal.io/), backed by [ClickHouse](https://clickhouse.com/) (analytics/structured storage), [Manticore](https://manticoresearch.com/) (full-text search, vector search), [Garage](https://garagehq.deuxfleurs.fr/) (object storage), [Tika](https://tika.apache.org/)/[Extractous](https://github.com/yobix-ai/extractous) (metadata/text extraction). A multi-stage [processing pipeline](main_services/processing/Readme.md) scans datasets, builds processing plans, parses files by type, runs OCR, and indexes results.
 
 ### [AI Services](ai_services/README.md)
 
@@ -135,7 +135,7 @@ $EDITOR hoover4.ini      # ports, providers, secret file paths — never key val
 `deploy.py` renders the ini into generated `.env` files next to each compose file
 (never edit those by hand), preflights the machine (GPU/CDI, secret files, free
 ports), and shells out to `docker compose`. The main stack brings up Temporal (with
-Cassandra and Elasticsearch), ClickHouse, Manticore, MinIO, Redis, the processing
+Cassandra and Elasticsearch), ClickHouse, Manticore, Garage, Redis, the processing
 worker, the research agents and MCP servers, monitoring UIs, and the website on port
 `12345`. The GPU tier is standalone: no shared network, no dependency on the main
 host — the pipeline reaches it over the published ports in the ini.

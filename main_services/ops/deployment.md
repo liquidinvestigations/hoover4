@@ -17,7 +17,7 @@ a host reachable from the internet must not have.
 | | publishes | default | on a public host |
 |---|---|---|---|
 | `website_bind_ip` | the website's `12345` | `0.0.0.0` | the private address a reverse proxy reaches it on |
-| `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, MinIO API + console, CH-UI, ClickHouse monitoring, pdf-to-html | `0.0.0.0` | `127.0.0.1` |
+| `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, Garage S3 API, CH-UI, ClickHouse monitoring, pdf-to-html | `0.0.0.0` | `127.0.0.1` |
 
 **Neither of these is hardening in the abstract.** The website has one way in of its own —
 a reverse proxy setting `X-Forwarded-User` — and `demo_mode = true` additionally hands
@@ -26,7 +26,7 @@ host's IP and port skips the front end entirely and gets an admin panel. With `d
 off nothing anonymous is provisioned at all: `/api/whoami` refuses, the site renders
 *Sign-in required*, and every endpoint answers 401 — so a deployment behind a proxy that
 sets no identity header serves nobody, which is the intended failure. The infrastructure ports are worse
-and simpler — Manticore has no authentication at all, and ClickHouse, MinIO and the two
+and simpler — Manticore has no authentication at all, and ClickHouse, Garage and the two
 admin UIs ship with the compose file's default credentials. Published on `0.0.0.0` on a
 public host, each one is a full read of the corpus.
 
@@ -156,7 +156,7 @@ docker builder prune -af
 **Never `docker system prune -a --volumes` on a shared daemon.** It takes every other
 project's images and unnamed volumes with it.
 
-What a reset destroys is exactly the derived data: ClickHouse, Manticore, MinIO blobs,
+What a reset destroys is exactly the derived data: ClickHouse, Manticore, Garage blobs,
 Temporal's Cassandra and Elasticsearch, the monitoring volume and the website's build
 target. The corpus itself is a **bind mount** (`testdata_dir`), not a volume, and no step
 here touches it. That is the whole recovery story: everything except the bind mount is
@@ -262,7 +262,7 @@ over every collection in the ledger rather than a hardcoded list, so re-running 
 stage is cheap. Two of its checks earn their keep on a fresh host in particular: the
 **Manticore-vs-ledger equality** check, because the whole index is new, and the assertion
 that **no `blobs` row references `derived/`**, because the searchable-PDF writer writes
-back into MinIO under that prefix and the ingest walker must never re-scan its own output.
+back into the blob store under that prefix and the ingest walker must never re-scan its own output.
 
 ## Memory
 
@@ -305,7 +305,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **No reranking** | Collection RAG and web search return RRF order with `rerank_applied: false`. |
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
-| **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to MinIO under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
+| **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **`demo_mode` = anonymous admin** | Every guest session is an admin, and it is what provisions guests at all. Acceptable only behind an authenticating front end — which is what `website_bind_ip` enforces. |
 | **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
 

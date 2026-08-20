@@ -385,9 +385,6 @@ def render_main_env(cfg):
                 "temporal_ui_version", "garage_version", "garage_image_digest",
                 "garage_capacity"):
         env[key.upper()] = cfg.get(m, key)
-    # MinIO still runs on the network for the clients that have not moved yet; it no
-    # longer publishes a host port, so only its image pin is rendered.
-    env["MINIO_VERSION"] = "RELEASE.2025-07-23T15-54-02Z"
 
     # Read by auto-setup's config template as `persistence.numHistoryShards`.
     env["NUM_HISTORY_SHARDS"] = cfg.get(m, "temporal_history_shards")
@@ -934,7 +931,7 @@ def preflight_temporal_shards(cfg, side, rt):
          "for %d. The count is fixed for the life of the store, so the server would "
          "refuse to start.\n"
          "    ./deploy --reset-temporal    drop Temporal's history and re-initialise "
-         "at %d (leaves ClickHouse, MinIO and Manticore alone)\n"
+         "at %d (leaves ClickHouse, Garage and Manticore alone)\n"
          "    set temporal_history_shards = %d in hoover4.ini to keep the store as it is"
          % (have, want, want, have))
 
@@ -1236,7 +1233,7 @@ def compose_reset_temporal(cfg, side, rt):
     """Drop Temporal's history and visibility stores, keeping every other volume.
 
     What is lost is workflow history, which retention already caps at 24 h with
-    archival off. What is kept is everything the corpus lives in -- ClickHouse, MinIO,
+    archival off. What is kept is everything the corpus lives in -- ClickHouse, Garage,
     Manticore, Redis. Running ingests do not survive: their workflows are gone, and
     P0 re-scans a dataset from disk on the next run.
     """
@@ -1307,7 +1304,7 @@ def main(argv=None):
                         help="with --reset: also remove the model-cache volumes")
     parser.add_argument("--reset-temporal", action="store_true",
                         help="drop Temporal's history and visibility stores only, "
-                             "keeping ClickHouse/MinIO/Manticore; required to change "
+                             "keeping ClickHouse/Garage/Manticore; required to change "
                              "temporal_history_shards")
     args = parser.parse_args(argv)
 

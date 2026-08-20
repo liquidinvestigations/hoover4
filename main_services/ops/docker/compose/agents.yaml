@@ -131,7 +131,7 @@ services:
       - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-25}
       - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
       - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
-      # Search-detail artifacts: bytes to MinIO, one index row in ClickHouse.
+      # Search-detail artifacts: bytes to S3, one index row in ClickHouse.
       - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}

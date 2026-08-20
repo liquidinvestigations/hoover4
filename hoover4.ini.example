@@ -222,7 +222,6 @@ temporal_ui_version    = 2.26.2
 # workers run. FIXED once the store is initialised -- changing it needs
 # `./deploy --reset-temporal`, which drops workflow history and nothing else.
 temporal_history_shards = 512
-minio_version          = RELEASE.2025-07-23T15-54-02Z
 # Garage, the S3 blob store. Pinned by tag AND manifest-LIST digest -- a
 # platform digest makes the image unresolvable on an aarch64 host.
 garage_version         = v2.3.0

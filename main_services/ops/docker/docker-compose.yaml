@@ -254,8 +254,6 @@ services:
   #          S3
   # ========================
 
-  # Garage owns the published S3 port; MinIO keeps serving `minio-s3:9000` on the
-  # network for the clients that still point there, with no host mapping of its own.
   garage:
     container_name: garage
     image: dxflrs/garage:${GARAGE_VERSION}@${GARAGE_IMAGE_DIGEST}
@@ -317,39 +315,6 @@ services:
     mem_limit: 512M
     memswap_limit: 512M
     restart: "no"
-
-  minio-s3:
-    container_name: minio-s3
-    image: minio/minio:${MINIO_VERSION}
-    volumes:
-      - minio_data:/data
-    networks:
-      - hoover4
-    environment:
-      MINIO_ACCESS_KEY: hoover4
-      MINIO_SECRET_KEY: hoover4-secret
-      MINIO_UPDATE: "off"
-      MINIO_API_REQUESTS_MAX: "600"
-      MINIO_API_REQUESTS_DEADLINE: "2m"
-      MINIO_DRIVE_SYNC: "on"
-      GOMAXPROCS: "20"
-    command: server /data  --console-address :8084
-    healthcheck:
-      test: ["CMD-SHELL", "mc ready local"]
-      interval: 15s
-      timeout: 13s
-      retries: 6
-      start_period: 4s
-    deploy:
-      resources:
-        limits:
-          cpus: '4'
-          memory: 6000M
-        reservations:
-          cpus: '1'
-          memory: 500M
-    restart: unless-stopped
-
 
   redis:
     image: redis:6.0.9
@@ -625,7 +590,6 @@ volumes:
     driver: local
   manticore_data_v14:
     driver: local
-  minio_data:
     driver: local
   elasticsearch_data:
     driver: local

@@ -18,7 +18,7 @@ the checkout. Resets never remove that volume or the container. The MCP endpoint
 The stack includes:
 
 - Workflow orchestration: Temporal with Cassandra and Elasticsearch backends, plus the Temporal UI.
-- Primary data stores: ClickHouse for structured processing tables, Manticore for text search, MinIO for object storage, and Redis for auxiliary caching.
+- Primary data stores: ClickHouse for structured processing tables, Manticore for text search, Garage for object storage, and Redis for auxiliary caching.
 - Application services: the processing worker, the website, and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
@@ -84,14 +84,14 @@ defaults. The website stays on `12345`.
 - CH-UI: `http://localhost:21911`
 - Manticore SQL: `localhost:21902`
 - Manticore HTTP: `http://localhost:21903`
-- MinIO Console: `http://localhost:21905` (`hoover4` / `hoover4-secret`)
-- MinIO API: `http://localhost:21904`
+- Garage S3 API: `http://localhost:21904`
+- Garage admin API: `http://127.0.0.1:21905` (no console; see `docker/garage/Readme.md`)
 - Redis: `tcp://localhost:21906`
 - PDF-to-HTML renderer: `http://localhost:21920`
 
 ## Technical Details
 
-This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, MinIO, Redis, and supporting UIs.
+This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, Garage, Redis, and supporting UIs.
 
 Configuration lives in `hoover4.ini` at the repository root (see `hoover4.ini.example`);
 `deploy.py` renders it into a generated `.env` in this directory — never edit that file
@@ -149,7 +149,7 @@ The docker containers start up the following services:
 - **Temporal UI**: [http://localhost:21909](http://localhost:21909) - Temporal UI Dashboard
 - **ClickHouse Monitoring**: [http://localhost:21910](http://localhost:21910) - ClickHouse monitoring dashboard
 - **CH-UI (ClickHouse UI)**: [http://localhost:21911](http://localhost:21911) - ClickHouse web interface
-- **Minio**: [http://localhost:21905](http://localhost:21905) - Minio S3 Dashboard
+- **Garage admin API**: `http://127.0.0.1:21905` - cluster status over curl; there is no console
   - `hoover4` / `hoover4-secret`
 
 ### Processing services (HTTP, published on 127.0.0.1 only)
@@ -158,7 +158,7 @@ The docker containers start up the following services:
 - **tesseract-cpu**: `localhost:21921` - OCR over HTTP, `/health` lists the languages the
   image can actually serve
 - **ocr-pdf**: `localhost:21922` - searchable-PDF assembly. Renders pages, calls the OCR
-  tier above, writes the result under MinIO's `derived/` prefix with **no** `blobs` row
+  tier above, writes the result under the blob store's `derived/` prefix with **no** `blobs` row
   (see `main_services/ocr_pdf/Readme.md` for why that absence is load-bearing)
 - **ner-spacy**: `localhost:21923` - the CPU NER twin, only when
   `[main_services] ner_spacy_enabled = true` (off by default)

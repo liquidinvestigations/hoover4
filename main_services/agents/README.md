@@ -31,7 +31,7 @@ are still in the tree but nothing builds or deploys them, and `hoover4.ini` has 
 ### Shared code: `agent_common/`
 
 [`agent_common/`](agent_common/) holds what more than one server needs and neither should
-own: the chat-artifact writer, the MinIO helper both artifact writers sit on, and the
+own: the chat-artifact writer, the S3 helper both artifact writers sit on, and the
 rerank client with its circuit breaker.
 
 **It is vendored, not installed from an index.** The metasearch and browser Dockerfiles

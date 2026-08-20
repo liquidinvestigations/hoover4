@@ -651,7 +651,7 @@ ms_health=$(docker exec "$WORKER" curl -s --max-time 10 "http://hoover4-mcp-meta
 ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
 [ -n "$ms_sources" ] && echo "NOTE - metasearch $ms_sources"
 
-# 7e. Everything derived lives under `derived/` in MinIO, and P0_scan_disk must never walk
+# 7e. Everything derived lives under `derived/` in the blob store, and P0_scan_disk must never walk
 #     that prefix. Two writers are covered by this one `%derived/%` pattern:
 #       * chat artifacts (captured pages, search detail) under `derived/chat/…`
 #       * OCR'd PDFs under `derived/ocr-pdf/<dataset>/<pdf_hash>/<engine>+<langs>.pdf`
@@ -669,6 +669,72 @@ if [ "$derived_blobs" -eq 0 ]; then
     ok "no blobs row references derived/ (the walker sees neither chat artifacts nor OCR'd PDFs)"
 else
     fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the derived prefix"
+fi
+
+# 7g. The blob store holds what ClickHouse claims it holds. For every `blobs` row that
+#     is NOT stored inline, stat the object and compare its size. This is the check that
+#     catches a half-written cutover: a stack pointed at a store that answers, with an
+#     empty bucket behind it, looks entirely healthy from ClickHouse alone.
+stat_script=$(cat <<'PY'
+import os, sys
+sys.path.insert(0, "/app")
+from database.s3 import get_s3_client, BUCKET_NAME
+from database.clickhouse import get_global_client, get_collection_client
+with get_global_client() as g:
+    colls = [r[0] for r in g.query(
+        "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL "
+        "WHERE is_deleted = 0").result_rows]
+client = get_s3_client()
+checked = missing = mismatched = 0
+for coll in colls:
+    with get_collection_client(coll) as ch:
+        rows = ch.query(
+            "SELECT s3_path, blob_size_bytes FROM blobs FINAL "
+            "WHERE stored_in_clickhouse = 0 LIMIT 500").result_rows
+    for s3_path, size in rows:
+        key = s3_path.replace("s3://%s/" % BUCKET_NAME, "")
+        checked += 1
+        try:
+            st = client.stat_object(BUCKET_NAME, key)
+        except Exception:
+            missing += 1
+            continue
+        if int(st.size) != int(size):
+            mismatched += 1
+print("%d %d %d" % (checked, missing, mismatched))
+PY
+)
+blobstat=$(docker exec -i "$WORKER" sh -lc 'cd /app && PYTHONPATH=/app uv run python -' <<<"$stat_script" 2>/dev/null | tail -1)
+set -- $blobstat
+if [ -z "${1:-}" ]; then
+    fail "could not stat blobs against the object store (the probe produced no output)"
+elif [ "$1" -eq 0 ]; then
+    echo "NOTE - no externally stored blobs to stat; every blob is inline in ClickHouse"
+elif [ "${2:-1}" -eq 0 ] && [ "${3:-1}" -eq 0 ]; then
+    ok "all $1 externally stored blobs exist in the object store at the size ClickHouse records"
+else
+    fail "$1 blobs checked: ${2:-?} missing from the object store, ${3:-?} of a different size"
+fi
+
+# 7h. The bootstrap is idempotent. It runs on every deploy, so a version that only works
+#     against a blank node breaks the NEXT deploy rather than the first one -- the harder
+#     failure to recognise. A settled cluster has a role assigned and nothing staged.
+if docker inspect garage >/dev/null 2>&1; then
+    layout=$(docker exec garage /garage layout show 2>&1 || true)
+    if printf '%s' "$layout" | grep -qi "NO ROLE ASSIGNED"; then
+        fail "garage has no role assigned -- the bootstrap did not finish (docker logs garage-init)"
+    elif printf '%s' "$layout" | grep -qiE "staged|pending"; then
+        fail "garage layout has staged changes: $(printf '%s' "$layout" | head -c 200)"
+    else
+        ok "garage layout is applied with no staged changes"
+    fi
+    if docker exec garage /garage bucket info hoover4-blobs >/dev/null 2>&1; then
+        ok "garage bucket hoover4-blobs exists"
+    else
+        fail "garage bucket hoover4-blobs is missing -- the bootstrap did not create it"
+    fi
+else
+    echo "NOTE - no garage container; skipping the blob-store bootstrap checks"
 fi
 
 # 7f. No `table_cells` row survives whose hash no `table_documents` row claims.
