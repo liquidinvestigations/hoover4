@@ -79,6 +79,18 @@ object shape, because a document only gets the list shape when it is re-parsed.
 
 Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. OCR runs on a dedicated queue (`processing-ocr-queue`) and Tika runs on `processing-tika-queue` to isolate heavy dependencies.
 
+Magika is constructed once per worker process: building the detector is several times
+the cost of `identify_path`, and every file paid that construction when it lived inside
+the activity. Extractous still runs in a subprocess — a wedged native call cannot be
+interrupted in-process — but the helpers are a pool of long-lived interpreters (sized to
+the tika worker's activity slots) that read one JSON path per line and write one JSON
+object back. A timeout kills that helper, raises a non-retryable `ApplicationError`, and
+the next file gets a fresh one. Stderr is drained so a noisy child cannot fill a pipe
+and stall.
+
+`file_types`, `text_content` and `tika_metadata` inserts skip the ClickHouse async-insert
+wait: those writers are re-runnable and a lost buffer converges on the next pass.
+
 ## Usage
 
 - Executed as part of P2 plan execution.

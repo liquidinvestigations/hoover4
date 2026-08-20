@@ -5,6 +5,13 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 import json
 import logging
+import os
+import queue
+import select
+import signal
+import subprocess
+import sys
+import threading
 
 from tasks.heartbeat import heartbeat_pump, with_heartbeat
 
@@ -31,48 +38,223 @@ def _coarse_from_mime(mime: str) -> str:
 # Hard cap for a single Extractous call, regardless of the activity timeout.
 _EXTRACTOUS_SUBPROCESS_TIMEOUT_S = 600
 
+# Matches the tika worker's activity-slot count. One helper per in-flight
+# extract; extras wait on the idle queue rather than spawning unbounded.
+_EXTRACTOUS_POOL_SIZE = 8
+
+# Long-lived helper: one JSON request per line on stdin, one JSON object per
+# line on stdout. Native Extractous stays isolated in the child so a wedge can
+# be killed; the parent does not pay interpreter startup per file.
+_EXTRACTOUS_HELPER = r"""
+import json, sys
+from extractous import Extractor, TesseractOcrConfig
+ex = Extractor().set_ocr_config(TesseractOcrConfig().set_language('eng'))
+for raw in sys.stdin:
+    line = raw.strip()
+    if not line:
+        continue
+    try:
+        req = json.loads(line)
+        path = req['path'] if isinstance(req, dict) else req
+        text, meta = ex.extract_file_to_string(path)
+        sys.stdout.write(json.dumps(
+            {'ok': True, 'text': text or '', 'metadata': meta or {}},
+            default=str,
+        ))
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+    except Exception as exc:
+        sys.stdout.write(json.dumps({'ok': False, 'error': str(exc)}))
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+"""
+
+
+def _drain_stderr(proc: subprocess.Popen) -> None:
+    """Read stderr to EOF so a noisy child cannot fill a PIPE and block."""
+    stderr = proc.stderr
+    if stderr is None:
+        return
+    try:
+        for _ in stderr:
+            pass
+    except Exception:
+        pass
+
+
+class ExtractousHelperPool:
+    """Bounded pool of long-lived extractous helper processes.
+
+    A wedged native call cannot be interrupted in-process. Helpers are killed
+    on timeout, the error is non-retryable, and the next checkout respawns.
+    """
+
+    def __init__(
+        self,
+        size: int = _EXTRACTOUS_POOL_SIZE,
+        helper_cmd: list[str] | None = None,
+        timeout_s: float = _EXTRACTOUS_SUBPROCESS_TIMEOUT_S,
+    ):
+        self._size = size
+        self._helper_cmd = helper_cmd
+        self._timeout_s = timeout_s
+        self._idle: queue.Queue = queue.Queue()
+        self._lock = threading.Lock()
+        self._live = 0
+        self.last_killed_pid: int | None = None
+
+    def _command(self) -> list[str]:
+        if self._helper_cmd is not None:
+            return list(self._helper_cmd)
+        return [sys.executable, "-u", "-c", _EXTRACTOUS_HELPER]
+
+    def _spawn(self) -> subprocess.Popen:
+        proc = subprocess.Popen(
+            self._command(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+        threading.Thread(target=_drain_stderr, args=(proc,), daemon=True).start()
+        return proc
+
+    def _checkout(self) -> subprocess.Popen:
+        while True:
+            try:
+                proc = self._idle.get_nowait()
+            except queue.Empty:
+                proc = None
+            if proc is not None:
+                if proc.poll() is None:
+                    return proc
+                with self._lock:
+                    self._live = max(0, self._live - 1)
+                continue
+            with self._lock:
+                if self._live < self._size:
+                    spawned = self._spawn()
+                    self._live += 1
+                    return spawned
+            proc = self._idle.get()
+            if proc.poll() is None:
+                return proc
+            with self._lock:
+                self._live = max(0, self._live - 1)
+
+    def _checkin(self, proc: subprocess.Popen) -> None:
+        if proc.poll() is not None:
+            with self._lock:
+                self._live = max(0, self._live - 1)
+            return
+        self._idle.put(proc)
+
+    def _kill(self, proc: subprocess.Popen) -> None:
+        self.last_killed_pid = proc.pid
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        with self._lock:
+            self._live = max(0, self._live - 1)
+
+    def _read_line(self, proc: subprocess.Popen, timeout_s: float) -> str:
+        stdout = proc.stdout
+        if stdout is None:
+            raise RuntimeError("extractous helper has no stdout")
+        ready, _, _ = select.select([stdout], [], [], timeout_s)
+        if not ready:
+            raise TimeoutError
+        line = stdout.readline()
+        if line == "":
+            raise EOFError("extractous helper closed stdout")
+        return line
+
+    def extract(self, file_path: str) -> tuple[str, dict]:
+        from temporalio.exceptions import ApplicationError
+
+        proc = self._checkout()
+        try:
+            if proc.stdin is None:
+                raise RuntimeError("extractous helper has no stdin")
+            proc.stdin.write(json.dumps({"path": file_path}) + "\n")
+            proc.stdin.flush()
+            try:
+                line = self._read_line(proc, self._timeout_s)
+            except TimeoutError:
+                self._kill(proc)
+                raise ApplicationError(
+                    f"extractous timed out after {self._timeout_s}s for {file_path}",
+                    non_retryable=True,
+                )
+            out = json.loads(line)
+        except ApplicationError:
+            raise
+        except Exception:
+            self._kill(proc)
+            raise
+        if not out.get("ok", True):
+            self._checkin(proc)
+            raise RuntimeError(
+                f"extractous failed for {file_path}: {out.get('error')!r}"
+            )
+        self._checkin(proc)
+        return out.get("text") or "", out.get("metadata") or {}
+
+    def close(self) -> None:
+        while True:
+            try:
+                proc = self._idle.get_nowait()
+            except queue.Empty:
+                break
+            self._kill(proc)
+
+
+_pool: ExtractousHelperPool | None = None
+_pool_lock = threading.Lock()
+
+
+def reset_extractous_pool_for_tests() -> None:
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            _pool.close()
+        _pool = None
+
+
+def _get_pool() -> ExtractousHelperPool:
+    global _pool
+    if _pool is not None:
+        return _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ExtractousHelperPool()
+        return _pool
+
 
 def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
-    """Run Extractous in a subprocess with a hard timeout.
+    """Run Extractous in a pooled helper with a hard timeout.
 
     Extractous (native Tika + Tesseract) wedges forever on some formats (camera
     RAW, PSD, TGA, ...). A stuck native call cannot be interrupted from Python
     and blocks the worker's activity threads — and every later Extractor() call
-    with it. A subprocess can always be killed. A timeout is raised as a
+    with it. A subprocess can always be killed. Helpers stay alive across files
+    so the cost is isolation, not interpreter startup. A timeout is raised as a
     non-retryable ApplicationError so the file lands in processing_errors after
-    one attempt instead of stalling the batch for hours.
+    one attempt instead of stalling the batch for hours, and the pool respawns
+    the helper so the next file works.
     """
-    import subprocess
-    import sys
-    from temporalio.exceptions import ApplicationError
-
-    helper = (
-        "import json, sys;"
-        "from extractous import Extractor, TesseractOcrConfig;"
-        "ex = Extractor().set_ocr_config(TesseractOcrConfig().set_language('eng'));"
-        "text, meta = ex.extract_file_to_string(sys.argv[1]);"
-        "sys.stdout.write(json.dumps({'text': text or '', 'metadata': meta or {}}, default=str))"
-    )
-    # Pump, not an in-loop beat: this blocks in a subprocess and has no loop of
-    # its own. KEEP the subprocess timeout below -- the pump proves the pump
-    # thread is alive, not that Extractous is progressing.
-    try:
-        with heartbeat_pump("extractous"):
-            res = subprocess.run(
-                [sys.executable, "-c", helper, file_path],
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                timeout=_EXTRACTOUS_SUBPROCESS_TIMEOUT_S,
-            )
-    except subprocess.TimeoutExpired:
-        raise ApplicationError(
-            f"extractous timed out after {_EXTRACTOUS_SUBPROCESS_TIMEOUT_S}s for {file_path}",
-            non_retryable=True,
-        )
-    if res.returncode != 0:
-        raise RuntimeError(f"extractous failed for {file_path}: {res.stderr[-300:]!r}")
-    out = json.loads(res.stdout.decode("utf-8", "replace") or "{}")
-    return out.get("text") or "", out.get("metadata") or {}
+    with heartbeat_pump("extractous"):
+        return _get_pool().extract(file_path)
 
 
 @activity.defn
@@ -82,7 +264,7 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
 
     Also writes detected file types to file_types with extracted_by='tika' and returns lists.
     """
-    from database.clickhouse import get_collection_client
+    from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
     log.info("[P3] Running Extractous for %s", params.file_path)
@@ -105,7 +287,7 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
             "tika_metadata_json": pa.array([json.dumps(meta_parsed)], type=pa.string()),
             "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
         })
-        client.insert_arrow("tika_metadata", tbl_m)
+        insert_arrow_idempotent(client, "tika_metadata", tbl_m)
 
         # Extract MIME/type from metadata if present and write to file_types
         mime_candidates: List[str] = []
@@ -150,7 +332,7 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
                 "extensions": pa.array([extensions], type=pa.list_(pa.string())),
                 "extracted_by": pa.array(["tika"], type=pa.large_string()),
             })
-            client.insert_arrow("file_types", tbl_ft)
+            insert_arrow_idempotent(client, "file_types", tbl_ft)
 
     return {
         "mime_types": mime_types,
@@ -158,5 +340,3 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
         "coarse_types": coarse_types,
         "extensions": extensions,
     }
-
-
