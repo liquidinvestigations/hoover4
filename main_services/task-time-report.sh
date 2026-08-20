@@ -151,12 +151,17 @@ GROUP BY task_name
 HAVING failed_executions > 0
 ORDER BY seconds_spent_failing DESC"
 
-P3_TASKS="'detect_mime_from_name','detect_mime_with_gnu_file','detect_mime_with_magika','detect_mime_by_content','run_tika_and_store','parse_email_extract_text_headers','extract_email_attachments_to_temp','extract_plaintext_chunks','pdf_get_metadata_and_store','pdf_small_extract_text_and_images','pdf_large_split_to_chunks','parse_image_metadata_and_store','parse_audio_metadata_and_store','video_ffprobe_and_store','video_extract_frames_and_subtitles','extract_archive_to_temp','record_archive_container','parse_office_xml_and_store','parse_table_and_store','run_ocr_and_store','run_ocr_pdf_and_store','resolve_document_dates'"
+P3_TASKS="'detect_mime_all','run_tika_and_store','parse_email_extract_text_headers','extract_email_attachments_to_temp','extract_plaintext_chunks','pdf_get_metadata_and_store','pdf_small_extract_text_and_images','pdf_large_split_to_chunks','parse_image_metadata_and_store','parse_audio_metadata_and_store','video_ffprobe_and_store','video_extract_frames_and_subtitles','extract_archive_to_temp','record_archive_container','parse_office_xml_and_store','parse_table_and_store','run_ocr_and_store','run_ocr_pdf_and_store','resolve_document_dates'"
 
-overhead=$(CH_try "SELECT round(quantileExact(0.5)(run_time_ms)) AS overhead_floor_p50_ms
-FROM processing_task_runs $WHERE AND task_name = 'detect_mime_from_name'")
+# The floor is whatever the cheapest per-file activity costs: below that number is
+# Temporal's round trip plus one insert, not work. Taken from the data rather than a
+# named activity, so it survives activities being merged or renamed.
+overhead=$(CH_try "SELECT task_name, round(quantileExact(0.5)(run_time_ms)) AS overhead_floor_p50_ms
+FROM processing_task_runs $WHERE
+GROUP BY task_name HAVING count() >= 50
+ORDER BY overhead_floor_p50_ms ASC LIMIT 1")
 if [ -n "$overhead" ]; then
-    section "Per-activity overhead floor (detect_mime_from_name p50)"
+    section "Per-activity overhead floor (cheapest per-file activity, p50)"
     printf '%s\n' "$overhead"
 fi
 

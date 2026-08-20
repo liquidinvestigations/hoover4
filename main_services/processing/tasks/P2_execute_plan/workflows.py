@@ -32,6 +32,12 @@ MAX_ITEMS_PER_RUN = 2000
 # against the files they carry.
 PLAN_GROUP_SIZE = 100
 
+# Sibling drivers one plan may run at once. Each drives a 32-file window, so this is
+# also the bound on files in flight per plan -- without it a large corpus multiplies
+# plans in flight by groups by window and puts thousands of executions on the server at
+# once, which is a different failure from the one the siblings fix.
+MAX_PLAN_DRIVERS = 8
+
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
@@ -365,7 +371,7 @@ class ExecuteSinglePlan:
 
         group_results = await run_with_window(
             [_group_factory(i, g) for i, g in enumerate(item_groups)],
-            len(item_groups),
+            MAX_PLAN_DRIVERS,
         )
         for res in group_results:
             if isinstance(res, Exception):

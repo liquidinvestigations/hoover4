@@ -34,18 +34,21 @@ async def run_with_window(factories: Sequence[Callable[[], Any]], limit: int) ->
     limit = max(1, min(limit, total))
 
     pending: List[Any] = []
+    # Keyed by the future itself, which hashes by identity. Never by id(): a completed
+    # future is dropped from `pending` and may be collected, and the next future can be
+    # handed the same address.
     index_of: dict = {}
     started = 0
     while started < total or pending:
         while started < total and len(pending) < limit:
             fut = asyncio.ensure_future(factories[started]())
             pending.append(fut)
-            index_of[id(fut)] = started
+            index_of[fut] = started
             started += 1
         done, still = await workflow.wait(pending, return_when=asyncio.FIRST_COMPLETED)
         pending = list(still)
-        for fut in sorted(done, key=lambda f: index_of[id(f)]):
-            idx = index_of.pop(id(fut))
+        for fut in sorted(done, key=lambda f: index_of[f]):
+            idx = index_of.pop(fut)
             try:
                 results[idx] = fut.result()
             except Exception as exc:   # noqa: BLE001 -- mirrored from gather(return_exceptions)

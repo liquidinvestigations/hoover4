@@ -247,7 +247,14 @@ echo "== task-time-report =="
 ./task-time-report.sh "$COLLECTION" --dataset "$DS" --since "$STARTED_AT" || true
 
 summed=$(CH "SELECT ifNull(sum(run_time_ms), 0) FROM ${DB}.processing_task_runs WHERE collection_dataset = '${DS}' AND started_at >= toDateTime64('${STARTED_AT}', 3)")
-overhead=$(CH "SELECT ifNull(round(quantileExact(0.5)(run_time_ms)), 0) FROM ${DB}.processing_task_runs WHERE collection_dataset = '${DS}' AND task_name = 'detect_mime_from_name' AND started_at >= toDateTime64('${STARTED_AT}', 3)")
+# The cheapest per-file activity's p50: below that is Temporal's round trip plus one
+# insert rather than work. Derived, not a named activity, so merging or renaming an
+# activity does not silently turn this column into zero.
+overhead=$(CH "SELECT ifNull(min(p50), 0) FROM (
+    SELECT round(quantileExact(0.5)(run_time_ms)) AS p50
+    FROM ${DB}.processing_task_runs
+    WHERE collection_dataset = '${DS}' AND started_at >= toDateTime64('${STARTED_AT}', 3)
+    GROUP BY task_name HAVING count() >= 50)")
 busy=$(CH "SELECT ifNull(round(avg(busy_ms)), 0) FROM (
     SELECT hash, sum(run_time_ms) AS busy_ms
     FROM ${DB}.processing_task_runs
