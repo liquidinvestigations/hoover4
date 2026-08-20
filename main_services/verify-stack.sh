@@ -681,6 +681,16 @@ orphan_cells=0
 for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
     has_cells=$(CH "SELECT count() FROM system.tables WHERE database = '${db}' AND name = 'table_cells'" 2>/dev/null || echo 0)
     [ "$has_cells" -eq 0 ] && continue
+    # A collection whose every dataset has been purged has an EMPTY manifest, and
+    # `sweep_orphan_table_cells` refuses to run against one on purpose: an authority
+    # table with no rows is a symptom, never a licence to delete every cell. Asserting
+    # here would turn that deliberate refusal into a failure, so skip the collection the
+    # sweep will not touch and say so.
+    manifest=$(CH "SELECT count() FROM ${db}.table_documents FINAL" 2>/dev/null || echo 0)
+    if [ "$manifest" -eq 0 ]; then
+        echo "NOTE - $db has no table_documents rows; the orphan sweep declines an empty manifest"
+        continue
+    fi
     count=$(CH "SELECT count() FROM ${db}.table_cells WHERE file_hash NOT IN (SELECT hash FROM ${db}.table_documents FINAL WHERE status IN ('ok', 'parsing'))" 2>/dev/null || echo 0)
     orphan_cells=$((orphan_cells + count))
 done
@@ -720,6 +730,7 @@ resolve_url() {  # an asset href as written in the markup -> a path off the site
     local href="${1#.}"; href="${href#/}"; href="${href#./}"; printf '/%s' "$href"
 }
 api_path=""
+results_path=""
 whoami_path=""
 js_href=$(WEB "$WEBSITE_URL/" | grep_first '[a-zA-Z0-9_./-]*frontend[a-zA-Z0-9_-]*\.js')
 if [ -n "$js_href" ]; then
@@ -733,6 +744,12 @@ if [ -n "$js_href" ]; then
         # "no such server function" rather than "wrong URL".
         if [ "$(head -c 4 "$wasm_tmp" | tr -d '\0')" = "asm" ]; then
             api_path=$(grep_first '/api/search_for_results_hit_count[0-9]+' < "$wasm_tmp")
+            # The DOCUMENTS route, not the count one. `search_for_results_hit_count`
+            # answers `{"total":N,"partial":bool}` and nothing else, so a check that
+            # wants a per-hit field has to ask the endpoint that returns hits. The
+            # regex requires a digit straight after `results`, which is what keeps it
+            # from matching `search_for_results_hit_count`.
+            results_path=$(grep_first '/api/search_for_results[0-9]+' < "$wasm_tmp")
             # The sign-in route, discovered the same way and for the same reason: its URL
             # carries a build hash too.
             whoami_path=$(grep_first '/api/whoami[0-9]+' < "$wasm_tmp")
@@ -776,9 +793,11 @@ else
     # hit must carry `matched_by_filename`. That flag is what makes the card render the
     # note and the highlighted name instead of a snippet of the body, and nothing else in
     # the corpus produces it.
-    if [ -n "$INGEST_ROOT_FILENAMES" ]; then
-        body='[{"collection_datasets":[],"query_string":"'"$FILENAME_HIT_TOKEN"'","facet_filters":{}}]'
-        response=$(WEB -b "$cookie_jar" -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
+    if [ -n "$INGEST_ROOT_FILENAMES" ] && [ -n "$results_path" ]; then
+        # `search_for_results(input, current_search_result_page)` takes two arguments, so
+        # the body is a two-element array.
+        body='[{"collection_datasets":[],"query_string":"'"$FILENAME_HIT_TOKEN"'","facet_filters":{}},0]'
+        response=$(WEB -b "$cookie_jar" -X POST "$WEBSITE_URL$results_path" -H 'Content-Type: application/json' -d "$body")
         if printf '%s' "$response" | grep -q '"matched_by_filename":true'; then
             ok "'$FILENAME_HIT_TOKEN' matched by filename only"
         else
