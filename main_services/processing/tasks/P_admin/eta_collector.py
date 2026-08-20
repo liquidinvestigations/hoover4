@@ -18,7 +18,7 @@ The estimate, in words:
 * each stage's rate is measured in every unit the raw data offers — items/s
   (blobs, plans, segments, documents) and, where the schema carries sizes,
   bytes/s (``blobs.blob_size_bytes``, ``processing_plans.plan_size_bytes``,
-  ``nlp_processed.text_bytes``);
+  ``nlp_processed.text_bytes``, ``text_content.text_bytes``);
 * a remaining-time projection is computed from each unit and combined into one
   figure by taking the **more pessimistic** (larger) of the two. A defensible
   simple rule: the two units disagree most when item sizes are uneven, and the
@@ -229,12 +229,12 @@ def _sample_execute(client, ds: str) -> StageSample:
 
 
 def _sample_nlp(client, ds: str) -> StageSample:
-    """P4 — NLP/NER. Unit: text segments. Bytes from text lengths."""
+    """P4 — NLP/NER. Unit: text segments. Bytes from stored ``text_bytes`` columns."""
     seg = "(file_hash, extracted_by, page_id)"
     done = _query(client, f"SELECT uniqExact({seg}) FROM nlp_processed WHERE collection_dataset = {{ds:String}}", ds)[0][0]
     total = _query(client, f"SELECT uniqExact({seg}) FROM text_content WHERE collection_dataset = {{ds:String}}", ds)[0][0]
     done_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, max(text_bytes) AS tb FROM nlp_processed WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
-    total_bytes = _query(client, "SELECT sum(length(t)) FROM (SELECT file_hash, extracted_by, page_id, any(text) AS t FROM text_content WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
+    total_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, max(text_bytes) AS tb FROM text_content WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
     events = [
         (_epoch(ts), 1, int(tb))
         for ts, tb in _query(

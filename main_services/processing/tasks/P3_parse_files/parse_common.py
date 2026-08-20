@@ -111,6 +111,9 @@ def insert_text_pages(
     highest page number it writes, so calling it twice for the same variant makes the
     second call delete the first call's pages. Assemble the full page list first --
     :func:`split_text_segments` is there for callers that build one from several sources.
+
+    ``text_bytes`` is ``len(body.encode("utf-8"))`` of the stored text, written here so
+    readers that need size (ETA sampling) never scan the body.
     """
     from database.clickhouse import get_collection_client
     import pyarrow as pa
@@ -126,7 +129,7 @@ def insert_text_pages(
         highest = max(highest, page_id)
         body = (text or "").strip()
         if len(body) >= 2:
-            rows.append((page_id, body))
+            rows.append((page_id, body, len(body.encode("utf-8"))))
 
     with get_collection_client(collectionname) as client:
         if rows:
@@ -137,6 +140,7 @@ def insert_text_pages(
                 "extracted_by": pa.array([extracted_by] * len(rows), type=pa.string()),
                 "page_id": pa.array([r[0] for r in rows], type=pa.uint32()),
                 "text": pa.array([r[1] for r in rows], type=pa.string()),
+                "text_bytes": pa.array([r[2] for r in rows], type=pa.uint64()),
             })
             client.insert_arrow("text_content", tbl_t)
         if highest:

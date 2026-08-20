@@ -55,3 +55,23 @@ def test_throttle_is_twenty_times_the_mean_cost():
 def test_throttle_has_a_floor_for_idle_clusters():
     assert next_interval_seconds([]) == MIN_INTERVAL_SECONDS
     assert next_interval_seconds([1, 2, 3]) == MIN_INTERVAL_SECONDS
+
+
+def test_nlp_byte_total_reads_the_stored_column():
+    """NLP `total_bytes` must be a sum over `text_bytes`, never `length(text)`."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[2] / "tasks" / "P_admin" / "eta_collector.py"
+    text = src.read_text()
+    assert "sum(length(t))" not in text
+    assert "max(text_bytes)" in text
+
+
+def test_continue_as_new_resets_passes():
+    """A carried-over `passes` at the threshold continue-as-news every pass with no sleep."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[2] / "tasks" / "P_admin" / "workflows.py"
+    text = src.read_text()
+    assert "state.passes = 0" in text
+    assert "workflow.continue_as_new(state)" in text

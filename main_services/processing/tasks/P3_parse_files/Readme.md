@@ -33,7 +33,8 @@ This stage parses downloaded files by type and writes structured content and met
   **Call it once per `(file, extracted_by)` with the complete page list** — it deletes
   rows above the highest page it writes, which is what stops a shorter re-OCR from
   leaving the previous run's tail behind, and which also means a second call for the
-  same variant would delete the first call's pages.
+  same variant would delete the first call's pages. Each stored row carries
+  `text_bytes` (`len(body.encode("utf-8"))`) so size queries never scan `text`.
 - `insert_text_chunks(...)` is the unpaged path: it segments a blob at
   `DEFAULT_TEXT_SEGMENT_BYTES` and numbers the segments from 1.
 - `split_text_segments(...)` segments without inserting, for callers assembling one page
