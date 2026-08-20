@@ -33,12 +33,14 @@ class _FakeActivityContext:
 
 
 def test_the_two_constants_hold_the_agreed_relationship():
-    # 15 s beat inside a 30 s deadline: dropped or dead work is caught in
-    # useful time. The interval must divide into the timeout at least twice or
-    # a single missed beat times the activity out.
+    # A 15 s beat inside a 120 s deadline: dead work is still caught in useful time,
+    # with enough margin that an activity merely waiting its turn under a parse burst
+    # is not killed. A beat goes through the same event loop as the worker's workflow
+    # tasks, so a margin near 2x times out activities that are alive and queued -- and
+    # the retry queues too, which turns a 20-millisecond parse into a retry loop.
     assert hb.HEARTBEAT_INTERVAL.total_seconds() == 15
-    assert hb.HEARTBEAT_TIMEOUT.total_seconds() == 30
-    assert hb.HEARTBEAT_TIMEOUT >= 2 * hb.HEARTBEAT_INTERVAL
+    assert hb.HEARTBEAT_TIMEOUT.total_seconds() == 120
+    assert hb.HEARTBEAT_TIMEOUT >= 4 * hb.HEARTBEAT_INTERVAL
 
 
 def test_pump_fires_from_a_blocked_thread(monkeypatch):

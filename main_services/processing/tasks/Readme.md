@@ -118,11 +118,14 @@ provably registered yet workflow starts using it are still rejected with
 
 ## Activity liveness and outbound HTTP
 
-Every activity declares `heartbeat_timeout = HEARTBEAT_TIMEOUT` (30 s) at all 55 call
+Every activity declares `heartbeat_timeout = HEARTBEAT_TIMEOUT` (120 s) at all 55 call
 sites, and every activity body is wrapped in `@with_heartbeat` (`heartbeat.py`), which
-beats every 15 s from a pump thread. The blanket wrap is deliberate: at a 30 s deadline,
-any activity whose real work legitimately exceeds it (ffprobe on a large video, a
-Manticore batch write) would otherwise be killed and retried forever. Activities with a
+beats every 15 s from a pump thread. The blanket wrap is deliberate: any activity whose
+real work legitimately exceeds the deadline (ffprobe on a large video, a Manticore batch
+write) would otherwise be killed and retried forever. The 8x margin between beat and
+deadline is deliberate too — a beat travels through the same event loop that carries the
+worker's workflow tasks, so a tight margin times out activities that are only waiting
+their turn under a parse burst, and the retry waits its turn as well. Activities with a
 real loop additionally beat a `HeartbeatClock` inside it — evidence of forward progress,
 not just a live thread. `threading`/`contextvars`/`time` are imported lazily inside the
 helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from

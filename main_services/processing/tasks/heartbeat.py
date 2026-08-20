@@ -31,16 +31,22 @@ from temporalio import activity
 # How often an activity proves it is alive.
 HEARTBEAT_INTERVAL = timedelta(seconds=15)
 
-# What the *caller* declares [user requirement: 30 s deadline, 15 s beat, so
-# dropped or dead work is caught in useful time]. That is a 2x margin, which is
-# tight: these workers run 8 activities per process across 7 processes on one
-# box, with ffmpeg and OCR competing for CPU, so a stalled process can miss a
-# beat under load and get its activity retried. That trade is deliberate --
-# every activity here is written to be idempotent on retry (watermark tables
-# and ReplacingMergeTree dedup), so a spurious retry costs time, while a missed
-# stall costs tens of minutes. If spurious timeouts do show up under load, raise
-# HEARTBEAT_TIMEOUT here and nowhere else.
-HEARTBEAT_TIMEOUT = timedelta(seconds=30)
+# What the *caller* declares [user requirement: dropped or dead work is caught in
+# useful time]. With a 15 s beat this is an 8x margin, and the margin is the point.
+#
+# A beat is not a promise about the body: `activity.heartbeat()` is delivered through
+# the worker's event loop, which in these processes also carries every workflow task,
+# and the common tier runs a full activity slot per thread on a box whose parse burst
+# saturates every core. A deadline close to the beat interval therefore times out
+# activities that are merely waiting their turn -- and since the retry waits its turn
+# too, the activity is killed again: a permanent retry loop that reads exactly like a
+# wedged parser. At a 2x margin that happened to a 20-millisecond activity.
+#
+# The cost of the wider deadline is bounded and small: every activity here is
+# idempotent on retry (watermark tables and ReplacingMergeTree dedup), so the only
+# thing lost is how quickly a genuinely dead worker is noticed, and two minutes is
+# still far inside "useful time". Raise it here and nowhere else.
+HEARTBEAT_TIMEOUT = timedelta(seconds=120)
 
 HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
 
@@ -87,16 +93,17 @@ def with_heartbeat(fn):
         def parse_something(params): ...
 
     **Why this is a blanket default rather than a per-activity choice.**
-    ``HEARTBEAT_TIMEOUT`` is 30 s, and every one of the 55 call sites now
-    declares it. That deadline applies to *every* activity, including the ones
-    whose real work legitimately takes minutes -- ffprobe on a large video, a
-    Manticore batch write, a dataset purge. An activity that runs longer than
-    30 s without beating is killed and retried, and since the retry is just as
-    slow, it is killed again: a permanent retry loop that looks exactly like a
-    broken pipeline.
+    Every one of the 55 call sites declares ``HEARTBEAT_TIMEOUT``, and that
+    deadline applies to *every* activity, including the ones whose real work
+    legitimately takes minutes -- ffprobe on a large video, a Manticore batch
+    write, a dataset purge. An activity that runs past the deadline without
+    beating is killed and retried, and since the retry is just as slow, it is
+    killed again: a permanent retry loop that looks exactly like a broken
+    pipeline.
 
-    Auditing 44 bodies for "can this exceed 30 s?" gets that answer wrong
-    eventually, and gets it wrong again the next time someone adds an activity.
+    Auditing 44 bodies for "can this exceed the deadline?" gets that answer
+    wrong eventually, and gets it wrong again the next time someone adds an
+    activity.
     Wrapping every body removes the question. The lost-task detection that
     motivated this whole change is untouched: a body that never runs never
     starts a pump, so the server still times it out on the heartbeat clock.
