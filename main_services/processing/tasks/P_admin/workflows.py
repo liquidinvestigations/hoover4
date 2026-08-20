@@ -294,7 +294,9 @@ class CollectEtaSamples:
 
     State (throttle history and the finished-collection skip set) is carried
     across ``continue_as_new`` every ``CONTINUE_AS_NEW_PASSES`` passes to bound
-    the workflow history.
+    the workflow history. ``passes`` is reset to 0 before that call, otherwise
+    the next run is already at the threshold and continue-as-news every pass
+    with no sleep.
     """
 
     @workflow.run
@@ -323,6 +325,10 @@ class CollectEtaSamples:
             state.passes += 1
 
             if state.passes >= CONTINUE_AS_NEW_PASSES:
+                # continue_as_new carries this dataclass into the next run. Leaving
+                # `passes` at the threshold makes the next run continue-as-new on
+                # every pass with no sleep, so the 60 s floor never applies.
+                state.passes = 0
                 workflow.continue_as_new(state)
 
             await asyncio.sleep(next_interval_seconds(state.recent_durations_ms))
