@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .activities import chunk_embed_for_hashes
@@ -64,7 +64,7 @@ class ChunkEmbedForPlan:
                     ChunkEmbedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=chunk_hashes),
                     start_to_close_timeout=EMBED_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                     task_queue=EMBED_TASK_QUEUE,
                 ),
             ))

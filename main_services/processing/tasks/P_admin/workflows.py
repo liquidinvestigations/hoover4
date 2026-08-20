@@ -8,7 +8,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_admin.activities import (
         CollectionDatabaseParams,
         PurgeDatasetParams,
@@ -55,7 +55,7 @@ class EnsureCollectionDatabase:
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
 
@@ -70,7 +70,7 @@ class DropCollectionDatabase:
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
 
@@ -93,14 +93,14 @@ class PurgeDataset:
             PurgeDatasetParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         await workflow.execute_activity(
             purge_dataset_from_clickhouse,
             PurgeDatasetParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         # The cell table has no `collection_dataset` column -- one parse serves every
         # dataset holding the same file -- so the purge above cannot reach it and the
@@ -110,14 +110,14 @@ class PurgeDataset:
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         return await workflow.execute_activity(
             recompute_shard_ledger_activity,
             CollectionDatabaseParams(collectionname=params.collectionname),
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
 
@@ -150,7 +150,7 @@ class ChangeOcrLanguages:
                 ),
                 start_to_close_timeout=timedelta(minutes=5),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
         try:
@@ -159,7 +159,7 @@ class ChangeOcrLanguages:
                 params,
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
             if not diff.changed_engines:
@@ -176,7 +176,7 @@ class ChangeOcrLanguages:
                     ),
                     start_to_close_timeout=timedelta(minutes=5),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
                 return "no change"
 
@@ -189,7 +189,7 @@ class ChangeOcrLanguages:
                 ),
                 start_to_close_timeout=timedelta(minutes=30),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
             await progress("reopened plans", {"plans": reopened})
 
@@ -224,7 +224,7 @@ class ChangeOcrLanguages:
                     ),
                     start_to_close_timeout=timedelta(minutes=60),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
 
                 await progress("deleting derived objects")
@@ -238,7 +238,7 @@ class ChangeOcrLanguages:
                     ),
                     start_to_close_timeout=timedelta(minutes=60),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
 
             await workflow.execute_activity(
@@ -258,7 +258,7 @@ class ChangeOcrLanguages:
                 ),
                 start_to_close_timeout=timedelta(minutes=5),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
             return "done"
         except Exception as exc:

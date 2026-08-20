@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 from tasks.P0_scan_disk.workflows import HandleFoldersParams
 from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
 from tasks.P3_parse_files.parse_ocr_pdf import RunOcrPdfParams, run_ocr_pdf_and_store
-from tasks.heartbeat import HEARTBEAT_TIMEOUT, HeartbeatClock, heartbeat_pump, with_heartbeat
+from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, HeartbeatClock, heartbeat_pump, with_heartbeat
 from tasks.text_sources import OCR_ENGINES
 
 
@@ -433,7 +433,7 @@ class PdfProcessingAndScan:
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         page_count = int(meta.get("page_count") or 0)
         size_bytes = int(meta.get("size_bytes") or 0)
@@ -461,7 +461,7 @@ class PdfProcessingAndScan:
                 ),
                 start_to_close_timeout=timedelta(seconds=max(params.timeout_seconds, 3600)),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 task_queue="processing-ocr-queue",
             )
             for engine in OCR_ENGINES
@@ -485,7 +485,7 @@ class PdfProcessingAndScan:
                 ),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
             out_dir = res.get("out_dir")
         else:
@@ -501,7 +501,7 @@ class PdfProcessingAndScan:
                 ),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
             out_dir = res.get("out_dir")
 
@@ -532,7 +532,7 @@ class PdfProcessingAndScan:
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
             await workflow.execute_child_workflow(
@@ -548,7 +548,7 @@ class PdfProcessingAndScan:
                 CleanupTempDirParams(out_dir=out_dir),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
         # The searchable PDFs are independent of the text/image path above, so they run

@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
 from tasks.P0_scan_disk.workflows import HandleFoldersParams
-from tasks.heartbeat import HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
+from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
 
 
 def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
@@ -228,7 +228,7 @@ class VideoProcessingAndScan:
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # 2) Extract frames and subtitles
@@ -242,7 +242,7 @@ class VideoProcessingAndScan:
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         out_dir = res.get("out_dir")
 
@@ -272,7 +272,7 @@ class VideoProcessingAndScan:
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
             await workflow.execute_child_workflow(
@@ -288,7 +288,7 @@ class VideoProcessingAndScan:
                 CleanupTempDirParams(out_dir=out_dir),
                 start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
         return "video_ok"

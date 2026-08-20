@@ -58,6 +58,21 @@ HEARTBEAT_TIMEOUT = timedelta(seconds=30)
 
 HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
 
+#: Attempts every activity gets before its workflow gives up.
+#:
+#: Sized for LOSS, not for failure. About one activity in a hundred is dispatched during
+#: a parse burst and never heard from again -- the worker completes it, but the box is
+#: oversubscribed enough that the completion reaches the server after the deadline above
+#: has already expired it. Those losses are correlated, because the process that missed
+#: one beat is the process that misses the next, so three attempts is thinner than the
+#: one-in-a-million it looks like: it has been observed running out on a 20-millisecond
+#: activity and failing that file's whole parse.
+#:
+#: Raising it is close to free. Every activity here is idempotent on retry (watermark
+#: tables and ReplacingMergeTree dedup), and an attempt that is never needed costs
+#: nothing at all.
+ACTIVITY_MAX_ATTEMPTS = 5
+
 
 class HeartbeatClock:
     """Rate-limiter for in-loop heartbeats.

@@ -129,7 +129,14 @@ long a wedged slot is held before the fleet can reuse it, so a wider one starves
 remaining slots and produces *more* timeouts. Measured, only this number changing: 30 s
 gave a 106 s smoke run with 4 retried activities; 120 s gave 220 s with 29. When
 timeouts appear under load, reduce how far the box is oversubscribed
-(`common_workers` x `common_concurrency`), never the detector's sensitivity. Activities with a
+(`common_workers` x `common_concurrency`), never the detector's sensitivity.
+
+`ACTIVITY_MAX_ATTEMPTS` (5) is sized for the same phenomenon from the other side. Roughly
+one activity in a hundred is dispatched during a parse burst and completed by the worker
+after the server has already expired it, and those losses are correlated — the process
+that missed one beat misses the next. Three attempts has been observed running out on a
+20-millisecond activity and failing that file's whole parse. An attempt that is never
+needed costs nothing, and every activity is idempotent on retry. Activities with a
 real loop additionally beat a `HeartbeatClock` inside it — evidence of forward progress,
 not just a live thread. `threading`/`contextvars`/`time` are imported lazily inside the
 helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from

@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 # Import our activities, passing them through the sandbox
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P0_scan_disk.activities import (
         list_disk_folder, insert_vfs_directories, ingest_files_batch,
         ListDiskFolderParams, InsertVfsDirectoriesParams, IngestFilesBatchParams,
@@ -107,7 +107,7 @@ class HandleFiles:
             ),
             start_to_close_timeout=timedelta(hours=4),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         log.info("Handled %s files for %s", len(file_paths), params.collection_dataset)
         return result
@@ -145,7 +145,7 @@ class HandleFolders:
                     ),
                     start_to_close_timeout=timedelta(minutes=50),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
 
@@ -173,7 +173,7 @@ class HandleFolders:
                 ),
                 start_to_close_timeout=timedelta(minutes=40),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
         # Batch child folders and files

@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Sequence
 import logging
 import json
 from dataclasses import dataclass
-from tasks.heartbeat import HEARTBEAT_TIMEOUT
+from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
 
 
 log = logging.getLogger(__name__)
@@ -342,7 +342,7 @@ async def record_errors_from_results(
         _RecordProcessingErrorsParams(collectionname=collectionname, errors=error_rows),
         start_to_close_timeout=_td(seconds=start_to_close_timeout_seconds),
         heartbeat_timeout=HEARTBEAT_TIMEOUT,
-        retry_policy=_RetryPolicy(maximum_attempts=3),
+        retry_policy=_RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
     )
 
     return len(error_rows)

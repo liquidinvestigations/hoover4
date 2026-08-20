@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .params import (
@@ -163,7 +163,7 @@ class IndexDatasetPlan:
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 task_queue=PLANNER_TASK_QUEUE,
             )
 

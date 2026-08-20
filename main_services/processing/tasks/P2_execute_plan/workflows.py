@@ -41,7 +41,7 @@ MAX_PLAN_DRIVERS = 8
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P2_execute_plan.activities import (
         list_pending_plans,
         get_plan_items_metadata,
@@ -109,7 +109,7 @@ class ExecutePlans:
             EnsureTempDirExistsParams(base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(minutes=12),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # 1) Fetch up to 1001 plan hashes (to know if we need to execute_as_new)
@@ -118,7 +118,7 @@ class ExecutePlans:
             ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or "")),
             start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         if not plan_hashes:
@@ -128,7 +128,7 @@ class ExecutePlans:
                 CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
                 start_to_close_timeout=timedelta(minutes=15),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
             if count:
                 await workflow.execute_child_workflow(
@@ -260,7 +260,7 @@ class ExecutePlans:
             CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
             start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         if count:
             await workflow.execute_child_workflow(
@@ -312,7 +312,7 @@ class ExecuteSinglePlan:
             GetPlanItemsMetadataParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=20),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # Compute total size for dynamic timeouts
@@ -336,7 +336,7 @@ class ExecuteSinglePlan:
             DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=items, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=dl_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # 3) Process the downloaded files. The plan's items are split across several
@@ -386,7 +386,7 @@ class ExecuteSinglePlan:
             CleanupPlanDirParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=del_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # 5) Date resolution. Reads what the parse stages just wrote (tika_metadata,
@@ -403,7 +403,7 @@ class ExecuteSinglePlan:
             ),
             start_to_close_timeout=timedelta(minutes=20),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # 6+7) NLP and chunk+embed, together. Both read the `text_content` the parse
@@ -449,7 +449,7 @@ class ExecuteSinglePlan:
             MarkPlanFinishedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=25),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         log.info(f"[P2] Finished plan {params.collection_dataset} {params.plan_hash}")

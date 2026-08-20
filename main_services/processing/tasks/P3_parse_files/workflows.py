@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P3_parse_files.parse_pdf import PdfProcessingWorkflowParams
     from tasks.P3_parse_files.parse_email import EmailExtractionWorkflowParams
     from tasks.P3_parse_files.parse_common import record_errors_from_results
@@ -80,7 +80,7 @@ class ParseSingleFile:
             ),
             start_to_close_timeout=timedelta(seconds=proc_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         tika_fut = workflow.execute_activity(
@@ -95,7 +95,7 @@ class ParseSingleFile:
             ),
             start_to_close_timeout=timedelta(seconds=1000+proc_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue="processing-tika-queue",
         )
 
@@ -227,7 +227,7 @@ class ParseSingleFile:
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
             task_ids.append("extract_plaintext_chunks")
@@ -253,7 +253,7 @@ class ParseSingleFile:
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
             task_ids.append("parse_office_xml_and_store")
@@ -281,7 +281,7 @@ class ParseSingleFile:
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
             task_ids.append("parse_table_and_store")
@@ -320,7 +320,7 @@ class ParseSingleFile:
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
             task_ids.append("parse_image_metadata_and_store")
@@ -348,7 +348,7 @@ class ParseSingleFile:
                         ),
                         start_to_close_timeout=timedelta(seconds=proc_secs),
                         heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=3),
+                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                         task_queue="processing-ocr-queue",
                     )
                 )
@@ -368,7 +368,7 @@ class ParseSingleFile:
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             )
             task_ids.append("parse_audio_metadata_and_store")

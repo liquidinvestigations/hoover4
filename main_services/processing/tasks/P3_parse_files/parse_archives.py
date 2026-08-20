@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import os
 import asyncio
 import logging
-from tasks.heartbeat import HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
+from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class ArchiveExtractionAndScan:
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         out_dir = res.get("out_dir")
 
@@ -151,7 +151,7 @@ class ArchiveExtractionAndScan:
             ),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         # An archive that extracted to nothing has already had its directory removed;
@@ -188,7 +188,7 @@ class ArchiveExtractionAndScan:
             CleanupTempDirParams(out_dir=out_dir),
             start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
         return out_dir
