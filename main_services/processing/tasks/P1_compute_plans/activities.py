@@ -8,7 +8,7 @@ import hashlib
 import json
 import pyarrow as pa
 
-from database.clickhouse import get_collection_client
+from database.clickhouse import get_collection_client, get_dedicated_collection_client
 from tasks.heartbeat import with_heartbeat
 
 
@@ -69,7 +69,12 @@ def compute_plans(params: ComputePlansParams) -> int:
         payload = json.dumps(sorted_hashes, separators=(",", ":")).encode("utf-8")
         plan_hash = hashlib.sha1(payload).hexdigest()
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        with get_collection_client(params.collectionname) as client:
+        # A DEDICATED client, not the pooled one: this runs inside the
+        # `query_arrow_stream` loop below, and the pooled client for this thread is the
+        # one holding that stream's session open. Inserting through it is
+        # SESSION_IS_LOCKED, and only once the result spans more than one batch -- so it
+        # stays hidden until a dataset is large enough.
+        with get_dedicated_collection_client(params.collectionname) as client:
             # Insert into processing_plans
             tbl_plan = pa.table({
                 "collection_dataset": pa.array([collection_dataset], type=pa.string()),

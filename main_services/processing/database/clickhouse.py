@@ -222,6 +222,29 @@ def _client_ctx(database: str):
 
 
 @contextmanager
+def get_dedicated_collection_client(collectionname: str):
+    """A client of this collection's own, outside the per-thread pool.
+
+    For the one shape the pool cannot serve: writing while a STREAM from the same
+    thread is still open. `query_arrow_stream` holds its HTTP session until the loop
+    ends, and the pooled client is shared by `(thread, database)`, so an insert issued
+    from inside that loop reuses the streaming session and ClickHouse answers
+    `SESSION_IS_LOCKED`. It only shows up once a result is large enough to arrive in
+    more than one batch, which is why it can hide until the biggest dataset.
+
+    Closed on exit, unlike the pooled clients, because nothing else can be holding it.
+    """
+    client = _client(collection_db_name(collectionname))
+    try:
+        yield client
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001 -- a failed close must not mask the body
+            pass
+
+
+@contextmanager
 def get_global_client():
     """Client bound to :data:`GLOBAL_DB`."""
     with _client_ctx(GLOBAL_DB) as client:
