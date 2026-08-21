@@ -870,6 +870,43 @@ else
             fail "'$FILENAME_HIT_TOKEN' did not produce a filename-only hit: $(printf '%s' "$response" | head -c 300)"
         fi
     fi
+
+    # 7i. One document, all the way out through the website. This is the ONLY check that
+    #     pulls bytes through the Rust S3 client and the streaming route, and it compares
+    #     what came back against the hash the blob is filed under -- so a client that
+    #     silently truncates, or serves the wrong object, cannot pass it. Needs a session:
+    #     every route but sign-in refuses without one.
+    #     `blobs` is per-collection, so the row has to be looked for one database at a
+    #     time -- there is no default database holding it.
+    dl_row=""
+    for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
+        dl_row=$(CH "SELECT concat(collection_dataset, ' ', blob_hash, ' ', toString(blob_size_bytes)) FROM ${db}.blobs FINAL WHERE stored_in_clickhouse = 0 ORDER BY blob_size_bytes DESC LIMIT 1" 2>/dev/null || true)
+        [ -n "$dl_row" ] && break
+    done
+    if [ -z "$dl_row" ]; then
+        echo "NOTE - no externally stored blob; skipping the download round trip"
+    else
+        set -- $dl_row
+        dl_ds="$1"; dl_hash="$2"; dl_size="$3"
+        dl_body=$(mktemp)
+        dl_code=$(WEB -b "$cookie_jar" -o "$dl_body" -w '%{http_code}' \
+            "$WEBSITE_URL/_download_document/$dl_ds/$dl_hash")
+        dl_got=$(wc -c < "$dl_body")
+        # `python3 -c`, not a heredoc: an indented heredoc body is an IndentationError,
+        # and with stderr discarded that reads as "no hash to compare" rather than as a
+        # broken check.
+        dl_sha=$(python3 -c 'import hashlib,sys; print(hashlib.sha3_256(open(sys.argv[1],"rb").read()).hexdigest())' "$dl_body" 2>/dev/null || true)
+        rm -f "$dl_body"
+        if [ "$dl_code" != "200" ]; then
+            fail "downloading $dl_ds/$dl_hash answered HTTP $dl_code"
+        elif [ "$dl_got" != "$dl_size" ]; then
+            fail "downloaded $dl_got bytes for a blob ClickHouse records as $dl_size"
+        elif [ -n "$dl_sha" ] && [ "$dl_sha" != "$dl_hash" ]; then
+            fail "downloaded bytes hash to $dl_sha, not the $dl_hash they are filed under"
+        else
+            ok "downloaded $dl_got bytes through the website and the sha3-256 matches the blob hash"
+        fi
+    fi
     rm -f "$cookie_jar"
 fi
 
