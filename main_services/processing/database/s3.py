@@ -59,6 +59,24 @@ def get_s3_client() -> Minio:
     )
 
 
+def ensure_collection_storage(collectionname: str) -> str:
+    """Provision both halves of a collection's storage and return its database name.
+
+    A collection owns a ClickHouse database and a bucket, and every path that can bring a
+    collection into existence goes through here so the two cannot drift apart. One that
+    creates only the database ingests fine until the first writer that does not create
+    buckets of its own reaches for it: the scan stage makes the bucket before its first
+    upload, but a corpus small enough to keep every blob inline in ClickHouse never
+    uploads, so the first thing to touch the bucket is the searchable-PDF builder — which
+    answers 500 and parks the plan behind an activity that can never succeed.
+    """
+    from database.clickhouse import migrate_collection
+
+    db_name = migrate_collection(collectionname)
+    ensure_bucket(collection_bucket(collectionname))
+    return db_name
+
+
 def ensure_bucket(bucket_name: str) -> None:
     """Create the bucket if it does not already exist."""
     client = get_s3_client()
@@ -78,5 +96,6 @@ __all__ = [
     "SYSTEM_BUCKET",
     "collection_bucket",
     "ensure_bucket",
+    "ensure_collection_storage",
     "get_s3_client",
 ]

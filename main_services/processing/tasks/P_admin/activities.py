@@ -30,18 +30,13 @@ class PurgeDatasetParams:
 @activity.defn
 @with_heartbeat
 def ensure_collection_database(params: CollectionDatabaseParams) -> str:
-    """Create the collection's ClickHouse database if missing and migrate it.
+    """Create the collection's ClickHouse database and bucket if missing, and migrate it.
 
-    Idempotent: running it against an already-migrated collection is a no-op.
+    Idempotent: running it against an already-provisioned collection is a no-op.
     """
-    from database.clickhouse import migrate_collection
-    from database.s3 import collection_bucket, ensure_bucket
+    from database.s3 import ensure_collection_storage
 
-    db_name = migrate_collection(params.collectionname)
-    # A collection owns a bucket as well as a database. Created here rather than at the
-    # first upload so that a collection with no documents yet still has somewhere for
-    # them to go, and so that the two halves of a collection's storage appear together.
-    ensure_bucket(collection_bucket(params.collectionname))
+    db_name = ensure_collection_storage(params.collectionname)
     log.info("[P_admin] Ensured collection database %s", db_name)
     return db_name
 

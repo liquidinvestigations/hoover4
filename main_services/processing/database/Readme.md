@@ -30,9 +30,19 @@ bucket no collection's walker looks at. The OCR'd PDFs still share a bucket with
 they were built from, which is why `verify-stack.sh` still asserts that no `blobs` row
 references `derived/`.
 
-A collection's bucket is created with the collection (`ensure_collection_database`) and
-removed with it, which is why the application's Garage key carries `--create-bucket`.
-`garage-init` bootstraps only the system bucket.
+A collection's bucket is created with the collection and removed with it, which is why the
+application's Garage key carries `--create-bucket`. `garage-init` bootstraps only the
+system bucket.
+
+**Both halves of a collection's storage are provisioned by one function**,
+`s3.ensure_collection_storage`, and every path that can bring a collection into existence
+— the admin activity, `create-collection`, `ensure-collection`, `add-disk-dataset` —
+calls it. A path that creates only the database leaves a collection that ingests
+correctly until the first writer that does not create buckets of its own reaches for it:
+the scan stage makes the bucket before its first upload, so a corpus small enough to keep
+every blob inline in ClickHouse never uploads, and the first thing to touch the bucket is
+the searchable-PDF builder — which answers 500 and parks the plan behind an activity that
+can never succeed.
 
 ## The two databases
 

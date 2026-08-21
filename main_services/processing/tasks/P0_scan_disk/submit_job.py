@@ -46,9 +46,9 @@ def _insert_dataset_row(client, collectionname, dataset_name, collection_dataset
 def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool = True):
     from database.clickhouse import (
         get_global_client,
-        migrate_collection,
         validate_collectionname,
     )
+    from database.s3 import ensure_collection_storage
     from temporalio.client import Client as TemporalClient
     import temporalio.common
     import os
@@ -83,8 +83,9 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
             "or with `main.py ensure-collection` first. Aborting."
         )
 
-    # Idempotent: a collection created before this refactor still gets its DB.
-    migrate_collection(collectionname)
+    # Idempotent, and the catch-up for a collection whose storage is incomplete: an
+    # ingest must not be the thing that discovers a missing database or bucket.
+    ensure_collection_storage(collectionname)
 
     # Duplicate check and dataset row insert go to the GLOBAL database.
     # ClickHouse DateTime columns are naive UTC; datetime.now(timezone.utc)

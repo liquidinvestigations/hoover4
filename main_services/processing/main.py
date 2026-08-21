@@ -33,18 +33,17 @@ def migrate():
 @cli.command()
 @click.argument("collectionname", type=str)
 def ensure_collection(collectionname: str):
-    """Create a collection's ClickHouse database if missing and migrate it.
+    """Create a collection's ClickHouse database and bucket if missing, and migrate it.
 
     Idempotent. Note this does NOT create the `collections` row - collections are
-    created in the admin UI; this only provisions the database for one that exists.
+    created in the admin UI; this only provisions the storage for one that exists.
     """
-    from database.clickhouse import collection_db_name, migrate_collection
+    from database.s3 import ensure_collection_storage
 
     try:
-        db_name = collection_db_name(collectionname)
+        db_name = ensure_collection_storage(collectionname)
     except ValueError as e:
         raise click.ClickException(str(e))
-    migrate_collection(collectionname)
     log.info("Collection database ready: %s", db_name)
     print(db_name)
 
@@ -55,7 +54,7 @@ def ensure_collection(collectionname: str):
 @click.option("--public/--no-public", "is_public", default=False,
               help="Readable by every user (and by guests), rather than by group grant only.")
 def create_collection(collectionname: str, fullname: str, is_public: bool):
-    """Register a collection and provision its ClickHouse database.
+    """Register a collection and provision its storage.
 
     The scripted equivalent of creating a collection in the admin UI: it writes the
     `collections` row the UI writes and then does what `ensure-collection` does, so one
@@ -67,9 +66,8 @@ def create_collection(collectionname: str, fullname: str, is_public: bool):
     relying on `demo_mode` and the `guest_permissions_mode` setting both being open,
     which is two independent defaults holding rather than one intent recorded.
     """
-    from database.clickhouse import (
-        collection_db_name, get_global_client, migrate_collection, validate_collectionname,
-    )
+    from database.clickhouse import get_global_client, validate_collectionname
+    from database.s3 import ensure_collection_storage
 
     try:
         validate_collectionname(collectionname)
@@ -92,8 +90,7 @@ def create_collection(collectionname: str, fullname: str, is_public: bool):
             )
             log.info("Collection row created: %s (is_public=%d)", collectionname, int(is_public))
 
-    migrate_collection(collectionname)
-    log.info("Collection database ready: %s", collection_db_name(collectionname))
+    log.info("Collection database ready: %s", ensure_collection_storage(collectionname))
     print(collectionname)
 
 
