@@ -590,6 +590,27 @@ class ReconcileDeletedFilesResult:
     deindexed: int
 
 
+def _tombstone_paths(client, collection_dataset: str, gone: list, now) -> None:
+    """Write an `is_deleted = 1` version of each path the scan stopped finding.
+
+    The row is replaced in place rather than removed: `vfs_files` is a
+    `ReplacingMergeTree` keyed on the path, so a tombstone is how a path says it is gone
+    and still says what used to be there.
+    """
+    client.insert_arrow("vfs_files", pa.table({
+        "collection_dataset": pa.array([collection_dataset] * len(gone), type=pa.string()),
+        "container_hash": pa.array([""] * len(gone), type=pa.string()),
+        "path": pa.array([r["path"] for r in gone], type=pa.string()),
+        "hash": pa.array([r["hash"] for r in gone], type=pa.string()),
+        "user_id": pa.array(["system"] * len(gone), type=pa.string()),
+        "file_size_bytes": pa.array([int(r["file_size_bytes"]) for r in gone], type=pa.uint64()),
+        "mtime": pa.array([int(r["mtime"] or 0) for r in gone], type=pa.timestamp("s")),
+        "mtime_source": pa.array([r["mtime_source"] or "" for r in gone], type=pa.string()),
+        "updated_at": pa.array([now] * len(gone), type=pa.timestamp("s")),
+        "is_deleted": pa.array([1] * len(gone), type=pa.uint8()),
+    }))
+
+
 @activity.defn
 @with_heartbeat
 def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDeletedFilesResult:
@@ -609,6 +630,13 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
     derived work stay where they are — reclaiming those is a separate decision about
     storage, not about what a search should return, and a deletion that also destroyed
     them could not be undone.
+
+    **De-indexing is driven by reachability, not by the tombstones.** A hash reachable
+    from any live path is still in the corpus — the same content at two paths losing one
+    of them must not vanish from search — and a hash no live path reaches is stale
+    whatever made it so. That covers the edited file as well as the deleted one: an edit
+    tombstones no path, it replaces the path's row with a new hash, so a sweep driven by
+    the tombstones alone leaves the previous version of every edited document searchable.
     """
     from datetime import datetime, timezone
 
@@ -626,34 +654,29 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
             AND updated_at < {cutoff:DateTime}
         """, {"cd": params.collection_dataset, "cutoff": cutoff}).to_pylist()
 
-        if not gone:
-            return ReconcileDeletedFilesResult(0, 0)
-
         now = _now_naive_utc()
-        client.insert_arrow("vfs_files", pa.table({
-            "collection_dataset": pa.array([params.collection_dataset] * len(gone), type=pa.string()),
-            "container_hash": pa.array([""] * len(gone), type=pa.string()),
-            "path": pa.array([r["path"] for r in gone], type=pa.string()),
-            "hash": pa.array([r["hash"] for r in gone], type=pa.string()),
-            "user_id": pa.array(["system"] * len(gone), type=pa.string()),
-            "file_size_bytes": pa.array([int(r["file_size_bytes"]) for r in gone], type=pa.uint64()),
-            "mtime": pa.array([int(r["mtime"] or 0) for r in gone], type=pa.timestamp("s")),
-            "mtime_source": pa.array([r["mtime_source"] or "" for r in gone], type=pa.string()),
-            "updated_at": pa.array([now] * len(gone), type=pa.timestamp("s")),
-            "is_deleted": pa.array([1] * len(gone), type=pa.uint8()),
-        }))
+        if gone:
+            _tombstone_paths(client, params.collection_dataset, gone, now)
 
-        # A hash reachable from any surviving path is still in the corpus: the same
-        # content at two paths loses one of them and stays searchable under the other.
-        # De-indexing on the tombstone alone would make a moved file vanish from search.
-        lost_hashes = sorted({r["hash"] for r in gone})
-        live_hashes = {row[0] for row in client.query("""
-            SELECT DISTINCT hash FROM vfs_files FINAL
+        # **Everything indexed that no live path reaches**, which is a wider question
+        # than "what did this scan stop finding". A deleted file leaves an orphaned
+        # hash; so does an EDITED one, whose path now carries a new hash while the old
+        # one is still in the shard tables — and an edit tombstones no path at all, so a
+        # sweep driven by the tombstones alone leaves the previous version of every
+        # edited document searchable for ever.
+        #
+        # `index_state` is the list of what has been indexed, so the difference between
+        # it and the live paths is exactly the set to remove. Newly ingested files are
+        # not in it yet — this runs at the end of the walk, before P2-P6 index anything
+        # — so nothing in flight is caught by it.
+        orphaned = [row[0] for row in client.query("""
+            SELECT DISTINCT file_hash FROM index_state
             WHERE collection_dataset = {cd:String}
-            AND hash IN {hashes:Array(String)}
-            AND is_deleted = 0
-        """, {"cd": params.collection_dataset, "hashes": lost_hashes}).result_rows}
-        orphaned = [h for h in lost_hashes if h not in live_hashes]
+            AND file_hash NOT IN (
+                SELECT DISTINCT hash FROM vfs_files FINAL
+                WHERE collection_dataset = {cd:String} AND is_deleted = 0
+            )
+        """, {"cd": params.collection_dataset}).result_rows]
 
         if orphaned:
             client.command(
