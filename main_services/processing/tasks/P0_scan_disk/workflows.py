@@ -16,7 +16,9 @@ with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P0_scan_disk.activities import (
         list_disk_folder, insert_vfs_directories, ingest_files_batch,
+        reconcile_deleted_files,
         ListDiskFolderParams, InsertVfsDirectoriesParams, IngestFilesBatchParams,
+        ReconcileDeletedFilesParams,
     )
     from tasks.visibility import dataset_search_attributes
 
@@ -82,6 +84,10 @@ class HandleFilesParams:
     #: drop them on the floor; an archive member's mtime is the archive's own metadata
     #: and is the only historical date many extracted files have.
     file_mtimes: List[int] = field(default_factory=list)
+    #: Positionally aligned with ``file_paths``: bytes from the scan's own ``stat``.
+    #: Size and mtime together are what make a rescan able to tell an unchanged file from
+    #: an edited one; a rescan that compares paths alone skips an edited file for ever.
+    file_sizes: List[int] = field(default_factory=list)
 
 
 @workflow.defn
@@ -104,6 +110,7 @@ class HandleFiles:
                 container_hash=(params.container_hash or ""),
                 root_path_prefix=(params.root_path_prefix or ""),
                 file_mtimes=list(params.file_mtimes or []),
+                file_sizes=list(params.file_sizes or []),
             ),
             start_to_close_timeout=timedelta(hours=4),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -211,6 +218,7 @@ class HandleFolders:
                 container_hash=(params.container_hash or ""),
                 root_path_prefix=(params.root_path_prefix or ""),
                 file_mtimes=[int(f.get("mtime") or 0) for f in file_batch],
+                file_sizes=[int(f.get("size") or 0) for f in file_batch],
             )
             child_futs.append(
                 workflow.execute_child_workflow(
@@ -244,6 +252,11 @@ class IngestDiskDataset:
         log.info("Starting ingestion for %s", params.collection_dataset)
         log.info("Dataset path: %s", params.dataset_path)
 
+        # Read before the walk, never after: every row the walk ingests or touches
+        # carries a later `updated_at`, so this is the line that separates "the scan
+        # confirmed this path" from "the scan did not find it".
+        scan_started_at = int(workflow.now().timestamp())
+
         # Seed with root folder
         args = {
             "collectionname": params.collectionname,
@@ -258,9 +271,26 @@ class IngestDiskDataset:
             id=_child_workflow_id("HandleFolders", args),
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
+
+        # The walk finished, so it is authoritative for the paths under its root and
+        # anything it did not confirm is gone. This runs only after a complete walk: a
+        # scan that failed part-way through has confirmed nothing about the paths it
+        # never reached, and reconciling on it would delete them.
+        removed = await workflow.execute_activity(
+            reconcile_deleted_files,
+            ReconcileDeletedFilesParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                scan_started_at=scan_started_at,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
         log.info("Finished disk ingestion for %s", params.collection_dataset)
 
-        return f"started ingestion for {params.collection_dataset}"
+        return (f"started ingestion for {params.collection_dataset} "
+                f"({removed.tombstoned} paths gone, {removed.deindexed} de-indexed)")
 
 
 @workflow.defn

@@ -212,6 +212,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
 
             started = time.time()
             outcome = build_ocr_pdf(
+                collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 pdf_hash=params.pdf_hash,
                 engine=params.engine,

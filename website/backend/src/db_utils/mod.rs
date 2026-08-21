@@ -1,6 +1,7 @@
 //! Database utility module exports.
 
 pub mod clickhouse_utils;
+pub use clickhouse_utils::collectionname_of_dataset;
 pub mod decompose_spans;
 pub mod manticore_match;
 pub mod manticore_utils;
@@ -24,10 +25,37 @@ pub fn s3_credentials() -> (String, String) {
     )
 }
 
-/// The blobs bucket. One bucket holds ingested blobs and everything derived; the
-/// `derived/` prefix is what separates them.
-pub fn s3_bucket() -> String {
-    std::env::var("S3_BUCKET").unwrap_or_else(|_| "hoover4-blobs".to_string())
+/// The bucket for everything that belongs to no collection — chat artifacts and the
+/// like. A collection's own objects are in [`collection_bucket`].
+pub fn system_bucket() -> String {
+    std::env::var("S3_SYSTEM_BUCKET").unwrap_or_else(|_| "hoover4-system".to_string())
+}
+
+/// One collection's bucket: its ingested blobs and everything derived from them.
+///
+/// There is a bucket per collection rather than one shared bucket with prefixes, so a
+/// collection's objects are enumerable without prefix filtering and deletable in one
+/// call, and so a read scoped to a collection cannot reach another one's bytes. Garage
+/// dedups blocks globally, so the split costs no storage.
+pub fn collection_bucket(collectionname: &str) -> String {
+    let prefix = std::env::var("S3_COLLECTION_BUCKET_PREFIX")
+        .unwrap_or_else(|_| "hoover4-c-".to_string());
+    format!("{prefix}{collectionname}")
+}
+
+/// Split a stored `s3://bucket/key` into its two halves.
+///
+/// The bucket is read out of the path rather than reconstructed from configuration: the
+/// path is what the writer recorded, and a reader that rebuilds the bucket from its own
+/// environment fetches from wherever it happens to be pointed instead of from where the
+/// object actually is.
+pub fn split_s3_path(s3_path: &str) -> Option<(String, String)> {
+    let without_scheme = s3_path.strip_prefix("s3://")?;
+    let (bucket, key) = without_scheme.split_once('/')?;
+    if bucket.is_empty() || key.is_empty() {
+        return None;
+    }
+    Some((bucket.to_string(), key.to_string()))
 }
 
 /// An S3 client for the blob store, configured from the environment.

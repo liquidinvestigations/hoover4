@@ -13,7 +13,7 @@ import logging
 log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
-from database.s3 import BUCKET_NAME, get_s3_client, ensure_bucket
+from database.s3 import collection_bucket, get_s3_client, ensure_bucket
 from tasks.heartbeat import with_heartbeat
 
 
@@ -73,10 +73,6 @@ def _detect_mime_and_encoding(file_path: str) -> Tuple[str, str]:
 
 def _s3_client():
     return get_s3_client()
-
-
-def _s3_bucket_name() -> str:
-    return BUCKET_NAME
 
 
 def _rel_to_abs(dataset_path: str, rel_path: str) -> str:
@@ -224,6 +220,41 @@ class IngestFilesBatchParams:
     root_path_prefix: str = ""
     #: Positionally aligned with ``file_paths``; empty when the caller has no stat data.
     file_mtimes: List[int] = None  # type: ignore[assignment]
+    #: Positionally aligned with ``file_paths``; empty when the caller has no stat data.
+    file_sizes: List[int] = None  # type: ignore[assignment]
+
+
+def _now_naive_utc():
+    """ClickHouse DateTime columns are naive UTC."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _touch_vfs_rows(collectionname: str, collection_dataset: str, container_hash: str,
+                    rows: List[Dict[str, Any]]) -> None:
+    """Re-write unchanged rows with a fresh ``updated_at``.
+
+    A file whose mtime moved but whose content did not is still current, and the
+    deletion sweep decides what is current by when it was last confirmed. Without this
+    touch a copy or a restore — which moves every mtime and changes no content — would
+    make the sweep tombstone the whole dataset.
+    """
+    if not rows:
+        return
+    now = _now_naive_utc()
+    with get_collection_client(collectionname) as client:
+        client.insert_arrow("vfs_files", pa.table({
+            "collection_dataset": pa.array([collection_dataset] * len(rows), type=pa.string()),
+            "container_hash": pa.array([container_hash] * len(rows), type=pa.string()),
+            "path": pa.array([r["path"] for r in rows], type=pa.string()),
+            "hash": pa.array([r["hash"] for r in rows], type=pa.string()),
+            "user_id": pa.array(["system"] * len(rows), type=pa.string()),
+            "file_size_bytes": pa.array([int(r["file_size_bytes"]) for r in rows], type=pa.uint64()),
+            "mtime": pa.array([int(r["mtime"] or 0) for r in rows], type=pa.timestamp("s")),
+            "mtime_source": pa.array([r.get("mtime_source", "")  or "" for r in rows], type=pa.string()),
+            "updated_at": pa.array([now] * len(rows), type=pa.timestamp("s")),
+            "is_deleted": pa.array([0] * len(rows), type=pa.uint8()),
+        }))
 
 
 @activity.defn
@@ -238,44 +269,93 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     mtime_by_path: Dict[str, int] = {
         p: int(m or 0) for p, m in zip(file_paths, list(params.file_mtimes or []))
     }
+    # Separate from `mtime_by_path`, which defaults a missing value to 0 because the
+    # column is not nullable. Change detection has to be able to tell "the caller did not
+    # stat this" from "the file's mtime is the epoch", so these keep None.
+    file_mtimes_by_path: Dict[str, Any] = dict(zip(file_paths, list(params.file_mtimes or [])))
+    file_sizes_by_path: Dict[str, Any] = dict(zip(file_paths, list(params.file_sizes or [])))
 
     def _escape(v: str) -> str:
         return v.replace("'", "''")
 
-    # 1) Filter out vfs_files duplicates.
+    # 1) Decide, per path, whether there is anything to do.
+    #
+    # Comparing paths alone is what a rescan used to do, and it is wrong in the direction
+    # that loses data: a file whose CONTENT changed at the same path was skipped for ever,
+    # with no new blob, no new plan and nothing downstream noticing. Size and mtime are
+    # already in the table and already collected by the scan, so the comparison costs
+    # nothing beyond two more columns on a read that happens anyway.
     #
     # Two things this read has to get right, both of which it used to get wrong:
     #   * it must compare the SAME strings step 7 inserts, i.e. prefixed with
     #     `root_path_prefix`. `file_paths` here is relative to the container root, so an
     #     archive or email member never matched and every re-run re-ingested it.
     #   * it must scope by `container_hash`. Two containers holding the same inner path
-    #     (the `zip-in-multiple-locations` fixture) are distinct rows -- since 00005's
-    #     sort key includes `container_hash` -- and matching on the path alone would drop
-    #     the second container's children.
+    #     (the `zip-in-multiple-locations` fixture) are distinct rows, and matching on the
+    #     path alone would drop the second container's children.
     # FINAL because vfs_files is a ReplacingMergeTree: an unmerged part hides rows.
     def _prefixed(p: str) -> str:
         return (root_path_prefix.rstrip("/") + p) if root_path_prefix else p
 
-    existing_paths: Set[str] = set()
+    known: Dict[str, Dict[str, Any]] = {}
     if file_paths:
         with get_collection_client(params.collectionname) as client:
             in_list = ",".join([f"'{_escape(_prefixed(p))}'" for p in file_paths])
             sql = f"""
-                SELECT path
+                SELECT path, hash, file_size_bytes, mtime_source,
+                       toUnixTimestamp(mtime) AS mtime
                 FROM vfs_files FINAL
                 WHERE collection_dataset = '{_escape(collection_dataset)}'
                   AND container_hash = '{_escape(container_hash)}'
                   AND path IN ({in_list})
+                  AND is_deleted = 0
             """
-            tbl = client.query_arrow(sql)
-            if tbl and tbl.num_rows:
-                col = tbl.column("path")
-                for i in range(tbl.num_rows):
-                    existing_paths.add(col[i].as_py())
+            for row in client.query_arrow(sql).to_pylist():
+                known[row["path"]] = row
 
-    todo_paths = [p for p in file_paths if _prefixed(p) not in existing_paths]
+    # A path whose size AND mtime both match its row is unchanged: no read, no hash.
+    # A size that differs settles it without reading the file at all. An mtime that moved
+    # with the size unchanged is the only case that has to hash to find out, and it is
+    # the common one after a copy or a restore — so it is hashed and then compared,
+    # rather than assumed either way.
+    unchanged: Set[str] = set()
+    maybe_changed: List[str] = []
+    todo_paths: List[str] = []
+    for rel in file_paths:
+        row = known.get(_prefixed(rel))
+        if row is None:
+            todo_paths.append(rel)
+            continue
+        if file_sizes_by_path.get(rel) is None or file_mtimes_by_path.get(rel) is None:
+            # No stat data from the caller: fall back to the path-only behaviour rather
+            # than re-hashing every known file on every scan.
+            unchanged.add(rel)
+            continue
+        if int(row["file_size_bytes"]) != file_sizes_by_path[rel]:
+            todo_paths.append(rel)
+        elif int(row["mtime"] or 0) != file_mtimes_by_path[rel]:
+            maybe_changed.append(rel)
+        else:
+            unchanged.add(rel)
+
+    # The rehash. A file whose content is the same after all only needs its row touched,
+    # so the scan that found it counts as authoritative for that path and the deletion
+    # sweep does not tombstone it.
+    touched: List[str] = []
+    for rel in maybe_changed:
+        current_hash, _ = _compute_hashes_streaming(_rel_to_abs(dataset_path, rel))
+        if current_hash["sha3_256"] != known[_prefixed(rel)]["hash"]:
+            todo_paths.append(rel)
+        else:
+            touched.append(rel)
+
+    if touched:
+        _touch_vfs_rows(params.collectionname, collection_dataset, container_hash,
+                        [known[_prefixed(rel)] for rel in touched])
+
+    skipped = len(unchanged) + len(touched)
     if not todo_paths:
-        return "0 files (all duplicates)"
+        return f"0 files ({skipped} unchanged)"
 
     # 2) Compute metadata for remaining files
     user_id = "system"
@@ -299,6 +379,9 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         # Defer MIME/type detection to P3
 
     # 3) Dedup blobs and blob_values
+    # The collection's own bucket. Named once here rather than at each upload so that a
+    # blob and its `s3_path` can never disagree about which bucket it is in.
+    bucket = collection_bucket(params.collectionname)
     unique_hashes = list(dict.fromkeys(hashes))
     existing_blob_hashes: Set[str] = set()
     existing_blob_values: Set[str] = set()
@@ -393,9 +476,9 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             # Upload to S3 only if completely new blob
             s3_key = f"{collection_dataset}/{h}"
             client_s3 = _s3_client()
-            ensure_bucket(_s3_bucket_name())
-            client_s3.fput_object(_s3_bucket_name(), s3_key, hash_to_abs[h])
-            s3_uri = f"s3://{_s3_bucket_name()}/{s3_key}"
+            ensure_bucket(bucket)
+            client_s3.fput_object(bucket, s3_key, hash_to_abs[h])
+            s3_uri = f"s3://{bucket}/{s3_key}"
             blob_rows_cd.append(collection_dataset)
             blob_rows_hash.append(h)
             blob_rows_size.append(size)
@@ -471,7 +554,131 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             "file_size_bytes": pa.array(sizes, type=pa.uint64()),
             "mtime": pa.array(mtimes, type=pa.timestamp("s")),
             "mtime_source": pa.array([mtime_source] * len(final_paths), type=pa.string()),
+            # The version column. A path has one current row, so an edited file replaces
+            # its predecessor in place rather than sitting beside it.
+            "updated_at": pa.array([_now_naive_utc()] * len(final_paths), type=pa.timestamp("s")),
+            "is_deleted": pa.array([0] * len(final_paths), type=pa.uint8()),
         })
         client.insert_arrow("vfs_files", table_files)
 
-    return f"ingested {len(todo_paths)} files (skipped {len(existing_paths)})"
+    return f"ingested {len(todo_paths)} files (skipped {skipped} unchanged)"
+
+#: Hashes per DELETE while de-indexing. A statement naming every hash of a large deletion
+#: at once is a parse cost that grows with the deletion rather than with the table.
+DEINDEX_HASH_BATCH = 500
+
+
+@dataclass
+class ReconcileDeletedFilesParams:
+    collectionname: str
+    collection_dataset: str
+    #: When the scan that is being reconciled started, as epoch seconds. Every top-level
+    #: row it did not touch is older than this and is therefore a path it did not find.
+    scan_started_at: int
+
+
+@dataclass
+class ReconcileDeletedFilesResult:
+    tombstoned: int
+    deindexed: int
+
+
+@activity.defn
+@with_heartbeat
+def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDeletedFilesResult:
+    """Tombstone the paths a completed scan did not find, and de-index their content.
+
+    **A scan is authoritative for the paths under its root.** Every path it saw was either
+    ingested or touched, so every live top-level row older than the scan's start is a file
+    that is no longer there. Comparing timestamps rather than re-walking the tree is what
+    makes deletion detectable without a second traversal.
+
+    Only `container_hash = ''` rows are considered. An archive or email member is not a
+    path on disk; it exists because its container does, and it disappears when the
+    container's own row is tombstoned.
+
+    **The blob is kept.** Only the index rows go, so search stops answering with content
+    that is no longer in the corpus, immediately. The blob, its extracted text and its
+    derived work stay where they are — reclaiming those is a separate decision about
+    storage, not about what a search should return, and a deletion that also destroyed
+    them could not be undone.
+    """
+    from datetime import datetime, timezone
+
+    from database.manticore import get_manticore_client, list_shard_tables, vfs_table_name
+
+    cutoff = datetime.fromtimestamp(params.scan_started_at, timezone.utc).replace(tzinfo=None)
+    with get_collection_client(params.collectionname) as client:
+        gone = client.query_arrow("""
+            SELECT path, hash, file_size_bytes, mtime_source,
+                   toUnixTimestamp(mtime) AS mtime
+            FROM vfs_files FINAL
+            WHERE collection_dataset = {cd:String}
+            AND container_hash = ''
+            AND is_deleted = 0
+            AND updated_at < {cutoff:DateTime}
+        """, {"cd": params.collection_dataset, "cutoff": cutoff}).to_pylist()
+
+        if not gone:
+            return ReconcileDeletedFilesResult(0, 0)
+
+        now = _now_naive_utc()
+        client.insert_arrow("vfs_files", pa.table({
+            "collection_dataset": pa.array([params.collection_dataset] * len(gone), type=pa.string()),
+            "container_hash": pa.array([""] * len(gone), type=pa.string()),
+            "path": pa.array([r["path"] for r in gone], type=pa.string()),
+            "hash": pa.array([r["hash"] for r in gone], type=pa.string()),
+            "user_id": pa.array(["system"] * len(gone), type=pa.string()),
+            "file_size_bytes": pa.array([int(r["file_size_bytes"]) for r in gone], type=pa.uint64()),
+            "mtime": pa.array([int(r["mtime"] or 0) for r in gone], type=pa.timestamp("s")),
+            "mtime_source": pa.array([r["mtime_source"] or "" for r in gone], type=pa.string()),
+            "updated_at": pa.array([now] * len(gone), type=pa.timestamp("s")),
+            "is_deleted": pa.array([1] * len(gone), type=pa.uint8()),
+        }))
+
+        # A hash reachable from any surviving path is still in the corpus: the same
+        # content at two paths loses one of them and stays searchable under the other.
+        # De-indexing on the tombstone alone would make a moved file vanish from search.
+        lost_hashes = sorted({r["hash"] for r in gone})
+        live_hashes = {row[0] for row in client.query("""
+            SELECT DISTINCT hash FROM vfs_files FINAL
+            WHERE collection_dataset = {cd:String}
+            AND hash IN {hashes:Array(String)}
+            AND is_deleted = 0
+        """, {"cd": params.collection_dataset, "hashes": lost_hashes}).result_rows}
+        orphaned = [h for h in lost_hashes if h not in live_hashes]
+
+        if orphaned:
+            client.command(
+                "DELETE FROM index_state WHERE collection_dataset = {cd:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"cd": params.collection_dataset, "hashes": orphaned},
+            )
+
+    deindexed = 0
+    if orphaned:
+        # The shard tables and the VFS tree, which are the tables keyed by file_hash. The
+        # facet-term index is not: it holds one row per term, and a term stops being
+        # searchable when its own reconciliation pass finds it gone from ClickHouse.
+        tables = list_shard_tables(params.collectionname) + [vfs_table_name(params.collectionname)]
+        with get_manticore_client() as cnx:
+            cursor = cnx.cursor()
+            for table in tables:
+                for chunk_start in range(0, len(orphaned), DEINDEX_HASH_BATCH):
+                    chunk = orphaned[chunk_start:chunk_start + DEINDEX_HASH_BATCH]
+                    placeholders = ",".join(["%s"] * len(chunk))
+                    # Identifiers come from list_collection_tables (regex-validated);
+                    # only the values are bound.
+                    cursor.execute(
+                        f"DELETE FROM {table} WHERE collection_dataset = %s "
+                        f"AND file_hash IN ({placeholders})",
+                        (params.collection_dataset, *chunk),
+                    )
+            cnx.commit()
+        deindexed = len(orphaned)
+
+    log.info(
+        "[P0] %s: %d paths gone, %d documents de-indexed",
+        params.collection_dataset, len(gone), deindexed,
+    )
+    return ReconcileDeletedFilesResult(len(gone), deindexed)

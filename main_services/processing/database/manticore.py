@@ -535,16 +535,18 @@ def list_shard_tables(collectionname: str) -> list[str]:
 
 
 def list_collection_tables(collectionname: str) -> list[str]:
-    """Every Manticore table a collection owns: its shard tables plus its VFS table.
+    """Every Manticore table a collection owns: its shard tables plus the two
+    collection-wide indexes, the VFS tree and the facet-term list.
 
     What teardown and purge iterate. Kept separate from :func:`list_shard_tables`
     because the callers that reason about *shards* — the ledger equality check, the
     per-shard search fan-out — must not be handed a table that has no shard index.
     """
     tables = list_shard_tables(collectionname)
-    vfs_table = vfs_table_name(collectionname)
-    if vfs_table in _list_all_tables():
-        tables.append(vfs_table)
+    all_tables = _list_all_tables()
+    for table in (vfs_table_name(collectionname), entities_table_name(collectionname)):
+        if table in all_tables:
+            tables.append(table)
     return tables
 
 

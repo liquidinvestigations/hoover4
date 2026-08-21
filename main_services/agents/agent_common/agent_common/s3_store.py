@@ -1,14 +1,16 @@
 """S3 access for the MCP servers.
 
-Mirrors `main_services/processing/database/s3.py` — same bucket, same server, same
-environment variables. Endpoint and credentials come from the environment on both sides,
-which is what lets these containers also be run from the host during development, where
-a literal container hostname is unreachable.
+Mirrors `main_services/processing/database/s3.py` — same server, same environment
+variables. Endpoint and credentials come from the environment on both sides, which is
+what lets these containers also be run from the host during development, where a literal
+container hostname is unreachable.
 
-Everything these servers write goes under :data:`DERIVED_PREFIX`. That prefix is the one
-part of the bucket `P0_scan_disk` must never walk: an artifact the ingest walker can see
+**Artifacts go in the system bucket, never in a collection's.** A chat artifact belongs
+to a session and not to any collection, and putting it outside every collection's bucket
+is what makes "`P0_scan_disk` must never walk derived material" a structural property
+instead of a prefix check somebody has to remember. An artifact the ingest walker can see
 becomes a `vfs_files` row, gets ingested, gets captured again, and produces another
-artifact — forever. `verify-stack.sh` asserts no `blobs` row references it.
+artifact — forever. `verify-stack.sh` asserts no `blobs` row references the prefix.
 """
 
 from __future__ import annotations
@@ -18,9 +20,8 @@ import os
 
 log = logging.getLogger(__name__)
 
-#: Same bucket the pipeline's blobs live in. One bucket keeps the retention and backup
-#: story single; the prefix below is what separates derived bytes from ingested ones.
-BUCKET_NAME = os.getenv("S3_BUCKET", "hoover4-blobs")
+#: The bucket for everything that belongs to no collection.
+BUCKET_NAME = os.getenv("S3_SYSTEM_BUCKET", "hoover4-system")
 
 #: Everything an agent writes lives under here. See the module docstring.
 DERIVED_PREFIX = "derived/chat-artifacts"

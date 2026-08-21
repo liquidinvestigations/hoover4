@@ -1,9 +1,20 @@
 # Garage — the S3 blob store
 
-Single-node [Garage](https://garagehq.deuxfleurs.fr/) serving the `hoover4-blobs` bucket
-on `garage:3900`. Blob keys are `<collection_dataset>/<blob_hash>` for ingested content
-and `derived/...` for everything the pipeline and the agents synthesise;
-`blobs.s3_path` stores them as `s3://<bucket>/<key>`.
+Single-node [Garage](https://garagehq.deuxfleurs.fr/) on `garage:3900`.
+
+**One bucket per collection, plus one system bucket.** A collection's objects are in
+`hoover4-c-<collectionname>`: its ingested blobs under `<collection_dataset>/<blob_hash>`
+and its OCR'd PDFs under `derived/...`. Everything belonging to no collection — chat
+artifacts — is in `hoover4-system`. `blobs.s3_path` stores the full `s3://<bucket>/<key>`,
+so a reader takes the bucket from the path rather than from its own configuration.
+
+Per-collection *stores* are not possible: Garage has one shared metadata database and
+globally content-addressed data blocks. Buckets are, and they are what make a
+collection's objects enumerable without prefix filtering and deletable in one call. Block
+dedup is global, so the split costs no storage.
+
+`garage-init` creates only the system bucket. A collection's bucket is created with the
+collection, which is why the application's key is granted `--create-bucket`.
 
 Files here:
 
@@ -78,7 +89,8 @@ answers `Unknown API endpoint` to it, so the admin API port is published on loop
 
 ```
 docker exec garage /garage status                 # one node, with a role assigned
-docker exec garage /garage bucket info hoover4-blobs
+docker exec garage /garage bucket info hoover4-system
+docker exec garage /garage bucket list             # one hoover4-c-<name> per collection
 docker exec garage /garage key info <access key>
 docker exec garage /garage layout show            # no staged changes on a settled node
 ```

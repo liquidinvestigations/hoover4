@@ -103,7 +103,7 @@ pub fn may_read(caller: &str, caller_is_admin: bool, owner: &str) -> bool {
 /// would add a failure mode (a half-written response with headers already sent) for no
 /// benefit at these sizes.
 pub async fn fetch_artifact_object(key: &str) -> anyhow::Result<Vec<u8>> {
-    let bucket = crate::db_utils::s3_bucket();
+    let bucket = crate::db_utils::system_bucket();
     let client = crate::db_utils::s3_client().await?;
     let object = client.get_object().bucket(&bucket).key(key).send().await?;
     Ok(object.body.collect().await?.to_vec())

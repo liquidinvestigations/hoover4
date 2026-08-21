@@ -91,7 +91,10 @@ S3_ENDPOINT = (os.getenv("S3_ENDPOINT", "garage:3900")
                .replace("https://", "").replace("http://", "").rstrip("/"))
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "hoover4-blobs-rw")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0")
-S3_BUCKET = os.getenv("S3_BUCKET", "hoover4-blobs")
+#: Fallback bucket, for a caller that names none. There is a bucket per collection, so a
+#: request carries the one it means: a service with a single configured bucket would read
+#: one collection's source and write another collection's derived object.
+S3_BUCKET = os.getenv("S3_BUCKET", "hoover4-system")
 S3_SECURE = os.getenv("S3_ENDPOINT", "").startswith("https://")
 
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
@@ -111,9 +114,13 @@ _inflight = threading.Semaphore(OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH)
 
 
 class OcrPdfRequest(BaseModel):
-    #: Object key of the source PDF, inside `S3_BUCKET`. Either this or
-    #: `pdf_b64` — blobs under the small-file threshold live in ClickHouse and have no
-    #: object at all, so the caller sends those inline.
+    #: The bucket both keys live in — the collection's own. Empty falls back to this
+    #: service's configured default, which exists only so that a probe can be made
+    #: without one.
+    bucket: str = Field("", description="Bucket holding the source and destination keys")
+    #: Object key of the source PDF, inside `bucket`. Either this or `pdf_b64` — blobs
+    #: under the small-file threshold live in ClickHouse and have no object at all, so
+    #: the caller sends those inline.
     source_key: str = Field("", description="Object key of the source PDF")
     pdf_b64: str = Field("", description="Inline source PDF, for blobs not stored in the object store")
     dest_key: str = Field(..., description="Object key to write, must start with derived/")
@@ -323,7 +330,7 @@ def health():
         "status": "healthy" if ok else "unhealthy",
         "engines": {name: bool(url) for name, url in OCR_ENDPOINTS.items()},
         "renderer": renderer,
-        "bucket": S3_BUCKET,
+        "default_bucket": S3_BUCKET,
         "derived_prefix": DERIVED_PREFIX,
         "dpi_default": DEFAULT_DPI,
         "max_pages": MAX_PAGES,
@@ -350,6 +357,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
         if request.engine not in OCR_ENDPOINTS:
             raise HTTPException(status_code=400, detail=f"unknown OCR engine {request.engine!r}")
 
+        bucket = (request.bucket or "").strip() or S3_BUCKET
         started = time.time()
         client = _s3()
 
@@ -360,7 +368,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
                 raise HTTPException(status_code=400, detail=f"pdf_b64 is not valid base64: {exc}")
         elif request.source_key:
             try:
-                obj = client.get_object(S3_BUCKET, request.source_key)
+                obj = client.get_object(bucket, request.source_key)
                 try:
                     pdf_bytes = obj.read()
                 finally:
@@ -395,7 +403,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
         # a row with no object is a broken link nothing can repair. The
         # `pdf_ocr_results` row is the caller's to write, after this returns.
         client.put_object(
-            S3_BUCKET,
+            bucket,
             dest_key,
             io.BytesIO(out_bytes),
             length=len(out_bytes),

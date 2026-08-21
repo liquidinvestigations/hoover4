@@ -106,7 +106,10 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
 
 async def run_common_worker():
     # Localized imports for common worker only
-    from .P0_scan_disk.activities import list_disk_folder, insert_vfs_directories, ingest_files_batch
+    from .P0_scan_disk.activities import (
+        ingest_files_batch, insert_vfs_directories, list_disk_folder,
+        reconcile_deleted_files,
+    )
     from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders, HandleFiles
     from .P1_compute_plans.activities import count_new_blobs, compute_plans
     from .P1_compute_plans.workflows import ComputePlans
@@ -243,6 +246,7 @@ async def run_common_worker():
             list_disk_folder,
             insert_vfs_directories,
             ingest_files_batch,
+            reconcile_deleted_files,
             count_new_blobs,
             compute_plans,
             list_pending_plans,

@@ -35,8 +35,13 @@ def ensure_collection_database(params: CollectionDatabaseParams) -> str:
     Idempotent: running it against an already-migrated collection is a no-op.
     """
     from database.clickhouse import migrate_collection
+    from database.s3 import collection_bucket, ensure_bucket
 
     db_name = migrate_collection(params.collectionname)
+    # A collection owns a bucket as well as a database. Created here rather than at the
+    # first upload so that a collection with no documents yet still has somewhere for
+    # them to go, and so that the two halves of a collection's storage appear together.
+    ensure_bucket(collection_bucket(params.collectionname))
     log.info("[P_admin] Ensured collection database %s", db_name)
     return db_name
 
@@ -51,12 +56,30 @@ def drop_collection_database(params: CollectionDatabaseParams) -> str:
     """
     from database.clickhouse import drop_collection_db
     from database.manticore import drop_collection_tables
+    from database.s3 import collection_bucket, get_s3_client
 
     dropped_tables = drop_collection_tables(params.collectionname)
     db_name = drop_collection_db(params.collectionname)
+    # The bucket goes with the database. It is one call rather than a prefix scan and
+    # delete, which is the whole reason the objects are split per collection — and its
+    # blocks are shared with nothing, because Garage dedups at the block level globally.
+    bucket = collection_bucket(params.collectionname)
+    objects_removed = 0
+    try:
+        client = get_s3_client()
+        if client.bucket_exists(bucket):
+            for obj in client.list_objects(bucket, recursive=True):
+                client.remove_object(bucket, obj.object_name)
+                objects_removed += 1
+            client.remove_bucket(bucket)
+    except Exception:
+        # The database is already gone, so a bucket left behind is orphaned storage
+        # rather than a broken collection. Loud, and not fatal.
+        log.warning("[P_admin] could not remove bucket %s", bucket, exc_info=True)
     log.warning(
-        "[P_admin] Dropped collection database %s and %d Manticore shard tables",
-        db_name, len(dropped_tables),
+        "[P_admin] Dropped collection database %s, %d Manticore shard tables and "
+        "%d objects from %s",
+        db_name, len(dropped_tables), objects_removed, bucket,
     )
     return db_name
 

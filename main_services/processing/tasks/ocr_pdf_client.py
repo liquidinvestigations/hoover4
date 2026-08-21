@@ -88,6 +88,7 @@ def derived_key(collection_dataset: str, pdf_hash: str, engine: str, languages: 
 
 def build_ocr_pdf(
     *,
+    collectionname: str,
     collection_dataset: str,
     pdf_hash: str,
     engine: str,
@@ -101,8 +102,14 @@ def build_ocr_pdf(
     not answer — retryable, and deliberately distinct from "not configured", which callers
     check with :func:`service_configured` first.
     """
+    from database.s3 import collection_bucket
+
     dest_key = derived_key(collection_dataset, pdf_hash, engine, languages)
     payload = {
+        # The collection's own bucket, named by the caller. The service has a fallback
+        # for a probe, and using it for real work would read one collection's source and
+        # write another collection's derived object.
+        "bucket": collection_bucket(collectionname),
         "dest_key": dest_key,
         "engine": engine,
         "languages": languages,

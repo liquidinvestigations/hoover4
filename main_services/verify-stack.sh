@@ -652,7 +652,10 @@ ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
 [ -n "$ms_sources" ] && echo "NOTE - metasearch $ms_sources"
 
 # 7e. Everything derived lives under `derived/` in the blob store, and P0_scan_disk must never walk
-#     that prefix. Two writers are covered by this one `%derived/%` pattern:
+#     that prefix. The chat artifacts are now structurally out of reach — they live in
+#     the system bucket, which no collection's walker can see — but the OCR'd PDFs share
+#     a bucket with the blobs they were built from, so the assertion still earns its
+#     place. Two writers are covered by this one `%derived/%` pattern:
 #       * chat artifacts (captured pages, search detail) under `derived/chat/…`
 #       * OCR'd PDFs under `derived/ocr-pdf/<dataset>/<pdf_hash>/<engine>+<langs>.pdf`
 #     If the walker ever sees either, the object becomes a vfs_files row, is ingested, is
@@ -678,7 +681,7 @@ fi
 stat_script=$(cat <<'PY'
 import os, sys
 sys.path.insert(0, "/app")
-from database.s3 import get_s3_client, BUCKET_NAME
+from database.s3 import get_s3_client, collection_bucket
 from database.clickhouse import get_global_client, get_collection_client
 with get_global_client() as g:
     colls = [r[0] for r in g.query(
@@ -691,11 +694,12 @@ for coll in colls:
         rows = ch.query(
             "SELECT s3_path, blob_size_bytes FROM blobs FINAL "
             "WHERE stored_in_clickhouse = 0 LIMIT 500").result_rows
+    bucket = collection_bucket(coll)
     for s3_path, size in rows:
-        key = s3_path.replace("s3://%s/" % BUCKET_NAME, "")
+        key = s3_path.replace("s3://%s/" % bucket, "")
         checked += 1
         try:
-            st = client.stat_object(BUCKET_NAME, key)
+            st = client.stat_object(bucket, key)
         except Exception:
             missing += 1
             continue
@@ -739,10 +743,26 @@ if docker inspect garage >/dev/null 2>&1; then
     else
         ok "garage layout is applied with no staged changes"
     fi
-    if docker exec garage /garage bucket info hoover4-blobs >/dev/null 2>&1; then
-        ok "garage bucket hoover4-blobs exists"
+    system_bucket="${S3_SYSTEM_BUCKET:-hoover4-system}"
+    if docker exec garage /garage bucket info "$system_bucket" >/dev/null 2>&1; then
+        ok "garage bucket $system_bucket exists"
     else
-        fail "garage bucket hoover4-blobs is missing -- the bootstrap did not create it"
+        fail "garage bucket $system_bucket is missing -- the bootstrap did not create it"
+    fi
+    # One bucket per collection, created with the collection. A collection whose bucket
+    # is missing has nowhere for its blobs to go, and the failure would first appear as
+    # an ingest error hours later.
+    bucket_prefix="${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
+    missing_buckets=""
+    for coll in $(CH "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL WHERE is_deleted = 0" 2>/dev/null || true); do
+        if ! docker exec garage /garage bucket info "${bucket_prefix}${coll}" >/dev/null 2>&1; then
+            missing_buckets="$missing_buckets ${bucket_prefix}${coll}"
+        fi
+    done
+    if [ -z "$missing_buckets" ]; then
+        ok "every collection has its own garage bucket"
+    else
+        fail "collections with no garage bucket:$missing_buckets"
     fi
 else
     echo "NOTE - no garage container; skipping the blob-store bootstrap checks"

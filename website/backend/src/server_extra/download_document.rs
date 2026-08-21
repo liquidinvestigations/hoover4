@@ -39,9 +39,9 @@ async fn get_document_content_stream(
         ));
     }
 
-    let bucket = crate::db_utils::s3_bucket();
-    let key = blob_info.s3_path.replace(&format!("s3://{bucket}/"), "");
-    tracing::debug!("serving blob from s3: {key}");
+    let (bucket, key) = crate::db_utils::split_s3_path(&blob_info.s3_path)
+        .ok_or_else(|| anyhow::anyhow!("blob s3_path is not an s3 url: {}", blob_info.s3_path))?;
+    tracing::debug!("serving blob from s3: {bucket}/{key}");
     let client = crate::db_utils::s3_client().await?;
     let object = client
         .get_object()

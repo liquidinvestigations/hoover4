@@ -420,7 +420,7 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
     between case, and it converges.
     """
     from database.clickhouse import get_collection_client
-    from database.s3 import BUCKET_NAME, get_s3_client
+    from database.s3 import collection_bucket, get_s3_client
 
     if not params.removed_pairs:
         return 0
@@ -439,11 +439,12 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
             ).result_rows
 
             s3 = get_s3_client()
+            bucket = collection_bucket(params.collectionname)
             for pdf_hash, blob_key in rows:
                 heartbeat.beat(f"delete {engine}+{languages}")
                 if blob_key:
                     try:
-                        s3.remove_object(BUCKET_NAME, blob_key)
+                        s3.remove_object(bucket, blob_key)
                     except Exception:
                         # An object that is already gone is the crash-in-between case and
                         # must not stop the pass; anything else is logged and retried by

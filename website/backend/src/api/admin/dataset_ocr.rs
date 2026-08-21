@@ -62,18 +62,7 @@ fn env_url(name: &str) -> String {
 
 /// The dataset's `collectionname`, or an error naming the dataset rather than the query.
 async fn collection_of(collection_dataset: &str) -> anyhow::Result<String> {
-    let client = get_global_client();
-    let rows = client
-        .query("SELECT collectionname FROM dataset FINAL WHERE collection_dataset = ? AND is_deleted = 0 LIMIT 1")
-        .bind(collection_dataset)
-        .fetch_all::<String>()
-        .await?;
-    let name = rows
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("dataset {collection_dataset} not found"))?;
-    collection_db_name(&name)?;
-    Ok(name)
+    crate::db_utils::collectionname_of_dataset(collection_dataset).await
 }
 
 #[derive(Debug, clickhouse::Row, serde::Deserialize)]

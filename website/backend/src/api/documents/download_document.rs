@@ -1,7 +1,7 @@
 //! Locating a document's bytes: the `blobs` registry, and reading an object out of it.
 //!
 //! A blob lives in one of two places and the row says which. Small ones are inlined in
-//! ClickHouse (`blob_values`); everything else is an object in the `hoover4-blobs` bucket
+//! ClickHouse (`blob_values`); everything else is an object in its collection's bucket
 //! named by `blobs.s3_path`. Both lookups live here so the streaming download route
 //! (`server_extra::download_document`) and the in-process readers ([`read_blob_bytes`])
 //! resolve a blob the same way.
@@ -113,17 +113,16 @@ pub async fn read_blob_bytes(
         return Ok(get_blob_value_from_clickhouse(document_identifier).await?.blob_value);
     }
 
-    let bucket = crate::db_utils::s3_bucket();
-    let key = blob_info.s3_path.replace(&format!("s3://{bucket}/"), "");
-    read_s3_object(&key).await
+    let (bucket, key) = crate::db_utils::split_s3_path(&blob_info.s3_path)
+        .ok_or_else(|| anyhow::anyhow!("blob s3_path is not an s3 url: {}", blob_info.s3_path))?;
+    read_s3_object(&bucket, &key).await
 }
 
-async fn read_s3_object(key: &str) -> anyhow::Result<Vec<u8>> {
-    let bucket = crate::db_utils::s3_bucket();
+async fn read_s3_object(bucket: &str, key: &str) -> anyhow::Result<Vec<u8>> {
     let client = crate::db_utils::s3_client().await?;
     let object = client
         .get_object()
-        .bucket(&bucket)
+        .bucket(bucket)
         .key(key)
         .send()
         .await

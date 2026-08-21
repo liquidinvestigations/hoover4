@@ -53,6 +53,27 @@ pub fn collection_db_name(collectionname: &str) -> anyhow::Result<String> {
     Ok(format!("Hoover4_Collection_{collectionname}"))
 }
 
+/// The `collectionname` a dataset belongs to, or an error naming the dataset.
+///
+/// One lookup, in one place: the collection decides which ClickHouse database, which
+/// Manticore tables and which object bucket a dataset's data lives in, so a caller that
+/// derives it from the dataset name by string surgery is a caller that will one day
+/// derive the wrong one.
+pub async fn collectionname_of_dataset(collection_dataset: &str) -> anyhow::Result<String> {
+    let rows = get_global_client()
+        .query("SELECT collectionname FROM dataset FINAL WHERE collection_dataset = ? AND is_deleted = 0 LIMIT 1")
+        .bind(collection_dataset)
+        .fetch_all::<String>()
+        .await?;
+    let name = rows
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("dataset {collection_dataset} not found"))?;
+    collection_db_name(&name)?;
+    Ok(name)
+}
+
+
 /// Client bound to the collection's own database.
 ///
 /// Panics on an invalid collectionname — callers that cannot panic (request handlers)

@@ -20,10 +20,12 @@ def version():
 def migrate():
     """Run all database migrations."""
     from database.clickhouse import clickhouse_migrate
-    from database.s3 import BUCKET_NAME
+    from database.s3 import SYSTEM_BUCKET
     clickhouse_migrate()
     from database.s3 import ensure_bucket
-    ensure_bucket(BUCKET_NAME)
+    # Only the system bucket. A collection's bucket is created with the collection, so
+    # there is nothing here that knows which collections exist yet.
+    ensure_bucket(SYSTEM_BUCKET)
     from database.manticore import manticore_migrate
     manticore_migrate()
 

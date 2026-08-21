@@ -75,7 +75,11 @@ async fn _download_ocr_pdf(
     let (blob_key, size_bytes) =
         lookup_blob_key(&collection_dataset, &pdf_hash, &engine, &languages).await?;
 
-    let bucket = crate::db_utils::s3_bucket();
+    // The derived object is in the collection's own bucket, beside the source PDF it was
+    // built from — not in a single shared one, which would make one collection's derived
+    // material reachable while reading another's.
+    let collectionname = crate::db_utils::collectionname_of_dataset(&collection_dataset).await?;
+    let bucket = crate::db_utils::collection_bucket(&collectionname);
     let client = crate::db_utils::s3_client().await?;
     let object = client
         .get_object()

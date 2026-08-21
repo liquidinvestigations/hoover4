@@ -3,6 +3,12 @@
 The store is Garage; the `minio` pip package is a generic S3 client and is what talks to
 it. Endpoint and credentials come from the environment so that a deployment can move the
 store without a code change — the values here are only the compose defaults restated.
+
+**There is a bucket per collection and one system bucket, never a single shared one.**
+The key the application holds carries `--create-bucket`, so a collection's bucket is
+created at runtime when the collection is. Every caller therefore has to say which bucket
+it means, which is the point: a call that could reach any collection's objects is a call
+that can reach the wrong one.
 """
 
 import logging
@@ -16,8 +22,26 @@ S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "garage:3900")
 S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "hoover4-blobs-rw")
 S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0")
 
-# Default bucket used by the application
-BUCKET_NAME = os.environ.get("S3_BUCKET", "hoover4-blobs")
+#: Everything that is not a collection's data: chat artifacts, and anything else global.
+#:
+#: Its own bucket rather than a prefix inside a collection's, so that "P0 must never walk
+#: derived material" stops being a prefix check somebody has to remember and becomes a
+#: structural property — a scan of a collection's bucket cannot reach it at all.
+SYSTEM_BUCKET = os.environ.get("S3_SYSTEM_BUCKET", "hoover4-system")
+
+#: Prefix of a collection's own bucket. Per-collection *stores* are impossible — Garage
+#: has one shared metadata database and globally content-addressed data blocks — but
+#: per-collection buckets are not, and they are what makes a collection's objects
+#: enumerable without prefix filtering and deletable in one call. Block dedup is global,
+#: so the split costs no storage.
+COLLECTION_BUCKET_PREFIX = os.environ.get("S3_COLLECTION_BUCKET_PREFIX", "hoover4-c-")
+
+
+def collection_bucket(collectionname: str) -> str:
+    """The bucket holding one collection's ingested blobs and derived objects."""
+    from database.clickhouse import validate_collectionname
+    validate_collectionname(collectionname)
+    return f"{COLLECTION_BUCKET_PREFIX}{collectionname}"
 
 
 def _hostport(endpoint: str) -> str:
@@ -50,7 +74,9 @@ def ensure_bucket(bucket_name: str) -> None:
 
 
 __all__ = [
-    "BUCKET_NAME",
-    "get_s3_client",
+    "COLLECTION_BUCKET_PREFIX",
+    "SYSTEM_BUCKET",
+    "collection_bucket",
     "ensure_bucket",
+    "get_s3_client",
 ]

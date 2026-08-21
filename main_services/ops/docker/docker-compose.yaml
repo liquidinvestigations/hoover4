@@ -311,7 +311,8 @@ services:
       - GARAGE_CAPACITY=${GARAGE_CAPACITY:-300G}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}
-      - S3_BUCKET=${S3_BUCKET:-hoover4-blobs}
+      - S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}
+      - S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}
     mem_limit: 512M
     memswap_limit: 512M
     restart: "no"
@@ -390,7 +391,8 @@ services:
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
-      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
+      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
+      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       # The CPU twin remote.py falls back to on a CONNECT failure. deploy.py renders
       # this only when [main_services] ner_spacy_enabled is true, which is the same key
       # that pulls in compose/ner-spacy.yaml -- announcing a fallback url for a
@@ -488,7 +490,8 @@ services:
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
-      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
+      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
+      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       # Blob-store credentials. Passed in rather than compiled in: the backend used to
       # carry the literals in two source files, which is exactly how a credential
       # survives the day it is rotated. Same defaults and same names the agent

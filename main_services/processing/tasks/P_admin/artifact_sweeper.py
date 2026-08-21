@@ -42,7 +42,11 @@ TTL_SETTING_KEY = "chat_artifact_ttl_days"
 ORPHAN_GRACE_SECONDS = int(os.getenv("CHAT_ARTIFACT_ORPHAN_GRACE_SECONDS", "3600"))
 
 DERIVED_PREFIX = "derived/chat-artifacts/"
-BUCKET = "hoover4-blobs"
+
+#: Chat artifacts belong to no collection, so they live in the system bucket. Keeping
+#: them out of every collection's bucket is what makes "P0 must never walk derived
+#: material" a structural property rather than a prefix check somebody has to remember.
+from database.s3 import SYSTEM_BUCKET as BUCKET  # noqa: E402
 
 
 @dataclass

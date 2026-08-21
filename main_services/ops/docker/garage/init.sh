@@ -1,6 +1,6 @@
 #!/bin/sh
 # Turn a blank Garage node into a usable single-node cluster: assign a layout, import
-# the S3 key, create the bucket, grant the key.
+# the S3 key, create the system bucket, grant the key.
 #
 # Every step is idempotent and every step is checked before it is taken, because this
 # runs on EVERY deploy, not only the first. A bootstrap that only works against a blank
@@ -11,7 +11,10 @@ set -eu
 ADMIN="http://garage:3903"
 ZONE="${GARAGE_ZONE:-dc1}"
 CAPACITY="${GARAGE_CAPACITY:-300G}"
-BUCKET="${S3_BUCKET:-hoover4-blobs}"
+# Only the system bucket is bootstrapped. There is a bucket per collection and the
+# application creates each one with its collection — which is why the key is granted
+# --create-bucket below rather than being handed a fixed list.
+BUCKET="${S3_SYSTEM_BUCKET:-hoover4-system}"
 KEY_NAME="${S3_KEY_NAME:-hoover4}"
 
 say() { echo "garage-init: $*"; }
@@ -66,7 +69,7 @@ fi
 # clients call make_bucket themselves when the bucket is missing.
 garage key allow --create-bucket "$S3_ACCESS_KEY"
 
-# 4) The bucket and its grant.
+# 4) The system bucket and its grant. Per-collection buckets are created at runtime.
 if garage bucket info "$BUCKET" >/dev/null 2>&1; then
     say "bucket $BUCKET already present"
 else

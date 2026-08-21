@@ -142,7 +142,8 @@ services:
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
-      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
+      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
+      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
@@ -201,7 +202,8 @@ services:
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
-      - "S3_BUCKET=${S3_BUCKET:-hoover4-blobs}"
+      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
+      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
     # With up to eight browsers live at once this is the difference between "slow" and
