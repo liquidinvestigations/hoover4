@@ -45,7 +45,11 @@ downstream noticing.
 
 **Deletion is decided by timestamp, not by a second traversal.** Every path the walk
 confirmed carries an `updated_at` later than the walk's start, so `reconcile_deleted_files`
-tombstones exactly the top-level rows older than that. It runs **only after a complete
+tombstones exactly the top-level rows older than that. *Confirmed* means every path the
+walk saw, including the ones that matched on size and mtime and were never read — those
+are the overwhelming majority, and touching only the rehashed subset makes the second
+scan of a dataset tombstone and de-index every unmodified file in it, which presents as
+the corpus deleting itself. It runs **only after a complete
 walk**: a scan that failed part-way through has confirmed nothing about the paths it
 never reached, and reconciling on it would delete them. Only `container_hash = ''` rows
 are considered — an archive member is not a path on disk and disappears with its
@@ -68,6 +72,12 @@ blob, `ComputePlans` picks up any blob with no plan, and P2-P6 run only over it.
 ## Usage
 
 - Register and ingest a dataset via `python main.py add-disk-dataset <collectionname> <dataset_name> <path>` (the collection must exist first). The dataset row is written to the global database; VFS/blob data goes to `Hoover4_Collection_<collectionname>`.
+- **The same command rescans a dataset that already exists.** The registry row is written
+  before the walk, so refusing on it made any interrupted ingest a dataset that could
+  never be added again and could only be purged. The scan is idempotent, so re-running it
+  over the same root is how an edited or deleted file is picked up. Each run gets its own
+  Temporal workflow id — an id derived from the dataset alone can be started exactly once,
+  and every later rescan either collides with it or silently attaches to the finished run.
 - The worker queue is `processing-common-queue` (see `tasks/run_worker.py`).
 
 ## Navigation
