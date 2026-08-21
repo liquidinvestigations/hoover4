@@ -15,7 +15,46 @@ because nothing ever populated it.
 | `list_collections` | what this user may read — always call first |
 | `search_collections` | full-text search across the permitted shards |
 | `get_document_text` | the extracted text of one document, by `file_hash` |
-| `list_document_entities` | named entities in one document, for finding what to search next |
+| `list_document_entities` | what the pipeline found in one document, in two tiers |
+| `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
+
+## Two tiers of entity, and why they are not merged
+
+`list_document_entities` answers with `entities` — an NER model's reading of the prose —
+and `structured`, the rule scanner's checksum-validated identifiers, normalised dates and
+money. They stay in separate blocks because the confidence behind them is not comparable:
+a name is a judgement, an IBAN either has a valid check digit or it does not. Merging them
+would tell the model the two are the same kind of fact.
+
+The `structured` query is the same one the website's document viewer runs against the same
+table, and for the same reason: two different answers to "what identifiers are in this
+file" would put the model and the reader in different conversations about one document. It
+reads only the newest rule set — the table keeps every rule set's results side by side so a
+version bump can be rescanned without destroying what came before — sums counts across
+segments, and takes the maximum across text variants, because a document parsed twice
+carries the same occurrences under both. A scanner that has never run leaves no rows, and
+the block is then absent rather than an error.
+
+## Citations
+
+`cite_documents` is how the agent says which documents its answer rests on, as against
+which documents a search happened to return. Each citation names a document, a quote and
+one line of why, and gets back a handle — `[D1]`, `[D2]` — that the model writes into its
+prose; the reader sees the handle as a chip and the document beneath the answer.
+
+**The quote is checked** against the document's extracted text before a handle is issued,
+after folding whitespace, case and typographic punctuation — a model quoting a sentence it
+read reproduces the words, not the extractor's line breaks, and an exact-substring test
+rejects nearly every honest quote. A quote that does not check out is returned **flagged,
+never refused**: a model that stops citing is a worse outcome than a citation the reader
+sees marked as unverified. A quote too short to prove anything is unverified for the same
+reason a check that always passes is not a check.
+
+**Handles are allocated per chat session**, not per turn. `[D7]` from the first turn has to
+still resolve in the ninth, because the answer that used it is still on screen. The table
+is bounded and evicts whole sessions rather than individual handles: a session that falls
+out gets fresh numbering, and `[D3]` meaning two documents inside one conversation is worse
+than `[D1]` starting over.
 
 ## The ACL
 

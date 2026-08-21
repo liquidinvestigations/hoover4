@@ -167,3 +167,15 @@ html, body, #main {
     stroke: #1a73e8;
     stroke-width: 2;
 }
+
+/* A Sources-strip entry that a [Dn] chip in the answer was just clicked for.
+   The animation is what makes "it scrolled somewhere" into "it scrolled HERE": on a
+   strip of six near-identical cards the scroll alone leaves the reader hunting. */
+.x-source-flash {
+    animation: x-source-flash-fade 1.4s ease-out 1;
+}
+
+@keyframes x-source-flash-fade {
+    0% { background-color: rgba(199, 210, 254, 0.85); }
+    100% { background-color: transparent; }
+}

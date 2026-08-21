@@ -119,6 +119,28 @@ pub struct ChatDocRef {
     /// before the field existed still deserialise.
     #[serde(default)]
     pub also_in: Vec<String>,
+    /// The citation handle the agent was given for this document, `[D3]`. Empty for a
+    /// document a search merely returned.
+    ///
+    /// It is what turns a pile of results into an argument: the handle appears in the
+    /// answer's prose where the claim is made, and the reader can follow it to the
+    /// document. Allocated per chat session, so a handle from the first turn still
+    /// resolves in the ninth.
+    #[serde(default)]
+    pub handle: String,
+    /// The span the agent quoted from this document.
+    #[serde(default)]
+    pub quote: String,
+    /// What the agent says this document supports.
+    #[serde(default)]
+    pub why: String,
+    /// The quoted span was found in the document's extracted text.
+    ///
+    /// False on a citation is not a refusal and must not be hidden: the citation is shown
+    /// marked. A model that stops citing is a worse outcome than a marked quote, and a
+    /// marked quote is a fact the reader can act on.
+    #[serde(default)]
+    pub quote_verified: bool,
 }
 
 impl ChatDocRef {
@@ -602,6 +624,7 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
 
     match tool_name {
         "search_collections" => extract_from_search_results(content),
+        "cite_documents" => extract_from_citations(content),
         "get_document_text" | "list_document_entities" | "show_document" => {
             doc_ref_from_value(content).into_iter().collect()
         }
@@ -612,6 +635,78 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
             out
         }
     }
+}
+
+/// The documents the agent put forward as evidence, in handle order.
+///
+/// Not collapsed the way search results are. A citation is a statement the agent made,
+/// and two citations of one document with different quotes are two statements — the
+/// handle table already guarantees they share a handle, so they render as one entry in
+/// the Sources strip and keep both quotes.
+fn extract_from_citations(content: &serde_json::Value) -> Vec<ChatDocRef> {
+    let citations = content
+        .get("citations")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut out: Vec<ChatDocRef> = Vec::new();
+    for value in &citations {
+        let Some(mut doc) = doc_ref_from_value(value) else {
+            continue;
+        };
+        doc.handle = value.get("handle").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        doc.quote = value.get("quote").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        doc.why = value.get("why").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        doc.quote_verified =
+            value.get("quote_verified").and_then(|v| v.as_bool()).unwrap_or(false);
+        // The snippet slot carries the quote, so the card shows what was cited rather
+        // than an unrelated passage of the same file.
+        if doc.snippet.is_empty() {
+            doc.snippet = doc.quote.clone();
+        }
+        out.push(doc);
+    }
+    out
+}
+
+/// One entry per document across every citation in a turn, in handle order.
+///
+/// De-duplicated WITHIN this group and never across groups: a search card and a citation
+/// card for the same document are two different statements about it, and collapsing them
+/// would hide that the agent chose one of the things it found.
+pub fn merge_citations(refs: Vec<ChatDocRef>) -> Vec<ChatDocRef> {
+    let mut order: Vec<String> = Vec::new();
+    let mut best: std::collections::HashMap<String, ChatDocRef> = std::collections::HashMap::new();
+    for item in refs {
+        let key = format!("{}\u{1f}{}", item.collection_dataset, item.file_hash);
+        match best.get_mut(&key) {
+            None => {
+                order.push(key.clone());
+                best.insert(key, item);
+            }
+            Some(kept) => {
+                // A verified quote outranks an unverified one for the same document: the
+                // reader should see the strongest form of the claim that was made.
+                if item.quote_verified && !kept.quote_verified {
+                    *kept = item;
+                }
+            }
+        }
+    }
+    let mut merged: Vec<ChatDocRef> =
+        order.into_iter().filter_map(|key| best.remove(&key)).collect();
+    // Handle order, not arrival order: `[D1]` before `[D2]` is the only ordering a reader
+    // following a handle out of the prose can predict. Handle-less entries sort last.
+    merged.sort_by_key(|doc| (handle_number(&doc.handle).unwrap_or(u32::MAX), doc.handle.clone()));
+    merged
+}
+
+/// The number inside a `[Dn]` handle, or `None` when the string is not one.
+pub fn handle_number(handle: &str) -> Option<u32> {
+    handle
+        .strip_prefix("[D")
+        .and_then(|rest| rest.strip_suffix(']'))
+        .and_then(|digits| digits.parse().ok())
 }
 
 fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
@@ -707,6 +802,10 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
             .unwrap_or("")
             .to_string(),
         also_in: Vec::new(),
+        handle: String::new(),
+        quote: String::new(),
+        why: String::new(),
+        quote_verified: false,
     })
 }
 
@@ -765,7 +864,90 @@ mod tests {
             score: Some(0.5),
             snippet: snippet.into(),
             also_in: Vec::new(),
+            handle: String::new(),
+            quote: String::new(),
+            why: String::new(),
+            quote_verified: false,
         }
+    }
+
+    fn citation_output(citations: &str) -> String {
+        format!(r#"{{"output": {{"content": {{"success": true, "citations": {citations}}}}}}}"#)
+    }
+
+    #[test]
+    fn a_citation_carries_its_handle_quote_and_verdict() {
+        let output = citation_output(
+            r#"[{"handle": "[D1]", "collectionname": "c", "collection_dataset": "c_ds",
+                 "file_hash": "aa", "path": "/a.txt", "quote": "the board approved",
+                 "why": "names the approver", "quote_verified": true}]"#,
+        );
+        let refs = extract_doc_refs("cite_documents", &output);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].handle, "[D1]");
+        assert_eq!(refs[0].why, "names the approver");
+        assert!(refs[0].quote_verified);
+        // The snippet slot carries the quote, so the card shows what was cited rather
+        // than an unrelated passage of the same file.
+        assert_eq!(refs[0].snippet, "the board approved");
+    }
+
+    #[test]
+    fn the_sources_strip_lists_each_document_once_in_handle_order() {
+        let output = citation_output(
+            r#"[{"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb", "quote": "q2"},
+                {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa", "quote": "q1"},
+                {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa", "quote": "q1 again"}]"#,
+        );
+        let merged = merge_citations(extract_doc_refs("cite_documents", &output));
+        assert_eq!(merged.len(), 2, "one entry per document");
+        assert_eq!(merged[0].handle, "[D1]", "handle order, not arrival order");
+        assert_eq!(merged[1].handle, "[D2]");
+    }
+
+    /// A verified quote outranks an unverified one for the same document: the reader
+    /// should see the strongest form of the claim that was actually made.
+    #[test]
+    fn a_verified_quote_wins_over_an_unverified_one_for_one_document() {
+        let output = citation_output(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa",
+                 "quote": "made up", "quote_verified": false},
+                {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa",
+                 "quote": "really there", "quote_verified": true}]"#,
+        );
+        let merged = merge_citations(extract_doc_refs("cite_documents", &output));
+        assert_eq!(merged.len(), 1);
+        assert!(merged[0].quote_verified);
+        assert_eq!(merged[0].quote, "really there");
+    }
+
+    /// A search group and a citation group showing the same document is correct and
+    /// expected: they are two different statements about it. De-duplication is within a
+    /// group and never across one.
+    #[test]
+    fn a_cited_document_is_not_removed_from_the_search_group_that_found_it() {
+        let search = r#"{"output": {"content": {"results": [
+            {"collection_dataset": "c_ds", "file_hash": "aa", "score": 1.0, "snippet": "s"}]}}}"#;
+        let search_refs = extract_doc_refs("search_collections", search);
+        let cited = extract_doc_refs(
+            "cite_documents",
+            &citation_output(
+                r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#,
+            ),
+        );
+        assert_eq!(search_refs.len(), 1);
+        assert_eq!(cited.len(), 1);
+        assert_eq!(search_refs[0].handle, "", "a search hit is not a citation");
+        assert_eq!(cited[0].handle, "[D1]");
+    }
+
+    #[test]
+    fn a_handle_number_is_read_only_out_of_a_real_handle() {
+        assert_eq!(handle_number("[D12]"), Some(12));
+        assert_eq!(handle_number("[D]"), None);
+        assert_eq!(handle_number("[Dog]"), None);
+        assert_eq!(handle_number("D1"), None);
+        assert_eq!(handle_number(""), None);
     }
 
     #[test]

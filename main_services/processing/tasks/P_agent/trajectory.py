@@ -276,6 +276,28 @@ def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
             return []
         return [d for d in (_doc_ref(item) for item in results) if d]
 
+    if tool_name == "cite_documents":
+        citations = _as_dict(result).get("citations")
+        if not isinstance(citations, list):
+            return []
+        refs: list[dict[str, Any]] = []
+        for item in citations:
+            one = _doc_ref(item)
+            if not one:
+                continue
+            if not isinstance(item, dict):
+                continue
+            one["handle"] = str(item.get("handle") or "")
+            one["quote"] = str(item.get("quote") or "")
+            one["why"] = str(item.get("why") or "")
+            one["quote_verified"] = bool(item.get("quote_verified"))
+            # The snippet slot carries the quote, so the card shows what was cited
+            # rather than an unrelated passage of the same file.
+            if not one["snippet"]:
+                one["snippet"] = one["quote"]
+            refs.append(one)
+        return refs
+
     if tool_name in _SINGLE_DOCUMENT_TOOLS:
         one = _doc_ref(result)
         return [one] if one else []

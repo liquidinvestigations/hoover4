@@ -169,6 +169,23 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{t}"
                         }
                     },
+                    Span::Handle(handle) => rsx! {
+                        button {
+                            key: "{i}",
+                            style: "
+                                display: inline; border: 1px solid #C7D2FE;
+                                background: #EEF2FF; color: #3730A3; border-radius: 5px;
+                                padding: 0 4px; margin: 0 1px; font-size: 0.82em;
+                                font-weight: 600; cursor: pointer; vertical-align: baseline;
+                            ",
+                            title: "Jump to the cited document",
+                            onclick: {
+                                let handle = handle.clone();
+                                move |_| scroll_to_handle(&handle)
+                            },
+                            "{handle}"
+                        }
+                    },
                     Span::Link { text, href } => rsx! {
                         a {
                             key: "{i}",
@@ -194,6 +211,12 @@ pub enum Span {
     Italic(String),
     Code(String),
     Link { text: String, href: String },
+    /// A citation handle the agent wrote into its prose, `[D3]`.
+    ///
+    /// Rendered as a chip that scrolls to the document's card in the Sources strip and
+    /// highlights it. Recognised before the link syntax so `[D3](http://…)` is still a
+    /// link — a handle is `[D` followed by digits and a `]` and nothing else.
+    Handle(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -453,6 +476,15 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
         }
 
         if c == '[' {
+            if let Some(close) = find_char(&chars, i + 1, ']')
+                && chars.get(close + 1) != Some(&'(')
+                && let Some(handle) = as_handle(&chars[i..=close])
+            {
+                push_plain(&mut plain, &mut out);
+                out.push(Span::Handle(handle));
+                i = close + 1;
+                continue;
+            }
             if let Some(close) = find_char(&chars, i + 1, ']') {
                 if chars.get(close + 1) == Some(&'(') {
                     if let Some(paren) = find_char(&chars, close + 2, ')') {
@@ -477,6 +509,46 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
 
     push_plain(&mut plain, &mut out);
     out
+}
+
+/// `[D12]` and nothing else. `[Dog]`, `[D]` and `[12]` are ordinary text.
+fn as_handle(chars: &[char]) -> Option<String> {
+    let inner: String = chars.iter().collect();
+    let digits = inner.strip_prefix("[D")?.strip_suffix(']')?;
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(inner)
+}
+
+/// Scroll the Sources strip's entry for one handle into view and flash it.
+///
+/// Done with an element id and the platform's own scrolling rather than by lifting the
+/// selection into a signal: the strip and the prose are in different components with no
+/// shared owner, and threading a signal between them would put chat-wide state in the
+/// markdown renderer.
+fn scroll_to_handle(handle: &str) {
+    let id = source_anchor_id(handle);
+    document::eval(&format!(
+        r#"
+        const el = document.getElementById("{id}");
+        if (el) {{
+            el.scrollIntoView({{ behavior: "smooth", block: "center" }});
+            el.classList.remove("x-source-flash");
+            // Reading offsetWidth forces a reflow, which is what makes removing and
+            // re-adding the class restart the animation rather than do nothing.
+            void el.offsetWidth;
+            el.classList.add("x-source-flash");
+        }}
+        "#
+    ));
+}
+
+/// The DOM id of a Sources-strip entry. One function, because the prose writes it and
+/// the strip reads it, and two spellings would scroll to nothing.
+pub fn source_anchor_id(handle: &str) -> String {
+    let digits: String = handle.chars().filter(|c| c.is_ascii_digit()).collect();
+    format!("x-source-{digits}")
 }
 
 fn is_wordish(c: char) -> bool {
@@ -540,6 +612,44 @@ mod tests {
             );
         }
         assert!(heading_style(1).0 > heading_style(3).0, "h1 must outrank h3");
+    }
+
+    /// `[D3]` in the prose is the reader's route from a claim to the document behind it.
+    /// It has to be recognised before the link syntax, and it must not swallow ordinary
+    /// bracketed text.
+    #[test]
+    fn a_citation_handle_becomes_a_chip_and_nothing_else_does() {
+        assert_eq!(
+            parse_inline("see [D3] for this"),
+            vec![
+                Span::Text("see ".into()),
+                Span::Handle("[D3]".into()),
+                Span::Text(" for this".into()),
+            ]
+        );
+        assert_eq!(parse_inline("[Dog]"), vec![Span::Text("[Dog]".into())]);
+        assert_eq!(parse_inline("[D]"), vec![Span::Text("[D]".into())]);
+        assert_eq!(parse_inline("[12]"), vec![Span::Text("[12]".into())]);
+    }
+
+    /// A link is still a link. The handle arm only fires when no `(` follows the `]`.
+    #[test]
+    fn a_bracketed_label_followed_by_a_url_is_a_link_not_a_handle() {
+        assert_eq!(
+            parse_inline("[D3](https://example.org)"),
+            vec![Span::Link {
+                text: "D3".into(),
+                href: "https://example.org".into(),
+            }]
+        );
+    }
+
+    /// The prose writes the anchor id and the strip reads it. Two spellings would scroll
+    /// to nothing, silently.
+    #[test]
+    fn the_anchor_id_is_derived_from_the_handles_digits() {
+        assert_eq!(source_anchor_id("[D3]"), "x-source-3");
+        assert_eq!(source_anchor_id("[D12]"), "x-source-12");
     }
 
     #[test]

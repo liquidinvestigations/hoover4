@@ -316,6 +316,16 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
                 format!("searched collections \u{b7} {query}{filters}")
             }
         }
+        "cite_documents" => {
+            // The count comes from the ARGUMENTS, so the label is right while the call is
+            // still running and the result column is empty.
+            let count = json_array_len(tool_input, "citations");
+            match count {
+                0 => "cited documents".to_string(),
+                1 => "cited 1 document".to_string(),
+                n => format!("cited {n} documents"),
+            }
+        }
         "list_collections" => "listed collections".to_string(),
         "get_document_text" => {
             let path = json_str_field(tool_input, "path")
@@ -419,6 +429,28 @@ fn json_str_field(raw: &str, key: &str) -> Option<String> {
     v.get(key)?.as_str().map(str::to_string)
 }
 
+/// How many entries a JSON array argument holds, zero when it is absent or malformed.
+///
+/// An XML-style tool-call parser hands a list argument across as a JSON *string*, so the
+/// value is decoded a second time when the first decode produced one. Without that the
+/// label reads "cited documents" for every call made through such a parser.
+fn json_array_len(raw: &str, key: &str) -> usize {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return 0;
+    };
+    let Some(field) = v.get(key) else {
+        return 0;
+    };
+    if let Some(array) = field.as_array() {
+        return array.len();
+    }
+    field
+        .as_str()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .and_then(|inner| inner.as_array().map(Vec::len))
+        .unwrap_or(0)
+}
+
 fn json_string_array(raw: &str, key: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) else {
         return Vec::new();
@@ -471,6 +503,24 @@ mod tests {
         // positionally would label this card "en".
         let label = collapsed_label("translate", r#"{"text":"bonjour","lang":"en"}"#, "");
         assert_eq!(label, "called translate \u{b7} bonjour");
+    }
+
+    /// The count comes from the arguments, so the label is right while the call is still
+    /// running and the result column is empty. A list argument arrives as a JSON string
+    /// from an XML-style tool-call parser, which is the case that reads "cited documents"
+    /// for every call if it is not handled.
+    #[test]
+    fn the_citation_label_counts_the_citations_however_they_arrive() {
+        assert_eq!(
+            collapsed_label("cite_documents", r#"{"citations":[{"a":1},{"b":2}]}"#, ""),
+            "cited 2 documents"
+        );
+        assert_eq!(
+            collapsed_label("cite_documents", r#"{"citations":"[{\"a\":1}]"}"#, ""),
+            "cited 1 document"
+        );
+        assert_eq!(collapsed_label("cite_documents", "{}", ""), "cited documents");
+        assert_eq!(collapsed_label("cite_documents", "not json", ""), "cited documents");
     }
 
     #[test]

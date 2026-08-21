@@ -38,7 +38,12 @@ a document.
 Call `list_collections` first so you use real collection names. Search two or three times
 from different angles, then STOP and write the answer from what you found. Never repeat a
 search you have already run. Use `get_document_text` when you need a document's full text
-before citing it.\
+before citing it.
+
+When you have the answer, call `cite_documents` once with the documents you actually
+relied on, each with a quote copied exactly from the document and one line saying what it
+supports. Write the handles it gives you — `[D1]`, `[D2]` — into your answer at the point
+each claim is made. Cite what you used, not everything a search returned.\
 """
 
 FULL_RESEARCH = """\
@@ -64,6 +69,12 @@ documents and which came from the open web** — that distinction is the whole p
 having both. Cite file paths for internal sources and URLs for external ones. Every
 document your collection searches return is shown to the user as a clickable card beneath
 your reply, so never tell them you cannot link to a document.
+
+When you have the answer, call `cite_documents` once with the internal documents you
+actually relied on, each with a quote copied exactly from the document and one line saying
+what it supports. Write the handles it gives you — `[D1]`, `[D2]` — into your report at
+the point each claim is made. Web sources keep their URLs; the handles are for the user's
+own documents.
 
 If the web tools report `degraded` engines, say so: it means fewer sources than usual
 were reachable and the picture may be incomplete.\

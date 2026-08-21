@@ -1,10 +1,12 @@
 //! Transcript of a chat session: user bubbles, assistant markdown, tools, doc cards.
 
-use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn};
+use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations};
 use dioxus::prelude::*;
 
 use crate::components::chat_components::{
-    doc_ref_card::ChatDocRefCard, markdown_text::MarkdownishText, tool_cards::ToolCard,
+    doc_ref_card::ChatDocRefCard,
+    markdown_text::{MarkdownishText, source_anchor_id},
+    tool_cards::ToolCard,
 };
 
 #[component]
@@ -50,14 +52,24 @@ pub fn ChatTranscript(
                     "Ask a question about the documents in your collections."
                 }
             }
-            for (i, m) in messages.into_iter().enumerate() {
+            for (i, m) in messages.iter().cloned().enumerate() {
                 {
                     let highlight = active_msg == Some(i);
+                    // The strip belongs to the ANSWER, and the citations arrive on the
+                    // tool rows before it. Collected here rather than inside
+                    // `MessageEntry`, which sees one message and cannot know which turn
+                    // it closes.
+                    let sources = if m.role == ChatRole::Assistant {
+                        citations_for_answer(&messages, i)
+                    } else {
+                        Vec::new()
+                    };
                     rsx! {
                         MessageEntry {
                             key: "{m.seq}",
                             message: m,
                             highlight,
+                            sources,
                         }
                     }
                 }
@@ -106,8 +118,37 @@ pub fn ChatTranscript(
     }
 }
 
+/// The citations of the turn that ends at `answer_index`.
+///
+/// Walks backwards over the tool rows of that turn and stops at the previous answer or
+/// the user's message: a handle from an earlier turn still resolves, but its strip
+/// belongs under the answer that used it, not under every answer after it.
+fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Vec<ChatDocRef> {
+    let mut refs: Vec<ChatDocRef> = Vec::new();
+    for message in messages[..answer_index].iter().rev() {
+        match message.role {
+            ChatRole::Tool => {
+                if message.tool_name == "cite_documents" {
+                    refs.extend(message.parsed_doc_refs());
+                }
+            }
+            // Anything that is not a tool row closes the turn.
+            _ => break,
+        }
+    }
+    refs.reverse();
+    merge_citations(refs)
+}
+
 #[component]
-fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
+fn MessageEntry(
+    message: ChatMessageItem,
+    highlight: bool,
+    /// The documents this answer cited, for the strip beneath it. Empty for every role
+    /// but the assistant's.
+    #[props(default)]
+    sources: Vec<ChatDocRef>,
+) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
     } else {
@@ -132,6 +173,9 @@ fn MessageEntry(message: ChatMessageItem, highlight: bool) -> Element {
                         ReasoningDisclosure { reasoning: message.reasoning.clone() }
                     }
                     MarkdownishText { text: message.content.clone() }
+                    if !sources.is_empty() {
+                        SourcesStrip { sources: sources.clone() }
+                    }
                     // A turn that only succeeded on retry is a healthy answer over an
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
                     if !retries.is_empty() {
@@ -297,6 +341,73 @@ fn AttemptDisclosure(
                             line-height: 1.5; opacity: 0.9;",
                     for (i, e) in errors.into_iter().enumerate() {
                         li { key: "{i}", style: "word-break: break-word;", "{e}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The documents the agent put forward, under the answer that used them.
+///
+/// Not the search cards, which stay where they are under their disclosure. Those are
+/// everything a search returned; this is the agent's own claim about what mattered, and
+/// showing the first in place of the second is what turns an answer into a pile of links.
+///
+/// Each entry carries the handle that appears in the prose, so a reader following `[D3]`
+/// out of a sentence lands on the document it names.
+#[component]
+fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
+    rsx! {
+        div {
+            style: "margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;",
+            div {
+                style: "font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px;",
+                "Sources"
+            }
+            div {
+                style: "display: flex; flex-direction: column; gap: 8px;",
+                for (index, doc) in sources.into_iter().enumerate() {
+                    div {
+                        key: "{doc.handle}-{doc.file_hash}",
+                        id: "{source_anchor_id(&doc.handle)}",
+                        class: "x-source-entry",
+                        style: "display: flex; gap: 8px; align-items: flex-start;",
+                        if !doc.handle.is_empty() {
+                            div {
+                                style: "
+                                    flex-shrink: 0; font-size: 12px; font-weight: 600;
+                                    color: #3730A3; background: #EEF2FF;
+                                    border: 1px solid #C7D2FE; border-radius: 5px;
+                                    padding: 1px 5px; margin-top: 10px;
+                                ",
+                                "{doc.handle}"
+                            }
+                        }
+                        div {
+                            style: "flex: 1 1 auto; min-width: 0;",
+                            ChatDocRefCard { doc: doc.clone(), index: index as u64 }
+                            if !doc.why.is_empty() {
+                                div {
+                                    style: "font-size: 12px; color: #475569; padding: 0 4px 2px 4px;",
+                                    "{doc.why}"
+                                }
+                            }
+                            // A quote the server could not find in the document is shown
+                            // and marked, never dropped. A model that stops citing is a
+                            // worse outcome than a marked quote, and the marker is a fact
+                            // the reader can act on.
+                            if !doc.quote.is_empty() && !doc.quote_verified {
+                                div {
+                                    style: "
+                                        font-size: 12px; color: #92400E; background: #FFFBEB;
+                                        border: 1px solid #FDE68A; border-radius: 6px;
+                                        padding: 3px 7px; margin: 2px 4px;
+                                    ",
+                                    "Unverified quote — this wording was not found in the document."
+                                }
+                            }
+                        }
                     }
                 }
             }

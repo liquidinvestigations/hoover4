@@ -10,8 +10,18 @@ use crate::components::search_components::search_result_item_card::SearchResultI
 #[component]
 pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
     if doc.collection_dataset.is_empty() || doc.file_hash.is_empty() {
-        // get_document_text often returns collectionname without collection_dataset —
-        // we still show a non-clickable stub rather than a broken DocumentIdentifier.
+        // A card needs the dataset as well as the hash to open the document, so without
+        // one it renders as a non-clickable stub rather than as a broken link.
+        //
+        // Every document tool returns `collection_dataset`, so this branch should be
+        // unreachable. It stays as a defence and it names its own cause, because the
+        // failure it guards against is a card that says nothing about why it is thin —
+        // which is diagnosable only by finding the tool that produced it.
+        let reason = if doc.file_hash.is_empty() {
+            "no document id"
+        } else {
+            "no dataset — the tool that returned this document did not name one"
+        };
         return rsx! {
             div {
                 style: "margin: 8px 0; padding: 12px 16px; border: 1px solid #E5E7EB; \
@@ -19,6 +29,10 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
                 "{doc.display_title()}"
                 if !doc.collectionname.is_empty() {
                     span { style: "margin-left: 8px; font-style: italic;", "({doc.collectionname})" }
+                }
+                div {
+                    style: "font-size: 12px; color: #94A3B8; margin-top: 4px;",
+                    "Not openable: {reason}."
                 }
             }
         };

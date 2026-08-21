@@ -36,6 +36,11 @@ from agent_common import embeddings as embeddings_client
 from agent_common import fusion, rerank as rerank_client
 from collection_search_server import vectors
 from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
+from collection_search_server.citations import (
+    HandleTable,
+    MIN_QUOTE_CHARS,
+    quote_occurs_in,
+)
 from collection_search_server.backends import (
     GLOBAL_DB,
     clickhouse_query,
@@ -194,12 +199,43 @@ class DocumentText(BaseModel):
     error: str | None = None
 
 
+class StructuredEntity(BaseModel):
+    """One value a rule's validator accepted, with what the validator worked out.
+
+    A different tier of evidence from the NER dictionary above it: a model's guess at a
+    span of prose against a checksum that either passes or does not. Kept in a separate
+    block rather than merged into `entities` because merging them would tell the model
+    that a name and an IBAN are the same kind of fact.
+    """
+
+    #: Scanner entity type: `email`, `money`, `bank_account`, `date`, ...
+    entity_type: str
+    #: The normalised value, which is what a facet or another document joins on.
+    value: str
+    #: The rule that accepted it, e.g. `bank.iban`. Names the FollowTheMoney schema the
+    #: value feeds, and is the key an explainer card is fetched with.
+    rule_id: str = ""
+    #: The text as the document wrote it, when that differs from `value`. A normalised
+    #: phone number appears verbatim in almost no document.
+    surface_text: str = ""
+    #: Occurrences in the document.
+    count: int = 0
+
+
 class DocumentEntities(BaseModel):
     success: bool
     collectionname: str = ""
     file_hash: str = ""
     entities: dict[str, list[str]] = Field(
         default_factory=dict, description="Entity type -> distinct values"
+    )
+    structured: list[StructuredEntity] = Field(
+        default_factory=list,
+        description=(
+            "Checksum-validated identifiers, normalised dates and money, from the rule "
+            "scanner rather than from a language model. Empty when the scanner has not "
+            "run over this document."
+        ),
     )
     error: str | None = None
 
@@ -687,6 +723,16 @@ def _attach_paths(hits: list[SearchHit]) -> None:
     ),
 )
 def get_document_text(collectionname: str, file_hash: str) -> DocumentText:
+    return _read_document_text(collectionname, file_hash)
+
+
+def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
+    """The tool's body, callable from other tools.
+
+    Separate from the decorated function because reaching into a tool object to find the
+    callable it wraps is a dependency on the MCP library's internals, and the quote check
+    in `cite_documents` needs exactly this and nothing else.
+    """
     try:
         acl = _caller()
         acl.check([collectionname])
@@ -739,8 +785,12 @@ def get_document_text(collectionname: str, file_hash: str) -> DocumentText:
 @mcp.tool(
     name="list_document_entities",
     description=(
-        "List the named entities (people, organisations, locations) the pipeline "
-        "extracted from one document. Useful for finding names to search for next."
+        "List what the pipeline extracted from one document, in two tiers. `entities` is "
+        "a language model's reading of the prose: people, organisations, locations. "
+        "`structured` is what a rule's validator accepted: checksum-validated "
+        "identifiers, normalised dates, money with an ISO 4217 code. Treat the two "
+        "differently — a name is a judgement, an IBAN either has a valid check digit or "
+        "it does not. Useful for finding names and identifiers to search for next."
     ),
 )
 def list_document_entities(collectionname: str, file_hash: str) -> DocumentEntities:
@@ -773,7 +823,272 @@ def list_document_entities(collectionname: str, file_hash: str) -> DocumentEntit
         collectionname=collectionname,
         file_hash=file_hash,
         entities={r["entity_type"]: list(r["values"]) for r in rows},
+        structured=_structured_entities(collectionname, file_hash),
     )
+
+
+#: How many rule-found values one document contributes to a tool response.
+#:
+#: Ordered by occurrence count, so the cap keeps what the document is about. A mail
+#: archive routinely names hundreds of addresses and the tail of that list is not what
+#: anyone asked.
+STRUCTURED_ENTITY_LIMIT = 200
+
+
+def _structured_entities(collectionname: str, file_hash: str) -> list[StructuredEntity]:
+    """The rule scanner's values for one document, newest rule set only.
+
+    **The same question the website's document viewer asks, and the same shape of answer**
+    — `get_document_entities` in the website backend runs this query against the same
+    table. Two different answers to "what identifiers are in this file" would put the
+    model and the reader in different conversations about the same document.
+
+    Three things the query has to get right:
+
+    * only the newest rule set, because the table keeps every rule set's results side by
+      side so a version bump can be rescanned without destroying what came before;
+    * counts summed across segments and MAXed across text variants, because a document
+      parsed twice carries the same occurrences under both;
+    * the five value arrays joined together in one `ARRAY JOIN`, because they are
+      parallel and joining them separately produces the cross product.
+
+    A scanner that has never run leaves no rows, and that returns an empty list rather
+    than an error: the block is absent, and nothing raises.
+    """
+    try:
+        rows = clickhouse_query(
+            """
+            SELECT entity_type, value, any(rule_id) AS rule_id,
+                   any(surface_text) AS surface_text, max(variant_count) AS count
+            FROM (
+                SELECT entity_type, entity_value AS value, extracted_by,
+                       any(rule_id) AS rule_id, any(surface_text) AS surface_text,
+                       sum(occurrences) AS variant_count
+                FROM (
+                    SELECT entity_type, extracted_by, entity_values, entity_rule_ids,
+                           entity_counts, entity_texts
+                    FROM regex_entity_hit FINAL
+                    WHERE file_hash = {hash:String}
+                      AND rule_set_version = (
+                          SELECT max(rule_set_version) FROM regex_entity_hit
+                          WHERE file_hash = {hash:String}
+                      )
+                )
+                ARRAY JOIN
+                    entity_values AS entity_value,
+                    entity_rule_ids AS rule_id,
+                    entity_counts AS occurrences,
+                    entity_texts AS surface_text
+                GROUP BY entity_type, value, extracted_by
+            )
+            GROUP BY entity_type, value
+            ORDER BY count DESC
+            LIMIT {limit:UInt32}
+            """,
+            database=collection_db(collectionname),
+            params={"hash": file_hash, "limit": STRUCTURED_ENTITY_LIMIT},
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("structured entities unavailable for %s: %s", file_hash, exc)
+        return []
+
+    return [
+        StructuredEntity(
+            entity_type=row["entity_type"],
+            value=row["value"],
+            rule_id=row["rule_id"],
+            # Carried only when it differs. Storing the same string twice invites a
+            # renderer to show it twice and a model to treat them as two values.
+            surface_text="" if row["surface_text"] == row["value"] else row["surface_text"],
+            count=int(row["count"]),
+        )
+        for row in rows
+    ]
+
+
+class Citation(BaseModel):
+    """One document the agent is putting forward as evidence for one point."""
+
+    collectionname: str
+    file_hash: str
+    #: A span copied from the document, checked against its text before a handle is
+    #: issued. Not a paraphrase: the check is what makes the difference between a
+    #: citation and a claim.
+    quote: str = ""
+    #: What this document supports, in the agent's own words. Shown on the card.
+    why: str = ""
+
+
+class CitationResult(BaseModel):
+    handle: str = ""
+    collectionname: str = ""
+    collection_dataset: str = ""
+    file_hash: str = ""
+    path: str | None = None
+    quote: str = ""
+    why: str = ""
+    #: The quoted span was found in the document's extracted text. False is not a
+    #: refusal — the citation still stands and the reader sees it marked.
+    quote_verified: bool = False
+    error: str | None = None
+
+
+class CitationsResponse(BaseModel):
+    success: bool
+    citations: list[CitationResult] = Field(default_factory=list)
+    #: What was asked for versus what was sensible, in words the model can act on.
+    note: str = ""
+    error: str | None = None
+
+
+#: Handles live for the life of a chat session, keyed by the session header the website
+#: forwards. It carries no authority — the ACL is a different header — and is an
+#: isolation key only.
+_HANDLES = HandleTable()
+
+#: Citations one call may carry. A model that wants to cite more than this in one turn is
+#: listing its search results rather than choosing evidence.
+MAX_CITATIONS_PER_CALL = 12
+
+
+def _session_id() -> str:
+    """The chat session this call belongs to, or a per-process fallback.
+
+    An absent header means the caller is not the chat surface — a script, a probe — and
+    those share one table rather than each minting a session, because the alternative is
+    an unbounded map keyed by nothing.
+    """
+    headers = {k.lower(): v for k, v in get_http_headers().items()}
+    return headers.get("x-hoover4-chat-session") or "_no_session"
+
+
+@mcp.tool(
+    name="cite_documents",
+    description=(
+        "Put documents forward as the evidence for your answer. Each citation names a "
+        "document, a quote copied verbatim from it, and why it matters. You get back a "
+        "handle like [D1] for each; write those handles into your prose where the claim "
+        "is made, and the reader sees the document beside it. The quote is checked "
+        "against the document's text — one that does not check out comes back marked, so "
+        "re-read rather than paraphrase. Cite what you relied on, not everything a "
+        "search returned."
+    ),
+)
+def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
+    """Verify each quote, allocate a session handle, and return the cards to render."""
+    try:
+        acl = _caller()
+    except AccessDenied as exc:
+        return CitationsResponse(success=False, error=str(exc))
+
+    parsed = _as_citation_list(citations)
+    if parsed is None:
+        return CitationsResponse(
+            success=False,
+            error="citations must be a list of {collectionname, file_hash, quote, why}",
+        )
+    if not parsed:
+        return CitationsResponse(success=False, error="no citations were given")
+
+    note_parts: list[str] = []
+    if len(parsed) > MAX_CITATIONS_PER_CALL:
+        note_parts.append(
+            f"{len(parsed)} citations were given and the first {MAX_CITATIONS_PER_CALL} "
+            "were kept. Cite the documents you actually relied on rather than every hit."
+        )
+        parsed = parsed[:MAX_CITATIONS_PER_CALL]
+
+    session = _session_id()
+    results: list[CitationResult] = []
+    unverified = 0
+    for citation in parsed:
+        result = _cite_one(acl, session, citation)
+        if result.error is None and not result.quote_verified:
+            unverified += 1
+        results.append(result)
+
+    if unverified:
+        note_parts.append(
+            f"{unverified} of {len(results)} quotes were not found in the document they "
+            "were attributed to. Those citations are shown to the reader marked as "
+            "unverified. Re-read the document and quote it exactly rather than from "
+            "memory."
+        )
+    if any(r.error is None and not r.handle for r in results):
+        note_parts.append(
+            "This conversation has used every citation handle it can allocate; the "
+            "documents above are cited without one."
+        )
+
+    return CitationsResponse(
+        success=True, citations=results, note=" ".join(note_parts)
+    )
+
+
+def _as_citation_list(value: Any) -> list[Citation] | None:
+    """Coerce whatever the model sent into a list of citations.
+
+    The same problem `_as_collection_list` solves, one level deeper: an XML-style
+    tool-call parser hands a list argument across as a JSON string, so a `list[Citation]`
+    arrives as `'[{"collectionname": ...}]'`. Rejecting it teaches the model nothing at
+    the moment it made the mistake, and it retries the identical call.
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    if isinstance(value, dict):
+        # A single citation sent unwrapped is an obvious intention, not an error.
+        value = [value]
+    if not isinstance(value, list):
+        return None
+    out: list[Citation] = []
+    for item in value:
+        if isinstance(item, Citation):
+            out.append(item)
+            continue
+        if not isinstance(item, dict):
+            return None
+        try:
+            out.append(Citation(**item))
+        except Exception:  # noqa: BLE001 - a malformed entry is a caller error
+            return None
+    return out
+
+
+def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResult:
+    result = CitationResult(
+        collectionname=citation.collectionname,
+        file_hash=citation.file_hash,
+        quote=citation.quote,
+        why=citation.why,
+    )
+    try:
+        acl.check([citation.collectionname])
+    except AccessDenied as exc:
+        result.error = str(exc)
+        return result
+    if not _is_hash(citation.file_hash):
+        result.error = "file_hash must be a content hash from search_collections"
+        return result
+
+    document = _read_document_text(citation.collectionname, citation.file_hash)
+    if not document.success:
+        result.error = document.error or "the document could not be read"
+        return result
+
+    result.collection_dataset = document.collection_dataset
+    result.path = document.path
+    # A quote too short to check is reported as unverified rather than as verified: "the"
+    # occurs in every document, and a check that always passes proves nothing.
+    result.quote_verified = quote_occurs_in(citation.quote, document.text)
+    if not result.quote_verified and len(citation.quote.strip()) < MIN_QUOTE_CHARS:
+        result.why = result.why or ""
+    result.handle = _HANDLES.handle_for(
+        session, citation.collectionname, citation.file_hash
+    )
+    return result
 
 
 @mcp.custom_route("/health", methods=["GET"])
