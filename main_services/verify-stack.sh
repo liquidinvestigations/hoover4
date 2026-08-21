@@ -192,8 +192,15 @@ wait_for_temporal
 # The fixture paths below are pinned to an upstream revision that nothing in this
 # repository otherwise records, because testdata/ is gitignored. Say so before ingesting
 # rather than after a check fails for a reason that is not in any diff.
+#
+# The corpus is not always in the repository: a deployment sets `testdata_dir`, which
+# deploy.py renders as HOOVER4_TESTDATA_DIR and mounts at /testdata. Ask about the tree
+# the stack actually mounts rather than about the in-repo default, or the check reports
+# a missing corpus on every host that keeps its corpus elsewhere.
 echo "== testdata =="
-./fetch-testdata.sh --check || fail "testdata fixtures are missing — run ./fetch-testdata.sh"
+testdata_dir_host=$(grep -E '^HOOVER4_TESTDATA_DIR=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
+HOOVER4_TESTDATA_DIR="${testdata_dir_host:-${HOOVER4_TESTDATA_DIR:-}}" \
+    ./fetch-testdata.sh --check || fail "testdata fixtures are missing — run ./fetch-testdata.sh"
 
 echo "== migrate =="
 run_step migrate
@@ -352,10 +359,11 @@ fi
 #    There are THREE table families. `<shard>_pages` is one table per shard and holds
 #    everything the search queries; `<shard>_vectors` is the second, and whether it is
 #    expected follows the probe, above.
-#    The third is `<collectionname>_vfs` — one table per collection
-#    rather than per shard (it holds one small row per VFS node and is never sharded). It
-#    has no ledger row to derive from, so it is expected for every collection that has
-#    any shard at all: the same indexing run that opens a shard also creates it.
+#    The third and fourth are per collection rather than per shard, so they have no
+#    ledger row to derive from and are expected for every collection that has any shard
+#    at all: the same indexing run that opens a shard also creates them.
+#    `<collectionname>_vfs` holds one small row per VFS node; `<collectionname>_entities`
+#    holds the entity terms the facet search boxes query.
 manticore_tables=$(MC "show tables" | awk -F'|' 'NF>2 {gsub(/ /,"",$2); if ($2 != "") print $2}' | sort)
 ledger_tables=""
 for coll in $COLLECTIONS; do
@@ -364,7 +372,7 @@ for coll in $COLLECTIONS; do
         ledger_tables="$ledger_tables${shard}_pages\n"
         [ "$EXPECT_VECTOR_SHARDS" = "1" ] && ledger_tables="$ledger_tables${shard}_vectors\n"
     done
-    [ -n "$shards" ] && ledger_tables="$ledger_tables${coll}_vfs\n"
+    [ -n "$shards" ] && ledger_tables="$ledger_tables${coll}_vfs\n${coll}_entities\n"
 done
 ledger_tables=$(printf "%b" "$ledger_tables" | sort)
 if [ "$manticore_tables" = "$ledger_tables" ]; then
@@ -743,8 +751,17 @@ if docker inspect garage >/dev/null 2>&1; then
     else
         ok "garage layout is applied with no staged changes"
     fi
+    # A bucket is named by an alias, and there are two kinds. The bootstrap creates the
+    # system bucket through the garage CLI, which gives it a GLOBAL alias; the
+    # application creates each collection's bucket through the S3 API, which gives it a
+    # LOCAL alias scoped to the access key that made it. `garage bucket info <name>`
+    # resolves global aliases only, so asking it about an application-created bucket
+    # answers NoSuchBucket for a bucket that is present and in use. Read the listing,
+    # which prints both columns, and match the name in either.
+    bucket_listing=$(docker exec garage /garage bucket list 2>/dev/null || true)
+    has_bucket() { printf '%s' "$bucket_listing" | grep -qE "(^|[[:space:]:])$1([[:space:]]|$)"; }
     system_bucket="${S3_SYSTEM_BUCKET:-hoover4-system}"
-    if docker exec garage /garage bucket info "$system_bucket" >/dev/null 2>&1; then
+    if has_bucket "$system_bucket"; then
         ok "garage bucket $system_bucket exists"
     else
         fail "garage bucket $system_bucket is missing -- the bootstrap did not create it"
@@ -755,7 +772,7 @@ if docker inspect garage >/dev/null 2>&1; then
     bucket_prefix="${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
     missing_buckets=""
     for coll in $(CH "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL WHERE is_deleted = 0" 2>/dev/null || true); do
-        if ! docker exec garage /garage bucket info "${bucket_prefix}${coll}" >/dev/null 2>&1; then
+        if ! has_bucket "${bucket_prefix}${coll}"; then
             missing_buckets="$missing_buckets ${bucket_prefix}${coll}"
         fi
     done

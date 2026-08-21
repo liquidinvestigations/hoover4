@@ -16,6 +16,15 @@ dedup is global, so the split costs no storage.
 `garage-init` creates only the system bucket. A collection's bucket is created with the
 collection, which is why the application's key is granted `--create-bucket`.
 
+**The two kinds of bucket are named differently, and `garage bucket info` only sees one
+of them.** A bucket the `garage` CLI creates gets a *global* alias; a bucket the
+application creates through the S3 API gets a *local* alias scoped to the access key that
+made it. So `garage bucket info hoover4-c-<name>` answers `NoSuchBucket` for a
+collection bucket that is present and in use, while the same name works for
+`hoover4-system`. `garage bucket list` prints both columns and is the way to ask whether
+a bucket exists at all; an S3 `bucket_exists` from a container holding the key is the way
+to ask whether the application can reach it.
+
 Files here:
 
 - `garage.toml` — the daemon's config, bind-mounted read-only.
