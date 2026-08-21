@@ -183,7 +183,7 @@ class TestCaptureIsExplicit:
         assert should_capture("browser_snapshot")
 
     def test_the_change_detection_reuse_machinery_is_gone(self):
-        """Two artifacts pointing at one MinIO object is a retention hazard, and it only
+        """Two artifacts pointing at one stored object is a retention hazard, and it only
         ever existed to make implicit captures affordable."""
         from browser_use_server.chat_browser import ChatBrowser
 

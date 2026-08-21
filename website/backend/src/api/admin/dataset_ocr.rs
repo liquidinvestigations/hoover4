@@ -344,7 +344,7 @@ pub fn normalise_languages(raw: &str) -> String {
 /// Reject anything that is not a plain language code before it reaches a storage key.
 ///
 /// `extracted_by` is built from this string and becomes a ClickHouse value, a Manticore
-/// value and part of a MinIO object key. Restricting it to `[a-z_]` costs nothing —
+/// value and part of a blob-store object key. Restricting it to `[a-z_]` costs nothing —
 /// Tesseract's own codes are `eng`, `ron`, `chi_sim` — and removes a whole class of
 /// question about where the value ends up.
 fn validate_languages(raw: &str, field: &str) -> anyhow::Result<String> {

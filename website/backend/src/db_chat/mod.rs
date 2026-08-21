@@ -525,7 +525,7 @@ pub async fn delete_session(username: &str, session_id: &str) -> anyhow::Result<
         return Ok(());
     };
     // Artifacts go with the conversation, in the same operation. A tombstone rather than
-    // a delete: the sweeper needs the row to know which MinIO objects to remove, and a
+    // a delete: the sweeper needs the row to know which blob-store objects to remove, and a
     // ClickHouse delete would leave those bytes with nothing pointing at them.
     //
     // Failure here is logged and does not block the session delete: the user asked for

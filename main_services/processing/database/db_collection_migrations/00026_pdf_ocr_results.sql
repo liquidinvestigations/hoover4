@@ -1,7 +1,7 @@
 -- The OCR'd-PDF watermark: one row per (pdf, engine, language set).
 --
 -- This table is the *sole* index of the derived PDFs' existence. They are written to
--- MinIO under the `derived/` prefix, which P0_scan_disk never walks, and they get no
+-- the blob store under the `derived/` prefix, which P0_scan_disk never walks, and they get no
 -- `vfs_files` row -- if the ingest walker could see them it would ingest them, OCR them,
 -- and produce another derived PDF, forever. Deleting a row here without deleting the
 -- blob orphans it permanently, because nothing else records the key.
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS pdf_ocr_results
     pdf_hash String COMMENT 'Hash of the source PDF, joins to pdfs.pdf_hash',
     engine LowCardinality(String) COMMENT 'OCR engine that produced this PDF: tesseract | easyocr',
     languages LowCardinality(String) COMMENT 'Language codes this pass ran with, +-joined (eng+ron)',
-    blob_key String COMMENT 'MinIO object key of the derived searchable PDF, always under the derived/ prefix',
+    blob_key String COMMENT 'Blob-store object key of the derived searchable PDF, always under the derived/ prefix',
     blob_hash String COMMENT 'Hash of the derived PDF bytes',
     page_count UInt32 DEFAULT 0 COMMENT 'Pages in the derived PDF',
     size_bytes UInt64 DEFAULT 0 COMMENT 'Size of the derived PDF in bytes',

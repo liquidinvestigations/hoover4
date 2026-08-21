@@ -280,9 +280,9 @@ and inside pdfium's wasm heap. Over that ceiling, the document still opens, down
 searches by text; only the in-page highlight overlay is unavailable.
 
 That blob read runs on the server's multi-threaded runtime through
-`startup::on_multi_thread_runtime`. The MinIO SDK blocks internally under
-`to_segmented_bytes`, and Dioxus server functions do not run on the runtime the axum routes
-do — a bare `tokio::spawn` inherits the same context rather than escaping it.
+`startup::on_multi_thread_runtime`. The S3 SDK blocks internally while collecting the body,
+and Dioxus server functions do not run on the runtime the axum routes do — a bare
+`tokio::spawn` inherits the same context rather than escaping it.
 
 Its directory is found by walking **up** from the working directory, never joined to it:
 the built release binary serves from `target/dx/<pkg>/release/web/`, so a relative path

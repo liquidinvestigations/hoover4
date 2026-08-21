@@ -253,7 +253,7 @@ pub struct DocumentTextSourceHitCount {
 ///
 /// `engine` empty means the original file. A non-empty `engine`/`languages` pair names a
 /// row in `pdf_ocr_results`, and those two fields *are* the storage key — the same pair
-/// that keys the MinIO object and the `/_download_ocr_pdf/` route. They are carried here
+/// that keys the blob-store object and the `/_download_ocr_pdf/` route. They are carried here
 /// rather than a ready-made url so the selector can label the source properly and the
 /// viewer can build the url one way, in one place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]

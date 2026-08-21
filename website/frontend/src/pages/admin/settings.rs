@@ -15,7 +15,7 @@ fn setting_description(key: &str) -> &'static str {
         "guest_permissions_mode" => "Guest access: 'all' (dev) or 'none'",
         "chat_artifact_ttl_days" => {
             "How long a chat's captured pages and search details are kept, in days \
-             (default: 30). The nightly sweeper deletes the MinIO objects first, then the \
+             (default: 30). The nightly sweeper deletes the blob-store objects first, then the \
              rows."
         }
         "llm_default_chat_model" => "Model new chats start on",

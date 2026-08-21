@@ -199,7 +199,7 @@ mcp_shared_secret_file =
 ; single private address on a host with a public IP: the website's only own way in is a
 ; proxy-set X-Forwarded-User, and demo_mode makes anonymous guests admins.
 website_bind_ip    = 0.0.0.0
-; Address the infrastructure ports (ClickHouse, Manticore, MinIO, the admin UIs,
+; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default
 ; credentials, so 0.0.0.0 is for a trusted dev LAN only; 127.0.0.1 plus an ssh tunnel
 ; is the right setting anywhere else. The services already bound to loopback in the

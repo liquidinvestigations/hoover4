@@ -2,7 +2,7 @@
 //!
 //! An artifact is a blob a tool produced that is too big for the model's context but that
 //! the *user* should see — the full before/after ordering of a web search, the archived
-//! HTML and screenshot of a page the agent visited. The bytes live in MinIO under
+//! HTML and screenshot of a page the agent visited. The bytes live in the blob store under
 //! `derived/chat-artifacts/<session>/<id>/`; this table is the sole index of their
 //! existence.
 //!
@@ -70,7 +70,7 @@ pub async fn get_artifact(artifact_id: &str) -> anyhow::Result<Option<ChatArtifa
 /// Soft-delete every artifact belonging to one session.
 ///
 /// Called when a chat is deleted, in the same operation. A ClickHouse TTL cannot remove
-/// MinIO objects, so this only tombstones the rows — the Temporal sweeper deletes the
+/// blob-store objects, so this only tombstones the rows — the Temporal sweeper deletes the
 /// objects and then the rows. Doing it the other way round loses the only record of which
 /// objects to remove.
 pub async fn soft_delete_session_artifacts(username: &str, session_id: &str) -> anyhow::Result<()> {
