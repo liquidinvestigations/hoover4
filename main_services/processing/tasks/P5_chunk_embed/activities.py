@@ -41,6 +41,19 @@ log = logging.getLogger(__name__)
 #: possible (today's alternative is the whole activity chunk in one request).
 EMBED_BATCH_TEXTS = 32
 
+#: Text segments pulled into memory at once, per pass.
+#:
+#: The unit of work here is a SEGMENT, never a file. A hash is one file and a file is
+#: not bounded: a single 209 MB text document is one hash whose `text_content` expands
+#: to millions of chunks, and materialising all of them -- the rows, the chunk dicts,
+#: the anti-join key set and the insert rows are four separate copies -- took the worker
+#: container past its memory limit. The kernel then killed the process inside the
+#: cgroup, Temporal lost the activity, and the retry did exactly the same thing.
+#:
+#: No amount of batching by the CALLER can fix that, because one hash is indivisible
+#: there. The activity has to page, and this is the page size.
+SEGMENT_PAGE_ROWS = 200
+
 
 def _probed_serving() -> tuple[str, int]:
     """The ``(model, dims)`` the GPU tier actually serves, from the startup probe.
@@ -86,186 +99,220 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     serving_model, serving_dims = _probed_serving()
     heartbeat.beat("querying text_content")
 
-    with get_collection_client(params.collectionname) as client:
-        # FINAL, not a bare read. `text_content` is a ReplacingMergeTree and a re-parse
-        # inserts a second row for the same
-        # (collection_dataset, file_hash, extracted_by, page_id) that lives until the
-        # background merge collapses it. Without FINAL both rows come back, both are
-        # chunked, and both survive the anti-join below — because they produce *identical*
-        # chunk keys, so neither is in `existing` on the first run. The endpoint is then
-        # asked to embed every chunk of the page twice, at full GPU cost, and both vectors
-        # are inserted. The filter is on the ORDER BY prefix, so FINAL is cheap here.
-        text_content = client.query_arrow("""
-            SELECT collection_dataset, file_hash, extracted_by, page_id, text
-            FROM text_content FINAL
-            WHERE collection_dataset = {collection_dataset:String}
-            AND file_hash IN {item_hashes:Array(String)}
-            ORDER BY file_hash, extracted_by, page_id
-        """, {
-            "collection_dataset": collection_dataset,
-            "item_hashes": item_hashes,
-        }).to_pylist()
+    # Keyset pagination on the ORDER BY prefix, not OFFSET: OFFSET re-reads everything
+    # before it, which on a multi-million-segment file is quadratic.
+    #
+    # FINAL, not a bare read. `text_content` is a ReplacingMergeTree and a re-parse
+    # inserts a second row for the same
+    # (collection_dataset, file_hash, extracted_by, page_id) that lives until the
+    # background merge collapses it. Without FINAL both rows come back, both are
+    # chunked, and both survive the anti-join below — because they produce *identical*
+    # chunk keys, so neither is in `existing` on the first run. The endpoint is then
+    # asked to embed every chunk of the page twice, at full GPU cost, and both vectors
+    # are inserted. The filter is on the ORDER BY prefix, so FINAL is cheap here.
+    def _segment_pages():
+        after = ("", "", 0)
+        while True:
+            with get_collection_client(params.collectionname) as page_client:
+                rows = page_client.query_arrow("""
+                    SELECT collection_dataset, file_hash, extracted_by, page_id, text
+                    FROM text_content FINAL
+                    WHERE collection_dataset = {collection_dataset:String}
+                    AND file_hash IN {item_hashes:Array(String)}
+                    AND (file_hash, extracted_by, page_id) >
+                        ({after_hash:String}, {after_by:String}, {after_page:UInt32})
+                    ORDER BY file_hash, extracted_by, page_id
+                    LIMIT {page_rows:UInt32}
+                """, {
+                    "collection_dataset": collection_dataset,
+                    "item_hashes": item_hashes,
+                    "after_hash": after[0],
+                    "after_by": after[1],
+                    "after_page": after[2],
+                    "page_rows": SEGMENT_PAGE_ROWS,
+                }).to_pylist()
+            if not rows:
+                return
+            last = rows[-1]
+            after = (last["file_hash"], last["extracted_by"], int(last["page_id"]))
+            yield rows
 
-    if not text_content:
+    total_segments = 0
+    total_chunk_rows = 0
+    total_vectors = 0
+    total_skipped_non_linguistic = 0
+    saw_any = False
+
+    for text_content in _segment_pages():
+        saw_any = True
+        total_segments += len(text_content)
+        # Scoped to this page: the anti-join below must not pull back the key set of a
+        # whole multi-million-chunk file.
+        page_keys = sorted({
+            (r["file_hash"], r["extracted_by"], int(r["page_id"])) for r in text_content
+        })
+        # Chunk every segment, then keep only the chunks with no vector for the serving
+        # model. The anti-join key is the full vector-row identity, chunk_index included:
+        # a crash between batches leaves a page half-embedded, and only the missing
+        # chunks may be redone.
+        candidates: list[dict] = []
+        skipped_non_linguistic = 0
+        skip_examples: list[str] = []
+        for row in text_content:
+            for chunk in chunk_page_text(row["text"]):
+                # Text extraction is greedy on purpose, so it also yields an email
+                # attachment's base64 and an image's pixel rows. Embedding those costs GPU
+                # time to produce a vector that then wins searches it has no business
+                # winning — live, an `.xpm` colour table was the top hit for "Eiffel Tower
+                # height". `text_content` still holds every byte; only the embedding and the
+                # KNN index skip them.
+                reason = non_linguistic_reason(chunk.text)
+                if reason:
+                    skipped_non_linguistic += 1
+                    if len(skip_examples) < 3:
+                        skip_examples.append(
+                            f"{row['file_hash'][:8]} p{row['page_id']}#{chunk.chunk_index}: {reason}"
+                        )
+                    continue
+                candidates.append({
+                    "collection_dataset": row["collection_dataset"],
+                    "file_hash": row["file_hash"],
+                    "extracted_by": row["extracted_by"],
+                    "page_id": row["page_id"],
+                    "chunk_index": chunk.chunk_index,
+                    "index_start": chunk.index_start,
+                    "index_end": chunk.index_end,
+                    "text": chunk.text,
+                })
+        if skipped_non_linguistic:
+            log.info(
+                "%s (plan %s): skipped %d non-linguistic chunk(s) before embedding, e.g. %s",
+                collection_dataset, plan_hash[:8], skipped_non_linguistic, "; ".join(skip_examples),
+            )
+        total_skipped_non_linguistic += skipped_non_linguistic
+        heartbeat.beat(f"chunked {total_segments} segments so far; "
+                       f"{len(candidates)} chunks on this page")
+
+        with get_collection_client(params.collectionname) as client:
+            existing = {
+                (r[0], r[1], int(r[2]), int(r[3]))
+                for r in client.query("""
+                    SELECT file_hash, extracted_by, page_id, chunk_index
+                    FROM text_chunk_vectors FINAL
+                    WHERE collection_dataset = {collection_dataset:String}
+                    AND (file_hash, extracted_by, page_id) IN {page_keys:Array(Tuple(String, String, UInt32))}
+                    AND embedding_model = {model:String}
+                """, {
+                    "collection_dataset": collection_dataset,
+                    "page_keys": page_keys,
+                    "model": serving_model,
+                }).result_rows
+            }
+
+        missing = [
+            c for c in candidates
+            if (c["file_hash"], c["extracted_by"], c["page_id"], c["chunk_index"]) not in existing
+        ]
+        if not missing:
+            log.info(
+                "%s (plan %s): all %d chunks of this page already embedded via %s",
+                collection_dataset, plan_hash[:8], len(candidates), serving_model,
+            )
+            continue
+
+        # Chunk rows go in before the first vector of their page: a vector without its
+        # chunk row would be a KNN hit with no text to rerank or render. Only pages with
+        # missing vectors are (re)written — text_chunks is keyed without the model, and
+        # the content is deterministic, so a rewrite would only bump updated_at.
+        pages_needing_work = {
+            (c["file_hash"], c["extracted_by"], c["page_id"]) for c in missing
+        }
+        chunk_rows = [
+            [c["collection_dataset"], c["file_hash"], c["extracted_by"], c["page_id"],
+             c["chunk_index"], c["index_start"], c["index_end"], c["text"],
+             len(c["text"].encode("utf-8"))]
+            for c in candidates
+            if (c["file_hash"], c["extracted_by"], c["page_id"]) in pages_needing_work
+        ]
+        with get_collection_client(params.collectionname) as client:
+            client.insert(
+                "text_chunks",
+                chunk_rows,
+                column_names=["collection_dataset", "file_hash", "extracted_by", "page_id",
+                              "chunk_index", "index_start", "index_end", "text", "text_bytes"],
+            )
+        heartbeat.beat(f"wrote {len(chunk_rows)} chunk rows")
+
+        page_vectors = 0
+        for i in range(0, len(missing), EMBED_BATCH_TEXTS):
+            batch = missing[i:i + EMBED_BATCH_TEXTS]
+            prefixed = [embedding_input(serving_model, "passage", c["text"])[0] for c in batch]
+            result = post_json(
+                [("embeddings", f"{base_url}/embeddings")],
+                {"input": prefixed},
+                service="embeddings",
+            )
+            data = result.data
+            served_model = data.get("model") or ""
+            if served_model != serving_model:
+                # The probe is stale. The rows would be written under a model the anti-join
+                # never matches (re-embedding forever) and possibly under the wrong prefix
+                # convention. Refuse loudly instead.
+                raise ApplicationError(
+                    f"embeddings endpoint serves {served_model!r} but the probe recorded "
+                    f"{serving_model!r}; run `main.py probe-embeddings`",
+                    non_retryable=True,
+                )
+            embeddings = [None] * len(batch)
+            for item in data["data"]:
+                embeddings[int(item["index"])] = [float(v) for v in item["embedding"]]
+            if any(e is None for e in embeddings):
+                raise ApplicationError(
+                    f"embeddings endpoint returned {sum(e is not None for e in embeddings)} "
+                    f"vectors for {len(batch)} texts",
+                    non_retryable=True,
+                )
+            dims = {len(e) for e in embeddings}
+            if dims != {serving_dims}:
+                raise ApplicationError(
+                    f"embeddings endpoint served dims {sorted(dims)} but the probe recorded "
+                    f"{serving_dims}; run `main.py probe-embeddings`",
+                    non_retryable=True,
+                )
+
+            with get_collection_client(params.collectionname) as client:
+                client.insert(
+                    "text_chunk_vectors",
+                    [
+                        [c["collection_dataset"], c["file_hash"], c["extracted_by"], c["page_id"],
+                         c["chunk_index"], served_model, serving_dims, embedding]
+                        for c, embedding in zip(batch, embeddings)
+                    ],
+                    column_names=["collection_dataset", "file_hash", "extracted_by", "page_id",
+                                  "chunk_index", "embedding_model", "dims", "embedding"],
+                )
+            page_vectors += len(batch)
+            # In-loop heartbeat: evidence of forward progress, not merely of a live thread.
+            heartbeat.beat(f"embedded {total_vectors + page_vectors} chunks "
+                           f"({page_vectors}/{len(missing)} of this page)")
+            log.info(
+                "%s (plan %s): embedded %d/%d chunks via %s",
+                collection_dataset, plan_hash[:8], page_vectors, len(missing), served_model,
+            )
+        total_chunk_rows += len(chunk_rows)
+        total_vectors += page_vectors
+
+    if not saw_any:
         log.info("%s (plan %s): nothing to chunk+embed", collection_dataset, plan_hash[:8])
         return ChunkEmbedResult(text_segments=0, chunks_written=0, vectors_written=0)
 
-    # Chunk every segment, then keep only the chunks with no vector for the serving
-    # model. The anti-join key is the full vector-row identity, chunk_index included:
-    # a crash between batches leaves a page half-embedded, and only the missing
-    # chunks may be redone.
-    candidates: list[dict] = []
-    skipped_non_linguistic = 0
-    skip_examples: list[str] = []
-    for row in text_content:
-        for chunk in chunk_page_text(row["text"]):
-            # Text extraction is greedy on purpose, so it also yields an email
-            # attachment's base64 and an image's pixel rows. Embedding those costs GPU
-            # time to produce a vector that then wins searches it has no business
-            # winning — live, an `.xpm` colour table was the top hit for "Eiffel Tower
-            # height". `text_content` still holds every byte; only the embedding and the
-            # KNN index skip them.
-            reason = non_linguistic_reason(chunk.text)
-            if reason:
-                skipped_non_linguistic += 1
-                if len(skip_examples) < 3:
-                    skip_examples.append(
-                        f"{row['file_hash'][:8]} p{row['page_id']}#{chunk.chunk_index}: {reason}"
-                    )
-                continue
-            candidates.append({
-                "collection_dataset": row["collection_dataset"],
-                "file_hash": row["file_hash"],
-                "extracted_by": row["extracted_by"],
-                "page_id": row["page_id"],
-                "chunk_index": chunk.chunk_index,
-                "index_start": chunk.index_start,
-                "index_end": chunk.index_end,
-                "text": chunk.text,
-            })
-    if skipped_non_linguistic:
-        log.info(
-            "%s (plan %s): skipped %d non-linguistic chunk(s) before embedding, e.g. %s",
-            collection_dataset, plan_hash[:8], skipped_non_linguistic, "; ".join(skip_examples),
-        )
-    heartbeat.beat(f"chunked {len(text_content)} segments into {len(candidates)} chunks")
-
-    with get_collection_client(params.collectionname) as client:
-        existing = {
-            (r[0], r[1], int(r[2]), int(r[3]))
-            for r in client.query("""
-                SELECT file_hash, extracted_by, page_id, chunk_index
-                FROM text_chunk_vectors FINAL
-                WHERE collection_dataset = {collection_dataset:String}
-                AND file_hash IN {item_hashes:Array(String)}
-                AND embedding_model = {model:String}
-            """, {
-                "collection_dataset": collection_dataset,
-                "item_hashes": item_hashes,
-                "model": serving_model,
-            }).result_rows
-        }
-
-    missing = [
-        c for c in candidates
-        if (c["file_hash"], c["extracted_by"], c["page_id"], c["chunk_index"]) not in existing
-    ]
-    if not missing:
-        log.info(
-            "%s (plan %s): all %d chunks already embedded via %s",
-            collection_dataset, plan_hash[:8], len(candidates), serving_model,
-        )
-        return ChunkEmbedResult(
-            text_segments=len(text_content), chunks_written=0, vectors_written=0,
-            chunks_skipped_non_linguistic=skipped_non_linguistic,
-        )
-
-    # Chunk rows go in before the first vector of their page: a vector without its
-    # chunk row would be a KNN hit with no text to rerank or render. Only pages with
-    # missing vectors are (re)written — text_chunks is keyed without the model, and
-    # the content is deterministic, so a rewrite would only bump updated_at.
-    pages_needing_work = {
-        (c["file_hash"], c["extracted_by"], c["page_id"]) for c in missing
-    }
-    chunk_rows = [
-        [c["collection_dataset"], c["file_hash"], c["extracted_by"], c["page_id"],
-         c["chunk_index"], c["index_start"], c["index_end"], c["text"],
-         len(c["text"].encode("utf-8"))]
-        for c in candidates
-        if (c["file_hash"], c["extracted_by"], c["page_id"]) in pages_needing_work
-    ]
-    with get_collection_client(params.collectionname) as client:
-        client.insert(
-            "text_chunks",
-            chunk_rows,
-            column_names=["collection_dataset", "file_hash", "extracted_by", "page_id",
-                          "chunk_index", "index_start", "index_end", "text", "text_bytes"],
-        )
-    heartbeat.beat(f"wrote {len(chunk_rows)} chunk rows")
-
-    vectors_written = 0
-    for i in range(0, len(missing), EMBED_BATCH_TEXTS):
-        batch = missing[i:i + EMBED_BATCH_TEXTS]
-        prefixed = [embedding_input(serving_model, "passage", c["text"])[0] for c in batch]
-        result = post_json(
-            [("embeddings", f"{base_url}/embeddings")],
-            {"input": prefixed},
-            service="embeddings",
-        )
-        data = result.data
-        served_model = data.get("model") or ""
-        if served_model != serving_model:
-            # The probe is stale. The rows would be written under a model the anti-join
-            # never matches (re-embedding forever) and possibly under the wrong prefix
-            # convention. Refuse loudly instead.
-            raise ApplicationError(
-                f"embeddings endpoint serves {served_model!r} but the probe recorded "
-                f"{serving_model!r}; run `main.py probe-embeddings`",
-                non_retryable=True,
-            )
-        embeddings = [None] * len(batch)
-        for item in data["data"]:
-            embeddings[int(item["index"])] = [float(v) for v in item["embedding"]]
-        if any(e is None for e in embeddings):
-            raise ApplicationError(
-                f"embeddings endpoint returned {sum(e is not None for e in embeddings)} "
-                f"vectors for {len(batch)} texts",
-                non_retryable=True,
-            )
-        dims = {len(e) for e in embeddings}
-        if dims != {serving_dims}:
-            raise ApplicationError(
-                f"embeddings endpoint served dims {sorted(dims)} but the probe recorded "
-                f"{serving_dims}; run `main.py probe-embeddings`",
-                non_retryable=True,
-            )
-
-        with get_collection_client(params.collectionname) as client:
-            client.insert(
-                "text_chunk_vectors",
-                [
-                    [c["collection_dataset"], c["file_hash"], c["extracted_by"], c["page_id"],
-                     c["chunk_index"], served_model, serving_dims, embedding]
-                    for c, embedding in zip(batch, embeddings)
-                ],
-                column_names=["collection_dataset", "file_hash", "extracted_by", "page_id",
-                              "chunk_index", "embedding_model", "dims", "embedding"],
-            )
-        vectors_written += len(batch)
-        # In-loop heartbeat: evidence of forward progress, not merely of a live thread.
-        heartbeat.beat(f"embedded {vectors_written}/{len(missing)} chunks")
-        log.info(
-            "%s (plan %s): embedded %d/%d chunks via %s",
-            collection_dataset, plan_hash[:8], vectors_written, len(missing), served_model,
-        )
-
     log.info(
         "%s (plan %s): chunked %d segments, wrote %d chunk rows and %d vectors",
-        collection_dataset, plan_hash[:8], len(text_content), len(chunk_rows), vectors_written,
+        collection_dataset, plan_hash[:8], total_segments, total_chunk_rows, total_vectors,
     )
     return ChunkEmbedResult(
-        text_segments=len(text_content),
-        chunks_written=len(chunk_rows),
-        vectors_written=vectors_written,
-        chunks_skipped_non_linguistic=skipped_non_linguistic,
+        text_segments=total_segments,
+        chunks_written=total_chunk_rows,
+        vectors_written=total_vectors,
+        chunks_skipped_non_linguistic=total_skipped_non_linguistic,
     )

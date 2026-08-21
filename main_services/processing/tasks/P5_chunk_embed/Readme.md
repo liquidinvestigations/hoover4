@@ -70,3 +70,26 @@ hash. A document with no vectors is a visible failure, never a silently empty re
 - [Go Back](../Readme.md)
 - [P4 - Extract Entities](../P4_extract_entities/Readme.md)
 - [P6 - Index Data](../P6_index_data/Readme.md)
+
+## A hash is a file, and a file is not a unit of work
+
+`chunk_embed_for_hashes` pages its input: it reads `text_content` `SEGMENT_PAGE_ROWS`
+segments at a time, keyset-paginated on `(file_hash, extracted_by, page_id)`, and runs
+the whole chunk/anti-join/embed/write pipeline per page.
+
+The paging is not an optimisation. `ChunkEmbedForPlan` batches by hash count, and a hash
+is one file: a single large text document expands to millions of chunks, and holding all
+of them -- the rows, the chunk dicts, the anti-join key set and the insert rows are four
+separate copies -- takes the worker container past its memory limit. The kernel then
+kills a process inside the cgroup, which need not even be the one that allocated;
+Temporal loses the activity, notices only at the heartbeat deadline, and the retry
+repeats it. Caller-side batching cannot prevent this, because one hash is indivisible
+there.
+
+The already-embedded lookup is scoped to the page's keys for the same reason: scoping it
+by `file_hash` would pull a whole multi-million-chunk file's vector keys back into
+memory and undo the paging.
+
+Progress survives a kill either way -- vectors are inserted per embed batch and the
+anti-join skips what is already stored -- but "survives" is not "finishes", and before
+paging a large enough file never finished.
