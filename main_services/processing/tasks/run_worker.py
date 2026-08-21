@@ -139,7 +139,8 @@ async def run_common_worker():
     from .P3_parse_files.parse_audio import parse_audio_metadata_and_store
     from .P3_parse_files.parse_video import VideoProcessingAndScan, video_ffprobe_and_store, video_extract_frames_and_subtitles
     from .plan_utils import fetch_plan_hashes
-    from .P4_extract_entities.workflows import ExtractEntitiesForPlan
+    from .P4_extract_entities.workflows import ExtractEntitiesForPlan, ScanRegexEntitiesForPlan
+    from .P4_extract_entities.scan_regex_entities import scan_regex_entities_for_hashes
     from .P5_chunk_embed.workflows import ChunkEmbedForPlan
     from .P6_index_data.workflows import IndexDatasetPlan
     from .P_admin.activities import (
@@ -227,6 +228,7 @@ async def run_common_worker():
             PdfProcessingAndScan,
             VideoProcessingAndScan,
             ExtractEntitiesForPlan,
+            ScanRegexEntitiesForPlan,
             ChunkEmbedForPlan,
             IndexDatasetPlan,
             EnsureCollectionDatabase,
@@ -267,6 +269,10 @@ async def run_common_worker():
             video_ffprobe_and_store,
             video_extract_frames_and_subtitles,
             detect_mime_all,
+
+            # Regex entity scanning: CPU work in another container, so it pipelines
+            # HTTP here and belongs on the common queue rather than on the NLP tier's.
+            scan_regex_entities_for_hashes,
 
             # Shared plan helpers
             fetch_plan_hashes,

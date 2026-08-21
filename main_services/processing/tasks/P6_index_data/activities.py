@@ -30,7 +30,13 @@ from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
 from database.manticore import DOCUMENT_COLUMNS, manticore_execute, shard_table_from_name
-from .params import BuildEmailGraphParams, BuildVfsNodesParams, IndexShardParams, OptimizeShardsParams
+from .params import (
+    BuildEmailGraphParams,
+    BuildVfsNodesParams,
+    IndexShardParams,
+    OptimizeShardsParams,
+    ResolveCanonicalFileTypeParams,
+)
 from tasks.heartbeat import with_heartbeat
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 log = logging.getLogger(__name__)
@@ -448,6 +454,46 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
         }).to_pylist()
+
+        # The fallback for a document with no canonical row. Without it such a document
+        # produces no metadata row at all and is indexed with `empty_document_metadata()`
+        # — losing its file type, its MIME and its extensions together, which is what an
+        # empty File types facet looks like from the outside.
+        #
+        # The union is the pre-canonical behaviour and puts a document under every type a
+        # detector claimed, so it is worse than one definitive answer and better than
+        # none. It logs at WARNING naming the hashes: a fallback nobody can see is a bug
+        # that hides.
+        uncanonicalised = sorted(set(item_hashes) - {row['hash'] for row in raw_metadatas})
+        if uncanonicalised:
+            log.warning(
+                "%s (plan %s): %d documents have no file_type_canonical row and are "
+                "falling back to the union of their detections: %s",
+                collection_dataset, plan_hash[:8], len(uncanonicalised),
+                ", ".join(uncanonicalised[:10]),
+            )
+            for row in client.query_arrow("""
+                SELECT hash,
+                        arrayDistinct(arrayFlatten(groupArray(mime_type))) AS mime_types,
+                        arrayDistinct(arrayFlatten(groupArray(extensions))) AS extensions
+                FROM file_types FINAL
+                WHERE collection_dataset = {collection_dataset:String}
+                AND hash IN {uncanonicalised:Array(String)}
+                GROUP BY hash
+            """, {
+                "collection_dataset": collection_dataset,
+                "uncanonicalised": uncanonicalised,
+            }).to_pylist():
+                mimes = [m for m in (row['mime_types'] or []) if m]
+                raw_metadatas.append({
+                    "hash": row['hash'],
+                    # The coarse type is computed here rather than in SQL: the mapping is
+                    # a Python table, and a second spelling of it in a query would drift
+                    # from the one every other reader uses.
+                    "file_types": sorted({coarse_file_type(m) for m in mimes}),
+                    "mime_types": mimes,
+                    "extensions": [e for e in (row['extensions'] or []) if e],
+                })
 
         vfs_rows = client.query_arrow("""
             SELECT hash, container_hash, path, file_size_bytes
@@ -1209,7 +1255,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
 
 @activity.defn
 @with_heartbeat
-def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
+def resolve_canonical_file_type(params: ResolveCanonicalFileTypeParams) -> str:
     """Decide one definitive type per document, after every parser has had its turn.
 
     This is the "last final pass" the whole parallel-detection design was waiting for.
@@ -1218,10 +1264,15 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
     The cost was a file-type facet that listed the same document under three headings.
     Here the contradictions are resolved, once, from what the parsers actually produced.
 
-    Dataset-scoped and idempotent, like `build_vfs_nodes`, and for the same reason: a
-    plan holds a slice of the dataset, and a document's evidence can arrive in a
-    different plan from its detections. It runs before `document_metadata`, which reads
-    the result.
+    Idempotent, and scoped two ways. `item_hashes` restricts it to one plan's documents,
+    which is where it has to run for the result to exist before that plan is indexed:
+    `file_types` is written by P3, *inside* the per-plan children, so a dataset-wide pass
+    before those children reads an empty table on a first ingest and writes nothing. A
+    document with no canonical row then produces no `document_metadata` row at all, and
+    loses its file type, its MIME and its extensions to `empty_document_metadata()`.
+
+    An empty `item_hashes` is the dataset-wide sweep, which still has to happen: a
+    document's evidence can arrive in a different plan from its detections.
 
     See `canonical_file_type.py` for the rank table itself.
     """
@@ -1230,35 +1281,46 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
     from .canonical_file_type import resolve_canonical
 
     collection_dataset: str = params.collection_dataset
+    item_hashes: list[str] = list(params.item_hashes or [])
+    # An empty list means "every hash", so the clause has to disappear rather than
+    # evaluate to `hash IN []`, which matches nothing and would silently turn the
+    # dataset-wide sweep into a no-op. Each table names the hash column differently, so
+    # the clause is built per column rather than substituted into one string.
+    def scoped(column: str) -> str:
+        return f" AND {column} IN {{item_hashes:Array(String)}}" if item_hashes else ""
+
+    scope = {"cd": collection_dataset}
+    if item_hashes:
+        scope["item_hashes"] = item_hashes
     with get_collection_client(params.collectionname) as client:
         detection_rows = client.query_arrow("""
             SELECT hash, extracted_by, mime_type
             FROM file_types FINAL
-            WHERE collection_dataset = {cd:String}
-        """, {"cd": collection_dataset}).to_pylist()
+            WHERE collection_dataset = {cd:String}""" + scoped("hash") + """
+        """, scope).to_pylist()
 
         # What each parser actually produced rows for. `text_content` is joined by
         # extracted_by rather than taken wholesale: every text extractor writes there,
         # and only the office one is evidence of an office document.
         evidence_rows = client.query_arrow("""
             SELECT email_hash AS hash, 'email' AS kind FROM emails FINAL
-                WHERE collection_dataset = {cd:String}
+                WHERE collection_dataset = {cd:String}""" + scoped("email_hash") + """
             UNION ALL
             SELECT pdf_hash AS hash, 'pdf' AS kind FROM pdfs FINAL
-                WHERE collection_dataset = {cd:String}
+                WHERE collection_dataset = {cd:String}""" + scoped("pdf_hash") + """
             UNION ALL
             SELECT image_hash AS hash, 'image' AS kind FROM image FINAL
-                WHERE collection_dataset = {cd:String}
+                WHERE collection_dataset = {cd:String}""" + scoped("image_hash") + """
             UNION ALL
             SELECT archive_hash AS hash, 'archive' AS kind FROM archives FINAL
-                WHERE collection_dataset = {cd:String}
+                WHERE collection_dataset = {cd:String}""" + scoped("archive_hash") + """
             UNION ALL
             SELECT file_hash AS hash, 'office' AS kind FROM text_content FINAL
-                WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'
+                WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'""" + scoped("file_hash") + """
             UNION ALL
             SELECT hash, 'table' AS kind FROM table_documents FINAL
-                WHERE collection_dataset = {cd:String} AND status = 'ok'
-        """, {"cd": collection_dataset}).to_pylist()
+                WHERE collection_dataset = {cd:String} AND status = 'ok'""" + scoped("hash") + """
+        """, scope).to_pylist()
 
         # How many members each container actually produced. An archive that exploded
         # into nothing is not an archive, and half a million container nodes corpus-wide
@@ -1266,13 +1328,13 @@ def resolve_canonical_file_type(params: BuildVfsNodesParams) -> str:
         member_rows = client.query_arrow("""
             SELECT container_hash, count() AS members FROM (
                 SELECT DISTINCT container_hash, path FROM vfs_files FINAL
-                WHERE collection_dataset = {cd:String} AND container_hash != ''
+                WHERE collection_dataset = {cd:String} AND container_hash != ''""" + scoped("container_hash") + """
                 UNION ALL
                 SELECT DISTINCT container_hash, path FROM vfs_directories FINAL
-                WHERE collection_dataset = {cd:String} AND container_hash != ''
+                WHERE collection_dataset = {cd:String} AND container_hash != ''""" + scoped("container_hash") + """
             )
             GROUP BY container_hash
-        """, {"cd": collection_dataset}).to_pylist()
+        """, scope).to_pylist()
 
     detections: dict[str, dict[str, list[str]]] = {}
     for row in detection_rows:

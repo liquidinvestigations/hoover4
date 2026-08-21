@@ -182,8 +182,8 @@ def test_index_dataset_plan_does_not_rebuild_the_dataset_tree():
 
 
 def test_execute_plans_rebuilds_the_tree_once_per_batch():
-    """ClickHouse vfs and canonical types before the per-plan children; the rebuild
-    and the Manticore copy after them, and BEFORE the continuation and restart
+    """ClickHouse vfs before the per-plan children; the rebuild, the canonical-type
+    sweep and the Manticore copy after them, and BEFORE the continuation and restart
     returns so every invocation indexes the tree it just produced."""
     source = open(p2_workflows.__file__).read()
     ordered = [name for _, name in _execute_targets(source, "ExecutePlans")]
@@ -193,8 +193,8 @@ def test_execute_plans_rebuilds_the_tree_once_per_batch():
             f"{required} is not executed by ExecutePlans: {ordered}"
         )
     assert ordered.index("build_vfs_nodes") \
-        < ordered.index("resolve_canonical_file_type") \
         < ordered.index("ExecuteSinglePlan") \
+        < ordered.index("resolve_canonical_file_type") \
         < ordered.index("index_vfs_structure"), (
         f"tree rebuild must wrap the per-plan children: {ordered}"
     )
@@ -207,6 +207,21 @@ def test_execute_plans_rebuilds_the_tree_once_per_batch():
         < len(ordered) - 1 - ordered[::-1].index("build_vfs_nodes") \
         < ordered.index("index_vfs_structure"), (
         f"the second build_vfs_nodes must sit between the children and the copy: {ordered}"
+    )
+
+
+def test_canonical_file_type_runs_inside_the_plan_that_produced_the_evidence():
+    """`file_types` is written by P3, inside the per-plan children. A canonical pass
+    that runs only outside them reads an empty table on a first ingest and writes
+    nothing, and every document is then indexed with no file type, no MIME and no
+    extensions at all — which is what an empty File types facet looks like."""
+    source = open(p2_workflows.__file__).read()
+    single = [name for _, name in _execute_targets(source, "ExecuteSinglePlan")]
+    assert "resolve_canonical_file_type" in single, (
+        f"ExecuteSinglePlan must resolve its own plan's canonical types: {single}"
+    )
+    assert single.index("resolve_canonical_file_type") < single.index("IndexDatasetPlan"), (
+        f"canonical types must be resolved before the plan is indexed: {single}"
     )
     # ExecutePlans hands off to a continuation or a restart child instead of
     # returning normally. Indexing the tree after that hand-off means only whichever

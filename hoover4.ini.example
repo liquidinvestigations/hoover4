@@ -45,17 +45,27 @@ host               = 127.0.0.1
 # trusted setup.
 bind_ip            = 0.0.0.0
 
-# ---- local LLM: SUPPORTED BUT PARKED -------------------------------------------
-# The overlay, the image pin and the docs stay, but nothing starts vLLM — the
-# NVIDIA NIM cloud provider carries the live tests instead.
+# ---- local LLM ------------------------------------------------------------------
+# The agent model, served OpenAI-compatible. Off by default; a cloud provider serves
+# the stack until this is turned on.
 llm_selfhosted     = false
 vllm_port          = 21960
 vllm_image         = vllm/vllm-openai:v0.17.1
-vllm_model         = Qwen/Qwen3.5-2B
-vllm_served_name   = qwen3.5-2b
+vllm_model         = Qwen/Qwen3.5-35B-A3B-FP8
+vllm_served_name   = qwen3.5-35b-a3b
+; A fraction of the WHOLE device, shared with every other model server on the box.
+; On unified-memory hardware it is taken against total system memory, so a value
+; tuned for a discrete card overcommits.
 vllm_gpu_fraction  = 0.50
 vllm_max_model_len = 262144
+; Concurrency bound. A one-slot server serialises every caller head-of-line, so a UI
+; turn queues behind a benchmark and the model reads as far slower than it is. One
+; research agent is already several concurrent streams.
+vllm_max_num_seqs  = 16
 vllm_tool_parser   = qwen3_xml
+; Splits a thinking block out of `content` into `reasoning_content`. The model thinks by
+; default, so without this every answer arrives with the model's working prepended.
+vllm_reasoning_parser = qwen3
 ; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
 vllm_api_key_file  =
 
@@ -104,6 +114,14 @@ pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
 tesseract_cpu_enabled = true
 tesseract_languages   = eng
 ocr_pdf_enabled       = true
+
+# ---- regex entity scanning ------------------------------------------------------
+# Always running: there is no twin to fall back to and no provider to choose between,
+# so the only question is how much of the box it may use. Scanning measures at about
+# 0.85 MB/s per thread. The queue is what a burst waits in; past it the service answers
+# 503 with a Retry-After, which the pipeline already treats as retryable.
+regex_scanner_threads     = 10
+regex_scanner_queue_depth = 32
 
 # ---- how the website is served --------------------------------------------------
 # false: `dx serve` — hot rebuilds, and the development loop this repo is built around.
@@ -208,6 +226,7 @@ tesseract_cpu_port        = 21921   ; CPU OCR twin
 ocr_pdf_port              = 21922   ; searchable-PDF builder
 ner_spacy_port            = 21923   ; CPU NER twin
 embeddings_cpu_port       = 21924   ; CPU embeddings twin
+regex_entity_scanner_port = 21925   ; regex entity scanner
 
 mcp_collections_port      = 21930
 mcp_metasearch_port       = 21931

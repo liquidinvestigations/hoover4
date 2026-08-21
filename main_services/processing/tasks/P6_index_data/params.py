@@ -32,6 +32,19 @@ class BuildVfsNodesParams:
 
 
 @dataclass
+class ResolveCanonicalFileTypeParams:
+    """Scoped to a plan's hashes, or dataset-wide when `item_hashes` is empty.
+
+    Both forms exist because a document's evidence can arrive in a different plan from
+    its detections: the plan-scoped call is what gets a document a canonical type before
+    it is indexed, and the dataset-wide sweep afterwards is what catches the ones whose
+    evidence crossed a plan boundary."""
+    collectionname: str
+    collection_dataset: str
+    item_hashes: list[str]
+
+
+@dataclass
 class FinalizeIndexBatchParams:
     collectionname: str
     collection_dataset: str

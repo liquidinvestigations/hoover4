@@ -1,21 +1,26 @@
 # Optional overlay: local LLM (enabled via [ai_services] llm_selfhosted = true).
 #
-# SUPPORTED BUT PARKED: the overlay, the image pin and the docs stay, but nothing
-# starts vLLM — the NVIDIA NIM cloud provider carries the live tests instead.
+# This is the model the research agents talk to. It is OpenAI-compatible, so the
+# provider selection in hoover4.ini is the only thing that decides whether the stack
+# uses it or a cloud endpoint.
 services:
   # ---------------------------------------------------------------- GPU: local LLM
-  # Shares one 24 GB card with hoover4-ai-server (~2.9 GB of embedding/reranker/NER
-  # weights) and the desktop session (~1.7 GB), so vLLM must be told not to claim the
-  # whole device — the memory fraction is the setting to lower first if either
-  # service OOMs.
+  # vllm_gpu_fraction is a fraction of the WHOLE device, shared with hoover4-ai-server
+  # (~2.9 GB of embedding/reranker/NER weights), GPU EasyOCR, and any other model
+  # server resident on the box. It is the setting to lower first if a neighbour OOMs.
+  # On unified-memory hardware (GB10) the fraction is taken against total system
+  # memory, so a value tuned for a discrete card overcommits badly here.
   #
-  # Qwen3.5-2B runs at its **full 262,144-token native context** on this card, which is
-  # only possible because of the hybrid architecture: of its 24 layers only 6 are Gated
-  # Attention with a growing KV cache (the other 18 are Gated-DeltaNet and hold a
-  # constant recurrent state). At 2 kv-heads x 256 head_dim x 2 bytes x 2 (K,V) x 6
-  # layers that is 12 KiB/token, so a full 262 K sequence costs 3 GiB of KV cache
-  # instead of the ~36 GiB the same context would cost on the Qwen3-4B this replaces.
-  # See ai_services/README.md for the arithmetic and the measured numbers.
+  # max-num-seqs is the concurrency bound, and it is a correctness knob rather than a
+  # tuning one: a server with one slot serialises every caller head-of-line, so a UI
+  # turn queues behind a benchmark and the model looks orders of magnitude slower than
+  # it is. One research agent fans out to several concurrent sub-agent streams, and
+  # there is more than one conversation, so the floor is well above one.
+  #
+  # The reasoning parser is what moves a thinking block out of `content` and into
+  # `reasoning_content`. Qwen3.5 thinks by default, so without it every answer arrives
+  # with the model's working prepended to it — visible to the user, counted against the
+  # payload budget, and parsed by nothing.
   #
   # vLLM 0.17 is the first release with native Qwen3.5 (qwen3_5) support.
   #
@@ -32,12 +37,14 @@ services:
     # and this wrapper exports it before exec'ing the image's own `vllm serve`.
     entrypoint: ["/bin/sh", "-c", "export VLLM_API_KEY=\"$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)\"; export HUGGING_FACE_HUB_TOKEN=\"$$(cat /run/secrets/hf_token 2>/dev/null || true)\"; exec vllm serve \"$$@\"", "--"]
     command: >
-      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-2B}
-      --served-model-name ${LLM_SERVED_NAME:-qwen3.5-2b}
+      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-35B-A3B-FP8}
+      --served-model-name ${LLM_SERVED_NAME:-qwen3.5-35b-a3b}
       --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.50}
       --max-model-len ${VLLM_MAX_MODEL_LEN:-262144}
+      --max-num-seqs ${VLLM_MAX_NUM_SEQS:-16}
       --enable-auto-tool-choice
       --tool-call-parser ${VLLM_TOOL_PARSER:-qwen3_xml}
+      --reasoning-parser ${VLLM_REASONING_PARSER:-qwen3}
     environment:
       - DO_NOT_TRACK=1
       - VLLM_NO_USAGE_STATS=1

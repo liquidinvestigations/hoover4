@@ -1,0 +1,57 @@
+# The regex entity scanner, always on.
+#
+# There is no ini flag and no CPU twin, because there is nothing to fall back to and
+# nothing to prefer: the service is CPU-only already, and the scan stage is not optional
+# in the way an OCR engine or a NER provider is. A stage whose dependency can be absent
+# has to carry a branch at every call site; this one does not.
+
+services:
+  # ------------------------------------------------------- regex entity scanning
+  hoover4-regex-entity-scanner:
+    container_name: hoover4-regex-entity-scanner
+    build:
+      # Narrow context on purpose, like the other overlays. `.dockerignore` in that
+      # directory keeps the Rust build tree — tens of gigabytes — and the vendored
+      # reference corpora out of the context; without it the context alone is longer
+      # than the build.
+      context: ${HOOVER4_REPO_ROOT}/main_services/regex_entity_scanner
+      dockerfile: Dockerfile.release
+    ports:
+      - "127.0.0.1:${REGEX_ENTITY_SCANNER_PORT}:19705"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    # The process holds its compiled rule set and the vendored tables and nothing else:
+    # measured at 188 MB under full load, with no per-request growth, because a scan
+    # allocates only for the fragment it was given. 1 GB is room for a burst of large
+    # fragments, not a working set.
+    memswap_limit: 1000M
+    mem_limit: 1000M
+    environment:
+      - RES_BIND=0.0.0.0:19705
+      # Async workers parse JSON and move bytes; the scanning is on the blocking pool.
+      # Both are explicit because the runtime's own default is the host's core count,
+      # which on a box already running the whole pipeline is oversubscription by
+      # construction.
+      - RES_WORKER_THREADS=${REGEX_SCANNER_WORKER_THREADS:-4}
+      - RES_SCAN_THREADS=${REGEX_SCANNER_THREADS:-10}
+      - RES_QUEUE_DEPTH=${REGEX_SCANNER_QUEUE_DEPTH:-32}
+      - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
+      - RES_LOG=${LOG_LEVEL:-info}
+    healthcheck:
+      # The image carries no Python and no curl; the binary's own probe is what is there.
+      # /health stays answerable at full load because scanning runs off the event loop —
+      # a health check that a busy service cannot answer reports the wrong thing at
+      # exactly the moment the answer matters.
+      test: ["CMD", "/usr/local/bin/regex-entity-scanner", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # The rule set compiles at startup from the vendored tables baked into the image.
+      start_period: 30s
+
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true

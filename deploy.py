@@ -55,15 +55,17 @@ DEFAULTS = {
         "enabled": "false",
         "host": "127.0.0.1",
         "bind_ip": "0.0.0.0",
-        # local LLM: supported but parked — nothing in the stack starts vLLM.
+        # local LLM: the agent model, served OpenAI-compatible.
         "llm_selfhosted": "false",
         "vllm_port": "21960",
         "vllm_image": "vllm/vllm-openai:v0.17.1",
-        "vllm_model": "Qwen/Qwen3.5-2B",
-        "vllm_served_name": "qwen3.5-2b",
+        "vllm_model": "Qwen/Qwen3.5-35B-A3B-FP8",
+        "vllm_served_name": "qwen3.5-35b-a3b",
         "vllm_gpu_fraction": "0.50",
         "vllm_max_model_len": "262144",
+        "vllm_max_num_seqs": "16",
         "vllm_tool_parser": "qwen3_xml",
+        "vllm_reasoning_parser": "qwen3",
         "vllm_api_key_file": "",
         # GPU NER + embeddings
         "ai_server_enabled": "true",
@@ -96,6 +98,9 @@ DEFAULTS = {
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
         "tesseract_languages": "eng",
+        # regex entity scanning — always on, so the only knobs are its size
+        "regex_scanner_threads": "10",
+        "regex_scanner_queue_depth": "32",
         # How the website is served. false = `dx serve` (the development loop). true =
         # build once with `dx build --release` and serve the binary, which is what a
         # visitor should get: no dev overlay, no rebuild-on-boot 500s. See
@@ -163,6 +168,7 @@ DEFAULTS = {
         "ocr_pdf_port": "21922",
         "ner_spacy_port": "21923",
         "embeddings_cpu_port": "21924",
+        "regex_entity_scanner_port": "21925",
         "mcp_collections_port": "21930",
         "mcp_metasearch_port": "21931",
         "mcp_browser_port": "21932",
@@ -219,6 +225,7 @@ AI_OVERLAYS = [
 ]
 MAIN_OVERLAYS = [
     (None, "compose/agents.yaml", None),          # always on
+    (None, "compose/regex-entity-scanner.yaml", None),  # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
     ("ner_spacy_enabled", "compose/ner-spacy.yaml", "hoover4-ner-spacy"),
@@ -265,6 +272,7 @@ MAIN_PUBLISHED = [
     ("hoover4-tesseract-cpu", "main_services", "tesseract_cpu_port"),
     ("hoover4-ocr-pdf", "main_services", "ocr_pdf_port"),
     ("hoover4-ner-spacy", "main_services", "ner_spacy_port"),
+    ("hoover4-regex-entity-scanner", "main_services", "regex_entity_scanner_port"),
 ]
 
 
@@ -435,6 +443,15 @@ def render_main_env(cfg):
         else ""
     )
 
+    # The regex entity scanner. Always running, so this is never empty and the scan stage
+    # never has to branch on its absence. Same network, container name and internal port
+    # — the published port exists for humans and for verify-stack. Both the worker (which
+    # scans) and the website (which proxies the explainer) read it.
+    env["REGEX_SCANNER_URL"] = "http://hoover4-regex-entity-scanner:19705"
+    env["REGEX_ENTITY_SCANNER_PORT"] = cfg.get(m, "regex_entity_scanner_port")
+    env["REGEX_SCANNER_THREADS"] = cfg.get(m, "regex_scanner_threads")
+    env["REGEX_SCANNER_QUEUE_DEPTH"] = cfg.get(m, "regex_scanner_queue_depth")
+
     # The searchable-PDF assembler. It has no engine of its own -- it renders pages and
     # calls the two endpoints above -- so it is enabled independently of them, and empty
     # here means the pipeline produces no OCR'd-PDF variants at all.
@@ -543,7 +560,9 @@ def render_ai_env(cfg):
     env["LLM_SERVED_NAME"] = cfg.get(a, "vllm_served_name")
     env["VLLM_GPU_FRACTION"] = cfg.get(a, "vllm_gpu_fraction")
     env["VLLM_MAX_MODEL_LEN"] = cfg.get(a, "vllm_max_model_len")
+    env["VLLM_MAX_NUM_SEQS"] = cfg.get(a, "vllm_max_num_seqs")
     env["VLLM_TOOL_PARSER"] = cfg.get(a, "vllm_tool_parser")
+    env["VLLM_REASONING_PARSER"] = cfg.get(a, "vllm_reasoning_parser")
     if cfg.get(a, "vllm_api_key_file"):
         env["VLLM_API_KEY_FILE_HOST"] = cfg.get(a, "vllm_api_key_file")
     if cfg.get(a, "hf_token_file"):

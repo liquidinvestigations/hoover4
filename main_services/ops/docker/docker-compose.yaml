@@ -427,6 +427,9 @@ services:
       # variants are produced at all — the activity records a skip and succeeds, exactly
       # like an OCR engine with no endpoint.
       - "OCR_PDF_URL=${OCR_PDF_URL:-}"
+      # The regex entity scanner (compose/regex-entity-scanner.yaml). Always present, so
+      # the scan stage has no absent-endpoint branch to carry.
+      - "REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}"
       # Worker fleet sizing. Unset everywhere by default: each tier's own default is a
       # measurement, not a guess, and the common tier's process count already follows
       # the host's core count. Set one to override that for this deployment.
@@ -513,6 +516,9 @@ services:
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
       - OCR_PDF_URL=${OCR_PDF_URL:-}
+      # The explainer proxy's upstream. A card that cannot be fetched degrades the
+      # details view; it never fails a search.
+      - REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}
       # Search limits, both optional (ini: search_max_parallelism /
       # search_timeout_seconds). Unset = the backend's defaults: 8 Manticore queries in
       # flight process-wide, 30 s per shard query. The empty default is deliberate —

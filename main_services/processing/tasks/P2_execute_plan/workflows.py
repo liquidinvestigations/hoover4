@@ -65,7 +65,12 @@ with workflow.unsafe.imports_passed_through():
         resolve_document_dates,
         ResolveDocumentDatesParams,
     )
-    from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ExtractEntitiesForPlanParams
+    from tasks.P4_extract_entities.workflows import (
+        ExtractEntitiesForPlan,
+        ExtractEntitiesForPlanParams,
+        ScanRegexEntitiesForPlan,
+        ScanRegexEntitiesForPlanParams,
+    )
     from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan, ChunkEmbedForPlanParams
     from tasks.P6_index_data.workflows import (
         INDEXING_TASK_QUEUE,
@@ -77,7 +82,7 @@ with workflow.unsafe.imports_passed_through():
         index_vfs_structure,
         resolve_canonical_file_type,
     )
-    from tasks.P6_index_data.params import BuildVfsNodesParams
+    from tasks.P6_index_data.params import BuildVfsNodesParams, ResolveCanonicalFileTypeParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -166,22 +171,19 @@ class ExecutePlans:
         # writer. document_metadata builds ancestor closures from ClickHouse vfs_nodes,
         # so those writers must not run against an empty tree. Nested extraction
         # restarts ExecutePlans after ComputePlans, and that next invocation rebuilds
-        # once for the new blobs. Canonical file type follows the tree (the empty-archive
-        # demotion counts a container's real members) and still precedes the writers.
+        # once for the new blobs.
+        #
+        # Canonical file type is NOT here. It reads `file_types`, which P3 writes inside
+        # the per-plan children below, so a pass at this point reads an empty table on a
+        # first ingest and writes nothing at all. Each plan resolves its own documents,
+        # and a dataset-wide sweep after the children catches the ones whose evidence
+        # crossed a plan boundary.
         vfs_params = BuildVfsNodesParams(
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
         )
         await workflow.execute_activity(
             build_vfs_nodes,
-            vfs_params,
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-        await workflow.execute_activity(
-            resolve_canonical_file_type,
             vfs_params,
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -224,6 +226,22 @@ class ExecutePlans:
         await workflow.execute_activity(
             build_vfs_nodes,
             vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        # The dataset-wide sweep, with the children's detections and evidence now all
+        # present. Each plan already resolved its own documents; this catches a document
+        # whose evidence arrived in a different plan from its detections, and it is what
+        # makes the empty-archive demotion see a container's real member count.
+        await workflow.execute_activity(
+            resolve_canonical_file_type,
+            ResolveCanonicalFileTypeParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=[],
+            ),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=2),
@@ -367,6 +385,13 @@ class ExecuteSinglePlan:
             log.warning("[P2] plan %s listed %d items for %d distinct hashes",
                         params.plan_hash, len(items), len(unique_items))
 
+        # The plan's documents, for the activities below that are scoped to them rather
+        # than to the whole dataset.
+        plan_item_hashes = [
+            h for h in ((it.get("item_hash") or "") if isinstance(it, dict) else ""
+                        for it in unique_items) if h
+        ]
+
         item_groups = [
             unique_items[i:i + PLAN_GROUP_SIZE]
             for i in range(0, len(unique_items), PLAN_GROUP_SIZE)
@@ -424,18 +449,45 @@ class ExecuteSinglePlan:
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
-        # 6+7) NLP and chunk+embed, together. Both read the `text_content` the parse
-        # stages just wrote and write to disjoint tables -- entities and the
-        # nlp_processed watermark on one side, text_chunks and text_chunk_vectors on
-        # the other -- and only indexing needs both. They also run on different worker
-        # queues, so running them in sequence left one tier idle for the other's whole
-        # duration. Both must still finish before step 8: P6 reads entity_hit rows and
-        # copies the vectors into the shard's HNSW table.
+        # 5b) One definitive type per document in this plan, from what its parsers
+        # actually produced. It sits here, after parsing and before indexing, for the
+        # same reason date resolution does: `document_metadata` reads the result, and a
+        # document with no canonical row produces no metadata row at all — losing its
+        # file type, its MIME and its extensions, and taking the whole File types facet
+        # with it.
+        await workflow.execute_activity(
+            resolve_canonical_file_type,
+            ResolveCanonicalFileTypeParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=plan_item_hashes,
+            ),
+            start_to_close_timeout=timedelta(minutes=20),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+
+        # 6+7) NLP, regex scanning and chunk+embed, together. All three read the
+        # `text_content` the parse stages just wrote and write to disjoint tables --
+        # entities and the nlp_processed watermark, regex_entity_hit and regex_scanned,
+        # text_chunks and text_chunk_vectors -- and only indexing needs all of them. They
+        # also run on different worker queues and against different services, so running
+        # them in sequence left a tier idle for the others' whole duration. All must
+        # finish before step 8: P6 reads the entity rows and copies the vectors into the
+        # shard's HNSW table.
         stage_results = await asyncio.gather(
             workflow.execute_child_workflow(
                 ExtractEntitiesForPlan.run,
                 ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
                 id=f"extract-entities-{params.collection_dataset}-{params.plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            ),
+            workflow.execute_child_workflow(
+                ScanRegexEntitiesForPlan.run,
+                ScanRegexEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                id=f"scan-regex-entities-{params.collection_dataset}-{params.plan_hash}",
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
             ),

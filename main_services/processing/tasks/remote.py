@@ -257,6 +257,24 @@ def post_json(
     )
 
 
+def scanner_health(session: requests.Session | None = None) -> dict:
+    """The regex entity scanner's `/health`, as a dict.
+
+    Read once per activity, for `rule_set_version`. The scan stage compares it against
+    what each batch response reports: an image swapped mid-activity would otherwise file
+    the new rules' values under the old version's watermark, and nothing downstream would
+    ever reconsider them.
+
+    `/health` stays answerable at full load because the service scans off its event loop,
+    so this is a cheap call even when every scan thread is busy.
+    """
+    base = (os.getenv("REGEX_SCANNER_URL") or "http://hoover4-regex-entity-scanner:19705").rstrip("/")
+    get = (session or requests).get
+    response = get(f"{base}/health", timeout=(CONNECT_TIMEOUT, 10.0))
+    response.raise_for_status()
+    return response.json()
+
+
 def probe_embeddings(base_url: str) -> tuple[str, int]:
     """One trivial ``POST {base_url}/embeddings``; returns ``(serving_model, dims)``.
 
