@@ -50,7 +50,7 @@ def _auth() -> Optional[tuple[str, str]]:
 
 #: A bare IPv4 address, with an optional port. Self-hosted endpoints are addressed this
 #: way, and a dotted quad has to be recognised as one thing rather than sliced like a
-#: domain name: `10.69.70.115` read as a domain has "70" for its second-level label.
+#: domain name: `192.0.2.10` read as a domain has "2" for its second-level label.
 _IPV4_HOST = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 
 

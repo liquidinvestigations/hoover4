@@ -744,7 +744,7 @@ fn simple_match(pattern: &str, haystack: &str) -> bool {
 ///
 /// A registrable domain is named by its second-to-last label — `api.moonshot.ai` is
 /// `moonshot`. An address literal has no such label, and taking one anyway names the
-/// provider after an octet of its IP (`10.69.70.115:21960` becomes `70`), so the host and
+/// provider after an octet of its IP (`192.0.2.10:21960` becomes `2`), so the host and
 /// its port are kept whole. Every place that names a provider goes through this,
 /// including the placeholder row for a configured endpoint whose catalog is still empty:
 /// two spellings of one endpoint render as two providers, one of them permanently empty.
@@ -887,7 +887,7 @@ mod tests {
         for (base, expected) in [
             ("https://api.moonshot.ai/v1", "moonshot"),
             ("https://integrate.api.nvidia.com/v1", "nvidia"),
-            ("http://10.69.70.115:21960/v1", "10.69.70.115:21960"),
+            ("http://192.0.2.10:21960/v1", "192.0.2.10:21960"),
             ("http://127.0.0.1/v1", "127.0.0.1"),
             ("http://[fd00::1]:8000/v1", "[fd00::1]:8000"),
             ("http://localhost:8000/v1", "localhost"),

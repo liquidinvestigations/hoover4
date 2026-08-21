@@ -119,7 +119,7 @@ def test_the_column_is_typed_uint8_like_the_table(fake):
         # the provider after an octet. The admin page synthesises `host:port` for a
         # configured endpoint with no rows yet, so the two must agree or a refresh writes
         # its models beside the provider the page is already showing.
-        ("10.69.70.115:21960", "10.69.70.115:21960"),
+        ("192.0.2.10:21960", "192.0.2.10:21960"),
         ("127.0.0.1", "127.0.0.1"),
         ("[fd00::1]:8000", "[fd00::1]:8000"),
         ("localhost:8000", "localhost"),

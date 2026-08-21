@@ -34,8 +34,8 @@ Where a picture is still missing the page shows `img/todo.png` with a note under
 ## 1. Getting in
 
 The demo sits behind HTTP basic authentication. The browser asks for a username and password
-before anything loads; the demo credentials are `demo` / `demo2026`. Without them every URL
-answers `401`.
+before anything loads. The credentials are held locally in `INFRASTRUCTURE_INVENTORY.md`,
+which is gitignored, rather than in this page. Without them every URL answers `401`.
 
 ![](img/todo.png)
 

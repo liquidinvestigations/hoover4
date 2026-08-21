@@ -74,16 +74,16 @@ demo_mode             = true
 testdata_dir          = /opt/hoover4-testdata
 datasets_mount_path   = /testdata
 
-website_bind_ip       = 10.69.70.112   ; the private address the proxy reaches
+website_bind_ip       = <private-ip>    ; the private address the proxy reaches
 infra_bind_ip         = 127.0.0.1
 
-mcp_shared_secret_file = /home/liquid/.hoover4-secrets/mcp-shared-secret.txt
+mcp_shared_secret_file = <deploy-home>/.hoover4-secrets/mcp-shared-secret.txt
 
 [llm_provider.nvidia]
 enabled      = true
 base_url     = https://integrate.api.nvidia.com/v1
 model        = nvidia/nemotron-3-super-120b-a12b
-api_key_file = /home/liquid/.ssh/AI_API_KEY/nvidia.txt
+api_key_file = <deploy-home>/.ssh/AI_API_KEY/nvidia.txt
 
 [llm_provider.selfhosted]
 enabled = false
@@ -116,7 +116,7 @@ a key in the checkout leaks into build contexts and commits. The file is bind-mo
 read-only into the containers that need it; no key value ever reaches a `.env` or a log.
 
 ```bash
-chmod 600 /home/liquid/.ssh/AI_API_KEY/nvidia.txt
+chmod 600 <deploy-home>/.ssh/AI_API_KEY/nvidia.txt
 mkdir -p ~/.hoover4-secrets && chmod 700 ~/.hoover4-secrets
 head -c 32 /dev/urandom | base64 > ~/.hoover4-secrets/mcp-shared-secret.txt
 chmod 600 ~/.hoover4-secrets/mcp-shared-secret.txt

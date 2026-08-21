@@ -119,7 +119,7 @@ def provider_label(host: str) -> str:
 
     A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
     `moonshot`. An address literal has no such label, and taking one anyway names the
-    provider after an octet of its IP -- `10.69.70.115:21960` becomes `70` -- so the
+    provider after an octet of its IP -- `192.0.2.10:21960` becomes `2` -- so the
     host and its port are kept whole. That is also the string the admin page synthesises
     for a configured endpoint with no catalog rows yet, so the row a refresh writes
     lands on the same provider the page was already showing rather than beside it.
