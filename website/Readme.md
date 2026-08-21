@@ -350,6 +350,43 @@ the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
 internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
 agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
 
+The same switch also picks the **model**. Each agent profile has a `server_settings` key
+of its own — `llm_model_internal_search`, `llm_model_full_research`,
+`llm_summarization_model` — resolved by `admin::llm::model_for_profile`. **Unset means
+"use `llm_default_chat_model`"**, so a deployment that never touches these keys behaves
+exactly as it did before they existed, and an empty string is the same as unset. It exists
+because the profiles make different demands: one binds four tools and reads a handful of
+passages, the other binds thirty and reads the open web, and the summariser writes a chat
+title. Without it the only way to make one faster is to change the model for everything.
+
+A model the user picked in the composer still wins over the profile's: the key configures
+the deployment, not the conversation.
+
+**`llm_models.supports_tools` is `0` for every row**, so nothing checks that a model
+chosen here can call tools at all. The picker is a footgun until a capability probe
+populates that column.
+
+### Citations, and why they are not the search cards
+
+`cite_documents` is the agent's own claim about which documents its answer rests on. The
+search cards under a tool disclosure are everything a search returned; the **Sources
+strip** beneath an answer is what the agent chose, and rendering the first in place of the
+second is what turns an answer into a pile of links.
+
+Each citation carries a handle — `[D1]`, `[D2]` — allocated per chat **session** by the
+collection-search MCP server, so a handle from the first turn still resolves in the ninth.
+`markdown_text.rs` renders a bare `[Dn]` in the prose as a chip that scrolls the strip's
+entry into view and flashes it; `[D3](https://…)` is still a link, because the handle arm
+only fires when no `(` follows the `]`. The anchor id is minted by `source_anchor_id` and
+read by the strip — one function, because two spellings would scroll to nothing silently.
+
+**A quote that does not verify is shown, marked, never dropped.** A model that stops citing
+is a worse outcome than a citation the reader can see is unverified.
+
+De-duplication of document cards is **within a group and never across one**. A search card
+and a citation card for the same document are two different statements about it, and
+collapsing them would hide that the agent chose one of the things it found.
+
 ### Streaming a turn
 
 `send_message` does not hold the request open for the agent run. It takes the

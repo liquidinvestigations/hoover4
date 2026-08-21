@@ -63,10 +63,69 @@ pub async fn default_chat_model() -> String {
 }
 
 pub async fn summarization_model() -> String {
-    if let Ok(Some(v)) = settings::get_setting("llm_summarization_model").await {
-        if !v.trim().is_empty() {
-            return v;
+    model_for_profile(ChatProfile::Summarisation).await
+}
+
+/// Which agent a turn runs through, and therefore which model setting applies to it.
+///
+/// A lead orchestrator reading a hundred search hits and a summariser writing a chat
+/// title do not need the same model, and until they can be configured apart the only way
+/// to make one faster is to change the model for everything. The tool surfaces differ
+/// too: the internal-search profile binds four tools and the research profile binds
+/// thirty, which is a different demand on a model's instruction-following.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatProfile {
+    /// The user's own documents only. The narrow tool surface.
+    InternalSearch,
+    /// Documents plus the open web and the browser.
+    FullResearch,
+    /// Chat titles and transcript summaries. Not a conversation.
+    Summarisation,
+}
+
+impl ChatProfile {
+    /// The profile a turn with these options runs as.
+    pub fn of(options: common::chat_types::ChatOptions) -> Self {
+        if options.internet_tools {
+            Self::FullResearch
+        } else {
+            Self::InternalSearch
         }
+    }
+
+    /// The `server_settings` key holding this profile's model, or `None` for a profile
+    /// that has no key of its own.
+    pub fn setting_key(&self) -> &'static str {
+        match self {
+            Self::InternalSearch => "llm_model_internal_search",
+            Self::FullResearch => "llm_model_full_research",
+            Self::Summarisation => "llm_summarization_model",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::InternalSearch => "Internal search",
+            Self::FullResearch => "Full research",
+            Self::Summarisation => "Summarisation",
+        }
+    }
+
+    pub const ALL: [ChatProfile; 3] =
+        [Self::InternalSearch, Self::FullResearch, Self::Summarisation];
+}
+
+/// The model one profile runs on.
+///
+/// **Unset means "use the default"**, so the zero-configuration behaviour is the current
+/// behaviour and a deployment that never touches these keys is unaffected. An empty
+/// string is the same as unset: `server_settings` stores strings, and a key written as
+/// blank must not resolve to a model called nothing.
+pub async fn model_for_profile(profile: ChatProfile) -> String {
+    if let Ok(Some(v)) = settings::get_setting(profile.setting_key()).await
+        && !v.trim().is_empty()
+    {
+        return v;
     }
     default_chat_model().await
 }
@@ -78,8 +137,12 @@ pub async fn summarization_model() -> String {
 pub async fn resolve_chat_model(
     requested: Option<&str>,
     is_guest: bool,
+    profile: ChatProfile,
 ) -> anyhow::Result<String> {
-    let default = default_chat_model().await;
+    // The profile's model IS the default for this turn. A user who picked a model in the
+    // composer still gets what they picked — the per-profile key configures the
+    // deployment, not the conversation.
+    let default = model_for_profile(profile).await;
     if default.trim().is_empty() {
         anyhow::bail!("no LLM provider is configured; an administrator can add one under /admin/llm");
     }
@@ -231,11 +294,25 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
         );
     }
 
+    // What is STORED per profile, not what each one resolves to: the admin page has to
+    // distinguish "set to the same model as the default" from "not set", because the
+    // second follows the default when it changes and the first does not.
+    let mut profile_models = std::collections::BTreeMap::new();
+    for profile in ChatProfile::ALL {
+        let stored = settings::get_setting(profile.setting_key())
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        profile_models.insert(profile.setting_key().to_string(), stored);
+    }
+
     Ok(AdminLlmPage {
         providers: providers_map.into_values().collect(),
         models,
         default_chat_model: default_chat_model().await,
         summarization_model: summarization_model().await,
+        profile_models,
         refresh_in_flight: REFRESH_IN_FLIGHT.load(Ordering::Relaxed),
         llm_configured: llm_configured() || !default_chat_model().await.is_empty(),
     })
@@ -265,6 +342,29 @@ pub async fn admin_set_summarization_model(
     }
     ensure_model_known(&model_id).await?;
     settings::set_setting("llm_summarization_model", &model_id).await
+}
+
+/// Point one agent profile at a model, or clear it back to the default.
+///
+/// An empty `model_id` CLEARS the key rather than being an error, because "use the
+/// default" has to be reachable from the admin page — a picker that can only ever be set
+/// is a one-way door.
+pub async fn admin_set_profile_model(
+    user: &CurrentUser,
+    setting_key: String,
+    model_id: String,
+) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    let profile = ChatProfile::ALL
+        .into_iter()
+        .find(|p| p.setting_key() == setting_key)
+        .ok_or_else(|| anyhow::anyhow!("{setting_key:?} is not an agent profile"))?;
+    let model_id = model_id.trim().to_string();
+    if model_id.is_empty() {
+        return settings::set_setting(profile.setting_key(), "").await;
+    }
+    ensure_model_known(&model_id).await?;
+    settings::set_setting(profile.setting_key(), &model_id).await
 }
 
 pub async fn admin_set_model_allowed(
@@ -765,5 +865,38 @@ mod tests {
         // resolve_chat_model is async and needs ClickHouse; the guest short-circuit is
         // the property this module owns. Covered live.
         assert!(true);
+    }
+
+    /// The profile is decided by the tool surface a turn will have, because that is what
+    /// makes the demand on a model different.
+    #[test]
+    fn the_internet_switch_picks_the_profile() {
+        use common::chat_types::ChatOptions;
+        assert_eq!(
+            ChatProfile::of(ChatOptions { internet_tools: true, ..Default::default() }),
+            ChatProfile::FullResearch
+        );
+        assert_eq!(
+            ChatProfile::of(ChatOptions {
+                internet_tools: false,
+                deep_research: false,
+                locked: true
+            }),
+            ChatProfile::InternalSearch
+        );
+    }
+
+    /// Every profile has a key of its own, and no two share one — a collision would make
+    /// setting one profile's model change another's.
+    #[test]
+    fn every_profile_has_its_own_setting_key() {
+        let mut keys: Vec<&str> = ChatProfile::ALL.iter().map(|p| p.setting_key()).collect();
+        let count = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), count);
+        // The summariser keeps the key it already had, so an existing deployment's
+        // configuration survives.
+        assert_eq!(ChatProfile::Summarisation.setting_key(), "llm_summarization_model");
     }
 }

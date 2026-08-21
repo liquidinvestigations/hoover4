@@ -86,10 +86,20 @@ pub async fn admin_set_setting(
         "guest_permissions_mode" if value != "all" && value != "none" => {
             anyhow::bail!("guest_permissions_mode must be 'all' or 'none'");
         }
-        "llm_default_chat_model" | "llm_summarization_model" => {
+        "llm_default_chat_model" => {
             if value.trim().is_empty() {
                 anyhow::bail!("{key} must not be empty");
             }
+            if value.chars().count() > 200 {
+                anyhow::bail!("{key} is too long");
+            }
+        }
+        // The per-profile keys, unlike the default, MAY be empty: empty is how an
+        // administrator says "use the default", and without it the picker is a one-way
+        // door.
+        "llm_summarization_model"
+        | "llm_model_internal_search"
+        | "llm_model_full_research" => {
             if value.chars().count() > 200 {
                 anyhow::bail!("{key} is too long");
             }

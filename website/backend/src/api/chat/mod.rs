@@ -223,17 +223,26 @@ pub async fn send_message(
         anyhow::bail!("message is too long (max {MAX_MESSAGE_CHARS} characters)");
     }
 
+    let session = db_chat::get_session(username, &session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+
+    // Which profile this turn runs as decides which model setting applies to it, so the
+    // session is read first. Frozen options win where they exist; before the first turn
+    // nothing is frozen and what the client asked for is what will be frozen.
+    let turn_options = if session.options().locked {
+        session.options()
+    } else {
+        requested_options
+    };
     // Resolve the model before allocating a seq: a forged id must be refused, not merely
     // absent from the dropdown.
     let llm_model = crate::api::admin::llm::resolve_chat_model(
         requested_model.as_deref(),
         user.is_guest,
+        crate::api::admin::llm::ChatProfile::of(turn_options),
     )
     .await?;
-
-    let session = db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
 
     // Live permissions win over whatever the session was created with.
     let permitted = list_permitted_collections(user).await?;

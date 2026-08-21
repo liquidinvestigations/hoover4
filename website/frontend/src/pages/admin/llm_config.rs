@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_get_llm, admin_refresh_catalog, admin_set_default_chat_model, admin_set_model_allowed,
+    admin_set_profile_model,
     admin_set_summarization_model,
 };
 use crate::components::admin_components::{
@@ -219,7 +220,91 @@ fn DefaultsPanel(
                 p { style: "{HELP_TEXT} margin: 12px 0 0;",
                     "Current chat default: {page.default_chat_model}. Summarisation: {page.summarization_model}."
                 }
+
+                h3 { style: "font-size: 15px; margin: 18px 0 4px;", "Per-profile models" }
+                p { style: "{HELP_TEXT} margin: 0 0 10px;",
+                    "A lead orchestrator reading a hundred search hits and a summariser                      writing a chat title do not need the same model. Leave a row empty to                      use the chat default; clearing a row puts it back on the default."
+                }
+                for (key, label) in PROFILE_ROWS {
+                    ProfileModelRow {
+                        key: "{key}",
+                        setting_key: key.to_string(),
+                        label: label.to_string(),
+                        current: page.profile_models.get(key).cloned().unwrap_or_default(),
+                        fallback: page.default_chat_model.clone(),
+                        flash,
+                        reload,
+                    }
+                }
             }
+        }
+    }
+}
+
+/// The profiles that get their own model, and what the admin page calls each one.
+///
+/// The keys are the `server_settings` keys the backend resolves, so a row here that names
+/// a key the backend does not know is refused by the setter rather than silently stored.
+const PROFILE_ROWS: [(&str, &str); 3] = [
+    ("llm_model_internal_search", "Internal search"),
+    ("llm_model_full_research", "Full research"),
+    ("llm_summarization_model", "Summarisation"),
+];
+
+#[component]
+fn ProfileModelRow(
+    setting_key: String,
+    label: String,
+    current: String,
+    fallback: String,
+    mut flash: Signal<Option<Result<String, String>>>,
+    mut reload: Signal<u32>,
+) -> Element {
+    let mut value = use_signal(|| current.clone());
+    // What this profile runs on today: the stored value, or the default when nothing is
+    // stored. Shown because "empty" and "the same as the default" look identical in the
+    // box and mean different things the moment the default changes.
+    let effective = if current.trim().is_empty() {
+        format!("{fallback} (the chat default)")
+    } else {
+        current.clone()
+    };
+    rsx! {
+        div {
+            style: "display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 10px;",
+            label { style: LABEL,
+                "{label}"
+                input {
+                    style: "{INPUT} min-width: 320px;",
+                    placeholder: "use the chat default",
+                    value: "{value}",
+                    oninput: move |e| value.set(e.value()),
+                }
+            }
+            button {
+                style: BTN,
+                onclick: {
+                    let setting_key = setting_key.clone();
+                    let label = label.clone();
+                    move |_| {
+                        let setting_key = setting_key.clone();
+                        let label = label.clone();
+                        let id = value.read().clone();
+                        spawn(async move {
+                            match admin_set_profile_model(setting_key, id).await {
+                                Ok(()) => {
+                                    flash.set(Some(Ok(format!("{label} model saved"))));
+                                    let next = *reload.peek() + 1;
+                                    reload.set(next);
+                                }
+                                Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
+                            }
+                        });
+                    }
+                },
+                "Save"
+            }
+            span { style: "{HELP_TEXT} align-self: center;", "Runs on: {effective}" }
         }
     }
 }

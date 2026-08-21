@@ -35,6 +35,12 @@ pub struct AdminLlmPage {
     pub models: Vec<LlmModelItem>,
     pub default_chat_model: String,
     pub summarization_model: String,
+    /// The model each agent profile runs on, keyed by the profile's setting key. A
+    /// profile absent from this map, or present with an empty value, runs on
+    /// `default_chat_model` — unset means "use the default", so a deployment that never
+    /// touches these keys behaves exactly as it did before they existed.
+    #[serde(default)]
+    pub profile_models: std::collections::BTreeMap<String, String>,
     /// True when a catalog refresh is currently running in-process.
     pub refresh_in_flight: bool,
     /// True when `LLM_BASE_URL` is unset — chat is disabled.

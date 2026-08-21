@@ -20,6 +20,8 @@ fn setting_description(key: &str) -> &'static str {
         }
         "llm_default_chat_model" => "Model new chats start on",
         "llm_summarization_model" => "Model that writes chat titles and summaries",
+        "llm_model_internal_search" => "Model for documents-only chats (empty = the chat default)",
+        "llm_model_full_research" => "Model for chats with the web tools on (empty = the chat default)",
         "embeddings_serving_model" | "embeddings_serving_dim" => {
             "Written by `main.py probe-embeddings` — what the endpoint ACTUALLY serves. \
              Editing this by hand does not change the server."
