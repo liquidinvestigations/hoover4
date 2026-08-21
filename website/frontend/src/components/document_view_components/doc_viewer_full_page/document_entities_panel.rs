@@ -256,9 +256,12 @@ fn EntityGroup(
         group_items.iter().skip(start).take(PAGE_SIZE).cloned().collect();
     let shown_cap = pages * PAGE_SIZE;
     let hidden = total.saturating_sub(shown_cap);
-    // Only a rule-found value has a card, because only a rule has a catalogue entry
-    // behind it. Offering the toggle over a list of names would open nothing.
-    let has_details = entity_type.is_rule_found();
+    // A card comes from the rule that produced the value, so the toggle appears when the
+    // group holds at least one value that names one. Asking the SECTION instead would
+    // deny cards to `Other`, which is where every scanner type without a section of its
+    // own lands — CVEs, IMEIs, MAC addresses, autonomous-system numbers — each of them a
+    // validated value the scanner can explain in full.
+    let has_details = group_items.iter().any(|item| !item.rule_id.is_empty());
     let is_expanded = expanded() && has_details;
 
     rsx! {
@@ -304,7 +307,24 @@ fn EntityGroup(
                 div {
                     style: "display: flex; flex-direction: column; gap: 10px;",
                     for item in visible.clone() {
-                        EntityCard { key: "{item.value}", item }
+                        {
+                            // A value no rule produced has no card to open, so it stays a
+                            // chip inside an expanded group. `Other` mixes the two, and a
+                            // card that can only say "no details available" is worse than
+                            // the chip it replaced.
+                            let carded = !item.rule_id.is_empty();
+                            let value = item.value.clone();
+                            rsx! {
+                                div {
+                                    key: "{value}",
+                                    if carded {
+                                        EntityCard { item: item.clone() }
+                                    } else {
+                                        EntityChip { item: item.clone(), show_provider }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
