@@ -1,0 +1,217 @@
+{"name": "iso date in prose", "text": "The transfer was ordered on 2021-03-04 and cleared two days later.", "expect": [{"type": "date", "text": "2021-03-04", "value": "2021-03-04"}]}
+{"name": "iso timestamp with offset", "text": "audit entry 2021-03-04T09:12:00+02:00 user=ap", "expect": [{"type": "date", "text": "2021-03-04T09:12:00+02:00", "value": "2021-03-04T09:12:00+02:00"}]}
+{"name": "iso timestamp zulu", "text": "created_at=2019-11-30T23:59:59Z", "expect": [{"type": "date", "text": "2019-11-30T23:59:59Z", "value": "2019-11-30T23:59:59Z"}]}
+{"name": "compact offset spelling", "text": "Received: 2020-01-02T03:04:05+0530", "expect": [{"type": "date", "text": "2020-01-02T03:04:05+0530", "value": "2020-01-02T03:04:05+05:30"}]}
+{"name": "space separated timestamp", "text": "2018-07-16 14:22 committee minutes", "expect": [{"type": "date", "text": "2018-07-16 14:22", "value": "2018-07-16T14:22"}]}
+{"name": "leap day is a real day", "text": "signed 2020-02-29 in Vienna", "expect": [{"type": "date", "text": "2020-02-29", "value": "2020-02-29"}]}
+{"name": "two dates in one line", "text": "valid 2021-01-01 through 2021-12-31", "expect": [{"type": "date", "text": "2021-01-01", "value": "2021-01-01"}, {"type": "date", "text": "2021-12-31", "value": "2021-12-31"}]}
+{"name": "date in a bracketed log prefix", "text": "[2022-05-09T00:00:01Z] worker started", "expect": [{"type": "date", "text": "2022-05-09T00:00:01Z", "value": "2022-05-09T00:00:01Z"}]}
+{"name": "not a leap year", "text": "dated 2021-02-29 which does not exist", "expect": []}
+{"name": "month out of range", "text": "reference 2021-13-01 in the ledger", "expect": []}
+{"name": "day out of range", "text": "reference 2021-04-31 in the ledger", "expect": []}
+{"name": "digits either side", "text": "checksum 12021-03-047 recorded", "expect": []}
+{"name": "semantic version is not a date", "text": "upgraded to 1.2.3 and then 10-04-2021 style stamps", "expect": []}
+{"name": "implausible year", "text": "record 0004-01-01 from the archive index", "expect": []}
+{"name": "hour out of range leaves the date it contains", "text": "stamp 2021-03-04T24:30:00Z rejected", "expect": [{"type": "date", "text": "2021-03-04", "value": "2021-03-04"}]}
+{"name": "plain address", "text": "Please write to ops@example.org for access.", "expect": [{"type": "email", "text": "ops@example.org", "value": "ops@example.org"}]}
+{"name": "mixed case domain", "text": "From: Anna Popescu <Anna.Popescu@Example.CO.UK>", "expect": [{"type": "email", "text": "Anna.Popescu@Example.CO.UK", "value": "Anna.Popescu@example.co.uk"}]}
+{"name": "plus addressing", "text": "billing+invoices@company.ro received the notice", "expect": [{"type": "email", "text": "billing+invoices@company.ro", "value": "billing+invoices@company.ro"}]}
+{"name": "address at end of sentence", "text": "Send it to press@occrp.org.", "expect": [{"type": "email", "text": "press@occrp.org", "value": "press@occrp.org"}]}
+{"name": "two addresses", "text": "cc: a.one@example.com, b.two@example.net", "expect": [{"type": "email", "text": "a.one@example.com", "value": "a.one@example.com"}, {"type": "email", "text": "b.two@example.net", "value": "b.two@example.net"}]}
+{"name": "long tld", "text": "hello@my-agency.consulting is the contact", "expect": [{"type": "email", "text": "hello@my-agency.consulting", "value": "hello@my-agency.consulting"}]}
+{"name": "sprite filename", "text": "background-image: url(icons@2x.png);", "expect": []}
+{"name": "unregistered internal tld", "text": "the queue is at worker@broker.internal", "expect": []}
+{"name": "twitter style handle", "text": "posted by @example about the leak", "expect": []}
+{"name": "version suffix is not a domain", "text": "artifact bundle@1.2.min.js was rebuilt", "expect": []}
+{"name": "date and address together", "text": "On 2021-03-04 ops@example.org filed the request.", "expect": [{"type": "date", "text": "2021-03-04", "value": "2021-03-04"}, {"type": "email", "text": "ops@example.org", "value": "ops@example.org"}]}
+{"name": "prose with neither", "text": "The committee met in the spring and adjourned without a vote.", "expect": []}
+{"name": "hash is neither", "text": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "expect": []}
+{"name": "impossible clock beside a bare date", "text": "logged 2021-03-04T25:00:00Z then 2021-03-05", "expect": [{"type": "date", "text": "2021-03-04", "value": "2021-03-04"}, {"type": "date", "text": "2021-03-05", "value": "2021-03-05"}]}
+{"name": "unregistered tld beside a real address", "text": "notes@example.zzz billing@example.com", "expect": [{"type": "email", "text": "billing@example.com", "value": "billing@example.com"}]}
+{"name": "mail header date", "text": "Date: Thu, 04 Mar 2021 09:12:00 +0200", "expect": [{"type": "date", "text": "Thu, 04 Mar 2021 09:12:00 +0200", "value": "2021-03-04T09:12:00+02:00"}]}
+{"name": "mail header date with a wrong weekday", "text": "Date: Mon, 04 Mar 2021 09:12:00 +0200", "expect": []}
+{"name": "common log format line", "text": "10.0.0.4 - - [04/Mar/2021:09:12:00 +0200] \"GET /index HTTP/1.1\" 200 512", "expect": [{"type": "date", "text": "04/Mar/2021:09:12:00 +0200", "value": "2021-03-04T09:12:00+02:00"}, {"type": "network", "text": "10.0.0.4", "value": "10.0.0.4"}]}
+{"name": "slashed date without the log brackets", "text": "invoice dated 04/Mar/2021 and paid", "expect": []}
+{"name": "iso week date", "text": "shipped in 2021-W09-4 per the plan", "expect": [{"type": "date", "text": "2021-W09-4", "value": "2021-03-04"}]}
+{"name": "iso week date in the basic spelling", "text": "lot code 2021W094 on the label", "expect": [{"type": "date", "text": "2021W094", "value": "2021-03-04"}]}
+{"name": "a week that does not exist in that year", "text": "shipped in 2021-W53-1 per the plan", "expect": []}
+{"name": "a week without a weekday names no day", "text": "reporting period 2021-W09", "expect": []}
+{"name": "yearless syslog stamp", "text": "Mar  4 09:12:00 host sshd[2114]: accepted", "expect": []}
+{"name": "bare eight digit date shape", "text": "batch 20210304 released", "expect": []}
+{"name": "iban in a payment instruction", "text": "Please remit to IBAN RO49 AAAA 1B31 0075 9384 0000 before Friday.", "expect": [{"type": "bank_account", "text": "RO49 AAAA 1B31 0075 9384 0000", "value": "RO49AAAA1B31007593840000"}]}
+{"name": "compact iban", "text": "acct GB82WEST12345698765432 closed", "expect": [{"type": "bank_account", "text": "GB82WEST12345698765432", "value": "GB82WEST12345698765432"}]}
+{"name": "iban with a mistyped check digit", "text": "acct GB83WEST12345698765432 closed", "expect": []}
+{"name": "iban glued to a trailing digit run", "text": "IBAN GB82WEST123456987654321234 booked", "expect": [{"type": "bank_account", "text": "GB82WEST12345698765432", "value": "GB82WEST12345698765432"}]}
+{"name": "bic beside its label", "text": "SWIFT AGRIFRPP882 for the beneficiary", "expect": [{"type": "bank_account", "text": "AGRIFRPP882", "value": "AGRIFRPP882"}]}
+{"name": "capitalised words that look like bank codes", "text": "SECTION 4: DOCUMENT CUSTOMER RETAINED BY REGISTRY", "expect": []}
+{"name": "sha-256 hash", "text": "sha256 9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08", "expect": []}
+{"name": "uuid", "text": "trace id 3f2504e0-4f89-11d3-9a0c-0305e82c3301", "expect": []}
+{"name": "semantic version string", "text": "upgraded to release 12.04.2019 build 4471", "expect": []}
+{"name": "invoice number", "text": "invoice INV2021030400012 issued", "expect": []}
+{"name": "lei in a counterparty list", "text": "counterparty LEI 213800KUD8LAJWSQ9D15 on file", "expect": [{"type": "company_id", "text": "213800KUD8LAJWSQ9D15", "value": "213800KUD8LAJWSQ9D15"}]}
+{"name": "lei with one character changed", "text": "counterparty LEI 213800KUD8LXJWSQ9D15 on file", "expect": []}
+{"name": "sha-1 digest", "text": "sha1 DA39A3EE5E6B4B0D3255BFEF95601890AFD80709", "expect": []}
+{"name": "isin in a holdings table", "text": "holding US0378331005 at par value", "expect": [{"type": "security", "text": "US0378331005", "value": "US0378331005"}]}
+{"name": "isin with a mistyped check digit", "text": "holding US0378331003 at par value", "expect": []}
+{"name": "cusip beside its label", "text": "CUSIP DUS0421C5 confirmed by the custodian", "expect": [{"type": "security", "text": "DUS0421C5", "value": "DUS0421C5"}]}
+{"name": "cusip shaped part number with no cue", "text": "part number DUS0421C5 confirmed by the supplier", "expect": []}
+{"name": "sedol beside its label", "text": "SEDOL B15KXQ8 as at close", "expect": [{"type": "security", "text": "B15KXQ8", "value": "B15KXQ8"}]}
+{"name": "sedol with a mistyped check digit", "text": "SEDOL B15KXQ7 as at close", "expect": []}
+{"name": "imo number behind its marker", "text": "The tanker IMO 9319466 was detained at Piraeus.", "expect": [{"type": "vessel", "text": "IMO 9319466", "value": "9319466"}]}
+{"name": "hull number admitted by a cue word", "text": "The vessel, 8814275, changed flag twice.", "expect": [{"type": "vessel", "text": "8814275", "value": "8814275"}]}
+{"name": "seven digit order number is not a hull", "text": "Order 9319466 shipped on Tuesday.", "expect": []}
+{"name": "imo number with a broken check digit", "text": "IMO 8814274 is not a hull number.", "expect": []}
+{"name": "mmsi beside its label", "text": "AIS target MMSI 244660000 heading north.", "expect": [{"type": "vessel", "text": "244660000", "value": "244660000"}]}
+{"name": "nine digit reference is not an mmsi", "text": "Reference 244660000 in the ledger.", "expect": []}
+{"name": "mmsi with an unallocated mid", "text": "MMSI 999123456 broadcasting", "expect": []}
+{"name": "container number on a manifest", "text": "Container CSQU3054383 sealed at Rotterdam.", "expect": [{"type": "cargo_container", "text": "CSQU3054383", "value": "CSQU3054383"}]}
+{"name": "container number with a broken check digit", "text": "Container CSQU3054384 was never loaded.", "expect": []}
+{"name": "imei beside its label", "text": "Handset IMEI 354178036859789 seized at the border.", "expect": [{"type": "device", "text": "354178036859789", "value": "354178036859789"}]}
+{"name": "imei in its grouped spelling", "text": "device 35-417803-685978-9 registered", "expect": [{"type": "device", "text": "35-417803-685978-9", "value": "354178036859789"}]}
+{"name": "fifteen digit run with no device word", "text": "Reference 354178036859789 in the ledger.", "expect": []}
+{"name": "imei with a broken check digit", "text": "Handset IMEI 354178036859781 seized.", "expect": []}
+{"name": "mac address in a lease", "text": "lease for 00:1B:44:11:3A:B7 expires tonight", "expect": [{"type": "device", "text": "00:1B:44:11:3A:B7", "value": "00:1b:44:11:3a:b7"}]}
+{"name": "certificate fingerprint is not a mac address", "text": "SHA1 fingerprint 5E:FF:56:A2:AF:15:22:B6:C4:5F:6E:B4:38:96:1F:AE:07:5B:8C:F1", "expect": []}
+{"name": "sha256 hash is not an identifier", "text": "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 verified", "expect": []}
+{"name": "git commit hash is not a mac address", "text": "commit 3f95b1a9c04de218f1b2c33ad7e9a5c8b6d40f11 on master", "expect": []}
+{"name": "ipv4 address in a firewall note", "text": "block 203.0.113.42 at the edge", "expect": [{"type": "network", "text": "203.0.113.42", "value": "203.0.113.42"}]}
+{"name": "ipv4 network in cidr form", "text": "route 198.51.100.0/24 via the gateway", "expect": [{"type": "network", "text": "198.51.100.0/24", "value": "198.51.100.0"}]}
+{"name": "ipv6 address in a header", "text": "X-Forwarded-For: 2001:db8::8a2e:370:7334 accepted", "expect": [{"type": "network", "text": "2001:db8::8a2e:370:7334", "value": "2001:db8::8a2e:370:7334"}]}
+{"name": "four part version string is not an address", "text": "upgraded to firmware version 10.0.0.4 last night", "expect": []}
+{"name": "semantic version string", "text": "released 1.24.3 to production", "expect": []}
+{"name": "uuid is not an identifier", "text": "job 550e8400-e29b-41d4-a716-446655440000 queued", "expect": []}
+{"name": "autonomous system number", "text": "announced by AS64512 since March", "expect": [{"type": "network", "text": "AS64512", "value": "AS64512"}]}
+{"name": "asn in its three letter spelling", "text": "peer ASN 15169 upstream", "expect": [{"type": "network", "text": "ASN 15169", "value": "AS15169"}]}
+{"name": "bare number is not an autonomous system", "text": "carried 64512 tonnes of cargo", "expect": []}
+{"name": "cve identifier in a patch note", "text": "patched CVE-2021-44228 across the estate", "expect": [{"type": "vulnerability", "text": "CVE-2021-44228", "value": "CVE-2021-44228"}]}
+{"name": "cve shaped run with an impossible year", "text": "reference CVE-1066-0160 in the file", "expect": []}
+{"name": "doi in a citation", "text": "published as 10.1000/182 last year", "expect": [{"type": "publication", "text": "10.1000/182", "value": "10.1000/182"}]}
+{"name": "doi with a trailing full stop", "text": "see doi 10.1145/3292500.3330701.", "expect": [{"type": "publication", "text": "10.1145/3292500.3330701", "value": "10.1145/3292500.3330701"}]}
+{"name": "orcid with an x check character", "text": "author 0000-0002-1694-233X of the paper", "expect": [{"type": "publication", "text": "0000-0002-1694-233X", "value": "0000-0002-1694-233X"}]}
+{"name": "orcid with a broken check character", "text": "author 0000-0002-1825-0098 of the paper", "expect": []}
+{"name": "message id behind its header name", "text": "Message-ID: <20210304091200.ABC123@mail.example.com>", "expect": [{"type": "message_id", "text": "<20210304091200.ABC123@mail.example.com>", "value": "20210304091200.ABC123@mail.example.com"}]}
+{"name": "page range is not an identifier", "text": "see pages 1825-0097 of the bound volume", "expect": []}
+{"name": "invoice number is not an identifier", "text": "Invoice INV-2021-44228 remains unpaid.", "expect": []}
+{"name": "base64 blob is not an identifier", "text": "payload aGVsbG8gd29ybGQgdGhpcyBpcyBub3QgYW4gaWRlbnRpZmllcg== decoded", "expect": []}
+{"name": "decimal coordinates in a note", "text": "meet at 48.8583, 2.2945 tomorrow", "expect": [{"type": "coordinates", "text": "48.8583, 2.2945", "value": "48.8583,2.2945"}]}
+{"name": "coarse number pair is not a coordinate", "text": "readings of 12.345, 67.890 were logged", "expect": []}
+{"name": "plus code in an address line", "text": "the office is at 8FVC9G8F+6W", "expect": [{"type": "coordinates", "text": "8FVC9G8F+6W", "value": "47.3655625,8.524812500000001"}]}
+{"name": "bitcoin address in a ransom note", "text": "send to 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa within 48 hours", "expect": [{"type": "crypto_wallet", "text": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "value": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"}]}
+{"name": "segwit address in an invoice", "text": "pay bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4 today", "expect": [{"type": "crypto_wallet", "text": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", "value": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"}]}
+{"name": "bitcoin address with a broken checksum", "text": "send to 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb within 48 hours", "expect": []}
+{"name": "checksummed ethereum address", "text": "wallet 0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed drained", "expect": [{"type": "crypto_wallet", "text": "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", "value": "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"}]}
+{"name": "ethereum address with the wrong capitalisation", "text": "wallet 0x5aAeb6053f3E94C9b9A09f33669435E7Ef1BeAed drained", "expect": []}
+{"name": "codice fiscale in a contract", "text": "taxpayer RCCMNL83S18D969H filed late", "expect": [{"type": "national_id", "text": "RCCMNL83S18D969H", "value": "RCCMNL83S18D969H"}]}
+{"name": "codice fiscale with a broken check character", "text": "taxpayer RCCMNL83S18D969A filed late", "expect": []}
+{"name": "spanish nie on a register", "text": "foreign national X2482300W on the register", "expect": [{"type": "national_id", "text": "X2482300W", "value": "X2482300W"}]}
+{"name": "spanish number with a broken check letter", "text": "resident 54362315Z on the register", "expect": []}
+{"name": "curp in a filing", "text": "registered as BOXW310820HNERXN09", "expect": [{"type": "national_id", "text": "BOXW310820HNERXN09", "value": "BOXW310820HNERXN09"}]}
+{"name": "curp with a broken check digit", "text": "registered as BOXW310820HNERXN08", "expect": []}
+{"name": "pan beside its label", "text": "PAN ACUPA7085R on the return", "expect": [{"type": "national_id", "text": "ACUPA7085R", "value": "ACUPA7085R"}]}
+{"name": "pan shaped code with no label", "text": "code ACUPA7085R in the export", "expect": []}
+{"name": "amount with a leading iso code", "text": "The invoice total is EUR 1.234,56 excluding VAT.", "expect": [{"type": "money", "text": "EUR 1.234,56", "value": "EUR 123456"}]}
+{"name": "amount with a trailing iso code", "text": "We were billed 1,234.56 USD for the quarter.", "expect": [{"type": "money", "text": "1,234.56 USD", "value": "USD 123456"}]}
+{"name": "amount with a space thousands group", "text": "The price agreed was USD 1 234,56 per unit.", "expect": [{"type": "money", "text": "USD 1 234,56", "value": "USD 123456"}]}
+{"name": "currency with no minor unit", "text": "A handling fee of JPY 1200 was applied.", "expect": [{"type": "money", "text": "JPY 1200", "value": "JPY 1200"}]}
+{"name": "currency with three minor units", "text": "The fee came to BHD 1,234.567 in total.", "expect": [{"type": "money", "text": "BHD 1,234.567", "value": "BHD 1234567"}]}
+{"name": "unambiguous currency symbol", "text": "The price is €1.234,56 including delivery.", "expect": [{"type": "money", "text": "€1.234,56", "value": "EUR 123456"}]}
+{"name": "shared currency symbol", "text": "The price is $1,200.00 in the catalogue.", "expect": [{"type": "money", "text": "$1,200.00", "value": "USD 120000"}]}
+{"name": "symbol with a distinguishing capital", "text": "The price is R$49,90 in Sao Paulo.", "expect": [{"type": "money", "text": "R$49,90", "value": "BRL 4990"}]}
+{"name": "capitals that are not part of the symbol", "text": "The price is US$40 at the door.", "expect": [{"type": "money", "text": "$40", "value": "USD 4000"}]}
+{"name": "ambiguous separator is still money", "text": "The total was EUR 1.234 exactly.", "expect": [{"type": "money", "text": "EUR 1.234", "value": "EUR 123400"}]}
+{"name": "version string beside a currency code", "text": "The connector was upgraded to USD 1.2.3 in staging.", "expect": []}
+{"name": "page range beside a currency code", "text": "See USD 120-134 for the payment schedule.", "expect": []}
+{"name": "conversion rate is not a price", "text": "Amounts were converted at USD 1.2345 per unit.", "expect": []}
+{"name": "three capitals that are not a currency", "text": "The ISO 9001 audit is booked for spring.", "expect": []}
+{"name": "currency code that is an english word", "text": "TOP 40 singles of the year were remastered.", "expect": []}
+{"name": "part number beside a currency code", "text": "Part number EUR 1200X is out of stock.", "expect": []}
+{"name": "austrian vat number", "text": "supplier ATU13585627 on file", "expect": [{"type": "company_id", "text": "ATU13585627", "value": "ATU13585627"}]}
+{"name": "dutch vat number", "text": "factuur NL004495445B01 voldaan", "expect": [{"type": "company_id", "text": "NL004495445B01", "value": "NL004495445B01"}]}
+{"name": "italian vat number", "text": "partita IVA IT00743110157 iscritta", "expect": [{"type": "company_id", "text": "IT00743110157", "value": "IT00743110157"}]}
+{"name": "greek vat number under the el prefix", "text": "counterparty EL094259216 in Athens", "expect": [{"type": "company_id", "text": "EL094259216", "value": "EL094259216"}]}
+{"name": "french vat number", "text": "vendor FR23334175221 registered", "expect": [{"type": "company_id", "text": "FR23334175221", "value": "FR23334175221"}]}
+{"name": "german vat number with a bad check digit", "text": "invoice DE136695978 was rejected at entry", "expect": []}
+{"name": "polish vat number with a bad check digit", "text": "reference PL8567346216 failed validation", "expect": []}
+{"name": "luxembourg vat number with bad check digits", "text": "order LU15027443 cancelled", "expect": []}
+{"name": "czech vat number with a bad check digit", "text": "CZ25123890 could not be verified", "expect": []}
+{"name": "greek vat number written with the iso country code", "text": "GR094259216 is not how a Greek VAT number is written", "expect": []}
+{"name": "capitalised words opening with member state prefixes", "text": "ATTENTION DEADLINE ROUTINE PLATFORM ITEMISED", "expect": []}
+{"name": "short romanian tax number shape in prose", "text": "detour via route RO51 until Friday", "expect": []}
+{"name": "british vat number", "text": "supplier GB980780684 on file", "expect": [{"type": "company_id", "text": "GB980780684", "value": "GB980780684"}]}
+{"name": "swiss vat number with its tax suffix", "text": "Rechnung CHE107787577MWST bezahlt", "expect": [{"type": "company_id", "text": "CHE107787577MWST", "value": "CHE107787577MWST"}]}
+{"name": "norwegian vat number with its tax suffix", "text": "leverandor NO995525828MVA registrert", "expect": [{"type": "company_id", "text": "NO995525828MVA", "value": "NO995525828MVA"}]}
+{"name": "serbian vat number", "text": "counterparty RS101134702 in Belgrade", "expect": [{"type": "company_id", "text": "RS101134702", "value": "RS101134702"}]}
+{"name": "british vat number with a bad check digit", "text": "invoice GB802311781 was rejected at entry", "expect": []}
+{"name": "swiss vat number with a bad check digit", "text": "CHE107787578IVA could not be verified", "expect": []}
+{"name": "norwegian vat number with a bad check digit", "text": "order NO995525829MVA cancelled", "expect": []}
+{"name": "turkish tax number with a bad check digit", "text": "reference TR4540536921 failed validation", "expect": []}
+{"name": "british prefix in front of an ordinary number", "text": "reference GB000123456 in the ledger", "expect": []}
+{"name": "norwegian organisation number without the tax suffix", "text": "orgnr NO995525828 is not a VAT number on its own", "expect": []}
+{"name": "international number in prose", "text": "Call +40 21 555 0100 for details.", "expect": [{"type": "phone", "text": "+40 21 555 0100", "value": "+40215550100"}]}
+{"name": "north american number with hyphens", "text": "Reach us on +1 202-555-0143 during office hours.", "expect": [{"type": "phone", "text": "+1 202-555-0143", "value": "+12025550143"}]}
+{"name": "german number with a bracketed trunk digit", "text": "Mobil: +49 (0) 30 901820 in Berlin", "expect": [{"type": "phone", "text": "+49 (0) 30 901820", "value": "+4930901820"}]}
+{"name": "number dialled with the international prefix", "text": "dial 0044 20 7123 4567 from abroad", "expect": [{"type": "phone", "text": "0044 20 7123 4567", "value": "+442071234567"}]}
+{"name": "freephone number that belongs to no country", "text": "freephone +800 1234 5678 worldwide", "expect": [{"type": "phone", "text": "+800 1234 5678", "value": "+80012345678"}]}
+{"name": "brazilian mobile number", "text": "WhatsApp +55 11 91234-5678 Sao Paulo", "expect": [{"type": "phone", "text": "+55 11 91234-5678", "value": "+5511912345678"}]}
+{"name": "number written straight after a tel scheme", "text": "the desk line is tel:+40215550100 during the week", "expect": [{"type": "phone", "text": "+40215550100", "value": "+40215550100"}]}
+{"name": "french number written with dots", "text": "Tel. +33 1.42.68.53.00 Paris", "expect": [{"type": "phone", "text": "+33 1.42.68.53.00", "value": "+33142685300"}]}
+{"name": "number followed by a separate figure", "text": "call +40 21 555 0100 3 times before escalating", "expect": [{"type": "phone", "text": "+40 21 555 0100", "value": "+40215550100"}]}
+{"name": "number the metadata only half recognises", "text": "Fax +40 200 001 132 in Bucharest", "expect": [{"type": "phone", "text": "+40 200 001 132", "value": "+40200001132"}]}
+{"name": "national format without a region to read it in", "text": "Ring 020 7123 4567 and ask for Ana.", "expect": []}
+{"name": "north american number in national format", "text": "(202) 555-0143 is the desk number", "expect": []}
+{"name": "invoice number with two leading zeros", "text": "invoice 0012345678901 paid in full", "expect": []}
+{"name": "hyphen joined run that continues past a number", "text": "ticket +40-21-555-0100-999 raised", "expect": []}
+{"name": "release number with a build tag", "text": "release 2.10.3+40712345678 build", "expect": []}
+{"name": "page range and year in a citation", "text": "Chen Li. VLDB J. 12(3): 211-227 (2003).", "expect": []}
+{"name": "country calling code that was never assigned", "text": "+99 12 345 6789 nowhere", "expect": []}
+{"name": "digits no country issues", "text": "Fax +40 999 999 999 in Bucharest", "expect": []}
+{"name": "plus addressed mailbox is an address", "text": "user+40712345678@example.com wrote in", "expect": [{"type": "email", "text": "user+40712345678@example.com", "value": "user+40712345678@example.com"}]}
+{"name": "timestamp whose minutes follow the digits", "text": "logged at +41 2012-01-02 08:30 today", "expect": [{"type": "date", "text": "2012-01-02 08:30", "value": "2012-01-02T08:30"}]}
+{"name": "three international numbers in one line", "text": "phone list: +40 21 555 0100, +44 20 7123 4567, +1 202-555-0143", "expect": [{"type": "phone", "text": "+40 21 555 0100", "value": "+40215550100"}, {"type": "phone", "text": "+44 20 7123 4567", "value": "+442071234567"}, {"type": "phone", "text": "+1 202-555-0143", "value": "+12025550143"}]}
+{"name": "number with an extension after it", "text": "the switchboard is +1 (202) 555-0143 x4321", "expect": [{"type": "phone", "text": "+1 (202) 555-0143", "value": "+12025550143"}]}
+{"name": "semantic version with build metadata", "text": "semver v1.2.3+20130313144700 metadata", "expect": []}
+{"name": "bank reference with two leading zeros", "text": "bank ref 00447891234567890123 posted", "expect": []}
+{"name": "grouped order number starting with zeros", "text": "order 00-1234-5678-9012 shipped", "expect": []}
+{"name": "header block keeps the address and the message id apart", "text": "To: <vkaminski@aol.com>\nCC:\nMessage-ID: <200012101556.KAA12345@mail.example.com>", "expect": [{"type": "email", "text": "vkaminski@aol.com", "value": "vkaminski@aol.com"}, {"type": "message_id", "text": "<200012101556.KAA12345@mail.example.com>", "value": "200012101556.KAA12345@mail.example.com"}]}
+{"name": "message id with an internal host on the right", "text": "Message-ID: <28519439.1075856498412.JavaMail.evans@thyme>", "expect": [{"type": "message_id", "text": "<28519439.1075856498412.JavaMail.evans@thyme>", "value": "28519439.1075856498412.JavaMail.evans@thyme"}]}
+{"name": "header name mentioned in prose labels nothing", "text": "Please quote the Message-ID when you reply to <legal@example.com>", "expect": [{"type": "email", "text": "legal@example.com", "value": "legal@example.com"}]}
+{"name": "header name to the right of the address labels nothing", "text": "the address <anna@example.co.uk> appears in the References header", "expect": [{"type": "email", "text": "anna@example.co.uk", "value": "anna@example.co.uk"}]}
+{"name": "angle brackets in a grammar are not a message id", "text": "the tuple <a@b> in the grammar", "expect": []}
+{"name": "cusip label does not reach the next line", "text": "CUSIP 037833100\nReference 594918104", "expect": [{"type": "security", "text": "037833100", "value": "037833100"}]}
+{"name": "imo label does not reach the next line", "text": "IMO 9319466\nHull 366053209", "expect": [{"type": "vessel", "text": "IMO 9319466", "value": "9319466"}]}
+{"name": "a folded header still labels its value", "text": "References:\n <20210304091200.ABC123@mail.example.com>", "expect": [{"type": "message_id", "text": "<20210304091200.ABC123@mail.example.com>", "value": "20210304091200.ABC123@mail.example.com"}]}
+{"name": "iban in the grouped spelling a statement prints", "text": "credit LC55 HEMM 0001 0001 0012 0012 0002 3015 on receipt", "expect": [{"type": "bank_account", "text": "LC55 HEMM 0001 0001 0012 0012 0002 3015", "value": "LC55HEMM000100010012001200023015"}]}
+{"name": "hyphenated part number is not an iban", "text": "part number AB12-3456-7890-1234-5678 on the order", "expect": []}
+{"name": "hyphenated ticket reference is not an iban", "text": "ticket XX00-0000-0000-0000 raised", "expect": []}
+{"name": "a price after a list number", "text": "1 $10 dollars bill", "expect": [{"type": "money", "text": "$10", "value": "USD 1000"}]}
+{"name": "a price after an item number", "text": "Item 3 $45.00 each", "expect": [{"type": "money", "text": "$45.00", "value": "USD 4500"}]}
+{"name": "a price after a lot number", "text": "Lot 12 £250 reserve", "expect": [{"type": "money", "text": "£250", "value": "GBP 25000"}]}
+{"name": "a price after a row number", "text": "row 7 $1,200 total", "expect": [{"type": "money", "text": "$1,200", "value": "USD 120000"}]}
+{"name": "a quantity column does not lend its number to the code beside it", "text": "qty 2 EUR 30 per unit", "expect": [{"type": "money", "text": "EUR 30", "value": "EUR 3000"}]}
+{"name": "a note number does not lend its number to the code beside it", "text": "see note 4 USD 500 due", "expect": [{"type": "money", "text": "USD 500", "value": "USD 50000"}]}
+{"name": "payment card in the grouped spelling", "text": "card number 4012 8888 8888 1881 on file", "expect": [{"type": "bank_account", "text": "4012 8888 8888 1881", "value": "4012888888881881"}]}
+{"name": "payment card written compactly", "text": "cardholder charged 4111111111111111 twice", "expect": [{"type": "bank_account", "text": "4111111111111111", "value": "4111111111111111"}]}
+{"name": "a card number whose check digit disagrees", "text": "card number 4012 8888 8888 1882 on file", "expect": []}
+{"name": "a luhn-valid run with no card word beside it", "text": "order reference 4012888888881881 shipped", "expect": []}
+{"name": "a luhn-valid run whose prefix belongs to no issuer", "text": "card number 9999 9999 9999 9995 quoted", "expect": []}
+{"name": "a card number mixing its separators", "text": "card 4012-8888 8888-1881 on file", "expect": []}
+{"name": "an imei beside a card reader lends no thirteen-digit head", "text": "the card reader logged IMEI 490154203237518", "expect": [{"type": "device", "text": "490154203237518", "value": "490154203237518"}]}
+{"name": "routing number beside its label", "text": "routing number 121000358 for the wire", "expect": [{"type": "bank_account", "text": "121000358", "value": "121000358"}]}
+{"name": "nine digits with no routing word beside them", "text": "case file 121000358 was closed", "expect": []}
+{"name": "a routing number whose checksum disagrees", "text": "routing number 121000359 for the wire", "expect": []}
+{"name": "a routing checksum outside every federal reserve district", "text": "routing number 130000006 for the wire", "expect": []}
+{"name": "the hyphenated routing spelling is not matched", "text": "routing number 3222-7162-7 on the form", "expect": []}
+{"name": "pesel beside its label", "text": "PESEL 44051401458 on the application", "expect": [{"type": "national_id", "text": "44051401458", "value": "44051401458"}]}
+{"name": "a pesel whose check digit disagrees", "text": "PESEL 44051401459 on the application", "expect": []}
+{"name": "a pesel whose embedded date could not exist", "text": "PESEL 11110021111 on the application", "expect": []}
+{"name": "eleven digits with no pesel word beside them", "text": "claim number 44051401458 was filed", "expect": []}
+{"name": "personnummer in the twelve-digit spelling", "text": "personnummer 189004119807 in the register", "expect": [{"type": "national_id", "text": "189004119807", "value": "18900411-9807"}]}
+{"name": "personnummer in the ten-digit spelling", "text": "pnr 871220-2384 in the register", "expect": [{"type": "national_id", "text": "871220-2384", "value": "871220-2384"}]}
+{"name": "a personnummer whose checksum disagrees", "text": "personnummer 19000309-3393 in the register", "expect": []}
+{"name": "twelve digits with no personnummer word beside them", "text": "batch reference 189004119807 was shipped", "expect": []}
+{"name": "a pesel and a personnummer do not claim each other", "text": "PESEL 44051401458\npersonnummer 189004119807", "expect": [{"type": "national_id", "text": "44051401458", "value": "44051401458"}, {"type": "national_id", "text": "189004119807", "value": "18900411-9807"}]}
+{"name": "organisationsnummer beside its label", "text": "orgnr 556703-7485 for the supplier", "expect": [{"type": "company_id", "text": "556703-7485", "value": "5567037485"}]}
+{"name": "an organisationsnummer whose checksum disagrees", "text": "orgnr 556703-7486 for the supplier", "expect": []}
+{"name": "a personnummer is not read as an organisationsnummer", "text": "orgnr 871220-2384 for the supplier", "expect": []}
+{"name": "ten digits with no company word beside them", "text": "delivery note 5567037485 was signed", "expect": []}
+{"name": "a swedish vat number outranks the company number inside it", "text": "orgnr SE556016068001 on the invoice", "expect": [{"type": "company_id", "text": "SE556016068001", "value": "SE556016068001"}]}

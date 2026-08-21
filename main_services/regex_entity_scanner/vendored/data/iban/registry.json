@@ -1,0 +1,803 @@
+{
+ "AD": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Andorra",
+  "length": 24,
+  "structure": "4!n4!n12!c"
+ },
+ "AE": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "United Arab Emirates (The)",
+  "length": 23,
+  "structure": "3!n16!n"
+ },
+ "AL": {
+  "bank": [
+   4,
+   12
+  ],
+  "country": "Albania",
+  "length": 28,
+  "structure": "8!n16!c"
+ },
+ "AT": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Austria",
+  "length": 20,
+  "structure": "5!n11!n"
+ },
+ "AZ": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Azerbaijan",
+  "length": 28,
+  "structure": "4!a20!c"
+ },
+ "BA": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Bosnia and Herzegovina",
+  "length": 20,
+  "structure": "3!n3!n8!n2!n"
+ },
+ "BE": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Belgium",
+  "length": 16,
+  "structure": "3!n7!n2!n"
+ },
+ "BG": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Bulgaria",
+  "length": 22,
+  "structure": "4!a4!n2!n8!c"
+ },
+ "BH": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Bahrain",
+  "length": 22,
+  "structure": "4!a14!c"
+ },
+ "BI": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Burundi",
+  "length": 27,
+  "structure": "5!n5!n11!n2!n"
+ },
+ "BR": {
+  "bank": [
+   4,
+   12
+  ],
+  "country": "Brazil",
+  "length": 29,
+  "structure": "8!n5!n10!n1!a1!c"
+ },
+ "BY": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Belarus",
+  "length": 28,
+  "structure": "4!c4!n16!c"
+ },
+ "CH": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Switzerland",
+  "length": 21,
+  "structure": "5!n12!c"
+ },
+ "CR": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Costa Rica",
+  "length": 22,
+  "structure": "4!n14!n"
+ },
+ "CY": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Cyprus",
+  "length": 28,
+  "structure": "3!n5!n16!c"
+ },
+ "CZ": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Czechia",
+  "length": 24,
+  "structure": "4!n16!n"
+ },
+ "DE": {
+  "bank": [
+   4,
+   12
+  ],
+  "country": "Germany",
+  "length": 22,
+  "structure": "8!n10!n"
+ },
+ "DJ": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Djibouti",
+  "length": 27,
+  "structure": "5!n5!n11!n2!n"
+ },
+ "DK": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Denmark",
+  "length": 18,
+  "structure": "4!n9!n1!n"
+ },
+ "DO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Dominican Republic",
+  "length": 28,
+  "structure": "4!c20!n"
+ },
+ "EE": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Estonia",
+  "length": 20,
+  "structure": "2!n14!n"
+ },
+ "EG": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Egypt",
+  "length": 29,
+  "structure": "4!n4!n17!n"
+ },
+ "ES": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Spain",
+  "length": 24,
+  "structure": "4!n4!n1!n1!n10!n"
+ },
+ "FI": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Finland",
+  "length": 18,
+  "structure": "3!n11!n"
+ },
+ "FK": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Falkland Islands (Malvinas)",
+  "length": 18,
+  "structure": "2!a12!n"
+ },
+ "FO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Faroe Islands",
+  "length": 18,
+  "structure": "4!n9!n1!n"
+ },
+ "FR": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "France",
+  "length": 27,
+  "structure": "5!n5!n11!c2!n"
+ },
+ "GB": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "United Kingdom",
+  "length": 22,
+  "structure": "4!a6!n8!n"
+ },
+ "GE": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Georgia",
+  "length": 22,
+  "structure": "2!a16!n"
+ },
+ "GI": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Gibraltar",
+  "length": 23,
+  "structure": "4!a15!c"
+ },
+ "GL": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Greenland",
+  "length": 18,
+  "structure": "4!n9!n1!n"
+ },
+ "GR": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Greece",
+  "length": 27,
+  "structure": "3!n4!n16!c"
+ },
+ "GT": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Guatemala",
+  "length": 28,
+  "structure": "4!c20!c"
+ },
+ "HN": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Honduras",
+  "length": 28,
+  "structure": "4!a20!n"
+ },
+ "HR": {
+  "bank": [
+   4,
+   11
+  ],
+  "country": "Croatia",
+  "length": 21,
+  "structure": "7!n10!n"
+ },
+ "HU": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Hungary",
+  "length": 28,
+  "structure": "3!n4!n1!n15!n1!n"
+ },
+ "IE": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Ireland",
+  "length": 22,
+  "structure": "4!a6!n8!n"
+ },
+ "IL": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Israel",
+  "length": 23,
+  "structure": "3!n3!n13!n"
+ },
+ "IQ": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Iraq",
+  "length": 23,
+  "structure": "4!a3!n12!n"
+ },
+ "IS": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Iceland",
+  "length": 26,
+  "structure": "4!n2!n6!n10!n"
+ },
+ "IT": {
+  "bank": [
+   4,
+   5
+  ],
+  "country": "Italy",
+  "length": 27,
+  "structure": "1!a5!n5!n12!c"
+ },
+ "JO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Jordan",
+  "length": 30,
+  "structure": "4!a4!n18!c"
+ },
+ "KW": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Kuwait",
+  "length": 30,
+  "structure": "4!a22!c"
+ },
+ "KZ": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Kazakhstan",
+  "length": 20,
+  "structure": "3!n13!c"
+ },
+ "LB": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Lebanon",
+  "length": 28,
+  "structure": "4!n20!c"
+ },
+ "LC": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Saint Lucia",
+  "length": 32,
+  "structure": "4!a24!c"
+ },
+ "LI": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Liechtenstein",
+  "length": 21,
+  "structure": "5!n12!c"
+ },
+ "LT": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Lithuania",
+  "length": 20,
+  "structure": "5!n11!n"
+ },
+ "LU": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Luxembourg",
+  "length": 20,
+  "structure": "3!n13!c"
+ },
+ "LV": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Latvia",
+  "length": 21,
+  "structure": "4!a13!c"
+ },
+ "LY": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Libya",
+  "length": 25,
+  "structure": "3!n3!n15!n"
+ },
+ "MC": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Monaco",
+  "length": 27,
+  "structure": "5!n5!n11!c2!n"
+ },
+ "MD": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Moldova, Republic of",
+  "length": 24,
+  "structure": "2!c18!c"
+ },
+ "ME": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Montenegro",
+  "length": 22,
+  "structure": "3!n13!n2!n"
+ },
+ "MK": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "North Macedonia",
+  "length": 19,
+  "structure": "3!n10!c2!n"
+ },
+ "MN": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Mongolia",
+  "length": 20,
+  "structure": "4!n12!n"
+ },
+ "MR": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Mauritania",
+  "length": 27,
+  "structure": "5!n5!n11!n2!n"
+ },
+ "MT": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Malta",
+  "length": 31,
+  "structure": "4!a5!n18!c"
+ },
+ "MU": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Mauritius",
+  "length": 30,
+  "structure": "4!a2!n2!n12!n3!n3!a"
+ },
+ "NI": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Nicaragua",
+  "length": 28,
+  "structure": "4!a20!n"
+ },
+ "NL": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Netherlands (The)",
+  "length": 18,
+  "structure": "4!a10!n"
+ },
+ "NO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Norway",
+  "length": 15,
+  "structure": "4!n6!n1!n"
+ },
+ "OM": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Oman",
+  "length": 23,
+  "structure": "3!n16!c"
+ },
+ "PK": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Pakistan",
+  "length": 24,
+  "structure": "4!a16!c"
+ },
+ "PL": {
+  "bank": [
+   4,
+   12
+  ],
+  "country": "Poland",
+  "length": 28,
+  "structure": "8!n16!n"
+ },
+ "PS": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Palestine, State of",
+  "length": 29,
+  "structure": "4!a21!c"
+ },
+ "PT": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Portugal",
+  "length": 25,
+  "structure": "4!n4!n11!n2!n"
+ },
+ "QA": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Qatar",
+  "length": 29,
+  "structure": "4!a21!c"
+ },
+ "RO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Romania",
+  "length": 24,
+  "structure": "4!a16!c"
+ },
+ "RS": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Serbia",
+  "length": 22,
+  "structure": "3!n13!n2!n"
+ },
+ "RU": {
+  "bank": [
+   4,
+   13
+  ],
+  "country": "Russian Federation",
+  "length": 33,
+  "structure": "9!n5!n15!c"
+ },
+ "SA": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Saudi Arabia",
+  "length": 24,
+  "structure": "2!n18!c"
+ },
+ "SC": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Seychelles",
+  "length": 31,
+  "structure": "4!a2!n2!n16!n3!a"
+ },
+ "SD": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Sudan",
+  "length": 18,
+  "structure": "2!n12!n"
+ },
+ "SE": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Sweden",
+  "length": 24,
+  "structure": "3!n16!n1!n"
+ },
+ "SI": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Slovenia",
+  "length": 19,
+  "structure": "5!n8!n2!n"
+ },
+ "SK": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Slovakia",
+  "length": 24,
+  "structure": "4!n6!n10!n"
+ },
+ "SM": {
+  "bank": [
+   4,
+   5
+  ],
+  "country": "San Marino",
+  "length": 27,
+  "structure": "1!a5!n5!n12!c"
+ },
+ "SO": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Somalia",
+  "length": 23,
+  "structure": "4!n3!n12!n"
+ },
+ "ST": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Sao Tome and Principe",
+  "length": 25,
+  "structure": "4!n4!n11!n2!n"
+ },
+ "SV": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "El Salvador",
+  "length": 28,
+  "structure": "4!a20!n"
+ },
+ "TL": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Timor-Leste",
+  "length": 23,
+  "structure": "3!n14!n2!n"
+ },
+ "TN": {
+  "bank": [
+   4,
+   6
+  ],
+  "country": "Tunisia",
+  "length": 24,
+  "structure": "2!n3!n13!n2!n"
+ },
+ "TR": {
+  "bank": [
+   4,
+   9
+  ],
+  "country": "Turkiye",
+  "length": 26,
+  "structure": "5!n1!n16!c"
+ },
+ "UA": {
+  "bank": [
+   4,
+   10
+  ],
+  "country": "Ukraine",
+  "length": 29,
+  "structure": "6!n19!c"
+ },
+ "VA": {
+  "bank": [
+   4,
+   7
+  ],
+  "country": "Holy See",
+  "length": 22,
+  "structure": "3!n15!n"
+ },
+ "VG": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Virgin Islands (British)",
+  "length": 24,
+  "structure": "4!a16!n"
+ },
+ "XK": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Kosovo",
+  "length": 20,
+  "structure": "4!n10!n2!n"
+ },
+ "YE": {
+  "bank": [
+   4,
+   8
+  ],
+  "country": "Yemen",
+  "length": 30,
+  "structure": "4!a4!n18!c"
+ }
+}

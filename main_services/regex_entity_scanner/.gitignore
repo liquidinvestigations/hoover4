@@ -1,0 +1,19 @@
+# Build and scratch output. `target/` reaches several gigabytes and `tmp/` holds probe
+# output from development runs; neither belongs in the tree or in a build context.
+target/
+tmp/
+.container/
+__pycache__/
+
+# Personal scratch and agent instructions, as everywhere in this repository. What the
+# tracked tree needs to say about building and testing this service is in README.md and
+# under docs/.
+plans/
+AGENTS.md
+CLAUDE.md
+
+# Upstream repositories cloned for reference while writing rules and porting lexicons.
+# They are development material, not inputs to the build: `clone-reference-repos.sh`
+# reproduces them, and `vendored/data` — which the binary actually reads — is committed.
+vendored/reference/
+vendored/gleif/data/

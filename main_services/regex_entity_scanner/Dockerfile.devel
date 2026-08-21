@@ -1,0 +1,42 @@
+# Development image: the full toolchain, mounted on the working tree.
+#
+# It holds no state. Cargo's registry cache, the build directory and the shell history all live
+# under the bind mount at /work, so deleting the container costs nothing and the tree stays the
+# single source of truth. Rootless podman maps container root to the invoking user, so files
+# created here are owned by that user on the host.
+
+FROM docker.io/library/rust:1-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        jq \
+        less \
+        python3 \
+        unzip \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installed while CARGO_HOME still points inside the image, so the components land in the image
+# rather than in whatever tree happens to be mounted.
+RUN rustup component add rustfmt clippy
+
+ENV CARGO_HOME=/work/.container/cargo \
+    CARGO_TARGET_DIR=/work/target \
+    HOME=/work/.container/home \
+    RES_VENDORED_DIR=/work/vendored \
+    PATH=/work/.container/cargo/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Those directories live in the bind mount, which does not exist until the container starts.
+RUN printf '%s\n' \
+        '#!/bin/sh' \
+        'set -e' \
+        'mkdir -p "$CARGO_HOME" "$HOME" "$CARGO_TARGET_DIR"' \
+        'exec "$@"' \
+    > /usr/local/bin/entrypoint \
+    && chmod +x /usr/local/bin/entrypoint
+
+WORKDIR /work
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
+CMD ["bash"]

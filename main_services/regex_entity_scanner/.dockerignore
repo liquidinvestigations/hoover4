@@ -1,0 +1,10 @@
+# The build context is sent in full, so everything large and irrelevant to a build stays out.
+# `vendored/reference` is development material — the release image deliberately ships only
+# `vendored/data` and the licence notices.
+.git
+plans
+tmp
+target
+.container
+vendored/reference
+vendored/gleif

@@ -1,0 +1,31 @@
+# Release image: an optimised binary, the vendored data it reads at startup, and the upstream
+# license notices. No toolchain, no sources, no bind mount — it answers on HTTP and nothing else.
+
+FROM docker.io/library/rust:1-bookworm AS builder
+
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY vendored/data ./vendored/data
+RUN cargo build --release --locked
+
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/target/release/regex-entity-scanner /usr/local/bin/regex-entity-scanner
+
+# `vendored/data` is what the scanner loads; `vendored/reference` is upstream material we generate
+# and port from at development time and is deliberately absent here. The notices ship because the
+# upstream licenses require them to travel with the data.
+COPY vendored/data /opt/regex-entity-scanner/vendored/data
+COPY vendored/licenses /opt/regex-entity-scanner/vendored/licenses
+COPY LICENSE /opt/regex-entity-scanner/LICENSE
+
+ENV RES_VENDORED_DIR=/opt/regex-entity-scanner/vendored \
+    RES_BIND=0.0.0.0:19705
+
+EXPOSE 19705
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/regex-entity-scanner"]
