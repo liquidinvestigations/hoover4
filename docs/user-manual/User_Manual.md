@@ -1,16 +1,12 @@
-# Hoover — user manual (draft)
+# Hoover — user manual
 
-Written from a full hands-on pass over the live demo at `https://new.liquiddemo.org/`
-(2026-08-12, build `ac34bbc`). Every screenshot is a real capture of that deployment at
-1400×850 unless it says otherwise.
+Using the site: searching a corpus, filtering it, reading a document, browsing storage,
+asking the chat about it, and administering collections. Screenshots are real captures of a
+running deployment at 1400x850 unless a caption says otherwise.
 
-Where a picture is still missing the page shows `img/todo.png` with a note underneath saying
-**what to capture and what to zoom on**. Replace the image and delete the note.
-
-> **Draft status.** Some behaviour described here is affected by open defects — see
-> [Known limitations](#12-known-limitations). Anything marked *(defect Dnn)* refers to
-> [../deployment/7-browser-exploration-bugreport.md](../deployment/7-browser-exploration-bugreport.md)
-> and should be re-checked before this manual is published.
+How you reach a deployment, and what credentials it wants, depend on that deployment and are
+not in this repository — see `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is
+local and gitignored.
 
 ---
 
@@ -27,25 +23,24 @@ Where a picture is still missing the page shows `img/todo.png` with a note under
 9. [AI chat](#9-ai-chat)
 10. [Administration](#10-administration)
 11. [Sharing and bookmarking](#11-sharing-and-bookmarking)
-12. [Known limitations](#12-known-limitations)
+12. [Limits worth knowing](#12-limits-worth-knowing)
 
 ---
 
 ## 1. Getting in
 
-The demo sits behind HTTP basic authentication. The browser asks for a username and password
-before anything loads. The credentials are held locally in `INFRASTRUCTURE_INVENTORY.md`,
-which is gitignored, rather than in this page. Without them every URL answers `401`.
+There are two modes, and which one a deployment runs decides what you see first.
 
-![](img/todo.png)
+**Demo mode.** You arrive as a **guest** — an anonymous account created for your browser
+session, named like `guest-376072d767a1` in the screenshots below. A deployment may put a
+credential prompt in front of the whole site; where it does, the credentials are held
+locally in `INFRASTRUCTURE_INVENTORY.md` rather than on this page. In demo mode a guest is
+also an administrator, which is why [Administration](#10-administration) is reachable in
+these screenshots.
 
-> **TODO — screenshot:** the browser's basic-auth dialog on `new.liquiddemo.org`.
-> Open a private window, go to the site, and capture the credential prompt. Zoom to the dialog
-> plus enough of the address bar to show the host name.
-
-Inside the demo you are signed in as a **guest** — an anonymous account created for your
-browser session (`guest-376072d767a1` in these screenshots). On this deployment guests are
-also administrators, which is why [Administration](#10-administration) is reachable.
+**Production mode.** Every user is authenticated and no page is anonymous. Your identity
+comes from the sign-in the deployment uses, and what you can see is decided by the groups
+you belong to and the collections those groups may read.
 
 ---
 
@@ -211,8 +206,7 @@ between ascending and descending.
 
 ![The sort menu](img/sort-menu.png)
 
-> Choosing a sort marks your choice; press **Apply Filters** to put it into effect
-> *(defect D11 — the control currently relabels itself before the results change)*.
+> Choosing a sort marks your choice; press **Apply Filters** to put it into effect.
 
 *Relevance* needs something to be relevant to: with an empty query it falls back to newest
 first.
@@ -279,47 +273,21 @@ this is the list of them.
 The box at the top left of the viewer searches the open document. Matches are highlighted and
 the arrows beside the counter step between them.
 
-![](img/todo.png)
-
-> **TODO — screenshot:** a text document with an in-document search that has hits.
-> Open a long `.txt` from `textfiles_extra`, type a common word into *Search in document*, and
-> zoom to the left column plus the first highlighted hit in the body, so the `3 / 17` style
-> counter and the up/down arrows are both legible. (Do not use a PDF for this shot until
-> defect D2 is fixed.)
-
 ### Entities
 
 The right pane groups the names found in the document into **People**, **Organizations**,
 **Locations** and **Misc**, each with the number of times it appears. The box at the top
 filters the list.
 
-![](img/todo.png)
-
-> **TODO — screenshot:** the Entities panel with text typed into *Filter Entities…*.
-> Use a document with many entities (an `epstein_docs` message works well), type a few letters,
-> and zoom to the right-hand column only, cropped to about 480 px wide.
-
 ### Metadata
 
 The **Metadata** tab holds everything the pipeline knows about the file: its dates and why they
 are trusted, email headers, blob hashes and size, and the detected file types.
 
-![](img/todo.png)
-
-> **TODO — screenshot:** the Metadata tab on a clean, non-email document (so no error box is
-> in the frame — see defect D1). Zoom to the right column, full height, showing the *Dates*
-> section and the start of *blobs*.
-
 ### Downloading
 
 **Download Document** in the ⋮ menu, or the same item in the viewer's own menu, saves the
 original file under its real name.
-
-![](img/todo.png)
-
-> **TODO — screenshot:** the browser's download shelf/notification right after choosing
-> *Download Document*, with the real filename visible. Crop to the download popup plus the
-> page behind it.
 
 ---
 
@@ -409,7 +377,7 @@ can click through to the viewer; each block has an **Expand** control.
 ![A finished conversation](img/chat-transcript.png)
 
 The assistant's own answer comes **after** the tool output, so scroll to the bottom of the
-conversation for it *(defect D10 — the tool cards are expanded by default and can bury a
+conversation for it (the tool cards are expanded by default and can bury a
 one-line answer)*.
 
 ### When it fails
@@ -537,23 +505,23 @@ Old links keep working after upgrades; a link that can no longer be understood l
 
 ---
 
-## 12. Known limitations
+## 12. Limits worth knowing
 
-True of the demo deployment as captured on 2026-08-12. Each links to the authoritative entry in
-[the defect report](../deployment/7-browser-exploration-bugreport.md).
+These are properties of how search works here, not faults, and each has a visible sign on
+the page.
 
-| what you may notice | status |
-|---|---|
-| An email opens with a red error where the message body should be. Switch the source to **Email body** or **Plain text** to read it. | D1, fix agreed |
-| Searching inside a **PDF** finds nothing. The PDF itself displays normally. | D2, fix agreed |
-| The Collections filter lists a few datasets that return no results when selected. | D3, fix agreed |
-| Some documents show no extracted entities. | D4, fix agreed |
-| **Open in Search** on a folder page does not respond. Use the filter dialog's *File location* pane instead. | D23, fix agreed |
-| Choosing a sort does not reorder until you press **Apply Filters**. | D11, fix agreed |
-| Entity lists contain email header names (`Message-ID`, `X-Folder`) alongside real names. | D7, fix agreed |
-| Emails with no parseable date show `1970-01-01T00:00:00Z`. | D12, fix agreed |
-| A chat turn takes minutes, and the answer sits below its tool output. | D9, D10, fix agreed |
-| Only the first 1 000 results of a search are reachable. | D21, by design; a notice is being added |
+**Only the first 1 000 documents of a match are reachable.** A corpus-wide query can report
+tens of thousands of documents found over a pager that ends at 1 000: the count is the size
+of the whole match, and the pager is what you can walk. The page states the difference beside
+the count rather than implying the rest are reachable. Narrow the query — with words, a
+filter, or a folder — to bring what you want inside the reachable range.
 
-There is **no semantic or vector search** on this deployment and no reranking — search is
-keyword-only everywhere, including inside the AI chat's collection search.
+**A document with no confirmed date can never fall inside a date range.** It matches only
+through the *no confirmed date* option, which is why that option exists alongside before,
+after and between. A range that silently included undated documents would be a different
+question from the one you asked.
+
+**Filter counts are counts within the rest of the query**, not counts in the corpus. A chip
+showing 12 means twelve documents among those that already match everything else you have
+set.
+

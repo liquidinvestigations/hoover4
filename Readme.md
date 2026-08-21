@@ -189,3 +189,10 @@ Files are hashed during ingestion using SHA3-256. Blobs with identical hashes ar
 **Where can I find architecture diagrams?**
 
 See [`main_services/docs/Readme.md`](main_services/docs/Readme.md) for high-level process, data flow, and data representation diagrams.
+
+**Where is everything else documented?**
+
+[`docs/`](docs/Readme.md) — how the system is shaped and why (`architecture/`), how to run it
+(`operations/`), how to change it (`development/`), the product manual (`user-manual/`), and
+what the product does stated once (`technical-specification/`). Each code directory also has
+a `Readme.md` describing itself.
