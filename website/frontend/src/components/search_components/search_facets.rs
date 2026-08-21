@@ -44,6 +44,7 @@ pub fn FacetSelectorList(
             q,
             facet_field_name.read().clone(),
             map_string_terms.read().clone(),
+            None,
         )
     });
     let search_result = facet_request.suspend()?.cloned();

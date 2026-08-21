@@ -44,6 +44,15 @@ pub struct DateHistogram {
     /// At least one shard could not be searched, so every count here is a lower bound.
     #[serde(default)]
     pub partial: bool,
+    /// The bars count MENTIONS rather than documents.
+    ///
+    /// A document naming three days inside one bin contributes three to it. The two
+    /// histograms this type serves answer different questions -- a document's own dates
+    /// are an interval it occupies, the dates it mentions are points -- and a reader
+    /// comparing the two axes without knowing which is which reads one of them wrong.
+    /// The pane labels its axis from this flag.
+    #[serde(default)]
+    pub counts_mentions: bool,
 }
 
 impl DateHistogram {

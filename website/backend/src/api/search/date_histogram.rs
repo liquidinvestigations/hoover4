@@ -156,6 +156,9 @@ pub async fn search_date_histogram(
         domain_start: domain.start,
         domain_end: domain.end,
         partial: probe_partial || counts.partial,
+        // These bars are document counts. The mentioned-date histogram is the one that
+        // counts mentions, and the flag is how the pane tells them apart.
+        counts_mentions: false,
     })
 }
 

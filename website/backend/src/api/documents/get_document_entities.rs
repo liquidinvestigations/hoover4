@@ -1,4 +1,18 @@
-//! Endpoint for retrieving per-document entities (grouped with counts).
+//! Per-document entities, from both extractors, grouped with counts.
+//!
+//! Two sources, one list. `entity_hit` holds what an NER model judged to be a name, an
+//! organisation or a place; `regex_entity_hit` holds what a rule's validator accepted as
+//! an identifier, an amount or a date. They are unioned here rather than in the viewer
+//! because the same query answers the agent's `list_document_entities` tool, and two
+//! implementations of "what does this document contain" would drift.
+//!
+//! The two halves are counted differently, on purpose. A model-found value is re-counted
+//! against the document's own text, because the stored count comes from a variant of the
+//! text the viewer may not be showing. A rule-found value is NOT: its normalised form is
+//! frequently not what the document wrote — `+442075623419` for `+44 (0)20 7562 3419` —
+//! so a full-text count of it would be zero and would drop every phone number in the
+//! corpus. The scanner already counted occurrences in the text it read, and that count
+//! is the one that is true.
 
 use clickhouse::Row;
 use common::{
@@ -21,6 +35,16 @@ struct EntityRow {
     pub value: String,
     pub hit_count: u64,
     pub providers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Row)]
+struct RegexEntityRow {
+    pub entity_type: String,
+    pub value: String,
+    pub rule_id: String,
+    pub value_json: String,
+    pub surface_text: String,
+    pub hit_count: u64,
 }
 
 /// Collapse every run of whitespace to a single space and trim.
@@ -57,6 +81,10 @@ pub async fn get_document_entities(
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
 
     let _ents = _get_document_entities(document_identifier.clone()).await?;
+    // A scanner that has never run leaves no rows, and this returns an empty list rather
+    // than failing: the panel then shows its NER half and no rule half, which is the
+    // honest picture of a stack whose scanner is down.
+    let regex_items = get_document_regex_entities(&document_identifier).await?;
 
     // The stored hit count is per entity_hit row, which does not have to agree with what
     // the text index can find; each entity is re-counted against the document's own pages
@@ -85,6 +113,8 @@ pub async fn get_document_entities(
     .filter_map(|item| async move { item.filter(|item| item.hit_count > 0) })
     .collect()
     .await;
+
+    v2.extend(regex_items);
 
     v2.sort_by_key(|item| {
         (item.entity_type, item.hit_count, item.value.clone())
@@ -144,6 +174,107 @@ async fn _get_document_entities(
     })
 }
 
+/// The rule-found half of a document's entities.
+///
+/// Public because the agent's `list_document_entities` tool reads exactly this: two
+/// implementations of "which identifiers does this document contain" would give the
+/// model and the reader different answers about the same file.
+///
+/// Three things the query has to get right, none of them obvious from the schema:
+///
+/// * **Only the newest rule set.** `regex_entity_hit` keeps every rule set's results side
+///   by side, so that bumping the version makes a rescan possible without destroying what
+///   the previous version found. Reading them all would list a value once per version.
+/// * **Counts are summed across segments and MAXed across text variants.** A document
+///   parsed twice — `raw_text` and `email_parser` — carries the same occurrences under
+///   both, so adding the variants would double every count.
+/// * **The five value arrays are parallel**, and `ARRAY JOIN` over all of them at once is
+///   what keeps a value with its own rule, its own canonical object, its own count and
+///   its own surface text. Joining them separately would produce the cross product.
+pub async fn get_document_regex_entities(
+    document_identifier: &DocumentIdentifier,
+) -> anyhow::Result<Vec<DocumentEntityItem>> {
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let sql = r#"
+        SELECT
+            entity_type,
+            value,
+            any(rule_id) AS rule_id,
+            any(value_json) AS value_json,
+            any(surface_text) AS surface_text,
+            max(variant_count) AS hit_count
+        FROM (
+            SELECT
+                entity_type,
+                entity_value AS value,
+                extracted_by,
+                any(rule_id) AS rule_id,
+                any(value_json) AS value_json,
+                any(surface_text) AS surface_text,
+                sum(occurrences) AS variant_count
+            FROM (
+                SELECT entity_type, extracted_by, entity_values, entity_rule_ids,
+                       entity_value_json, entity_counts, entity_texts
+                FROM regex_entity_hit FINAL
+                WHERE collection_dataset = ? AND file_hash = ?
+                  AND rule_set_version = (
+                      SELECT max(rule_set_version) FROM regex_entity_hit
+                      WHERE collection_dataset = ? AND file_hash = ?
+                  )
+            )
+            ARRAY JOIN
+                entity_values AS entity_value,
+                entity_rule_ids AS rule_id,
+                entity_value_json AS value_json,
+                entity_counts AS occurrences,
+                entity_texts AS surface_text
+            GROUP BY entity_type, value, extracted_by
+        )
+        GROUP BY entity_type, value
+        ORDER BY hit_count DESC
+        LIMIT 1000
+    "#;
+    let rows: Vec<RegexEntityRow> = client
+        .query(sql)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .fetch_all()
+        .await?;
+    Ok(rows.into_iter().map(regex_item).collect())
+}
+
+/// One stored row as a panel item.
+fn regex_item(row: RegexEntityRow) -> DocumentEntityItem {
+    let entity_type = DocumentEntityType::from_scanner_type(&row.entity_type);
+    // The surface form is only worth carrying when it differs: a find-in-page click on a
+    // value that IS its own surface form should search the value, and storing the same
+    // string twice invites a renderer to show it twice.
+    let surface_text = if row.surface_text == row.value {
+        String::new()
+    } else {
+        row.surface_text
+    };
+    let bucket = if entity_type == DocumentEntityType::Money {
+        common::entity_cards::money_bucket_from_value_json(&row.value_json).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    DocumentEntityItem {
+        entity_type,
+        value: row.value,
+        hit_count: row.hit_count,
+        // The provider is the rule, and it is already carried as `rule_id`. Repeating it
+        // here would put the same string in two places on one card.
+        providers: Vec::new(),
+        rule_id: row.rule_id,
+        value_json: row.value_json,
+        surface_text,
+        bucket,
+    }
+}
+
 /// Turn the stored rows into one item per `(type, value)`, dropping debris.
 ///
 /// The grouping key is the whitespace-folded value, which is what merges the two rows a
@@ -190,6 +321,13 @@ fn fold_entity_rows(rows: Vec<EntityRow>) -> Vec<DocumentEntityItem> {
                     value,
                     hit_count: r.hit_count,
                     providers,
+                    // A model-found value has no rule, no canonical object and no card;
+                    // its surface form is the value, because a model reads prose rather
+                    // than normalising it.
+                    rule_id: String::new(),
+                    value_json: String::new(),
+                    surface_text: String::new(),
+                    bucket: String::new(),
                 });
             }
         }

@@ -1251,12 +1251,13 @@ def entities_replace_sql(entities_table: str, rows: list[dict]) -> tuple[str, tu
     for row in rows:
         params.extend((
             row['id'], row['term_field'], row['term_text'],
-            row['term_display'], row['collection_dataset'],
+            row['term_display'], row['term_id'], row['collection_dataset'],
         ))
-    groups = ", ".join(["(%s, %s, %s, %s, %s)"] * len(rows))
+    groups = ", ".join(["(%s, %s, %s, %s, %s, %s)"] * len(rows))
     return (
         f"REPLACE INTO {entities_table} "
-        f"(id, term_field, term_text, term_display, collection_dataset) VALUES {groups}",
+        f"(id, term_field, term_text, term_display, term_id, collection_dataset) "
+        f"VALUES {groups}",
         tuple(params),
     )
 
@@ -1316,6 +1317,10 @@ def index_entity_terms(params: BuildVfsNodesParams) -> str:
         # cannot be selected back exactly.
         "term_text": row['term_value'],
         "term_display": row['term_value'],
+        # The number a facet filter is actually written in. The row id hashes the field
+        # and the term id together and cannot be inverted, so the search box would have
+        # nothing to hand the facet query without this column.
+        "term_id": int(row['term_id']),
         "collection_dataset": collection_dataset,
     } for row in terms]
     current_ids = {row['id'] for row in index_rows}

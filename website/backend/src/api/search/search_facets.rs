@@ -27,15 +27,23 @@ use common::{
 use crate::auth::permissions;
 use serde::{Deserialize, Serialize};
 
+/// One facet's buckets.
+///
+/// `restrict_to_ids` is the set a search box resolved its needle to. When it is `Some`,
+/// only those terms are counted and only those terms come back -- an empty set is a
+/// needle that matched nothing, and it returns no buckets rather than every bucket.
+/// That distinction is why it is an `Option<Vec<u64>>` and not a `Vec<u64>`.
 pub async fn search_string_facet(
     user: &CurrentUser,
     query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
+    restrict_to_ids: Option<Vec<u64>>,
 ) -> anyhow::Result<SearchResultFacets> {
 
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
-    let x = _search_string_facet(user, query, column.clone(), map_string_terms).await?;
+    let x =
+        _search_string_facet(user, query, column.clone(), map_string_terms, restrict_to_ids).await?;
     if column == "collection_dataset" {
         return _search_enrich_collection_list(user, x).await;
     }
@@ -160,9 +168,10 @@ async fn _search_string_facet(
     query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
+    restrict_to_ids: Option<Vec<u64>>,
 ) -> anyhow::Result<SearchResultFacets> {
     let perms = permissions::resolve_permissions(user).await?;
-    let Some(mut query) = permissions::sanitize_query(query, &perms) else {
+    let Some(query) = permissions::sanitize_query(query, &perms) else {
         return Ok(SearchResultFacets {
             query: SearchQuery::default(),
             facet_field: column,
@@ -171,14 +180,20 @@ async fn _search_string_facet(
         });
     };
     if map_string_terms.is_some() {
-        return search_mva_facet(user, query, column, map_string_terms).await;
+        return search_mva_facet(user, query, column, map_string_terms, restrict_to_ids).await;
     }
-    // remove all filters on current column, as we don't want to filter out unselected values from the facet.
+    // Remove this column's own selection, so an unticked value still has a count to tick
+    // with. It is done by mutating the query because there is nowhere else to do it:
+    // Manticore's per-facet `EXCLUDE FILTERS` clause is not in this server's SQL grammar
+    // (`P01: syntax error … near 'EXCLUDE FILTERS'`), in any position a `FACET` clause
+    // accepts.
+    //
     // NOTE: this also drops the `collection_dataset` filter sanitize_query injected for
     // permissions. That is safe ONLY because permissions are collection-granular
     // (collection_group_permissions grants a whole collection, so a permitted
     // collection implies all its datasets). If dataset-level permissions are ever
     // added, this line becomes a data leak.
+    let mut query = query;
     query.facet_filters.remove(&column);
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
@@ -257,11 +272,23 @@ struct SearchMvaFacetResponse {
     doc_count: u64,
 }
 
+/// Buckets for one multi-value column.
+///
+/// A separate path from the `FACET` clause because the values are term ids and the
+/// display strings live in ClickHouse: the ids come back here and are resolved
+/// afterwards, in one query per collection rather than one per bucket.
+///
+/// `restrict_to_ids` is what makes a facet search box exact. The needle is resolved to
+/// term ids first (`search_entity_terms`), the ids narrow the query, and the returned
+/// buckets are intersected with the same set. The counts stay true document counts: a
+/// document holding term X satisfies `ANY(column) IN (ids)` by holding X, so bucket X's
+/// count is unchanged by the restriction.
 pub async fn search_mva_facet(
     user: &CurrentUser,
     query: SearchQuery,
     column: String,
     map_string_terms: Option<String>,
+    restrict_to_ids: Option<Vec<u64>>,
 ) -> anyhow::Result<SearchResultFacets> {
     let perms = permissions::resolve_permissions(user).await?;
     let Some(mut query) = permissions::sanitize_query(query, &perms) else {
@@ -272,10 +299,26 @@ pub async fn search_mva_facet(
             partial: false,
         });
     };
-    // remove all filters on current column, as we don't want to filter out unselected values from the facet.
-    // Same permission caveat as in _search_string_facet: safe only while permissions
-    // are collection-granular.
+    // remove all filters on current column, as we don't want to filter out unselected
+    // values from the facet. Same mechanism and same caveat as the `FACET` path above:
+    // Manticore's per-facet filter-exclusion clause is not in this server's grammar, so
+    // the mutation is the only way. Safe only while permissions are collection-granular:
+    // it also drops the `collection_dataset` filter sanitisation injected, and that is
+    // harmless exactly because a permitted collection implies all of its datasets.
     query.facet_filters.remove(&column);
+
+    // An empty restriction is a needle that matched nothing, and it must return no
+    // buckets. Treating it as "no restriction" would answer a failed search with the
+    // whole facet, which reads as the search box being ignored.
+    let restriction: Option<Vec<u64>> = restrict_to_ids;
+    if restriction.as_ref().is_some_and(|ids| ids.is_empty()) {
+        return Ok(SearchResultFacets {
+            query,
+            facet_field: column,
+            facet_values: Vec::new(),
+            partial: false,
+        });
+    }
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
     let targets = fanout::shard_targets(&collections).await;
@@ -290,20 +333,32 @@ pub async fn search_mva_facet(
     }
     let bucket_limit = fanout::per_shard_facet_limit(targets.len());
 
+    // Every id is a `hash_string_to_uint63`, so the list is digits only and cannot carry
+    // anything into the SQL text. Built once rather than per shard.
+    let restrict_clause = restriction.as_ref().map(|ids| {
+        let list = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
+        format!("AND ANY({{column}}) IN ({list})")
+    });
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
         let column = column.clone();
+        let restrict_clause = restrict_clause.clone();
         async move {
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let sql_where_clause = &parts.where_clause;
             let column = search_field_name(&column)?;
+            let restrict_clause = restrict_clause
+                .as_deref()
+                .map(|clause| clause.replace("{column}", column))
+                .unwrap_or_default();
             let options_clause = sql_options_clause(1000);
             let sql = format!(
                 "
                 SELECT groupby() term, count(distinct file_hash) as doc_count
                 {from_clause}
                 {sql_where_clause}
+                {restrict_clause}
 
                 GROUP BY {column}
                 ORDER BY doc_count DESC LIMIT {bucket_limit}
@@ -332,6 +387,16 @@ pub async fn search_mva_facet(
 
     result.facet_values = facet_items_from_pairs(merged)?;
 
+    // `ANY(column) IN (ids)` selects DOCUMENTS, and a selected document brings its other
+    // terms' buckets with it. Intersecting here is what makes the pane list only what
+    // the needle matched.
+    if let Some(ids) = &restriction {
+        result.facet_values = retain_restricted_buckets(
+            std::mem::take(&mut result.facet_values),
+            ids,
+        );
+    }
+
     if let Some(map_string_terms) = map_string_terms {
         let is_entity_facet = map_string_terms == ENTITY_TERM_FIELD;
         map_term_display_strings(user, &mut result.facet_values, map_string_terms).await?;
@@ -350,6 +415,25 @@ pub async fn search_mva_facet(
         .sort_by_key(|item| (u64::MAX - item.count, item.display_string.clone()));
 
     Ok(result)
+}
+
+/// Keep only the buckets whose key is in the restriction set.
+///
+/// The keys arrive as JSON numbers because that is what Manticore returns for a term id;
+/// a bucket whose key is not a number cannot be a term id and is dropped, rather than
+/// kept on the theory that it might be something else.
+fn retain_restricted_buckets(
+    values: Vec<SearchResultFacetItem>,
+    ids: &[u64],
+) -> Vec<SearchResultFacetItem> {
+    let wanted: HashSet<u64> = ids.iter().copied().collect();
+    values
+        .into_iter()
+        .filter(|item| match item.original_value {
+            FacetOriginalValue::Int(id) => wanted.contains(&id),
+            FacetOriginalValue::String(_) => false,
+        })
+        .collect()
 }
 
 /// Resolve display strings for string-term ids across every permitted collection.

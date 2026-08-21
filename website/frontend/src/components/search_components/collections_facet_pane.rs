@@ -226,7 +226,7 @@ pub fn CollectionsFacetPane(
 
     let mut facets = use_resource(move || {
         let q = original_query.read().clone();
-        search_string_facet(q, FACET_FIELD.to_string(), None)
+        search_string_facet(q, FACET_FIELD.to_string(), None, None)
     });
     // One call for the whole registry, on mount, exactly as the storage tree does it.
     let tree = use_resource(move || async move { list_storage_tree().await });

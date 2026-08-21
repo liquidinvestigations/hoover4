@@ -418,6 +418,11 @@ def entities_table_ddl(table_name: str) -> str:
     gives a row its match reason. ``term_display`` is the same string as an attribute,
     because a text field cannot be selected back exactly.
 
+    ``term_id`` is the value the facet MVAs hold, carried here so one query answers the
+    whole question. It is not derivable from the row id, which hashes the field and the
+    id together, and looking it up again in ClickHouse would be a second round trip for
+    a number this row already knows.
+
     One table per COLLECTION, holding every facet field except ``filetype`` — that one
     has few enough buckets to fit on screen and needs no search. Reads go through the
     NON-caching Manticore primitive, for the same reason the tree does: it changes while
@@ -428,6 +433,7 @@ def entities_table_ddl(table_name: str) -> str:
             term_field string,
             term_text text,
             term_display string,
+            term_id bigint,
             collection_dataset string
         ) engine='columnar' {_INFIX_SETTING}
     """
