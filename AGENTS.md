@@ -54,6 +54,17 @@ skills. Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the reposi
   with no row was never agreed; a row with no code is a lie. Read the affected rows before
   you change the feature.
 
+- **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
+  letter-and-number tags — a scope item, a decision, a question, a cut — are free and
+  useful: they are what lets a scope table and a result table line up. Outside it they are
+  unreadable, so referring to another pass's item means naming it and linking to it, and a
+  bare tag in `docs/`, in `.agents/`, or in a `Readme.md` beside code is always wrong.
+- **A document that uses tags opens with a `## Key` table** — every tag it mentions, what
+  it is, and a link to where it is defined — and expands each one at its first mention in
+  the body. After that the bare tag is fine, exactly as an acronym works. A document whose
+  references cannot be resolved without opening another file has not been written yet.
+  `.agents/check-doc-ids.py` enforces both rules and names every unresolvable tag.
+
 An unscoped recursive search and a long or multi-line `git commit -m` are refused by hooks;
 the rest hold because you hold them. All of these are re-injected after every compaction.
 

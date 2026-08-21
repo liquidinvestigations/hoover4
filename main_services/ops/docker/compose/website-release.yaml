@@ -9,7 +9,7 @@
 #   * it bakes "Your app is being rebuilt." into the served page — every page, every
 #     fresh profile, not a session-local toast;
 #   * it injects `access-control-allow-origin: *` on responses the application itself
-#     never marks cross-origin (A8 chased this into the app before finding it here);
+#     never marks cross-origin (chased deep into the app before it was found here);
 #   * it recompiles on start, and until that finishes every route 500s. Observed: ~5
 #     minutes of `/admin/ai_status` 500s after a container recreate.
 #

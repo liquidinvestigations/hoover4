@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 KEY_TESSERACT_LANGUAGES = "ocr.tesseract.languages"
 KEY_EASYOCR_LANGUAGES = "ocr.easyocr.languages"
 
-#: Collection-level defaults a newly created dataset inherits (R2). A dataset's own row
+#: Collection-level defaults a newly created dataset inherits. A dataset's own row
 #: always wins; these only fill in what was never set.
 KEY_DEFAULT_TESSERACT_LANGUAGES = "ocr.default.tesseract.languages"
 KEY_DEFAULT_EASYOCR_LANGUAGES = "ocr.default.easyocr.languages"

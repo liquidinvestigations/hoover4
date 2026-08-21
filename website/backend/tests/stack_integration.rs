@@ -675,7 +675,7 @@ async fn filename_only_match() {
 
     // `readme` appears in no document's text anywhere in the corpus, so /README is a
     // filename-only hit and the card must say so instead of echoing the title as a
-    // snippet. This is the assertion that pins O4.
+    // snippet. This is the assertion that pins the filename-only hit card.
     let query = SearchQuery { query_string: "readme".to_string(), ..SearchQuery::default() };
     let results = backend::api::search::search_for_results(&admin_user(), query, 0)
         .await
@@ -1651,7 +1651,7 @@ async fn the_entities_facet_offers_no_extraction_debris() {
     );
 }
 
-/// D3: the Collections facet must never offer a value that is not a registered dataset.
+/// The Collections facet must never offer a value that is not a registered dataset.
 ///
 /// Manticore keeps whatever was written under a dataset name until something deletes it,
 /// so an abandoned ingest (or a re-ingest under a new name) goes on producing buckets

@@ -105,7 +105,7 @@ pub async fn admin_get_dataset(
 }
 
 /// Edit a dataset's display name. That is the only mutable field: the collection is
-/// fixed at creation (D1) and the short name is part of the composed, globally unique
+/// fixed at creation and the short name is part of the composed, globally unique
 /// `collection_dataset` id.
 pub async fn admin_update_dataset(
     user: &CurrentUser,

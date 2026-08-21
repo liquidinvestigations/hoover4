@@ -1181,7 +1181,7 @@ pub async fn admin_retry_document(
 mod tests {
     use super::*;
 
-    /// D4: a stage whose documents failed must not read as finished, and the failure
+    /// A stage whose documents failed must not read as finished, and the failure
     /// must land on the bar it happened at.
     #[test]
     fn every_error_task_lands_on_a_stage() {

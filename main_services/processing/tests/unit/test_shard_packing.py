@@ -196,7 +196,7 @@ def test_invalid_collectionname_raises():
         pack_into_shards("bad name!", [], [("a", 1, 1)], max_bytes=GB, max_rows=ROOMY)
 
 
-# --- U1: edge cases called out by the bugfix review ---
+# --- edge cases called out by the bugfix review ---
 
 
 def test_open_shard_already_over_budget_seals_before_taking_more():
@@ -283,7 +283,7 @@ def test_malformed_shard_name_in_existing_assignments_raises_with_context():
         )
 
 
-# --- U2: the ledger ⋈ stats join behind recompute_shard_ledger ---
+# --- the ledger ⋈ stats join behind recompute_shard_ledger ---
 
 
 def test_merge_ledger_stats_fills_and_preserves_open_flags():

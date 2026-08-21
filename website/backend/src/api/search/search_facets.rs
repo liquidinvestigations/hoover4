@@ -541,7 +541,7 @@ mod tests {
             .collect()
     }
 
-    /// D3: `epstein_epstein` is still in the index with a count of 2 888, and is not a
+    /// `epstein_epstein` is still in the index with a count of 2 888, and is not a
     /// dataset. Offering it hands the user a filter that returns nothing.
     #[test]
     fn a_facet_value_that_is_not_a_registered_dataset_is_not_offered() {

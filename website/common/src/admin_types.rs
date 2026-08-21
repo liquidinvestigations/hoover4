@@ -80,7 +80,7 @@ pub struct AdminDatasetItem {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdminDatasetDetail {
     pub dataset: AdminDatasetItem,
-    /// The owning collection. Fixed when the dataset is created (decision D1) — it can
+    /// The owning collection. Fixed when the dataset is created — it can
     /// never be changed, so it is not optional: a dataset without a collection cannot
     /// exist any more.
     pub collectionname: String,

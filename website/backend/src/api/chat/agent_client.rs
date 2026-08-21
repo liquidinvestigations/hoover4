@@ -73,8 +73,9 @@ pub fn agent_attempts() -> u32 {
 /// How many times a turn may be replayed **after** the agent has already streamed
 /// events to the user. Bounded much harder than [`agent_attempts`] because the unit of
 /// waste is different: a pre-event failure costs a connection, while a mid-stream break
-/// throws away everything the agent has done — the D22 turn was thirteen provider calls
-/// and eighteen minutes of work — and the replay repeats all of it. One is the most
+/// throws away everything the agent has done — the turn that killed chat with
+/// `agent stream broke` was thirteen provider calls and eighteen minutes of work —
+/// and the replay repeats all of it. One is the most
 /// that can be spent without turning a slow turn into an unbounded one; `0` disables
 /// mid-stream replay entirely.
 pub fn agent_stream_resumes() -> u32 {
@@ -445,7 +446,8 @@ pub async fn ask_agent_stream_once(
             // nothing else behind — the agent keeps running, its own log says the run went
             // fine, and every `llm_call_events` row says `ok`. Without the source chain and
             // the elapsed time, the next reader cannot tell a deadline from a truncated
-            // stream from a bad frame, which is exactly the position D22 was reported from.
+            // stream from a bad frame, which is exactly the position `agent stream broke`
+            // was reported from.
             let timeout = e.is_timeout();
             let elapsed = started.elapsed().as_secs_f64();
             tracing::error!(
@@ -749,7 +751,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_break_mid_stream_keeps_the_events_that_already_arrived() {
-        // The failure D22 records: frames are delivered, then the connection dies. The
+        // The `agent stream broke` failure: frames are delivered, then the connection
+        // dies. The
         // events before the break are real work and must reach the caller, and the error
         // must arrive classified so the caller can decide whether to replay.
         let chunks: Vec<Result<&[u8], StreamTransportError>> = vec![
