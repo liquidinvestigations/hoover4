@@ -76,6 +76,15 @@ const SEARCH_FIELDS: &[&str] = &[
     "primary_filename",
     "email_from",
     "email_to",
+    "re_email",
+    "re_phone",
+    "re_bank_account",
+    "re_company_id",
+    "re_money",
+    "re_crypto_wallet",
+    "mentioned_dates",
+    "mentioned_date_min",
+    "mentioned_date_max",
 ];
 
 /// Validate a logical shard name `<collectionname>_<n>` and return its physical
@@ -209,6 +218,16 @@ fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Opt
         // `date_max >= lo` for every real `lo` and drops out here rather than needing
         // an extra clause.
         "dates" => Some(format!("date_min <= {hi} AND date_max >= {lo}")),
+        // NOT the `dates` arm, and copying it here is the single most likely way to get
+        // this feature wrong.
+        //
+        // A document's own dates are an interval it occupies: created in 1990, modified
+        // in 2020, and every year between is a year the file existed in. The dates it
+        // *mentions* are points. A document that names 1936 and 2020 occupies neither
+        // 2005 nor anything between them, and interval overlap would match it for every
+        // year in that span. `mentioned_dates` is an MVA, so `ANY(...)` asks the right
+        // question: is any single mention inside the range.
+        "mentioned_dates" => Some(format!("ANY(mentioned_dates) BETWEEN {lo} AND {hi}")),
         "file_size_bytes" => {
             // A document with no vfs_files row carries SIZE_UNKNOWN (-1), which would
             // otherwise land inside any range whose lower bound is unset.
@@ -219,6 +238,7 @@ fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Opt
     };
     let unknown = match field_name {
         "dates" => format!("date_min = {DATE_UNKNOWN}"),
+        "mentioned_dates" => format!("mentioned_date_min = {DATE_UNKNOWN}"),
         "file_size_bytes" => "file_size_bytes < 0".to_string(),
         _ => unreachable!("field validated above"),
     };
@@ -514,6 +534,54 @@ mod tests {
             "{sql}"
         );
         assert!(!sql.contains("ANY("), "the bounds are scalars, not an MVA test: {sql}");
+    }
+
+    /// Mentioned dates are POINTS, and a filter over them must not become an interval.
+    ///
+    /// Three documents, verified against a live Manticore table: doc 1 mentions 1936 and
+    /// 2020, doc 2 mentions 2005, doc 3 mentions 1900 and 1936. Filtering for calendar
+    /// 2005, interval overlap matches docs 1 and 2; `ANY(...) BETWEEN` matches only doc 2,
+    /// which is the right answer — doc 1 says nothing about 2005. Copying the `dates` arm
+    /// here is the single most likely way to get this feature wrong, so the shape is
+    /// pinned.
+    #[test]
+    fn a_mentioned_date_range_is_an_any_test_over_the_mva() {
+        // 2005-01-01 .. 2005-12-31, the calendar year the three-document case turns on.
+        let sql = ranged(
+            "mentioned_dates",
+            RangeFilter { min: Some(1104537600), max: Some(1136073599), include_unknown: false },
+        );
+        assert!(
+            sql.contains("ANY(mentioned_dates) BETWEEN 1104537600 AND 1136073599"),
+            "{sql}"
+        );
+        assert!(
+            !sql.contains("mentioned_date_min <="),
+            "the min/max pair measures the histogram's domain and must never filter: {sql}"
+        );
+    }
+
+    /// The bounds are signed, so a range entirely before the epoch is expressible at all.
+    /// Manticore's own `timestamp` type is 32-bit unsigned and cannot hold 1936.
+    #[test]
+    fn a_mentioned_date_range_crosses_the_epoch() {
+        let sql = ranged(
+            "mentioned_dates",
+            RangeFilter { min: Some(-1200000000), max: Some(-1000000000), include_unknown: false },
+        );
+        assert!(sql.contains("ANY(mentioned_dates) BETWEEN -1200000000 AND -1000000000"), "{sql}");
+    }
+
+    #[test]
+    fn a_segment_mentioning_no_date_is_unknown_on_its_own_scalar() {
+        let sql = ranged(
+            "mentioned_dates",
+            RangeFilter { min: None, max: None, include_unknown: true },
+        );
+        assert!(sql.contains(&format!("AND mentioned_date_min = {DATE_UNKNOWN}")), "{sql}");
+        // The document-date sentinel is a different column, and `mentioned_date_min`
+        // contains its name as a substring — hence the leading `AND `.
+        assert!(!sql.contains("AND date_min = "), "it must not read the document-date sentinel: {sql}");
     }
 
     #[test]

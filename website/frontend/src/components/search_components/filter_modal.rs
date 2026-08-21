@@ -155,14 +155,29 @@ impl FilterCategory {
 /// by the chip row that resolves the same ids into its summary — and the two disagreeing
 /// is a chip that says `#229645745` next to a list that says `enron`.
 ///
-/// Two facets have no term field: `collection_dataset` values are already text, and
-/// `struct_flags` is a bitfield (see [`STRUCT_FLAGS_WITH_ATTACHMENTS`]).
+/// Facets with no term field: `collection_dataset` values are already text,
+/// `struct_flags` is a bitfield (see [`STRUCT_FLAGS_WITH_ATTACHMENTS`]), and
+/// `mentioned_dates` holds timestamps rather than terms — it is a range field, like
+/// `dates`.
+///
+/// The scanner's fields are never `ner`. The website applies the entity stop-list to
+/// whatever maps to that field, and the stop-list exists to drop what a *model*
+/// mislabels; against a checksummed identifier it would only do damage. `re_email` is
+/// likewise not `email_address`: that one is the envelope's sender and recipients, this
+/// one is every address the body mentions, and a needle matching an address should return
+/// a row under each because ticking them applies different filters.
 pub fn term_field_of(facet_field: &str) -> Option<&'static str> {
     match facet_field {
         "file_types" => Some("filetype"),
         "file_paths" => Some("vfs_node"),
         "email_from" | "email_to" => Some("email_address"),
         "ner_per" | "ner_org" | "ner_loc" | "ner_misc" => Some("ner"),
+        "re_email" => Some("regex_email"),
+        "re_phone" => Some("regex_phone"),
+        "re_bank_account" => Some("regex_bank_account"),
+        "re_company_id" => Some("regex_company_id"),
+        "re_money" => Some("regex_money"),
+        "re_crypto_wallet" => Some("regex_crypto_wallet"),
         _ => None,
     }
 }
