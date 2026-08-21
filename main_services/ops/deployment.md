@@ -1,12 +1,17 @@
-# Deploying hoover4 on a host with a public IP
+# Deploying on a host reachable from the internet
 
 `./deploy` is the same command everywhere. What changes on a server is `hoover4.ini`:
-which interfaces the ports answer on, whether the GPU tier exists at all, and where the
-corpus lives. This is the runbook for that configuration, for the reset that precedes it,
+which interfaces the ports answer on, whether the accelerated tier exists at all, and where
+the corpus lives. This is the runbook for that configuration, for the reset that precedes it,
 and for the staged ingest that follows.
 
-The worked example throughout is a demo host with one public interface, one VPN address,
-no GPU, and a cloud LLM endpoint. Substitute your own addresses.
+**Every address below is a placeholder.** This page describes the mechanism — which key
+publishes what, and what each one is protecting against. What a particular deployment
+actually uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
+gitignored: this file is public, and no hostname, address or credential belongs in it.
+
+The shape assumed throughout is a host with one interface reachable from the internet and one
+private one, no accelerator, and a hosted model endpoint.
 
 ## The two bind keys
 
@@ -19,16 +24,18 @@ a host reachable from the internet must not have.
 | `website_bind_ip` | the website's `12345` | `0.0.0.0` | the private address a reverse proxy reaches it on |
 | `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, Garage S3 API, CH-UI, ClickHouse monitoring, pdf-to-html | `0.0.0.0` | `127.0.0.1` |
 
-**Neither of these is hardening in the abstract.** The website has one way in of its own —
-a reverse proxy setting `X-Forwarded-User` — and `demo_mode = true` additionally hands
-every anonymous visitor a `guest-*` session and makes it an admin. Anyone who types the
-host's IP and port skips the front end entirely and gets an admin panel. With `demo_mode`
-off nothing anonymous is provisioned at all: `/api/whoami` refuses, the site renders
-*Sign-in required*, and every endpoint answers 401 — so a deployment behind a proxy that
-sets no identity header serves nobody, which is the intended failure. The infrastructure ports are worse
-and simpler — Manticore has no authentication at all, and ClickHouse, Garage and the two
-admin UIs ship with the compose file's default credentials. Published on `0.0.0.0` on a
-public host, each one is a full read of the corpus.
+**Neither of these is hardening in the abstract.** The website authenticates by trusting an
+identity header set in front of it, so it has to be unreachable except through whatever sets
+that header. In demo mode it additionally provisions every anonymous visitor a guest session
+and treats it as an administrator; with demo mode off nothing anonymous is provisioned at
+all, the identity route refuses, the site renders *Sign-in required*, and every endpoint
+answers 401 — so a deployment fronted by something that sets no identity header serves
+nobody, which is the intended failure rather than a fault.
+
+The infrastructure ports are worse and simpler: the search engine has no authentication at
+all, and the column store, the object store and the two admin consoles ship with the compose
+file's default credentials. Published on a reachable interface, **each one is a full read of
+the corpus**.
 
 The port half stays where it is: every service port is an ini key, and the website's
 `12345` is deliberately hardcoded in the compose file as the one URL humans type.
@@ -36,18 +43,14 @@ Services already bound to loopback in the compose file — Temporal, Cassandra,
 Elasticsearch, Redis, the CPU twins, every MCP server and both research agents — ignore
 `infra_bind_ip` and stay on loopback regardless.
 
-Reaching a loopback-bound admin UI from elsewhere is an ssh tunnel:
+Reaching a loopback-bound admin console from elsewhere is a port forward over ssh, not a
+change to the bind key. Under a forward, the `http://localhost:<port>` links the admin pages
+render are correct as written, which is why they are not configurable.
 
-```bash
-ssh -L 21909:127.0.0.1:21909 -L 21900:127.0.0.1:21900 <host>
-```
+## A `hoover4.ini` for a host with no accelerator
 
-Under that tunnel the `http://localhost:21909` links the admin pages render are correct
-as written, which is why they are not configurable.
-
-## A worked `hoover4.ini` for a no-GPU public demo
-
-Everything not listed stays at `hoover4.ini.example`'s value.
+Everything not listed stays at `hoover4.ini.example`'s value. Angle-bracketed values are
+placeholders; the real ones are in `INFRASTRUCTURE_INVENTORY.md`.
 
 ```ini
 [ai_services]
@@ -77,13 +80,13 @@ datasets_mount_path   = /testdata
 website_bind_ip       = <private-ip>    ; the private address the proxy reaches
 infra_bind_ip         = 127.0.0.1
 
-mcp_shared_secret_file = <deploy-home>/.hoover4-secrets/mcp-shared-secret.txt
+mcp_shared_secret_file = <secrets-dir>/mcp-shared-secret.txt
 
 [llm_provider.nvidia]
 enabled      = true
 base_url     = https://integrate.api.nvidia.com/v1
 model        = nvidia/nemotron-3-super-120b-a12b
-api_key_file = <deploy-home>/.ssh/AI_API_KEY/nvidia.txt
+api_key_file = <secrets-dir>/nvidia-api-key.txt
 
 [llm_provider.selfhosted]
 enabled = false
@@ -116,11 +119,16 @@ a key in the checkout leaks into build contexts and commits. The file is bind-mo
 read-only into the containers that need it; no key value ever reaches a `.env` or a log.
 
 ```bash
-chmod 600 <deploy-home>/.ssh/AI_API_KEY/nvidia.txt
-mkdir -p ~/.hoover4-secrets && chmod 700 ~/.hoover4-secrets
-head -c 32 /dev/urandom | base64 > ~/.hoover4-secrets/mcp-shared-secret.txt
-chmod 600 ~/.hoover4-secrets/mcp-shared-secret.txt
+mkdir -p <secrets-dir> && chmod 700 <secrets-dir>
+head -c 32 /dev/urandom | base64 > <secrets-dir>/mcp-shared-secret.txt
+chmod 600 <secrets-dir>/mcp-shared-secret.txt
+chmod 600 <secrets-dir>/nvidia-api-key.txt
 ```
+
+`<secrets-dir>` is a directory **outside the checkout**, which `deploy.py` enforces: it
+refuses a file that does not exist, that is group- or world-readable, or whose real path is
+inside the repository. Where a given deployment keeps it is recorded in
+`INFRASTRUCTURE_INVENTORY.md`, by location, never by value.
 
 An empty `mcp_shared_secret_file` leaves the MCP servers unauthenticated, which is
 tolerable only because they publish on `127.0.0.1`.
@@ -191,15 +199,15 @@ Do not conclude anything is wrong before that line appears.
 docker ps --format '{{.Names}}\t{{.Status}}'   # all healthy, nothing restarting
 ss -tlnp | grep 12345                          # the website bind address only
 ss -tlnp | grep 219                            # 127.0.0.1 on every infrastructure port
-curl -sI http://<website_bind_ip>:12345/       # 200
-curl -sS --max-time 5 http://<public_ip>:12345/   # must FAIL
-curl -sS --max-time 5 http://<public_ip>:21900/   # must FAIL
+curl -sI http://<website_bind_ip>:12345/           # 200
+curl -sS --max-time 5 http://<reachable-ip>:12345/ # must FAIL
+curl -sS --max-time 5 http://<reachable-ip>:21900/ # must FAIL
 docker exec hoover4-worker uv run python main.py list-collections
 ```
 
-Run the two public-IP probes **from a machine outside the private network** as well.
-That they stop answering is the entire point of the bind settings, and a probe from the
-host itself does not test it.
+Run the last two probes **from a machine outside the private network** as well. That they
+stop answering is the entire point of the bind settings, and a probe from the host itself
+does not test it.
 
 ## Creating collections and ingesting
 
@@ -294,7 +302,7 @@ request. `NER_RECYCLE_CHARS` bounds it by rebuilding the pipeline on a character
 `/health` reports `pipeline_reloads`, and that number staying at 0 through a long ingest
 means the bound is not being applied.
 
-## What a no-GPU configuration does not do
+## What a configuration with no accelerator does not do
 
 Stated up front, because none of it is a fault to be diagnosed later:
 
@@ -306,7 +314,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
-| **`demo_mode` = anonymous admin** | Every guest session is an admin, and it is what provisions guests at all. Acceptable only behind an authenticating front end — which is what `website_bind_ip` enforces. |
+| **Demo mode means anonymous administrators** | Every guest session is an administrator, and demo mode is what provisions guests at all. Acceptable only behind an authenticating front end — which is what `website_bind_ip` is enforcing. |
 | **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
 
 ## Navigation

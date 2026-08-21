@@ -139,9 +139,12 @@ by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); t
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
 
-[deployment.md](deployment.md) is the runbook for a host with a public IP: the
-`website_bind_ip` / `infra_bind_ip` keys and what they protect, a worked no-GPU
-`hoover4.ini`, the reset order, the staged ingest and the post-deploy assertions.
+[deployment.md](deployment.md) is the runbook for a host reachable from the internet: the
+`website_bind_ip` / `infra_bind_ip` keys and what each protects, a `hoover4.ini` for a host
+with no accelerator, the reset order, the staged ingest and the assertions to run before
+ingesting anything. It uses placeholder addresses throughout — what a particular deployment
+uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
+gitignored.
 
 ## Manticore `_vectors` shards (HNSW)
 
