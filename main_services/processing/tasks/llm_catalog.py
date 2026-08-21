@@ -110,9 +110,29 @@ def providers_from_env() -> List[ProviderConfig]:
     # host. It is only a label -- the base_url is what identifies the endpoint.
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     if not name:
-        host = re.sub(r"^https?://", "", base_url).split("/")[0]
-        name = host.split(".")[-2] if host.count(".") >= 1 else host
+        name = provider_label(re.sub(r"^https?://", "", base_url).split("/")[0])
     return [ProviderConfig(name=name, base_url=base_url.rstrip("/"), api_key=api_key)]
+
+
+def provider_label(host: str) -> str:
+    """A short, stable name for one endpoint's host.
+
+    A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
+    `moonshot`. An address literal has no such label, and taking one anyway names the
+    provider after an octet of its IP -- `10.69.70.115:21960` becomes `70` -- so the
+    host and its port are kept whole. That is also the string the admin page synthesises
+    for a configured endpoint with no catalog rows yet, so the row a refresh writes
+    lands on the same provider the page was already showing rather than beside it.
+    """
+    host = host.strip()
+    if host.startswith("["):
+        return host
+    bare = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if re.fullmatch(r"[0-9.]+", bare):
+        return host
+    if bare.count(".") >= 1:
+        return bare.split(".")[-2]
+    return bare
 
 
 def fetch_models(provider: ProviderConfig) -> RefreshResult:

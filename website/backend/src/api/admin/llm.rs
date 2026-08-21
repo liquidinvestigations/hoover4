@@ -273,14 +273,7 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
     // If no catalog rows exist but LLM_BASE_URL is set, surface the provider as
     // present-but-empty so the admin page can trigger a refresh.
     if providers_map.is_empty() && llm_configured() {
-        let host = std::env::var("LLM_BASE_URL").unwrap_or_default();
-        let name = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .split('/')
-            .next()
-            .unwrap_or("provider")
-            .to_string();
+        let name = provider_name_from_url(&std::env::var("LLM_BASE_URL").unwrap_or_default());
         providers_map.insert(
             name.clone(),
             LlmProviderHealth {
@@ -747,6 +740,14 @@ fn simple_match(pattern: &str, haystack: &str) -> bool {
     true
 }
 
+/// A short, stable name for the endpoint a base URL points at.
+///
+/// A registrable domain is named by its second-to-last label — `api.moonshot.ai` is
+/// `moonshot`. An address literal has no such label, and taking one anyway names the
+/// provider after an octet of its IP (`10.69.70.115:21960` becomes `70`), so the host and
+/// its port are kept whole. Every place that names a provider goes through this,
+/// including the placeholder row for a configured endpoint whose catalog is still empty:
+/// two spellings of one endpoint render as two providers, one of them permanently empty.
 fn provider_name_from_url(base: &str) -> String {
     if let Ok(name) = std::env::var("LLM_PROVIDER_NAME") {
         if !name.trim().is_empty() {
@@ -759,11 +760,22 @@ fn provider_name_from_url(base: &str) -> String {
         .split('/')
         .next()
         .unwrap_or("provider");
-    let parts: Vec<_> = host.split('.').collect();
+    if host.starts_with('[') {
+        return host.to_string();
+    }
+    let bare = if host.matches(':').count() == 1 {
+        host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host)
+    } else {
+        host
+    };
+    if !bare.is_empty() && bare.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return host.to_string();
+    }
+    let parts: Vec<_> = bare.split('.').collect();
     if parts.len() >= 2 {
         parts[parts.len() - 2].to_string()
     } else {
-        host.to_string()
+        bare.to_string()
     }
 }
 
@@ -865,6 +877,23 @@ mod tests {
         // resolve_chat_model is async and needs ClickHouse; the guest short-circuit is
         // the property this module owns. Covered live.
         assert!(true);
+    }
+
+    /// An endpoint reached by IP must not be named after one of its octets, and the
+    /// placeholder row for an empty catalog must spell the provider the same way the
+    /// refresh will — otherwise one endpoint renders as two providers.
+    #[test]
+    fn a_provider_name_survives_an_address_literal() {
+        for (base, expected) in [
+            ("https://api.moonshot.ai/v1", "moonshot"),
+            ("https://integrate.api.nvidia.com/v1", "nvidia"),
+            ("http://10.69.70.115:21960/v1", "10.69.70.115:21960"),
+            ("http://127.0.0.1/v1", "127.0.0.1"),
+            ("http://[fd00::1]:8000/v1", "[fd00::1]:8000"),
+            ("http://localhost:8000/v1", "localhost"),
+        ] {
+            assert_eq!(provider_name_from_url(base), expected, "{base}");
+        }
     }
 
     /// The profile is decided by the tool surface a turn will have, because that is what

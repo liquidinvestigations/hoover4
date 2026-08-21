@@ -14,7 +14,7 @@ both carry the state forward, because whichever runs last would otherwise win.
 import pyarrow as pa
 import pytest
 
-from tasks.llm_catalog import RefreshResult, store_models
+from tasks.llm_catalog import RefreshResult, provider_label, store_models
 
 
 class FakeClient:
@@ -108,3 +108,22 @@ def test_the_column_is_typed_uint8_like_the_table(fake):
         "http://provider/v1",
     )
     assert client.inserted[1].schema.field("is_allowed").type == pa.uint8()
+
+
+@pytest.mark.parametrize(
+    "host,expected",
+    [
+        ("api.moonshot.ai", "moonshot"),
+        ("integrate.api.nvidia.com", "nvidia"),
+        # An IP literal has no registrable label, and taking the second-to-last one names
+        # the provider after an octet. The admin page synthesises `host:port` for a
+        # configured endpoint with no rows yet, so the two must agree or a refresh writes
+        # its models beside the provider the page is already showing.
+        ("10.69.70.115:21960", "10.69.70.115:21960"),
+        ("127.0.0.1", "127.0.0.1"),
+        ("[fd00::1]:8000", "[fd00::1]:8000"),
+        ("localhost:8000", "localhost"),
+    ],
+)
+def test_a_provider_label_survives_an_address_literal(host, expected):
+    assert provider_label(host) == expected
