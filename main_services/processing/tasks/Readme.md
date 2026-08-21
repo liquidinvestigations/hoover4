@@ -155,7 +155,7 @@ interceptor** — so one row lands in the collection's `processing_task_runs` pe
 execution: task name, dataset, artifact hash, wall duration, outcome, attempt, queue,
 worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
 `retry_backoff_ms`) and the parent workflow identity (`workflow_id`, `workflow_run_id`,
-`workflow_type`). The interceptor is the hook rather than the 55 call sites or
+`workflow_type`). The interceptor is the hook rather than the 79 call sites or
 `@with_heartbeat` for one reason: it cannot be forgotten by the next activity someone
 adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
 

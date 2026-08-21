@@ -85,7 +85,9 @@ rows whose `node_key` is not in the current ClickHouse tree. There is no dataset
 ## Usage
 
 - Triggered automatically after plan creation in `main.py`.
-- Run via `submit_job.py` for manual execution.
+- `submit_job.py` holds one `async def` and no entry point: it is a helper `main.py`
+  imports, not a script. To start this stage by hand, start the `ExecutePlans` workflow
+  from the Temporal UI or from the dataset's page in the admin UI.
 
 ## Navigation
 

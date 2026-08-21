@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS processing_eta_samples
 )
 ENGINE = ReplacingMergeTree(sampled_at)
 ORDER BY (collectionname, collection_dataset, stage, sampled_at)
-TTL sampled_at + INTERVAL 30 DAY
-COMMENT 'Rolling history of processing deadline estimates, newest 100 per stage shown on the admin page.';
+TTL sampled_at + INTERVAL 3 DAY
+COMMENT 'Rolling history of processing deadline estimates, newest 100 per stage shown on the admin page, retained for 3 days';

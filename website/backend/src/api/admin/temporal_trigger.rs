@@ -40,7 +40,8 @@ fn collection_dataset_search_attribute(collection_dataset: &str) -> serde_json::
 
 /// Start `ChangeOcrLanguages` for one dataset and return its job id.
 ///
-/// The workflow id carries a timestamp, unlike the pipeline kinds above, and that is the
+/// The workflow id carries a timestamp, unlike the pipeline kinds in `trigger_workflow`
+/// below, and that is the
 /// difference that matters: `execute-plans-<dataset>` is deliberately reused so a second
 /// click is a no-op, while two OCR-language changes are two *different* jobs with
 /// different before/after states. Reusing the id would make the second one silently
@@ -88,9 +89,10 @@ pub async fn start_ocr_language_job(
 
 /// Start a Temporal workflow over the HTTP API.
 ///
-/// `target` is a `collection_dataset` for the pipeline kinds (`rescan`, `compute_plans`,
-/// `execute_plans`) and a `collectionname` for the collection-database kinds
-/// (`ensure_collection`, `drop_collection_database`).
+/// `target` is a `collection_dataset` for the pipeline kinds (`rescan`,
+/// `ingest_and_process`, `compute_plans`, `execute_plans`, `purge_dataset`) and a
+/// `collectionname` for the collection-database kinds (`ensure_collection`,
+/// `drop_collection_database`).
 ///
 /// Pipeline inputs carry `collectionname` alongside `collection_dataset`: the
 /// processing side routes every ClickHouse call by collection and never re-derives it

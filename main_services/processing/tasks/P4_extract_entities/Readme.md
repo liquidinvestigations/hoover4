@@ -1,9 +1,17 @@
-# P4 - Extract Entities (NLP/NER)
+# P4 - Extract Entities
 
-This stage runs named-entity recognition over the parsed text content of a plan,
-*before* indexing. It was split out of the indexing stage so the remote NER
-service (the slowest and least reliable link) gets its own task queue, retries
-and worker, and so NER results are reusable when indexing is re-run.
+Two extractors read the parsed text content of a plan, *before* indexing: a
+named-entity model, and the regex entity scanner. They are separate stages sharing a
+directory because they ask the same question of the same rows and write to disjoint
+tables — neither waits on the other, and `ExecuteSinglePlan` runs both concurrently.
+
+NER was split out of the indexing stage so the remote NER service (the slowest and least
+reliable link) gets its own task queue, retries and worker, and so NER results are
+reusable when indexing is re-run.
+
+There is no P4b or P4.5. The stage numbers are a stored contract — `STAGE_INDEX` is a
+value in `processing_eta_samples` and is mirrored in the website — so a new number
+between P4 and P5 would move a number that existing rows already hold.
 
 ## Key Responsibilities
 
@@ -102,10 +110,56 @@ opens for 60 s after three consecutive connect failures, and work returns to
   length of the cleaned text actually indexed (`len(clean_text(text).encode('utf-8'))`).
   The Manticore shard planner (part 6) sizes shards from this column.
 
+## Regex entity scanning
+
+`scan_regex_entities.py` sends the same segments to `hoover4-regex-entity-scanner` and
+writes `regex_entity_hit` plus the `regex_scanned` watermark. It reads the same variants
+NER does (`text_sources.ner_reads_variant`), applies the same `clean_text`, and
+watermarks the segments it skipped for the same reason.
+
+Everything else about it is different from NER, and the differences are the design:
+
+- **No stop-list.** Values are checksummed and normalised; `entity_stoplist` exists to
+  drop what a *model* mislabels, and against an IBAN that passed its check digits it
+  would only do damage. This is also why the facet term fields are `regex_*` and never
+  `ner`: the website applies the stop-list to whatever maps to the `ner` field.
+- **No fallback twin.** The service is CPU-only already, so there is nothing to fall back
+  to and nothing to prefer. A 503 from it is admission control, which
+  `tasks.remote.post_json` raises as retryable — the answer to a full scan queue is to
+  come back, never to scan somewhere else.
+- **The rule set version is part of the key.** It is read from `/health` once per
+  activity and every batch response is checked against it: an image swapped mid-activity
+  would otherwise file the new rules' values under the old version's watermark, and
+  nothing downstream would ever reconsider them. Two rule sets' rows coexist in
+  `regex_entity_hit`, so a version bump makes every segment eligible for a rescan without
+  destroying what the previous version found.
+- **Batches are bounded by characters** (`REGEX_BATCH_CHARS = 1_000_000`,
+  `REGEX_BATCH_TEXTS = 64`), an order of magnitude above NER's, because the scanner holds
+  188 MB at full load with no per-request growth and runs at about 0.85 MB/s per thread —
+  a megabyte is roughly a second of one thread's work rather than a queue-blocking unit.
+
+**An entity that straddles a segment boundary is lost.** `text_content.page_id` is a real
+page number for paged formats and a ~256 KB segment ordinal otherwise, and a value split
+across two segments is seen by neither — at most one per boundary, which on a corpus of
+ordinary documents is a handful. The scanner takes an `offset` parameter precisely so a
+windowed caller can overlap its windows and deduplicate on `(type, start, end)`; this
+stage does not window. The loss is real, bounded, and written down here so it is not
+rediscovered later as a mystery about one missing value.
+
+The derived facets — the money magnitude ladder, the day snap, the date sanity window —
+are **not** here. They live in `tasks/regex_entities.py`, which the indexing stage imports
+too: changing any of them means a rescan and a reindex together, and a rule that lives in
+one stage is a rule the other can drift away from.
+
 ## Entry Points
 
 - Workflow: `ExtractEntitiesForPlan` in `workflows.py` (runs on the common queue,
   like all workflows).
+- Workflow: `ScanRegexEntitiesForPlan` in `workflows.py`, a sibling of it rather than a
+  successor.
+- Activity: `scan_regex_entities_for_hashes` in `scan_regex_entities.py` — on
+  `processing-common-queue`, not on a queue of its own: the CPU work is in another
+  container and this activity only moves rows.
 - Activity: `extract_entities_for_hashes` in `activities.py` — runs on
   `processing-nlp-queue` with a dedicated worker (`main.py worker nlp`,
   concurrency 2; concurrency here pipelines HTTP to the remote service, not

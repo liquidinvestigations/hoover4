@@ -183,6 +183,10 @@ class SearchResponse(BaseModel):
 class DocumentText(BaseModel):
     success: bool
     collectionname: str = ""
+    #: The dataset the document is in. Without it the website renders the document as a
+    #: non-clickable stub: a link needs the dataset as well as the hash, and a card that
+    #: cannot be opened is the difference between a citation and a claim.
+    collection_dataset: str = ""
     file_hash: str = ""
     path: str | None = None
     text: str = ""
@@ -703,7 +707,8 @@ def get_document_text(collectionname: str, file_hash: str) -> DocumentText:
             params={"hash": file_hash},
         )
         path_rows = clickhouse_query(
-            "SELECT any(path) AS path FROM vfs_files WHERE hash = {hash:String}",
+            "SELECT any(path) AS path, any(collection_dataset) AS collection_dataset "
+            "FROM vfs_files WHERE hash = {hash:String} AND is_deleted = 0",
             database=collection_db(collectionname),
             params={"hash": file_hash},
         )
@@ -723,6 +728,7 @@ def get_document_text(collectionname: str, file_hash: str) -> DocumentText:
     return DocumentText(
         success=True,
         collectionname=collectionname,
+        collection_dataset=(path_rows[0].get("collection_dataset") if path_rows else "") or "",
         file_hash=file_hash,
         path=(path_rows[0].get("path") if path_rows else None) or None,
         text=text[:MAX_DOCUMENT_CHARS],

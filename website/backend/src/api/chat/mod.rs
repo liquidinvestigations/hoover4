@@ -1167,20 +1167,32 @@ async fn handle_stream_event(
                 phase: "end".to_string(),
                 content: payload,
             };
-            // Pair with the matching start (by tool_call_id when present, else FIFO) —
-            // the same rules as `pair_tool_calls`, applied one call at a time.
-            let end_id = end.tool_call_id().map(str::to_string);
-            let matched = end_id
-                .as_ref()
-                .and_then(|tid| {
+            // Pair with the matching start: by run_id first, because that is the only
+            // identity a start event carries and the only one that survives two
+            // concurrent calls to the same tool; by tool_call_id next, for a transcript
+            // streamed by an agent image that predates run_id; and FIFO last, so an
+            // event with neither still renders.
+            let matched = end
+                .run_id()
+                .map(str::to_string)
+                .and_then(|rid| {
                     state
                         .pending_starts
                         .iter()
-                        .position(|(_, c)| c.tool_call_id() == Some(tid.as_str()))
+                        .position(|(_, c)| c.run_id() == Some(rid.as_str()))
                         .map(|pos| state.pending_starts.remove(pos))
                 })
+                .or_else(|| {
+                    end.tool_call_id().map(str::to_string).and_then(|tid| {
+                        state
+                            .pending_starts
+                            .iter()
+                            .position(|(_, c)| c.tool_call_id() == Some(tid.as_str()))
+                            .map(|pos| state.pending_starts.remove(pos))
+                    })
+                })
                 // FIFO, not LIFO: with several tools in flight the oldest unmatched
-                // start is the one an id-less end most likely belongs to.
+                // start is the one an unidentified end most likely belongs to.
                 .or_else(|| {
                     if state.pending_starts.is_empty() {
                         None
@@ -1423,7 +1435,15 @@ pub async fn start_research_task(
     )
     .await?;
 
-    let run_id = match start_research_workflow(username, &session_id, &message, &allowed, seq).await
+    let run_id = match start_research_workflow(
+        username,
+        &session_id,
+        &message,
+        &allowed,
+        seq,
+        requested_options.internet_tools,
+    )
+    .await
     {
         Ok(run_id) => run_id,
         Err(e) => {
@@ -1473,6 +1493,7 @@ async fn start_research_workflow(
     query: &str,
     allowed_collections: &[String],
     start_seq: u32,
+    internet_tools: bool,
 ) -> anyhow::Result<String> {
     let base_url = std::env::var("TEMPORAL_HTTP_URL")
         .unwrap_or_else(|_| "http://localhost:21908".to_string());
@@ -1488,6 +1509,9 @@ async fn start_research_workflow(
             "query": query,
             "allowed_collections": allowed_collections,
             "start_seq": start_seq,
+            // The conversation's own switch. Without it the durable path always reaches
+            // the agent that has the open web, whatever the thread was started with.
+            "internet_tools": internet_tools,
         }],
     });
 

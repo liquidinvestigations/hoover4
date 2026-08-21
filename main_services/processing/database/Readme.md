@@ -8,7 +8,31 @@ This directory centralizes database utilities and schema definitions used by the
 - `db_collection_migrations/` - SQL migrations applied to every per-collection ClickHouse database, `Hoover4_Collection_<collectionname>`.
 - `clickhouse.py` - ClickHouse client configuration and migration runner.
 - `manticore.py` - Manticore index maintenance and search configuration utilities.
-- `s3.py` - S3 client helpers and bucket initialization for the Garage blob store.
+- `s3.py` - S3 client helpers and bucket naming for the Garage blob store.
+
+## One Garage bucket per collection
+
+`hoover4-c-<collectionname>` holds a collection's ingested blobs and everything derived
+from them; `hoover4-system` holds what belongs to no collection, which today is chat
+artifacts. `blobs.s3_path` stores the full `s3://<bucket>/<key>`, and every reader takes
+the bucket from the path rather than from its own configuration — a reader that rebuilds
+the bucket name fetches from wherever it happens to be pointed instead of from where the
+object is.
+
+Per-collection *stores* are not possible: Garage has one shared metadata database and
+globally content-addressed data blocks. Buckets are, and they make a collection's objects
+enumerable without prefix filtering and deletable in one call. Block dedup is global, so
+the split costs no storage.
+
+It also turns "`P0_scan_disk` must never walk derived material" from a prefix check
+somebody has to remember into a structural property for the chat artifacts: they are in a
+bucket no collection's walker looks at. The OCR'd PDFs still share a bucket with the blobs
+they were built from, which is why `verify-stack.sh` still asserts that no `blobs` row
+references `derived/`.
+
+A collection's bucket is created with the collection (`ensure_collection_database`) and
+removed with it, which is why the application's Garage key carries `--create-bucket`.
+`garage-init` bootstraps only the system bucket.
 
 ## The two databases
 
@@ -245,6 +269,9 @@ appended tables and column-adding migrations; the global set does the same.
 | `00046_text_content_bytes.sql` | `text_bytes` on `text_content`: byte length of `text`, written at insert so size queries never scan the body. |
 | `00047_task_runs_queue_wait.sql` | Queue wait on `processing_task_runs`: `scheduled_at`, `schedule_to_start_ms`, `retry_backoff_ms`, plus `workflow_id` / `workflow_run_id` / `workflow_type`. Defaults keep older rows readable. |
 | `00048_processing_errors_join.sql` | `attempt` and `workflow_run_id` on `processing_errors`, so an `outcome = error` row in `processing_task_runs` can join its stack trace without a hash+time window. |
+| `00049_regex_entity_hit.sql` | One row per `(file, variant, segment, rule set, entity type)` holding the segment's deduplicated values in five parallel arrays. Not one row per occurrence: 193 real segments produced 325 365 entities, and density per segment is unbounded. `rule_set_version` is in the sort key so two rule sets' results coexist rather than replace one another. |
+| `00050_regex_scanned.sql` | The scan stage's watermark, per rule set version. A bump makes every segment eligible again and nothing re-runs until a rescan is asked for. Segments the variant filter skipped are watermarked too, or they are reconsidered on every run for ever. |
+| `00029_operations.sql` | Global. One row per long-running operation: kind, target, state, progress, ETA, error, who asked. No TTL — its whole value is answering "was this ever run" about something that happened longer ago than a Temporal history survives (24 hours here). `op_id` carries a timestamp and is also the workflow id, so two dispatches can never collapse into one execution. |
 
 `processing_task_runs` and `processing_task_inflight` are written by `tasks/task_timing.py`
 (a Temporal activity interceptor, batched, best-effort but never silent) and read by the

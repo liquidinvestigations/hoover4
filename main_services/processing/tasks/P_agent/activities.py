@@ -23,7 +23,20 @@ from tasks.heartbeat import with_heartbeat
 log = logging.getLogger(__name__)
 
 #: Where the full research agent lives on the shared `hoover4` network.
+#: The two agent services, which differ in the tools they carry. A durable research turn
+#: has to reach the same one an inline turn in that conversation would: the switch is a
+#: property of the conversation, and answering a documents-only thread from the agent
+#: that has the open web makes some answers in one transcript internet-backed and some
+#: not, with nothing on screen saying which.
 AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://hoover4-full-research-agent:8000")
+INTERNAL_AGENT_URL = os.getenv(
+    "INTERNAL_SEARCH_AGENT_URL", "http://hoover4-internal-search-agent:8000"
+)
+
+
+def agent_url_for(internet_tools: bool) -> str:
+    """The agent service a turn with these options belongs to."""
+    return AGENT_URL if internet_tools else INTERNAL_AGENT_URL
 
 #: One HTTP call to the agent. Generous, because an exhaustive research run is the point
 #: of this path, but still bounded so a wedged agent fails the activity and lets
@@ -46,6 +59,9 @@ class ResearchTaskParams:
     #: `seq` of the first row this task may write. The website reserves it when it
     #: submits, so a concurrent synchronous message cannot land on the same position.
     start_seq: int = 0
+    #: The conversation's own switch, forwarded from the website. Defaults to true so a
+    #: task submitted by an older caller behaves as it did.
+    internet_tools: bool = True
 
 
 @activity.defn

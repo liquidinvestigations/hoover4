@@ -21,7 +21,9 @@ Plans are built with a 1 GB total size cap and up to 1000 items per plan. Plan h
 ## Usage
 
 - Triggered automatically after dataset ingestion in `main.py`.
-- Can be invoked directly via `submit_job.py` when needed.
+- `submit_job.py` holds one `async def` and no entry point: it is a helper `main.py`
+  imports, not a script. To start this stage by hand, start the `ComputePlans` workflow
+  from the Temporal UI or from the dataset's page in the admin UI.
 
 ## Navigation
 

@@ -1,7 +1,7 @@
 # Hoover4 ai_services — the optional GPU tier
 
 GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
-(`hoover4-vllm`, **supported but parked**), and GPU EasyOCR (`hoover4-easyocr-gpu`).
+(`hoover4-vllm`), and GPU EasyOCR (`hoover4-easyocr-gpu`).
 
 > **Standalone.** This tier is fully optional and has **no
 > dependencies on anything else**: no external network, nothing here calls into
@@ -25,7 +25,7 @@ Every service is an optional overlay under `compose/`, selected by `hoover4.ini`
 | Overlay | Service | Port (ini key) | Enabled by | Purpose |
 |---|---|---|---|---|
 | `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | Local LLM (**Qwen3.5-2B at its full 262 K context**), OpenAI-compatible. **Parked**: nothing starts it; the NVIDIA NIM cloud provider carries the live tests. |
+| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | The agent model (**Qwen3.5-35B-A3B**), OpenAI-compatible. Off by default; a cloud provider serves the stack until it is turned on. |
 | `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so `tasks/ocr_client.py` posts one request shape to either. |
 
 ## Deploy
@@ -90,8 +90,9 @@ by one minor, so it is torchvision that decides which triple is available, not t
   ignored** by podman-compose — services appeared to start and then ran on CPU.
 * `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
   in the compose overlays.
-* The GPU services share one 24 GB card. `vllm_gpu_fraction` (default `0.50`) is the
-  knob to turn down first if either OOMs.
+* The GPU services share one device. `vllm_gpu_fraction` (default `0.50`) is the knob to
+  turn down first if any of them OOMs, and it is a fraction of the **whole** device —
+  which on unified-memory hardware means total system memory, not a card's own.
 
 ### Testing
 
@@ -110,64 +111,59 @@ so the suite is mounted in rather than run with `docker exec`. `AI_SERVER_TEST_U
 defaults to `http://localhost:21961`; point it at a container name on the `ai_services`
 network as above, or at a remote GPU host.
 
-## The local LLM: Qwen3.5-2B at its full 262 K context
+## The local LLM: Qwen3.5-35B-A3B
 
-`vllm/vllm-openai:v0.17.1` serving `Qwen/Qwen3.5-2B` at bf16, `--max-model-len 262144`,
-`--gpu-memory-utilization 0.50`. vLLM 0.17 is the first release with native `qwen3_5`
+`vllm/vllm-openai:v0.17.1` serving `Qwen/Qwen3.5-35B-A3B` at bf16, `--max-model-len
+262144`, `--max-num-seqs 16`. vLLM 0.17 is the first release with native `qwen3_5`
 support.
 
-### Why the whole native context fits on a 24 GB card
+35B total with 3B active per token — a mixture of experts, which is what makes it usable
+on memory-bandwidth-bound hardware where a dense 30B is not. It has the four capabilities
+the agents assume: tool calling, parallel tool calls, thinking, and vision.
 
-The card also holds `hoover4-ai-server` (~2.9 GB of embedding/reranker/NER weights) and a
-desktop session (~1.7 GB), so the LLM has roughly 10 GB to work with. The number that
-decides everything is **KV cache bytes per token**, and Qwen3.5's hybrid architecture
-changes it by an order of magnitude.
+### `max-num-seqs` is a correctness setting, not a tuning one
 
-From `Qwen/Qwen3.5-2B/config.json`: 24 layers with `full_attention_interval: 4`, so
-`layer_types` is three Gated-DeltaNet layers then one Gated Attention layer, six times
-over. **Only 6 of the 24 layers keep a growing KV cache.** Those 6 have
-`num_key_value_heads: 2` and `head_dim: 256`:
+A server with one slot serialises every caller head-of-line. A chat turn queued behind a
+benchmark then looks like a sixteen-minute model when most of it was a sixteen-minute
+queue — a misdiagnosis that costs a full debugging session and reaches the wrong
+conclusion about the model. One research agent is already several concurrent streams, and
+there is more than one conversation.
 
-```
-KV/token = 2 (K,V) x 6 full-attn layers x 2 kv-heads x 256 head_dim x 2 bytes = 12 KiB
-```
-
-The other 18 layers hold a *constant* recurrent state per sequence, not one that grows
-with context. That is the whole point of the architecture. So:
+The startup log reports what the KV cache can actually hold:
 
 ```
-weights (2.27 B params bf16, incl. vision tower)   4.55 GiB   (measured from the safetensors)
-KV cache at 262,144 tokens                         3.0  GiB
-activations + cudagraph capture                    ~1.3 GiB   (capture measured at 0.46 GiB)
-                                                  ----------
-                                                   ~9.9 GiB   =>  gpu_memory_utilization ~0.50
+$ docker logs hoover4-vllm 2>&1 | grep -E "GPU KV cache size|Maximum concurrency"
+GPU KV cache size: 500,544 tokens
+Maximum concurrency for 262,144 tokens per request: 7.53x
 ```
 
-For comparison, the Qwen3-4B this replaces has 36 layers x 8 KV heads x head_dim 128 =
-144 KiB/token — 12x more. Its 16,384-token limit was not a conservative choice; 262 K
-would have cost ~36 GiB.
+That figure is concurrency at the **full** context. Real turns are far shorter, so the
+slot count is the binding limit rather than the cache.
 
-Note the model is **multimodal** (`Qwen3_5ForConditionalGeneration`, with a 24-layer
-vision tower). The 4.55 GiB of weights already includes it.
+### FP8 does not run on GB10
 
-### Read `Maximum concurrency`, not `GPU KV cache size`
+The FP8 checkpoint loads and then fails during warmup with `RuntimeError: Error Internal`
+out of `torch.ops._C.cutlass_scaled_mm`. The cause is above it in the same log: this
+build's PyTorch supports compute capability 8.0 through 12.0, and GB10 is **12.1**. The
+CUTLASS FP8 kernels are compiled for architectures the device is not, and the error names
+the operator rather than the architecture.
 
-```
-$ docker logs hoover4-vllm 2>&1 | grep -E "Available KV cache|GPU KV cache size|Maximum concurrency"
-Available KV cache memory: 5.95 GiB
-GPU KV cache size: 129,472 tokens
-Maximum concurrency for 262,144 tokens per request: 1.97x
-```
+bf16 avoids that path entirely. It costs memory — roughly 70 GB of weights against FP8's
+35 — which on the unified-memory box means nothing else large can be resident beside it.
+`vllm_gpu_fraction` is a fraction of **total system memory** there, not of a discrete
+card, so a value tuned for a 24 GB card overcommits badly.
 
-`GPU KV cache size` looks like a failure — half of `max_model_len`, which on a normal
-model would mean vLLM cannot hold even one full sequence. **It is not.** That figure is
-normalised across all 24 layers, but only 6 keep a cache, so real capacity is 4x it:
-517,888 tokens, i.e. the 1.97 full-length sequences vLLM itself reports. And
-`5.95 GiB / 517,888 = 12.05 KiB/token`, exactly the arithmetic above.
+Measured on the box, single stream, 256 tokens at temperature 0: **30.4 tok/s** warm.
+That matches the published bf16 figure for this model on this hardware.
 
-Verified end to end rather than argued: a **200,021-token prompt** is accepted and
-answered correctly. No step of the quantisation ladder (shorter context, FP8 KV cache,
-AWQ INT4, the 0.8B model) was needed.
+### Reasoning must be parsed out
+
+Qwen3.5 thinks by default, so `--reasoning-parser qwen3` is not optional here: without it
+vLLM leaves the `<think>…</think>` block inside `content` and every answer arrives with
+the model's working prepended — visible to the user, counted against the payload budget,
+and parsed by nothing. See
+[`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
+for the measured cost of thinking (~4x completion tokens).
 
 ### Tool calling: `hermes` is wrong for this model
 
@@ -186,16 +182,6 @@ agent makes **zero** tool calls, and answers from nothing — the same symptom a
 from a different cause. The right parser is **`qwen3_xml`** (note the underscore: the
 registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
 spelling is a startup crash-loop rather than a clear error).
-
-No `--reasoning-parser` is set, and that is correct **only while thinking stays off**.
-Qwen3.5's template prefills `<think>\n\n</think>` unless `enable_thinking` is true, so by
-default the model never emits a reasoning block and there is nothing to parse.
-
-If you set `AGENT_THINKING=on` or `budgeted`, add `--reasoning-parser qwen3` at the same
-time. Without it vLLM leaves the `<think>…</think>` block inside `content`, and the whole
-chain of thought is shown to the user as part of the answer. See
-[`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
-for the measured cost of turning it on (~4x completion tokens).
 
 Two consequences of the XML format are handled in code, because both presented as
 infinite loops rather than as errors:

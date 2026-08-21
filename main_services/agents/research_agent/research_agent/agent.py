@@ -540,16 +540,30 @@ class MCPGatewayAgent:
                     )
                     if isinstance(start_data, dict) and not start_data.get("name"):
                         start_data["name"] = event.get("name") or ""
+                    # The run id is what makes a start and its own end pairable. Without
+                    # it a consumer has nothing but the tool's name and arrival order:
+                    # a model that issues two calls to the SAME tool at once — which
+                    # these models do, observed milliseconds apart — then has the second
+                    # result matched to the first call, and a card shows a result that
+                    # belongs to a different question. A start event carries no
+                    # tool_call_id at all, so this is the only identity available.
+                    if isinstance(start_data, dict):
+                        start_data["run_id"] = str(event.get("run_id") or "")
                     yield {
                         "is_task_complete": False,
                         "type": "start_tool",
                         "content": start_data,
                     }
                 elif kind == "on_tool_end":
+                    end_data = recurse_json_decode(
+                        self.tools_type_adapter.dump_python(event["data"])
+                    )
+                    if isinstance(end_data, dict):
+                        end_data["run_id"] = str(event.get("run_id") or "")
                     yield {
                         "is_task_complete": False,
                         "type": "end_tool",
-                        "content": recurse_json_decode(self.tools_type_adapter.dump_python(event["data"])),
+                        "content": end_data,
                     }
         
         yield {

@@ -152,6 +152,19 @@ impl AgentToolCall {
     }
 
     /// `tool_call_id` from an end event, when present.
+    /// The agent's own id for one tool invocation, present on both the start and the end.
+    ///
+    /// This is the identity that pairs them. `tool_call_id` is the model's id and is
+    /// absent from a start event entirely, and pairing by tool name and arrival order
+    /// puts the second of two concurrent calls to one tool with the first one's result —
+    /// silently, and in the shape of a card whose answer belongs to another question.
+    pub fn run_id(&self) -> Option<&str> {
+        self.content
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+    }
+
     pub fn tool_call_id(&self) -> Option<&str> {
         self.content
             .get("output")
@@ -226,10 +239,20 @@ pub fn pair_tool_calls(calls: &[AgentToolCall], summary_chars: usize) -> Vec<Pai
     for call in calls {
         match call.phase.as_str() {
             "start" => {
-                pending.push((call.tool_call_id().map(str::to_string), call.clone()));
+                // run_id first: it is the only identity a start event carries, and it is
+                // what keeps two concurrent calls to one tool apart. tool_call_id is the
+                // fallback for a transcript recorded before run_id was emitted.
+                let identity = call
+                    .run_id()
+                    .or_else(|| call.tool_call_id())
+                    .map(str::to_string);
+                pending.push((identity, call.clone()));
             }
             "end" => {
-                let id = call.tool_call_id().map(str::to_string);
+                let id = call
+                    .run_id()
+                    .or_else(|| call.tool_call_id())
+                    .map(str::to_string);
                 let start = if let Some(ref tid) = id {
                     if let Some(pos) = pending.iter().position(|(sid, _)| sid.as_ref() == Some(tid))
                     {
@@ -580,6 +603,58 @@ mod tests {
         assert_eq!(paired.len(), 1);
         assert_eq!(paired[0].tool_name, "search_collections");
         assert!(paired[0].tool_input.contains("water"));
+    }
+
+    /// Two interleaved calls to the SAME tool must stay two calls, each with its own
+    /// result.
+    ///
+    /// This is the shape the models actually produce — two `search_collections` starts
+    /// milliseconds apart, then two ends in whatever order the tools finished — and
+    /// pairing by name and arrival order gets it wrong in the way that is hardest to
+    /// see: both cards render, both look plausible, and each shows the other's answer.
+    #[test]
+    fn interleaved_calls_to_one_tool_keep_their_own_results() {
+        let calls = vec![
+            call("start", serde_json::json!({
+                "name": "search_collections", "run_id": "run-a",
+                "input": {"query": "water rights"},
+            })),
+            call("start", serde_json::json!({
+                "name": "search_collections", "run_id": "run-b",
+                "input": {"query": "pipeline easement"},
+            })),
+            // The second call finishes first, which is the whole point: arrival order
+            // is not call order.
+            call("end", serde_json::json!({
+                "run_id": "run-b",
+                "output": {"name": "search_collections", "content": {"hit": "easement"}},
+                "input": {},
+            })),
+            call("end", serde_json::json!({
+                "run_id": "run-a",
+                "output": {"name": "search_collections", "content": {"hit": "water"}},
+                "input": {},
+            })),
+        ];
+        let paired = pair_tool_calls(&calls, 400);
+        assert_eq!(paired.len(), 2, "two calls must survive as two rows");
+        assert!(paired[0].tool_input.contains("pipeline easement"), "{paired:?}");
+        assert!(paired[0].tool_output.contains("easement"), "{paired:?}");
+        assert!(paired[1].tool_input.contains("water rights"), "{paired:?}");
+        assert!(paired[1].tool_output.contains("water"), "{paired:?}");
+    }
+
+    /// A transcript recorded by an agent image that emitted no run_id still renders.
+    #[test]
+    fn a_stream_without_run_ids_still_pairs() {
+        let calls = vec![
+            call("start", serde_json::json!({"input": {"query": "water"}})),
+            call("end", serde_json::json!({
+                "output": {"name": "search_collections", "content": {"results": []}},
+                "input": {},
+            })),
+        ];
+        assert_eq!(pair_tool_calls(&calls, 400).len(), 1);
     }
 
     #[test]

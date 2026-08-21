@@ -169,7 +169,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
         div { style: MODULE,
             h2 { style: "{MODULE_CAPTION} background: #ba2121;", "Danger zone" }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;", "Soft-deletes the dataset: it disappears from search and browsing, but blobs and derived data are kept." }
+                p { style: "{HELP_TEXT} margin: 0 0 8px;", "Deletes the dataset and everything extracted from it: blobs, text, entities, chunks and vectors, from ClickHouse and from the search index. Only the stored objects survive, orphaned. This cannot be undone." }
                 button {
                     style: BTN_DANGER,
                     onclick: {
@@ -188,7 +188,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                             });
                         }
                     },
-                    "Soft-delete dataset"
+                    "Delete dataset and its data"
                 }
             }
         }

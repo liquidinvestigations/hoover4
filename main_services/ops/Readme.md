@@ -159,6 +159,23 @@ filters in `WHERE` are applied **before** k selection (no over-fetch needed), an
 `knn(embedding, K, (...))` bounds nothing by itself — the working shape is
 `WHERE knn(embedding, K, (...)) ORDER BY <knn_dist alias> ASC LIMIT K`.
 
+## Two facts about taking a Manticore table off this container
+
+Both cost time the first time and neither is discoverable from the error.
+
+- **`manticore-backup` needs `/etc/manticoresearch/manticore.conf.sh`, not
+  `manticore.conf`.** Pointed at the latter it fails with a message about certificates
+  and `max_connections`, which names neither the file nor the real cause: the tool takes
+  the **first** `listen =` line it finds, and that file's first one is the binary
+  protocol port. The `.conf.sh` variant lists the SQL port first.
+
+- **`DROP TABLE` leaves the table's directory and a stale `.lock` behind.** It
+  unregisters the table; it does not clean up after it. The data directory accumulates
+  orphaned directories from every dropped table — the stack tests alone leave dozens of
+  `test_x*` — and, more importantly, `IMPORT TABLE` refuses to import over one. Anything
+  restoring a table has to remove the leftover directory first, or the restore fails
+  naming a path that, as far as `SHOW TABLES` is concerned, belongs to nothing.
+
 ## Navigation
 
 -  [Go Back](../Readme.md)

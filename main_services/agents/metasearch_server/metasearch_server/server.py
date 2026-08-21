@@ -112,12 +112,19 @@ class WebSearchResponse(BaseModel):
     source_counts: dict[str, int] = Field(default_factory=dict)
     fetch_ms: float = 0.0
     total_ms: float = 0.0
-    artifact_id: str | None = Field(
-        default=None,
-        description="Handle for the full before/after ranking detail. Shown to the user; "
-        "there is nothing for you to do with it.",
+    #: The reserved key the website reads artifacts off, and the reason there is no
+    #: top-level `artifact_id`: at the top level the model reads it as a field of the
+    #: result and passes it to a collection tool as if it were a document id. It is a
+    #: lookup key for the browser, never an identifier the model has any use for.
+    hoover4_artifacts: list[dict[str, Any]] = Field(
+        default_factory=list,
+        alias=artifacts.ARTIFACTS_KEY,
+        serialization_alias=artifacts.ARTIFACTS_KEY,
+        description="Reserved for the interface. Nothing here is for you.",
     )
     error: str | None = None
+
+    model_config = {"populate_by_name": True}
 
 
 @mcp.tool(
@@ -185,7 +192,8 @@ async def web_search(
         source_counts=outcome.source_counts,
         fetch_ms=outcome.fetch_ms,
         total_ms=outcome.total_ms,
-        artifact_id=artifact_id,
+        **artifacts.artifacts_field({"artifact_id": artifact_id, "kind": "json",
+                                     "tool_name": "web_search"}),
     )
 
 

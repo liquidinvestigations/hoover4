@@ -197,8 +197,10 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
     if not wait:
         click.echo(
             "Submitted the disk scan only. Plan computation and execution were "
-            "NOT started: they must not run until the scan has finished. Run "
-            "`main.py compute-plans` / `execute-plans` once the scan completes."
+            "NOT started: they must not run until the scan has finished. Watch the "
+            "IngestDiskDataset workflow in the Temporal UI, then start the rest from "
+            "the dataset's page in the admin UI, which triggers ComputePlans and "
+            "ExecutePlans for you."
         )
         return
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
@@ -208,6 +210,29 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
 
     from tasks.P2_execute_plan.submit_job import submit_execute_plans
     asyncio.run(submit_execute_plans(collectionname, collection_dataset))
+
+
+async def _open_index_workflows(collectionname: str) -> list[str]:
+    """Ids of the collection's still-open indexing workflows.
+
+    Asked of Temporal rather than of a table: the writers are workflows, and the only
+    authority on whether one is still running is the server that is running it. The
+    `CollectionDataset` search attribute is per dataset and every dataset of a collection
+    is prefixed with the collection's name, so the filter is a prefix match done here.
+    """
+    from temporalio.client import Client as TemporalClient
+
+    client = await TemporalClient.connect("temporal:7233")
+    prefix = f"{collectionname}_"
+    open_ids = []
+    async for execution in client.list_workflows(
+        "WorkflowType = 'IndexDatasetPlan' AND ExecutionStatus = 'Running'"
+    ):
+        dataset = (execution.search_attributes or {}).get("CollectionDataset") or []
+        values = dataset if isinstance(dataset, list) else [dataset]
+        if any(str(v).startswith(prefix) for v in values):
+            open_ids.append(execution.id)
+    return open_ids
 
 
 @cli.command(name="reindex-collection")
@@ -220,11 +245,10 @@ def reindex_collection(collectionname: str):
     for a compaction feature: shards are never compacted or renumbered in
     place, they are rebuilt from scratch here.
 
-    WARNING: this truncates the shard ledger, the assignments and index_state
-    with no guard against in-flight indexing. Stop the indexing workers first,
-    or ensure no IndexDatasetPlan workflow is running for this collection —
-    otherwise an in-flight writer can record index_state rows into shards the
-    reindex is about to drop.
+    This truncates the shard ledger, the assignments and index_state, so it refuses
+    while any IndexDatasetPlan workflow is open for the collection: an in-flight writer
+    would otherwise record index_state rows into shards this is about to drop, and the
+    result is a ledger that claims documents no table holds.
     """
     from database.clickhouse import get_collection_client, validate_collectionname
     from database.manticore import drop_collection_tables
@@ -233,6 +257,14 @@ def reindex_collection(collectionname: str):
         validate_collectionname(collectionname)
     except ValueError as e:
         raise click.ClickException(str(e))
+
+    running = asyncio.run(_open_index_workflows(collectionname))
+    if running:
+        raise click.ClickException(
+            f"{len(running)} IndexDatasetPlan workflow(s) are still open for "
+            f"{collectionname} — {', '.join(running[:5])}. Wait for them, or cancel "
+            f"them in the Temporal UI, then run this again."
+        )
 
     dropped = drop_collection_tables(collectionname)
     log.info("Dropped %d Manticore shard tables of %s", len(dropped), collectionname)

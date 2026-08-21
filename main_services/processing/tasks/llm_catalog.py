@@ -80,6 +80,10 @@ class RefreshResult:
     model_count: int = 0
     error: str = ""
     models: List[str] = field(default_factory=list)
+    #: `{model_id: context_window}` for the models whose listing said. Absent means the
+    #: provider did not say, and the stored value stays 0 — a consumer showing "% of
+    #: context used" hides the percentage rather than dividing by an invented number.
+    context_windows: Dict[str, int] = field(default_factory=dict)
 
 
 def providers_from_env() -> List[ProviderConfig]:
@@ -131,9 +135,37 @@ def fetch_models(provider: ProviderConfig) -> RefreshResult:
         return RefreshResult(provider=provider.name, ok=False,
                              error=f"{type(exc).__name__}: {exc}")
 
-    models = [m.get("id") for m in (payload.get("data") or []) if m.get("id")]
+    entries = [m for m in (payload.get("data") or []) if m.get("id")]
+    models = [m["id"] for m in entries]
     return RefreshResult(provider=provider.name, ok=True,
-                         model_count=len(models), models=sorted(models))
+                         model_count=len(models), models=sorted(models),
+                         context_windows={
+                             m["id"]: window for m in entries
+                             if (window := _context_window(m))
+                         })
+
+
+#: Where a provider states a model's context length, in the order to try.
+#:
+#: `max_model_len` is vLLM's; `context_length` is what most OpenAI-compatible gateways
+#: use; `context_window` is the name the table itself uses and some providers echo it.
+#: There is no fallback guess: a wrong denominator is worse than none, because every
+#: number computed from it looks calculated.
+_CONTEXT_WINDOW_KEYS = ("max_model_len", "context_length", "context_window")
+
+
+def _context_window(entry: dict) -> int:
+    for key in _CONTEXT_WINDOW_KEYS:
+        raw = entry.get(key)
+        if raw is None:
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return 0
 
 
 def pick_model(model_ids: List[str], patterns) -> Optional[str]:
@@ -200,6 +232,12 @@ def store_models(result: RefreshResult, base_url: str) -> int:
             "provider": pa.array([result.provider] * count, type=pa.string()),
             "model_id": pa.array(result.models, type=pa.string()),
             "display_name": pa.array([m.split("/")[-1] for m in result.models], type=pa.string()),
+            # 0 where the provider did not say. Nothing downstream may substitute a
+            # default: a token-budget percentage against a made-up denominator reads as
+            # a measurement.
+            "context_window": pa.array(
+                [result.context_windows.get(m, 0) for m in result.models], type=pa.uint32()
+            ),
             "is_reasoning": pa.array([1 if _is_reasoning(m) else 0 for m in result.models],
                                      type=pa.uint8()),
             # Carried forward, never re-defaulted. A model nobody has ruled on is allowed.

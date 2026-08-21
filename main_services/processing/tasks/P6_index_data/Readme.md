@@ -11,12 +11,12 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 ## Entry Points
 
 - Workflow: `IndexDatasetPlan` in `workflows.py`
-- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `build_email_graph`, `optimize_shard_tables` in `activities.py`
+- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `optimize_shard_tables` in `activities.py`
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
-`build_vfs_nodes` and `resolve_canonical_file_type` run once per `ExecutePlans` batch,
-before the per-plan `IndexDatasetPlan` children; `build_vfs_nodes` then
-`index_vfs_structure` run once more after them. `IndexDatasetPlan` itself writes shards
+`build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
+afterwards it runs again, followed by `resolve_canonical_file_type`'s dataset-wide sweep,
+`index_vfs_structure` and `index_entity_terms`. `IndexDatasetPlan` itself writes shards
 and the email graph.
 
 ## Technical Details
@@ -28,6 +28,53 @@ Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The col
 Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch — so a single file can present as dozens of unindexable ones.
 
 Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit` and are per SEGMENT, not per document; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs — a missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
+
+## The regex entity columns
+
+`regex_entity_hit` feeds six value MVAs (`re_email`, `re_phone`, `re_bank_account`,
+`re_company_id`, `re_money`, `re_crypto_wallet`) plus `mentioned_dates` and its
+`mentioned_date_min`/`_max` pair, all per segment like the `ner_*` columns. Only the
+newest rule set's row is indexed — `argMax(..., rule_set_version)` — because two rule
+sets' rows coexist by design and indexing both would put a value the current rules no
+longer accept into the facet beside one they do.
+
+Two of those columns are not what they look like:
+
+- **`re_money` holds magnitude buckets, not amounts.** 2 419 distinct amounts across
+  twenty-five documents is not a facet; ten buckets per currency is. The raw amounts stay
+  in `regex_entity_hit`, which is what lets a viewer show a bucket card containing its own
+  amounts. The ladder is in `tasks/regex_entities.py` with a test enumerating its
+  boundaries, because changing it means a rescan.
+- **`mentioned_dates` is filtered with `ANY(...) BETWEEN lo AND hi`, never with the
+  interval-overlap test `dates` uses.** A document that mentions 1936 and 2020 occupies
+  neither 2005 nor anything between them, while a file created in 1990 and modified in
+  2020 genuinely occupies that whole span. `mentioned_date_min`/`_max` exist only to
+  measure a histogram's domain and to carry the unknown sentinel; using them to filter is
+  the single most likely way to get this wrong.
+
+Days rather than instants: second precision gave 1 049 distinct values in 3 000 segments,
+which corpus-wide is millions, and distinct *days* are bounded by the corpus's span.
+Signed epoch seconds, because Manticore's own `timestamp` is 32-bit unsigned and cannot
+hold 1936 at all.
+
+## `<collection>_entities`, and why a facet search box needs it
+
+Nothing in Manticore filters a facet by its bucket's name. The MVAs hold term ids and the
+text lives only in ClickHouse `string_term_id_to_text`, so there is not even a string for
+a facet query to match — a typed needle has to be resolved to term ids first, and
+`index_entity_terms` builds the table that does it.
+
+Without it a "Search X" box narrows the buckets already on screen, which on a corpus with
+tens of thousands of distinct values answers "nothing matches" for values that are
+present.
+
+One row per `(term_field, term_id)`, for every searchable facet field — `filetype` is
+excluded, having few enough buckets to fit on screen. Deterministic ids so a REPLACE
+upserts in place, no dataset-wide DELETE first (the box would answer nothing for the
+length of the rewrite), and a reconciliation sweep afterwards that removes rows whose term
+is gone. The sweep pages with an explicit `LIMIT` and `max_matches`: a bare `SELECT`
+returns Manticore's implicit twenty rows and would leave every removed term searchable
+for ever.
 
 `index_vfs_structure` copies ClickHouse `vfs_nodes` into `<coll>_vfs` with one multi-row
 `REPLACE INTO … VALUES (…),(…),…` per 512-node chunk. Deterministic ids make REPLACE
@@ -76,10 +123,21 @@ records is the TRUE size of the component, never the reader's render budget.
 
 ## The canonical file type
 
-`resolve_canonical_file_type` runs once per `ExecutePlans` batch, after the VFS tree and
-before the shard writers. It reads every detector's `file_types` row and every parser's
-output, and writes one row per document to `file_type_canonical`: the winning MIME, the
-winning coarse type, the rule that chose it, and every detection that lost.
+`resolve_canonical_file_type` runs twice: inside `ExecuteSinglePlan`, scoped to that
+plan's hashes, and once dataset-wide after all the per-plan children.
+
+The per-plan call is the one that has to exist. `file_types` is written by P3, **inside**
+those children, so a dataset-wide pass before them reads an empty table on a first ingest
+and writes nothing at all — and a document with no canonical row produces no
+`document_metadata` row either, losing its file type, its MIME and its extensions
+together. That is what an empty File types facet looks like from the outside. The
+dataset-wide sweep still has to happen, because a document's evidence can arrive in a
+different plan from its detections, and because the empty-archive demotion needs a
+container's real member count.
+
+It reads every detector's `file_types` row and every parser's output, and writes one row
+per document to `file_type_canonical`: the winning MIME, the winning coarse type, the
+rule that chose it, and every detection that lost.
 
 The rank table is in `canonical_file_type.py`. The rule that matters is the first one: a
 document is a docx because the docx parser read text out of it, not because a lookup
@@ -91,3 +149,9 @@ email.
 makes the file-type facet single-valued per document. Nothing is lost: the losing
 detections stay in `file_types` and on `file_type_canonical.losers`, both of which the
 raw metadata tab shows.
+
+When a document has no canonical row at all, `document_metadata` falls back to the union
+of its detections and logs a WARNING naming the hashes. The union is the pre-canonical
+behaviour and puts a document under every type a detector claimed — worse than one
+definitive answer, and far better than a document with no type, no MIME and no extensions.
+A fallback nobody can see is a bug that hides, which is why it is loud.

@@ -78,8 +78,49 @@ def _chat_model() -> str:
         return ""
 
 
-#: Where the full research agent lives on the shared `hoover4` network.
-AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://hoover4-full-research-agent:8000")
+#: How many prior turns of the conversation the agent is given.
+#:
+#: A durable research turn used to be sent an EMPTY history, so a follow-up question in
+#: an open thread arrived with no idea what "it" referred to and the answer read as a
+#: non-sequitur. Bounded rather than whole: the transcript grows without limit and the
+#: oldest turns are the least relevant to the question just asked.
+CHAT_HISTORY_TURNS = int(os.getenv("RESEARCH_CHAT_HISTORY_TURNS", "20"))
+
+#: Per message, so one enormous pasted document in the history cannot crowd out the
+#: question itself.
+CHAT_HISTORY_MESSAGE_CHARS = 4000
+
+
+def _chat_history(username: str, session_id: str, before_seq: int) -> list[dict]:
+    """The conversation so far, in the agent service's own vocabulary.
+
+    Read from `chat_messages` here rather than serialised by the caller: a durable task
+    can start minutes after it was submitted and is retried independently, so the history
+    it needs is whatever the transcript says at the moment it runs.
+    """
+    from database.clickhouse import get_global_client
+
+    try:
+        with get_global_client() as client:
+            rows = client.query(
+                "SELECT role, content FROM chat_messages FINAL "
+                "WHERE username = {u:String} AND session_id = {s:String} "
+                "AND seq < {seq:UInt32} AND role IN ('user', 'assistant') "
+                "AND content != '' "
+                "ORDER BY seq DESC LIMIT {limit:UInt32}",
+                parameters={"u": username, "s": session_id, "seq": before_seq,
+                            "limit": CHAT_HISTORY_TURNS},
+            ).result_rows
+    except Exception as exc:  # noqa: BLE001
+        # A turn with no history is a worse answer, not a failed one.
+        log.warning("[P_agent] could not read chat history: %s", exc)
+        return []
+    return [
+        {"type": "human" if role == "user" else "ai",
+         "content": str(content)[:CHAT_HISTORY_MESSAGE_CHARS]}
+        for role, content in reversed(rows)
+    ]
+
 
 AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
 
@@ -224,14 +265,19 @@ class ResearchStreamWriter:
         self._keepalive_thread.start()
 
         llm_model = _chat_model()
+        from .activities import agent_url_for
+
+        agent_url = agent_url_for(getattr(self.params, "internet_tools", True))
         response = requests.post(
-            f"{AGENT_URL}/chat/stream",
+            f"{agent_url}/chat/stream",
             json={
                 "session_id": self.params.session_id,
                 "user_id": self.params.username,
                 "message_id": f"{self.params.session_id}-{self.params.start_seq}",
                 "query": self.params.query,
-                "chat_history": [],
+                "chat_history": _chat_history(
+                    self.params.username, self.params.session_id, self.params.start_seq
+                ),
                 "username": self.params.username,
                 "allowed_collections": self.params.allowed_collections,
                 "llm_model": llm_model,

@@ -48,6 +48,12 @@ def _auth() -> Optional[tuple[str, str]]:
     return (user, password)
 
 
+#: A bare IPv4 address, with an optional port. Self-hosted endpoints are addressed this
+#: way, and a dotted quad has to be recognised as one thing rather than sliced like a
+#: domain name: `10.69.70.115` read as a domain has "70" for its second-level label.
+_IPV4_HOST = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+
 def provider_from_base_url(base_url: Optional[str] = None) -> str:
     """Stable label for the endpoint that served the call."""
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
@@ -57,6 +63,14 @@ def provider_from_base_url(base_url: Optional[str] = None) -> str:
     if not url:
         return "unknown"
     host = re.sub(r"^https?://", "", url).split("/")[0]
+    # An IPv6 literal is bracketed; keep the brackets off the label but never split it.
+    if host.startswith("["):
+        return host.split("]")[0].lstrip("[") or "unknown"
+    # The port is not part of the endpoint's identity, and leaving it on makes every
+    # label of one host with two ports look like two providers.
+    host = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if _IPV4_HOST.match(host):
+        return host
     if host.count(".") >= 1:
         return host.split(".")[-2]
     return host or "unknown"

@@ -401,6 +401,10 @@ services:
       - "NER_URL_FALLBACK=${NER_URL_FALLBACK:-}"
       # The full research agent, for the P_agent ResearchTask workflow. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
+      # The documents-only agent. A durable turn in a thread with internet tools off
+      # goes here, so a conversation does not answer some questions with the open web
+      # and some without.
+      - "INTERNAL_SEARCH_AGENT_URL=${INTERNAL_SEARCH_AGENT_URL:-http://hoover4-internal-search-agent:8000}"
       # Provider switches and GPU-failure behaviour, rendered from hoover4.ini by
       # deploy.py. Read by the pipeline worker.
       - "NER_PROVIDER=${NER_PROVIDER:-gpu}"
