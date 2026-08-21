@@ -51,7 +51,11 @@ bind_ip            = 0.0.0.0
 llm_selfhosted     = false
 vllm_port          = 21960
 vllm_image         = vllm/vllm-openai:v0.17.1
-vllm_model         = Qwen/Qwen3.5-35B-A3B-FP8
+; bf16 weights. The FP8 checkpoint of the same model loads and then dies during warmup
+; inside a CUTLASS kernel on any device whose compute capability is outside the range
+; this vLLM image's PyTorch was compiled for — the error names the operator, never the
+; architecture. bf16 costs about twice the weight memory and is the path that runs.
+vllm_model         = Qwen/Qwen3.5-35B-A3B
 vllm_served_name   = qwen3.5-35b-a3b
 ; A fraction of the WHOLE device, shared with every other model server on the box.
 ; On unified-memory hardware it is taken against total system memory, so a value

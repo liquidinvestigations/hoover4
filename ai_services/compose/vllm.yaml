@@ -37,7 +37,7 @@ services:
     # and this wrapper exports it before exec'ing the image's own `vllm serve`.
     entrypoint: ["/bin/sh", "-c", "export VLLM_API_KEY=\"$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)\"; export HUGGING_FACE_HUB_TOKEN=\"$$(cat /run/secrets/hf_token 2>/dev/null || true)\"; exec vllm serve \"$$@\"", "--"]
     command: >
-      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-35B-A3B-FP8}
+      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-35B-A3B}
       --served-model-name ${LLM_SERVED_NAME:-qwen3.5-35b-a3b}
       --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.50}
       --max-model-len ${VLLM_MAX_MODEL_LEN:-262144}

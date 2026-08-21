@@ -59,7 +59,7 @@ DEFAULTS = {
         "llm_selfhosted": "false",
         "vllm_port": "21960",
         "vllm_image": "vllm/vllm-openai:v0.17.1",
-        "vllm_model": "Qwen/Qwen3.5-35B-A3B-FP8",
+        "vllm_model": "Qwen/Qwen3.5-35B-A3B",
         "vllm_served_name": "qwen3.5-35b-a3b",
         "vllm_gpu_fraction": "0.50",
         "vllm_max_model_len": "262144",
