@@ -349,9 +349,16 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         else:
             touched.append(rel)
 
-    if touched:
+    # **Every path this scan saw is touched, not only the rehashed ones.** The deletion
+    # sweep decides what is still there by when a row was last confirmed, so a file that
+    # matched on size and mtime — the overwhelmingly common case, and the one that costs
+    # nothing to check — is exactly the file that has been confirmed. Touching only the
+    # rehashed subset tombstones and de-indexes every unmodified file on the second scan
+    # of a dataset, which looks like the corpus deleting itself.
+    confirmed = sorted(set(touched) | unchanged)
+    if confirmed:
         _touch_vfs_rows(params.collectionname, collection_dataset, container_hash,
-                        [known[_prefixed(rel)] for rel in touched])
+                        [known[_prefixed(rel)] for rel in confirmed if _prefixed(rel) in known])
 
     skipped = len(unchanged) + len(touched)
     if not todo_paths:

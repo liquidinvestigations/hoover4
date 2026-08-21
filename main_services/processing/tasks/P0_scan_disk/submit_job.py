@@ -23,6 +23,26 @@ def compose_collection_dataset(collectionname: str, dataset_name: str) -> str:
     return f"{collectionname}_{dataset_name}"
 
 
+def _insert_dataset_row(client, collectionname, dataset_name, collection_dataset,
+                        path, now):
+    """Write the registry row for a dataset that does not have one yet."""
+    table = pa.table({
+        "collection_dataset": pa.array([collection_dataset], type=pa.string()),
+        "collectionname": pa.array([collectionname], type=pa.string()),
+        "dataset_name": pa.array([dataset_name], type=pa.string()),
+        "dataset_display_name": pa.array([dataset_name], type=pa.string()),
+        "dataset_type": pa.array(["disk"], type=pa.string()),
+        "dataset_path": pa.array([path], type=pa.string()),
+        "dataset_access_json": pa.array([None], type=pa.string()),
+        "user_id": pa.array(["system"], type=pa.string()),
+        "date_created": pa.array([now], type=pa.timestamp("s")),
+        "date_modified": pa.array([now], type=pa.timestamp("s")),
+        "is_deleted": pa.array([0], type=pa.uint8()),
+    })
+    client.insert_arrow("dataset", table)
+    log.info("Dataset row created")
+
+
 def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool = True):
     from database.clickhouse import (
         get_global_client,
@@ -76,27 +96,22 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
             "WHERE collection_dataset = {cd:String} AND is_deleted = 0",
             parameters={"cd": collection_dataset},
         ).result_rows
-        if existing and existing[0][0]:
-            raise click.ClickException(
-                f"Dataset '{collection_dataset}' already exists. Aborting."
-            )
-        log.info("Creating dataset row")
+        already_registered = bool(existing and existing[0][0])
 
-        table = pa.table({
-            "collection_dataset": pa.array([collection_dataset], type=pa.string()),
-            "collectionname": pa.array([collectionname], type=pa.string()),
-            "dataset_name": pa.array([dataset_name], type=pa.string()),
-            "dataset_display_name": pa.array([dataset_name], type=pa.string()),
-            "dataset_type": pa.array(["disk"], type=pa.string()),
-            "dataset_path": pa.array([path], type=pa.string()),
-            "dataset_access_json": pa.array([None], type=pa.string()),
-            "user_id": pa.array(["system"], type=pa.string()),
-            "date_created": pa.array([now], type=pa.timestamp("s")),
-            "date_modified": pa.array([now], type=pa.timestamp("s")),
-            "is_deleted": pa.array([0], type=pa.uint8()),
-        })
-        client.insert_arrow("dataset", table)
-        log.info("Dataset row created")
+        # An existing registry row is a RESCAN, not a collision. Refusing here was a dead
+        # end: the row is written before the walk, so any interrupted ingest left a
+        # dataset that could never be added again and could only be purged. The scan is
+        # idempotent -- every path it finds is re-ingested or touched, and
+        # `reconcile_deleted_files` tombstones what it no longer finds -- so running it
+        # again over the same root is how an edited or deleted file is picked up.
+        if already_registered:
+            log.info("Dataset %s already exists; rescanning %s", collection_dataset, path)
+        else:
+            log.info("Creating dataset row")
+            _insert_dataset_row(
+                client, collectionname, dataset_name, collection_dataset, path, now
+            )
+
 
     async def _start_workflow():
         log.info("Starting temporal workflow...")
@@ -116,10 +131,16 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
                 "dataset_path": path,
             },
         )
+        # One id per RUN, not per dataset. A dataset is scanned again every time it is
+        # rescanned, so an id derived from the dataset alone can be started exactly once
+        # and every later rescan either collides or silently attaches to the finished
+        # run. With a unique id the reuse policy stops mattering, and
+        # `id_conflict_policy` still guards the one case that is a real conflict: two
+        # dispatches inside the same second.
+        run_id = int(datetime.now(timezone.utc).timestamp())
         kwargs = dict(
-            id=f"ingest-disk-{collection_dataset}",
+            id=f"ingest-disk-{collection_dataset}-{run_id}",
             task_queue="processing-common-queue",
-            id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
             search_attributes=dataset_search_attributes(collection_dataset),
         )
