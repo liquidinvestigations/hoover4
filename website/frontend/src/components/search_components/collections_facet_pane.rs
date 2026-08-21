@@ -382,8 +382,10 @@ fn CollectionFacetRow(
             style: ROW_STYLE,
             onclick: toggle_selection,
             {tri_state_icon(check_state)}
-            Icon { icon: GoDatabase, style: "width: 20px; height: 20px; flex-shrink: 0; color: rgb(28,33,45);" }
-            div { style: LABEL_STYLE, title: "{group.collectionname}", "{group.collectionname}" }
+            // The chevron sits between the tick and the database glyph, where a tree
+            // control belongs: it is what opens the row's children, and reading a row
+            // left to right should reach "open me" before it reaches what is being
+            // opened. At the far end it read as part of the count.
             button {
                 class: "x-collection-facet-expand",
                 style: "
@@ -398,6 +400,8 @@ fn CollectionFacetRow(
                     Icon { icon: MdChevronRight, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.6);" }
                 }
             }
+            Icon { icon: GoDatabase, style: "width: 20px; height: 20px; flex-shrink: 0; color: rgb(28,33,45);" }
+            div { style: LABEL_STYLE, title: "{group.collectionname}", "{group.collectionname}" }
             div { style: COUNT_STYLE, "{group.count}" }
         }
         if open {

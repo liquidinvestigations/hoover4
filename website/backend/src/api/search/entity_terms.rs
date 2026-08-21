@@ -192,7 +192,9 @@ pub async fn search_entity_terms(
                 term_id,
                 term_display: row.term_display,
                 term_field: row.term_field,
-                highlight: row.highlight,
+                highlight: crate::db_utils::decompose_spans::decompose_text_into_spans(
+                    row.highlight,
+                ),
             });
         }
     }

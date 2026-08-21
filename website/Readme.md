@@ -189,15 +189,37 @@ on producing buckets with real counts. Offering one hands the user a filter whos
 possible outcome is `0 documents found`. The guard is display-only: the orphan rows still
 inflate unfiltered hit counts, and `main.py purge-dataset` is what removes them.
 
-The four Entities facets (`ner_per`, `ner_org`, `ner_loc`, `ner_misc`) and the document
-viewer's entities panel are filtered through `common/src/entity_stoplist.rs`, which
+The four NER Entities facets (`ner_per`, `ner_org`, `ner_loc`, `ner_misc`) and the
+document viewer's entities panel are filtered through `common/src/entity_stoplist.rs`,
+which
 rejects mail header names, encoding fragments and letter-spaced PDF headings. The
 pipeline drops the same values before storing them
 (`main_services/processing/tasks/entity_stoplist.py`), so on freshly extracted data this
 finds nothing; it exists because a write-time rule governs only rows written after it,
 and on a mail corpus the rows written earlier put `Content-Transfer-Encoding` at the top
 of the facet. The duplication is deliberate and mirrors `document_sources.rs`: neither
-runtime may depend on the other being right.
+runtime may depend on the other being right. The stop-list is applied to whatever maps to
+the `ner` term field and to nothing else: it exists to drop what a *model* mislabels, and
+against a checksummed identifier it would only do damage.
+
+**A facet search box asks the corpus, not the buckets on screen.** A pane holds the top
+twenty-one buckets of one query, so narrowing those client-side answers "nothing matches"
+for a value that is present and merely unpopular. `search_entity_terms`
+(`backend/src/api/search/entity_terms.rs`) resolves a needle against
+`<collectionname>_entities` — the only table carrying both the text and the term id the
+search columns are written in — and the ids narrow the facet query through
+`search_string_facet`'s `restrict_to_ids`. `Some(vec![])` is a needle that matched
+nothing and returns no buckets; `None` is no needle and returns the whole facet, and
+collapsing the two answers a failed search with everything. `file_types` keeps
+client-side narrowing: a handful of buckets, all visible, and no rows in the term table.
+
+Those queries are uncached, like the folder tree's, because the table changes while
+ingestion runs. **Manticore 14.1.0's SQL grammar has no `EXCLUDE FILTERS` clause** in any
+position a `FACET` accepts, so a facet drops its own selection by having it removed from
+the query before the query is sent. That also removes the `collection_dataset` filter
+permission sanitisation injected, which is safe only for as long as permissions are
+collection-granular — a permitted collection implies all of its datasets. Dataset-level
+permissions would make that line a leak.
 
 The two copies are held together by a digest rather than by discipline. No path is
 visible to both test runs — `hoover4-website` mounts only `website/` and `hoover4-worker`

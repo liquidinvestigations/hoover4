@@ -59,7 +59,7 @@ pub struct EntityExplanation {
 /// `term_id` is what a facet filter is written in: the search columns hold
 /// `hash_string_to_uint63` ids and never the text, so a typed needle has to be resolved
 /// to ids before it can narrow anything.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EntityTermHit {
     pub term_id: u64,
     pub term_display: String,
@@ -67,14 +67,18 @@ pub struct EntityTermHit {
     /// value can be a term in two fields — an address is both an envelope sender and
     /// something a body mentions — and ticking them applies different filters.
     pub term_field: String,
-    /// The matched fragment with the needle marked, as the search box's match reason.
-    /// Empty when the highlighter had nothing to add.
+    /// The matched fragment, split into marked and unmarked runs, as the search box's
+    /// match reason. Empty when the highlighter had nothing to add.
+    ///
+    /// Already decomposed on the server, like every other highlight on the site: the
+    /// marker tags are a Manticore detail, and a renderer that had to parse them would be
+    /// a second parser for the same wire format.
     #[serde(default)]
-    pub highlight: String,
+    pub highlight: Vec<crate::text_highlight::HighlightTextSpan>,
 }
 
 /// What a facet search box got back.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EntityTermHits {
     pub hits: Vec<EntityTermHit>,
     /// The result set hit its cap, so the list is a sample of the matches rather than

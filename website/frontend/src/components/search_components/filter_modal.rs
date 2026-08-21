@@ -20,9 +20,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use common::{
     date_histogram::{DateHistogram, DateHistogramBucket},
+    entity_cards::{EntityTermHit, EntityTermHits},
     filter_summary::{CHIP_SUMMARY_BUDGET, summarize_dates, summarize_size, summarize_values},
     search_query::{RangeFilter, SearchQuery},
-    search_result::FacetOriginalValue,
+    search_result::{FacetOriginalValue, SearchResultFacetItem},
     vfs::{node_key_display_name, node_key_display_path},
 };
 use dioxus::prelude::*;
@@ -30,14 +31,14 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoDatabase,
-        md_action_icons::{MdDateRange, MdInfo, MdSearch},
-        md_communication_icons::{MdBusiness, MdEmail, MdLocationOn},
+        md_action_icons::{MdAccountBalance, MdAccountBalanceWallet, MdDateRange, MdInfo, MdSearch},
+        md_communication_icons::{MdBusiness, MdEmail, MdLocationOn, MdPhone},
         md_content_icons::MdFilterList,
         md_device_icons::MdStorage,
-        md_editor_icons::MdInsertDriveFile,
+        md_editor_icons::{MdAttachMoney, MdInsertDriveFile},
         md_image_icons::MdStraighten,
         md_navigation_icons::MdClose,
-        md_social_icons::MdPerson,
+        md_social_icons::{MdDomain, MdPerson},
         md_toggle_icons::{
             MdCheckBox, MdCheckBoxOutlineBlank, MdRadioButtonChecked, MdRadioButtonUnchecked,
         },
@@ -45,11 +46,15 @@ use dioxus_free_icons::{
 };
 
 use crate::{
-    api::search_api::{search_date_histogram, search_for_results_hit_count, search_numeric_facet},
+    api::search_api::{
+        search_date_histogram, search_entity_terms, search_for_results_hit_count,
+        search_mentioned_date_histogram, search_numeric_facet, search_string_facet,
+    },
     components::{
+        error_boundary::ServerErrorDisplay,
         search_components::{
             collections_facet_pane::CollectionsFacetPane,
-            search_facets::FacetSelectorList,
+            search_facets::{FacetCheckbox, FacetSelectorList},
             storage_tree::{StorageRow, StorageTree, node_keys_from_terms},
             vfs_tree::TreeSkin,
         },
@@ -113,7 +118,7 @@ impl FilterCategory {
             FilterCategory::FileTypes => &["file_types"],
             FilterCategory::FileLocation => &["file_paths"],
             FilterCategory::Email => &["email_from", "email_to", "struct_flags"],
-            FilterCategory::Entities => &["ner_per", "ner_org", "ner_loc", "ner_misc"],
+            FilterCategory::Entities => &EntitySub::VALUE_FIELDS,
             FilterCategory::FileSize | FilterCategory::Dates => &[],
         }
     }
@@ -123,6 +128,10 @@ impl FilterCategory {
         match self {
             FilterCategory::FileSize => &["file_size_bytes"],
             FilterCategory::Dates => &["dates"],
+            // A mentioned date is an entity the scanner found, not a property of the
+            // file, so it belongs to this category rather than to Date -- and it is the
+            // only range filter Entities owns.
+            FilterCategory::Entities => &["mentioned_dates"],
             _ => &[],
         }
     }
@@ -360,6 +369,18 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
                 // questions: `enron` is what fits, `/disk-files/enron` is which one.
                 let mut short: Vec<String> = Vec::new();
                 let mut long: Vec<String> = Vec::new();
+                // Entities is the one category with both a facet half and a range half.
+                // The range half is prefixed rather than rendered like a Date chip:
+                // `Mentioned 1998–2004` next to `Date 1998–2004` says which question was
+                // asked, and two chips reading the same words would not.
+                if other == FilterCategory::Entities
+                    && let Some(filter) = query.range_filters.get("mentioned_dates")
+                    && filter.is_active()
+                {
+                    let text = format!("Mentioned {}", summarize_dates(filter, epoch_to_iso_date));
+                    short.push(text.clone());
+                    long.push(text);
+                }
                 for field in other.facet_fields() {
                     let Some(set) = query.facet_filters.get(*field) else {
                         continue;
@@ -591,6 +612,10 @@ pub fn FilterModal(
                                     field: "file_types".to_string(),
                                     map_string_terms: term_field_prop("file_types"),
                                     placeholder: "Search file types…".to_string(),
+                                    // A handful of buckets, all on screen, and no rows in
+                                    // the term table: a corpus-wide search would answer
+                                    // nothing for every needle.
+                                    server_side: false,
                                 }
                             },
                             FilterCategory::FileSize => rsx! {
@@ -719,6 +744,18 @@ fn FilterModalFooter(
 }
 
 /// A checkbox facet list with a search box over its own values.
+///
+/// Two kinds of search box, and which one a facet gets is a property of the facet.
+///
+/// `file_types` narrows CLIENT-SIDE, because it has a handful of buckets and every one of
+/// them is already on screen. Everything else asks the corpus: a facet pane holds the top
+/// twenty-one buckets of one query, so narrowing those answers "nothing matches" for a
+/// value that is present and merely unpopular — which on a corpus with tens of thousands
+/// of distinct addresses is nearly every value anybody types.
+///
+/// The corpus-wide path resolves the needle to term ids (`search_entity_terms`), hands
+/// them to the facet query as `restrict_to_ids`, and shows Manticore's own highlight as
+/// each row's reason for being there.
 #[component]
 fn SearchableFacetPane(
     original_query: ReadSignal<SearchQuery>,
@@ -726,36 +763,103 @@ fn SearchableFacetPane(
     field: String,
     map_string_terms: Option<String>,
     placeholder: String,
+    /// Ask the corpus rather than the buckets on screen. False only for a facet whose
+    /// values are few enough to all be visible.
+    #[props(default = true)]
+    server_side: bool,
+    /// A needle owned by a parent, for the merged view that drives ten panes at once.
+    /// When set, this pane draws no box of its own.
+    #[props(default)]
+    shared_needle: Option<ReadSignal<String>>,
 ) -> Element {
-    let mut needle = use_signal(String::new);
+    let owns_box = shared_needle.is_none();
+    let mut own_needle = use_signal(String::new);
+    let needle: ReadSignal<String> = match shared_needle {
+        Some(shared) => shared,
+        None => ReadSignal::from(own_needle),
+    };
+    let search_field = field.clone();
+    let hits = use_entity_term_search(original_query, needle, move || vec![search_field.clone()],
+                                      server_side);
+    let restrict_to_ids = use_memo(move || hits.read().as_ref().map(EntityTermHits::term_ids));
+    let match_reasons = use_memo(move || match_reason_map(hits.read().as_ref()));
+    // The client-side needle is only handed on when nothing else narrowed: passing both
+    // would filter the server's answer a second time, against a display string that the
+    // needle matched somewhere the label does not show.
+    let client_needle = use_memo(move || {
+        if server_side { String::new() } else { needle.read().clone() }
+    });
+
     rsx! {
-        div {
-            style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
-            Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
-            input {
-                r#type: "text",
-                style: "{INPUT_STYLE} flex: 1 1 auto;",
-                placeholder: "{placeholder}",
-                value: "{needle}",
-                oninput: move |event| needle.set(event.value()),
+        if owns_box {
+            div {
+                style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
+                Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
+                input {
+                    r#type: "text",
+                    style: "{INPUT_STYLE} flex: 1 1 auto;",
+                    placeholder: "{placeholder}",
+                    value: "{own_needle}",
+                    oninput: move |event| own_needle.set(event.value()),
+                }
             }
         }
-        // The box filters what is rendered, not what is fetched: the server returns the
-        // top buckets and re-querying per keystroke would be one fan-out per character.
-        // The needle is handed to the list, which owns the buckets and is the only place
-        // that can narrow them — an earlier version published it as a CSS custom property
-        // instead, which nothing read and nothing could have read: CSS cannot test one
-        // element's text against a value held in a variable, so the box did nothing at all.
         SuspendWrapper {
             FacetSelectorList {
                 original_query,
                 modified_search_query: pending,
                 facet_field_name: field,
                 map_string_terms,
-                needle: ReadSignal::from(needle),
+                needle: ReadSignal::from(client_needle),
+                restrict_to_ids: ReadSignal::from(restrict_to_ids),
+                match_reasons: ReadSignal::from(match_reasons),
             }
         }
     }
+}
+
+/// Resolve a debounced needle to term ids, or `None` while there is no needle.
+///
+/// Debounced at the same 300 ms the footer's hit count uses, because the alternative is
+/// one Manticore fan-out per keystroke. The result is `None` — not an empty list — when
+/// the box is empty, and the difference is load-bearing all the way down: `None` means
+/// "show the whole facet", `Some([])` means "the needle matched nothing".
+fn use_entity_term_search(
+    original_query: ReadSignal<SearchQuery>,
+    needle: ReadSignal<String>,
+    columns: impl Fn() -> Vec<String> + Clone + 'static,
+    server_side: bool,
+) -> Memo<Option<EntityTermHits>> {
+    let mut debounced = use_signal(String::new);
+    use_effect(move || {
+        let text = needle.read().trim().to_string();
+        spawn(async move {
+            n0_future::time::sleep(std::time::Duration::from_millis(300)).await;
+            if needle.peek().trim() == text {
+                debounced.set(text);
+            }
+        });
+    });
+    let resource = use_resource(move || {
+        let query = original_query.read().clone();
+        let text = debounced.read().clone();
+        let columns = columns();
+        async move {
+            if !server_side || text.is_empty() {
+                return None;
+            }
+            search_entity_terms(query, text, columns).await.ok()
+        }
+    });
+    use_memo(move || resource.read().clone().flatten())
+}
+
+/// Hits by term id, for the reason line under each row.
+fn match_reason_map(hits: Option<&EntityTermHits>) -> HashMap<u64, EntityTermHit> {
+    hits.map(|hits| {
+        hits.hits.iter().map(|hit| (hit.term_id, hit.clone())).collect()
+    })
+    .unwrap_or_default()
 }
 
 #[component]
@@ -914,9 +1018,26 @@ fn bucket_range(bucket: usize) -> (Option<i64>, Option<i64>) {
 /// but the pane offered one "Custom range…" row with two boxes, so the only way to ask
 /// for "everything after 2016" was to know that leaving a box blank meant that.
 #[component]
-fn DatePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+fn DatePane(
+    original_query: ReadSignal<SearchQuery>,
+    pending: Signal<SearchQuery>,
+    /// Which range filter this pane edits: `dates` for the document's own dates,
+    /// `mentioned_dates` for the days its text names.
+    ///
+    /// One component over two fields rather than two components. Everything visible here
+    /// — the five modes, the ISO parsing, the inverted-range error, the histogram
+    /// brushing, the unknown-only toggle — is identical for both, and a copy would drift
+    /// until the two date panes behaved differently for no reason a user could see.
+    #[props(default = "dates".to_string())]
+    field: String,
+) -> Element {
+    let mentions = field == "mentioned_dates";
+    // A `Signal` rather than the `String` prop: every closure below is stored in an
+    // `rsx!` handler or a `Callback`, which needs them `Copy`, and a captured `String`
+    // is not. The signal is written once and read everywhere.
+    let filter_key = use_signal(|| field.clone());
     let current = use_memo(move || {
-        pending.read().range_filters.get("dates").cloned().unwrap_or_default()
+        pending.read().range_filters.get(&filter_key.read().clone()).cloned().unwrap_or_default()
     });
 
     // The mode is read off the filter whenever the filter says something. `sticky` only
@@ -951,16 +1072,23 @@ fn DatePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery
     });
     let histogram = use_resource(move || {
         let q = debounced.read().clone();
-        search_date_histogram(q)
+        async move {
+            if mentions {
+                search_mentioned_date_histogram(q).await
+            } else {
+                search_date_histogram(q).await
+            }
+        }
     });
 
     let mut set_filter = move |min: Option<i64>, max: Option<i64>| {
+        let key = filter_key.peek().clone();
         let mut q = pending.write();
         let filter = RangeFilter { min, max, include_unknown: false };
         if filter.is_active() {
-            q.range_filters.insert("dates".to_string(), filter);
+            q.range_filters.insert(key, filter);
         } else {
-            q.range_filters.remove("dates");
+            q.range_filters.remove(&key);
         }
     };
 
@@ -981,11 +1109,13 @@ fn DatePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery
         let filter = current();
         match target {
             DateMode::Off => {
-                pending.write().range_filters.remove("dates");
+                let key = filter_key.peek().clone();
+                pending.write().range_filters.remove(&key);
             }
             DateMode::UnknownOnly => {
+                let key = filter_key.peek().clone();
                 pending.write().range_filters.insert(
-                    "dates".to_string(),
+                    key,
                     RangeFilter { min: None, max: None, include_unknown: true },
                 );
             }
@@ -1055,7 +1185,14 @@ fn DatePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery
                 }
                 div {
                     style: "font-size: 13px; color: rgba(0,0,0,0.6); padding-left: 30px;",
-                    "A document matches if any of its confirmed dates falls in the range."
+                    if mentions {
+                        // Not the same sentence as the one below it, and the difference
+                        // is the whole feature: a document naming 1936 and 2020 mentions
+                        // neither 2005 nor anything between them.
+                        "A document matches if any single date its text names falls in the range."
+                    } else {
+                        "A document matches if any of its confirmed dates falls in the range."
+                    }
                 }
             }
 
@@ -1110,22 +1247,33 @@ fn DateHistogramChart(
                     display: flex; align-items: center; gap: 8px; cursor: pointer;
                     padding: 4px 6px; border-radius: 6px; font-size: 13px; margin-top: 6px;
                 ",
-                title: "Click to show only the documents with no confirmed date",
+                title: "Click to show only the documents with no date of this kind",
                 onclick: move |_| on_unknown.call(()),
                 if unknown_selected {
                     Icon { icon: MdCheckBox, style: "width: 18px; height: 18px; color: rgb(28,33,45);" }
                 } else {
                     Icon { icon: MdCheckBoxOutlineBlank, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
                 }
-                div { style: "flex: 1 1 auto;", "No confirmed date" }
+                div {
+                    style: "flex: 1 1 auto;",
+                    if histogram.counts_mentions { "Mentions no date" } else { "No confirmed date" }
+                }
                 div { style: "color: rgba(0,0,0,0.6);", "{histogram.unknown_count}" }
             }
         }
     };
 
     if histogram.is_empty() {
+        // The empty-domain copy has to name WHICH dates it found none of. A corpus of
+        // undated scans that all discuss the 1970s has no document dates and plenty of
+        // mentioned ones, and one sentence for both would be wrong for one of them.
+        let nothing = if histogram.counts_mentions {
+            "No document here mentions a date."
+        } else {
+            "No dated documents match."
+        };
         return rsx! {
-            div { style: "color: rgba(0,0,0,0.5); font-size: 14px;", "No dated documents match." }
+            div { style: "color: rgba(0,0,0,0.5); font-size: 14px;", "{nothing}" }
             {unknown_row}
         };
     }
@@ -1137,7 +1285,14 @@ fn DateHistogramChart(
     rsx! {
         div {
             style: "font-size: 13px; color: rgba(0,0,0,0.6); margin-bottom: 4px;",
-            "Documents by date — click a bar to filter"
+            if histogram.counts_mentions {
+                // The bars are not comparable with the other histogram's: a document
+                // naming three days in one bin contributes three to it. Saying so is
+                // cheaper than a reader working out why the totals do not add up.
+                "Mentions by date — click a bar to filter"
+            } else {
+                "Documents by date — click a bar to filter"
+            }
         }
         div {
             // `align-items: flex-end` so bars grow from a shared baseline, and a fixed
@@ -1390,30 +1545,317 @@ fn EmailPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
     }
 }
 
+/// The children of the Entities category.
+///
+/// One list at a time rather than four stacked panes. Stacking was already cramped with
+/// the four NER types; eleven value lists plus a date pane in one column is not a list of
+/// anything, it is a scroll.
+///
+/// Two of the twelve are not facets. `All` is a synthetic merge of the ten value lists,
+/// and `MentionedDate` is a range with a histogram — mentions are POINTS in time and the
+/// pane that filters them is the date pane, not a checkbox list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntitySub {
+    All,
+    Per,
+    Org,
+    Loc,
+    Misc,
+    Email,
+    Phone,
+    BankAccount,
+    CompanyId,
+    Money,
+    CryptoWallet,
+    MentionedDate,
+}
+
+impl EntitySub {
+    pub const ALL: [EntitySub; 12] = [
+        EntitySub::All,
+        EntitySub::Per,
+        EntitySub::Org,
+        EntitySub::Loc,
+        EntitySub::Misc,
+        EntitySub::Email,
+        EntitySub::Phone,
+        EntitySub::BankAccount,
+        EntitySub::CompanyId,
+        EntitySub::Money,
+        EntitySub::CryptoWallet,
+        EntitySub::MentionedDate,
+    ];
+
+    /// The ten value facets, in rail order. `All` merges exactly these; Mentioned Date is
+    /// excluded because a timestamp has no place in a list sorted by document count.
+    pub const VALUE_FIELDS: [&'static str; 10] = [
+        "ner_per",
+        "ner_org",
+        "ner_loc",
+        "ner_misc",
+        "re_email",
+        "re_phone",
+        "re_bank_account",
+        "re_company_id",
+        "re_money",
+        "re_crypto_wallet",
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            EntitySub::All => "All",
+            EntitySub::Per => "Person",
+            EntitySub::Org => "Organization",
+            EntitySub::Loc => "Location",
+            EntitySub::Misc => "Misc",
+            EntitySub::Email => "Email",
+            EntitySub::Phone => "Phone",
+            EntitySub::BankAccount => "Bank account",
+            EntitySub::CompanyId => "Company ID",
+            EntitySub::Money => "Money",
+            EntitySub::CryptoWallet => "Crypto wallet",
+            EntitySub::MentionedDate => "Mentioned Date",
+        }
+    }
+
+    /// The `facet_filters` key this child ticks into, or `None` for the two that are not
+    /// a single facet.
+    pub fn field(&self) -> Option<&'static str> {
+        match self {
+            EntitySub::All | EntitySub::MentionedDate => None,
+            EntitySub::Per => Some("ner_per"),
+            EntitySub::Org => Some("ner_org"),
+            EntitySub::Loc => Some("ner_loc"),
+            EntitySub::Misc => Some("ner_misc"),
+            EntitySub::Email => Some("re_email"),
+            EntitySub::Phone => Some("re_phone"),
+            EntitySub::BankAccount => Some("re_bank_account"),
+            EntitySub::CompanyId => Some("re_company_id"),
+            EntitySub::Money => Some("re_money"),
+            EntitySub::CryptoWallet => Some("re_crypto_wallet"),
+        }
+    }
+
+    /// The child a facet field belongs to, for the merged view's type column.
+    pub fn of_field(field: &str) -> Option<EntitySub> {
+        EntitySub::ALL.into_iter().find(|sub| sub.field() == Some(field))
+    }
+}
+
+#[component]
+fn EntitySubIcon(sub: EntitySub, style: String) -> Element {
+    match sub {
+        EntitySub::All | EntitySub::Per => rsx! { Icon { icon: MdPerson, style } },
+        EntitySub::Org => rsx! { Icon { icon: MdBusiness, style } },
+        EntitySub::Loc => rsx! { Icon { icon: MdLocationOn, style } },
+        EntitySub::Misc => rsx! { Icon { icon: MdInfo, style } },
+        EntitySub::Email => rsx! { Icon { icon: MdEmail, style } },
+        EntitySub::Phone => rsx! { Icon { icon: MdPhone, style } },
+        EntitySub::BankAccount => rsx! { Icon { icon: MdAccountBalance, style } },
+        EntitySub::CompanyId => rsx! { Icon { icon: MdDomain, style } },
+        EntitySub::Money => rsx! { Icon { icon: MdAttachMoney, style } },
+        EntitySub::CryptoWallet => rsx! { Icon { icon: MdAccountBalanceWallet, style } },
+        EntitySub::MentionedDate => rsx! { Icon { icon: MdDateRange, style } },
+    }
+}
+
 #[component]
 fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+    let mut open_sub = use_signal(|| EntitySub::All);
+    let active = open_sub();
     rsx! {
-        for (label, field) in [("Person", "ner_per"), ("Organization", "ner_org"), ("Location", "ner_loc"), ("Misc", "ner_misc")] {
+        div {
+            style: "display: flex; gap: 12px; align-items: stretch; height: 100%; min-height: 0;",
+            // The children rail. Permanently visible: a collapsed rail hides the fact
+            // that there are eleven kinds of value to filter on, and the reason to open
+            // Entities at all is usually one of the seven that are not a person's name.
             div {
-                key: "{field}",
-                style: "margin-bottom: 14px;",
-                div {
-                    style: "display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 4px;",
-                    match field {
-                        "ner_per" => rsx! { Icon { icon: MdPerson, style: "width: 18px; height: 18px;" } },
-                        "ner_org" => rsx! { Icon { icon: MdBusiness, style: "width: 18px; height: 18px;" } },
-                        "ner_loc" => rsx! { Icon { icon: MdLocationOn, style: "width: 18px; height: 18px;" } },
-                        _ => rsx! { Icon { icon: MdInfo, style: "width: 18px; height: 18px;" } },
+                style: "
+                    flex: 0 0 168px; display: flex; flex-direction: column; gap: 1px;
+                    border-right: 1px solid rgba(0,0,0,0.12); padding-right: 6px;
+                    overflow-y: auto;
+                ",
+                for sub in EntitySub::ALL {
+                    {
+                        let selected = sub == active;
+                        let background = if selected { "rgba(0,0,0,0.06)" } else { "transparent" };
+                        let weight = if selected { "600" } else { "400" };
+                        let is_set = entity_sub_is_active(sub, &pending.read());
+                        rsx! {
+                            button {
+                                key: "{sub:?}",
+                                class: "x-facet-list-item",
+                                style: "
+                                    display: flex; align-items: center; gap: 7px; width: 100%;
+                                    border: none; text-align: left; padding: 6px 8px;
+                                    font-size: 14px; font-weight: {weight}; cursor: pointer;
+                                    background: {background}; border-radius: 6px;
+                                ",
+                                onclick: move |_| open_sub.set(sub),
+                                div {
+                                    style: "width: 8px; flex-shrink: 0; display: flex; align-items: center;",
+                                    if is_set {
+                                        div { style: "width: 6px; height: 6px; border-radius: 50%; background: {ACCENT};" }
+                                    }
+                                }
+                                EntitySubIcon { sub, style: "width: 16px; height: 16px; flex-shrink: 0;".to_string() }
+                                span {
+                                    style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                                    "{sub.label()}"
+                                }
+                            }
+                        }
                     }
-                    "{label}"
-                }
-                SearchableFacetPane {
-                    original_query, pending,
-                    field: field.to_string(),
-                    map_string_terms: term_field_prop(field),
-                    placeholder: format!("Search {}…", label.to_lowercase()),
                 }
             }
+
+            div {
+                style: "flex: 1 1 auto; min-width: 0; overflow-y: auto;",
+                match active {
+                    EntitySub::All => rsx! { EntitiesAllPane { original_query, pending } },
+                    EntitySub::MentionedDate => rsx! {
+                        DatePane {
+                            original_query, pending,
+                            field: "mentioned_dates".to_string(),
+                        }
+                    },
+                    other => {
+                        let field = other.field().expect("every other child names a facet");
+                        rsx! {
+                            SearchableFacetPane {
+                                original_query, pending,
+                                field: field.to_string(),
+                                map_string_terms: term_field_prop(field),
+                                placeholder: format!("Search {}…", other.label().to_lowercase()),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Whether one child of Entities has anything set.
+fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
+    match sub {
+        // `All` lights when any of the ten does, because it is the view that shows all
+        // ten and a rail with no dot anywhere over a filtered corpus is a lie.
+        EntitySub::All => EntitySub::VALUE_FIELDS.iter().any(|field| {
+            query.facet_filters.get(*field).is_some_and(|values| !values.is_empty())
+        }),
+        EntitySub::MentionedDate => query
+            .range_filters
+            .get("mentioned_dates")
+            .is_some_and(|filter| filter.is_active()),
+        other => other.field().is_some_and(|field| {
+            query.facet_filters.get(field).is_some_and(|values| !values.is_empty())
+        }),
+    }
+}
+
+/// The ten value lists merged into one, sorted by document count.
+///
+/// The type column between the checkbox and the text is what makes the merge readable: a
+/// row saying `enron` is a different claim depending on whether it is an organisation or
+/// a mentioned company registration, and the merged list is the only place the two sit
+/// next to each other.
+///
+/// Ticking a row writes into that row's OWN facet field, so the merged view produces
+/// exactly the query its sub-list would. The ten fetches are the sub-lists' own queries
+/// verbatim, and identical queries hit the backend's Manticore result cache — switching
+/// between All and a child is not ten fresh fan-outs.
+#[component]
+fn EntitiesAllPane(
+    original_query: ReadSignal<SearchQuery>,
+    pending: Signal<SearchQuery>,
+) -> Element {
+    let mut needle = use_signal(String::new);
+    let hits = use_entity_term_search(
+        original_query,
+        ReadSignal::from(needle),
+        || EntitySub::VALUE_FIELDS.iter().map(|f| f.to_string()).collect(),
+        true,
+    );
+    let restrict_to_ids = use_memo(move || hits.read().as_ref().map(EntityTermHits::term_ids));
+
+    let lists = use_resource(move || {
+        let query = original_query.read().clone();
+        let restrict = restrict_to_ids.read().clone();
+        async move {
+            let mut rows: Vec<(&'static str, SearchResultFacetItem)> = Vec::new();
+            let mut partial = false;
+            for field in EntitySub::VALUE_FIELDS {
+                let result = search_string_facet(
+                    query.clone(),
+                    field.to_string(),
+                    term_field_prop(field),
+                    restrict.clone(),
+                )
+                .await?;
+                partial = partial || result.partial;
+                rows.extend(result.facet_values.into_iter().map(|item| (field, item)));
+            }
+            rows.sort_by_key(|(_, item)| (u64::MAX - item.count, item.display_string.clone()));
+            Ok::<_, ServerFnError>((rows, partial))
+        }
+    });
+
+    rsx! {
+        div {
+            style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
+            Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
+            input {
+                r#type: "text",
+                style: "{INPUT_STYLE} flex: 1 1 auto;",
+                placeholder: "Search every entity type…",
+                value: "{needle}",
+                oninput: move |event| needle.set(event.value()),
+            }
+        }
+        match lists.read().as_ref() {
+            // Every list, or none: a merged view that renders while three of its ten
+            // sources are still in flight is sorted by a count it does not have yet, and
+            // reorders itself under the reader's cursor as they arrive.
+            None => rsx! { div { style: "padding: 8px; color: rgba(0,0,0,0.5);", "Loading…" } },
+            Some(Err(error)) => rsx! { ServerErrorDisplay { error: error.clone() } },
+            Some(Ok((rows, partial))) => rsx! {
+                if *partial {
+                    PartialNotice {}
+                }
+                if rows.is_empty() {
+                    div {
+                        style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
+                        "No entities match."
+                    }
+                }
+                for (field, item) in rows.clone() {
+                    {
+                        let sub = EntitySub::of_field(field).unwrap_or(EntitySub::Misc);
+                        rsx! {
+                            div {
+                                key: "{field}-{item.original_value:?}",
+                                style: "display: flex; align-items: center; gap: 4px;",
+                                div {
+                                    style: "flex: 1 1 auto; min-width: 0;",
+                                    FacetCheckbox {
+                                        query: pending,
+                                        facet_name: field.to_string(),
+                                        facet_value: item.original_value.clone(),
+                                        result_count: item.count,
+                                        result_display_string: item.display_string.clone(),
+                                    }
+                                }
+                            }
+                            div {
+                                style: "display: flex; align-items: center; gap: 5px; padding: 0 0 4px 40px; font-size: 12px; color: rgba(0,0,0,0.55);",
+                                EntitySubIcon { sub, style: "width: 13px; height: 13px;".to_string() }
+                                "{sub.label()}"
+                            }
+                        }
+                    }
+                }
+            },
         }
     }
 }
@@ -1510,10 +1952,92 @@ mod tests {
             (3_u64, "Acme Ltd".to_string()),
         ]);
         let chips = build_chips(&query, Some(&texts));
-        assert_eq!(chips.len(), 1, "all four NER fields are ONE Entities chip");
+        assert_eq!(chips.len(), 1, "all ten entity value fields are ONE Entities chip");
         assert_eq!(chips[0].label, "Entities");
         assert_eq!(chips[0].full, "Alice, Bob, Acme Ltd", "the tooltip carries the whole selection");
         assert!(!chips[0].summary.contains('#'), "a resolved term id never renders as an id");
+    }
+
+    /// Every child of Entities lands in the same chip, including the six the scanner
+    /// finds. A second chip here would mean the category's field list had drifted from
+    /// the rail.
+    #[test]
+    fn a_scanner_value_lands_in_the_entities_chip_too() {
+        let mut query = SearchQuery::default();
+        query.facet_filters.insert(
+            "re_bank_account".to_string(),
+            BTreeSet::from([FacetOriginalValue::Int(9)]),
+        );
+        query.facet_filters.insert(
+            "ner_per".to_string(),
+            BTreeSet::from([FacetOriginalValue::Int(1)]),
+        );
+        let texts = HashMap::from([
+            (1_u64, "Alice".to_string()),
+            (9_u64, "GB82WEST12345698765432".to_string()),
+        ]);
+        let chips = build_chips(&query, Some(&texts));
+        assert_eq!(chips.len(), 1);
+        assert_eq!(chips[0].label, "Entities");
+        assert!(chips[0].full.contains("GB82WEST12345698765432"), "{}", chips[0].full);
+    }
+
+    /// A Mentioned Date range alone lights the Entities dot and produces its chip. It is
+    /// the only range filter the category owns, and it must never be mistaken for the
+    /// Date chip -- hence the prefix.
+    #[test]
+    fn a_mentioned_date_range_alone_is_an_entities_chip() {
+        let mut query = SearchQuery::default();
+        query.range_filters.insert(
+            "mentioned_dates".to_string(),
+            // 1998-01-01 .. 2004-12-31
+            RangeFilter { min: Some(883_612_800), max: Some(1_104_537_599), include_unknown: false },
+        );
+        assert!(FilterCategory::Entities.is_active(&query), "the dot must light");
+        let chips = build_chips(&query, Some(&HashMap::new()));
+        assert_eq!(chips.len(), 1);
+        assert_eq!(chips[0].label, "Entities");
+        assert!(chips[0].summary.starts_with("Mentioned "), "{}", chips[0].summary);
+        assert!(chips[0].summary.contains("1998"), "{}", chips[0].summary);
+    }
+
+    /// `Clear all` and the chip's own X walk facet and range fields together, so removing
+    /// the Entities chip has to remove the mentioned-date range as well as the ticks.
+    #[test]
+    fn clearing_entities_clears_its_range_filter_too() {
+        let mut query = SearchQuery::default();
+        query.facet_filters.insert(
+            "re_money".to_string(),
+            BTreeSet::from([FacetOriginalValue::Int(4)]),
+        );
+        query.range_filters.insert(
+            "mentioned_dates".to_string(),
+            RangeFilter { min: Some(0), max: Some(100), include_unknown: false },
+        );
+        FilterCategory::Entities.clear(&mut query);
+        assert!(!FilterCategory::Entities.is_active(&query));
+        assert!(query.range_filters.get("mentioned_dates").is_none());
+    }
+
+    /// The rail's twelve children: ten facets, one merged view, one range pane. The
+    /// merged view lists exactly the ten, and Mentioned Date is not among them -- a
+    /// timestamp has no place in a list sorted by document count.
+    #[test]
+    fn the_entities_rail_covers_every_value_field_exactly_once() {
+        let mut fields: Vec<&str> = EntitySub::ALL
+            .into_iter()
+            .filter_map(|sub| sub.field())
+            .collect();
+        fields.sort_unstable();
+        let mut expected: Vec<&str> = EntitySub::VALUE_FIELDS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(fields, expected);
+        assert_eq!(FilterCategory::Entities.facet_fields(), &EntitySub::VALUE_FIELDS);
+        assert!(EntitySub::of_field("mentioned_dates").is_none());
+        for field in EntitySub::VALUE_FIELDS {
+            assert!(EntitySub::of_field(field).is_some(), "{field} has no rail entry");
+            assert!(term_field_of(field).is_some(), "{field} has no term dictionary");
+        }
     }
 
     #[test]

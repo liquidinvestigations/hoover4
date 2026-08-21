@@ -22,6 +22,8 @@ use crate::{
     api::search_api::{fetch_db_terms_for_ints, search_string_facet},
     components::error_boundary::ServerErrorDisplay,
 };
+use common::entity_cards::EntityTermHit;
+use std::collections::HashMap;
 
 #[component]
 pub fn FacetSelectorList(
@@ -31,12 +33,23 @@ pub fn FacetSelectorList(
     map_string_terms: ReadSignal<Option<String>>,
     /// Substring the rendered buckets are narrowed to, case-insensitively.
     ///
-    /// It filters what is RENDERED, never what is fetched: the server returns the top
-    /// buckets for the query and re-running that fan-out per keystroke would cost one
-    /// search per character on an index that already fails on its time budget. Empty
-    /// means no narrowing, which is why the default renders every bucket.
+    /// This is the CLIENT-SIDE narrowing, and it is right for a facet with a handful of
+    /// buckets all of which are on screen — file types. It is wrong for anything with
+    /// more distinct values than one fan-out returns, because it answers "nothing
+    /// matches" for a value that is in the corpus and merely did not make the top
+    /// twenty-one. Those facets pass `restrict_to_ids` instead and leave this empty.
     #[props(default)]
     needle: ReadSignal<String>,
+    /// Term ids a corpus-wide search resolved the needle to.
+    ///
+    /// `Some(vec![])` is a needle that matched nothing and must render an empty list;
+    /// `None` is no needle at all and renders the whole facet. Collapsing the two would
+    /// answer a failed search with every bucket, which reads as the box being ignored.
+    #[props(default)]
+    restrict_to_ids: ReadSignal<Option<Vec<u64>>>,
+    /// Why each id matched, keyed by term id, for the reason line under its label.
+    #[props(default)]
+    match_reasons: ReadSignal<HashMap<u64, EntityTermHit>>,
 ) -> Element {
     let mut facet_request = use_resource(move || {
         let q = original_query.read().clone();
@@ -44,7 +57,7 @@ pub fn FacetSelectorList(
             q,
             facet_field_name.read().clone(),
             map_string_terms.read().clone(),
-            None,
+            restrict_to_ids.read().clone(),
         )
     });
     let search_result = facet_request.suspend()?.cloned();
@@ -99,7 +112,10 @@ pub fn FacetSelectorList(
     };
     // A narrowing that matches nothing has to say so. Rendering an empty list under a box
     // the user just typed into is indistinguishable from the list having failed to load.
-    let no_matches = visible_values.is_empty() && !needle_text.is_empty();
+    // Both narrowings count: the server-side one produces an empty facet the same way.
+    let searched_server_side = restrict_to_ids.read().is_some();
+    let no_matches =
+        visible_values.is_empty() && (!needle_text.is_empty() || searched_server_side);
     let missing_values = originally_filtered_values
         .difference(&returned_values)
         .cloned()
@@ -126,7 +142,7 @@ pub fn FacetSelectorList(
         if no_matches {
             div {
                 style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
-                "Nothing here matches \"{needle_text}\"."
+                "Nothing in this collection matches."
             }
         }
         ul {
@@ -140,6 +156,10 @@ pub fn FacetSelectorList(
                         result_count: result.count,
                         result_display_string: result.display_string.clone(),
                     }
+                    MatchReason {
+                        value: result.original_value.clone(),
+                        match_reasons,
+                    }
                 }
             }
             ResolveMissingItems {
@@ -147,6 +167,46 @@ pub fn FacetSelectorList(
                 missing_values,
                 facet_field_name,
                 map_string_terms,
+            }
+        }
+    }
+}
+
+/// Why one bucket matched the needle, under its label.
+///
+/// The fragment comes from Manticore's own highlighter over the term text, which is what
+/// makes the answer legible when the match is inside a long value: a needle that hit the
+/// middle of a forty-character IBAN is otherwise a row that looks unrelated to what was
+/// typed. Renders nothing when there is no needle, or when the highlighter had nothing to
+/// add beyond the label already on screen.
+#[component]
+fn MatchReason(
+    value: FacetOriginalValue,
+    match_reasons: ReadSignal<HashMap<u64, EntityTermHit>>,
+) -> Element {
+    let FacetOriginalValue::Int(term_id) = value else {
+        return rsx! {};
+    };
+    let reasons = match_reasons.read();
+    let Some(hit) = reasons.get(&term_id) else {
+        return rsx! {};
+    };
+    if hit.highlight.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            style: "font-size: 12px; color: rgba(0,0,0,0.55); padding: 0 0 4px 30px;",
+            for span in hit.highlight.clone() {
+                if span.is_highlighted {
+                    mark {
+                        key: "{span.index}-{span.text}",
+                        style: "background: rgba(243,140,104,0.35); color: inherit;",
+                        "{span.text}"
+                    }
+                } else {
+                    span { key: "p{span.index}-{span.text}", "{span.text}" }
+                }
             }
         }
     }
