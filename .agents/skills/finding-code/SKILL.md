@@ -50,11 +50,11 @@ re-scope.
 
 ## Navigating the documentation
 
-The prose is large enough to need the same treatment. `website/Readme.md` is tens of
-kilobytes and each subject directory has its own `Readme.md`.
+The prose is large enough to need the same treatment. Several documents run to hundreds of
+lines, and every one of them over about a hundred opens with its own table of contents.
 
 ```
-.agents/skills/finding-code/scripts/doc-toc.sh website/Readme.md   # headings with line numbers
+.agents/skills/finding-code/scripts/doc-toc.sh docs/architecture/Search_Architecture.md
 ```
 
 (In a harness that substitutes it, `${CLAUDE_SKILL_DIR}/scripts/doc-toc.sh` is the same
@@ -62,15 +62,17 @@ file. The repo-relative path is written first because only one harness substitut
 variable and the rest run the literal string.)
 
 Read the table of contents at the top of the file first, then read only the section. The
-same applies to `main_services/processing/Readme.md`, `main_services/ops/Readme.md` and the
-pages under `docs/`.
+long ones are `main_services/ops/Readme.md`, `main_services/processing/Readme.md`,
+`main_services/processing/database/Readme.md`, and the architecture and operations pages
+under `docs/`. `docs/development/Repo_Map.md` says which one answers which question.
 
 ## Where things live
 
 - `main_services/processing/` — the Temporal pipeline. Stages are `tasks/P0_scan_disk/`
-  … `tasks/P6_*/`; shared helpers are `tasks/remote.py`, `tasks/text_sources.py`,
-  `parse_common.py`; schema is `database/db_collection_migrations/*.sql`; tests are
-  `tests/unit/`. All of those paths are relative to `main_services/processing/`.
+  … `tasks/P6_index_data/`; shared helpers are `tasks/remote.py`, `tasks/text_sources.py`
+  and `tasks/P3_parse_files/parse_common.py`; schema is `database/db_collection_migrations/`
+  and `database/db_global_migrations/`; tests are `tests/unit/` and `tests/integration/`.
+  **All of those paths are relative to `main_services/processing/`.**
 - `main_services/agents/` — MCP servers and the research agent. `agent_common/` is vendored
   into the metasearch and browser images; their build context is `main_services/agents`.
 - `main_services/ops/` — operational procedures, the compose files and the per-service

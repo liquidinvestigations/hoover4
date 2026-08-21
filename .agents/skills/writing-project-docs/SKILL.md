@@ -17,7 +17,7 @@ it became true, and they do it correctly. Nothing in the tree competes with them
 
 Consequences, each of which is a real defect when violated:
 
-- **No dates, no commit hashes, no history of the change.** Not "on 2026-08-06", not "this
+- **No dates, no commit hashes, no history of the change.** Not "on <a date>", not "this
   session", not "previously", "used to be", "was renamed from", "moved here in", "now that X
   landed", "added later", "until X lands".
 - **Never name the scratch folder.** Not `plans/`, not a document number, not a phase or part
@@ -30,7 +30,7 @@ Consequences, each of which is a real defect when violated:
   valuable thing in these files. Write it as a standing property of the system and the
   failure it prevents:
 
-> Not: "the loop that stalled for 26 minutes on 2026-08-06"
+> Not: "the loop that stalled for 26 minutes, until we moved the call to a thread pool"
 > But: "a synchronous call on the event-loop thread stalls this activity indefinitely while
 > heartbeats keep flowing, so it is never retried"
 
