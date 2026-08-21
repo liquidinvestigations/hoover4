@@ -1,4 +1,8 @@
-testdata
+# The corpus is gigabytes of fetched and generated fixtures and stays out; its Readme
+# describes what is in it and is tracked, so a reader learns what the tests assume without
+# having the corpus.
+testdata/*
+!testdata/Readme.md
 .env.development
 copilot-instructions.md
 .context
