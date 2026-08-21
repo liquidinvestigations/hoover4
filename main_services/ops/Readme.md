@@ -10,8 +10,10 @@ its optional overlay. Serena gives the host-side coding agent symbolic code navi
 published on `127.0.0.1:21940` only. The repo is mounted at the identical absolute path
 as on the host (`HOOVER4_REPO_ROOT`, set by `deploy.py`), and all language-server state
 (venvs, cargo target/registry, Serena home) lives in the `serena_state` volume, never in
-the checkout. Resets never remove that volume or the container. The MCP endpoint is
-`http://127.0.0.1:21940/sse` (see `.mcp.json` at the repo root).
+the checkout. Resets never remove that volume or the container, and it is deployed as its
+own compose project so that a `down` or a `--reset` on the main stack cannot select it. The
+MCP endpoint is `http://127.0.0.1:21940/mcp` over streamable HTTP (see `.mcp.json` at the
+repo root, and `docker/serena/entrypoint.sh` for why that transport and not SSE).
 
 ## Docker Compose Services
 
@@ -95,24 +97,37 @@ GC, and drops nothing. If a container-side figure is wanted, read `anon` from
 `/sys/fs/cgroup/memory.stat` — the `docker stats` total counts reclaimable page cache as
 usage.
 
-## Common Endpoints (Local)
+## Endpoints (local defaults)
 
-Ports are ini keys in `hoover4.ini` (rendered by `deploy.py`); the values below are the
-defaults. The website stays on `12345`.
+Ports are ini keys in `hoover4.ini`, rendered by `deploy.py`; the values below are the
+defaults. The website stays on `12345`, which is the one port a human types.
 
-- Website: `http://localhost:12345`
-- Temporal UI: `http://localhost:21909`
-- Temporal gRPC / HTTP: `localhost:21907` / `http://localhost:21908`
-- ClickHouse HTTP: `http://localhost:21900`
-- ClickHouse Native: `localhost:21901`
-- ClickHouse Monitoring: `http://localhost:21910`
-- CH-UI: `http://localhost:21911`
-- Manticore SQL: `localhost:21902`
-- Manticore HTTP: `http://localhost:21903`
-- Garage S3 API: `http://localhost:21904`
-- Garage admin API: `http://127.0.0.1:21905` (no console; see `docker/garage/Readme.md`)
-- Redis: `tcp://localhost:21906`
-- PDF-to-HTML renderer: `http://localhost:21920`
+| service | endpoint | what it is |
+|---|---|---|
+| Website | `http://localhost:12345` | the Hoover4 web UI |
+| Temporal UI | `http://localhost:21909` | workflow dashboard |
+| Temporal gRPC / HTTP | `localhost:21907` / `http://localhost:21908` | the workflow service itself |
+| Temporal Cassandra | `localhost:21912` | Temporal's history store |
+| Temporal Elasticsearch | `http://localhost:21913` | Temporal's visibility store |
+| ClickHouse HTTP | `http://localhost:21900` | the column store's HTTP interface |
+| ClickHouse native | `localhost:21901` | the column store's native protocol |
+| ClickHouse monitoring | `http://localhost:21910` | monitoring dashboard |
+| CH-UI | `http://localhost:21911` | query console |
+| Manticore SQL | `localhost:21902` | search engine, MySQL protocol |
+| Manticore HTTP | `http://localhost:21903` | search engine, HTTP API |
+| Garage S3 API | `http://localhost:21904` | the blob store |
+| Garage admin API | `http://127.0.0.1:21905` | cluster status over curl; there is no console — see `docker/garage/Readme.md` |
+| Redis | `tcp://localhost:21906` | caches and locks; TCP, not HTTP |
+| pdf-to-html | `http://localhost:21920` | the PDF renderer the document viewer calls |
+| tesseract-cpu | `localhost:21921` | the CPU OCR twin; `/health` lists the languages the image can actually serve |
+| ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row (`main_services/ocr_pdf/Readme.md` explains why that absence is load-bearing) |
+| ner-spacy | `localhost:21923` | the CPU NER twin, only when `[main_services] ner_spacy_enabled = true` (off by default) |
+| regex-entity-scanner | `localhost:21925` | the pattern scanner the P4 stage calls |
+| serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
+
+Credentials for the two ClickHouse consoles come from the generated `.env` next to the
+compose files, which `deploy.py` renders from `hoover4.ini`. No credential value belongs in
+this file.
 
 ## Technical Details
 
@@ -175,49 +190,6 @@ Both cost time the first time and neither is discoverable from the error.
   `test_x*` — and, more importantly, `IMPORT TABLE` refuses to import over one. Anything
   restoring a table has to remove the leftover directory first, or the restore fails
   naming a path that, as far as `SHOW TABLES` is concerned, belongs to nothing.
-
-## Navigation
-
--  [Go Back](../Readme.md)
-# Ops
-
-## Docker
-
-The docker containers start up the following services:
-
-### Web Interfaces
-
-- **Website**: [http://localhost:12345](http://localhost:12345) - the Hoover4 web UI
-- **Temporal UI**: [http://localhost:21909](http://localhost:21909) - Temporal UI Dashboard
-- **ClickHouse Monitoring**: [http://localhost:21910](http://localhost:21910) - ClickHouse monitoring dashboard
-- **CH-UI (ClickHouse UI)**: [http://localhost:21911](http://localhost:21911) - ClickHouse web interface
-- **Garage admin API**: `http://127.0.0.1:21905` - cluster status over curl; there is no console
-  - `hoover4` / `hoover4-secret`
-
-### Processing services (HTTP, published on 127.0.0.1 only)
-
-- **pdf-to-html**: `localhost:21920` - the PDF renderer used by the document viewer
-- **tesseract-cpu**: `localhost:21921` - OCR over HTTP, `/health` lists the languages the
-  image can actually serve
-- **ocr-pdf**: `localhost:21922` - searchable-PDF assembly. Renders pages, calls the OCR
-  tier above, writes the result under the blob store's `derived/` prefix with **no** `blobs` row
-  (see `main_services/ocr_pdf/Readme.md` for why that absence is load-bearing)
-- **ner-spacy**: `localhost:21923` - the CPU NER twin, only when
-  `[main_services] ner_spacy_enabled = true` (off by default)
-
-### Search Engines
-
-- **Manticore Search**: `localhost:21902` - Primary Manticore instance (SQL port)
-- **Manticore Search HTTP**: [http://localhost:21903](http://localhost:21903) - Primary Manticore HTTP API
-
-### Database Connections
-
-- **Redis**: `localhost:21906` - Redis database (TCP, not HTTP)
-- **ClickHouse Native**: `localhost:21901` - ClickHouse native protocol
-- **ClickHouse HTTP Interface**: [http://localhost:21900](http://localhost:21900) - ClickHouse database HTTP API
-- **Temporal**: `localhost:21907` - Temporal workflow engine
-- **Temporal Cassandra**: `localhost:21912` - Temporal's Cassandra database
-- **Temporal Elasticsearch**: [http://localhost:21913](http://localhost:21913) - Elasticsearch REST API
 
 ## Rate-limit environment (paste into the `hoover4-website` service)
 
@@ -319,3 +291,8 @@ minutes, and the site is down for all of them. Watch `docker logs -f hoover4-web
 it prints `[website] release build starting` and then `[website] serving <path>`. If the
 server binary cannot be found afterwards the container prints the tree it searched and
 exits, rather than serving a blank page.
+
+
+## Navigation
+
+-  [Go Back](../Readme.md)
