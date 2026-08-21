@@ -14,6 +14,7 @@ The procedural half — the same ground as a checklist an agent loads mid-task �
 - [DNS before the application](#dns-before-the-application)
 - [Networks, names and ports](#networks-names-and-ports)
 - [A hang is a question about who is blocked](#a-hang-is-a-question-about-who-is-blocked)
+- [Pipeline errors: a messy corpus or a stall](#pipeline-errors-a-messy-corpus-or-a-stall)
 - [Memory that looks like an OOM and is not](#memory-that-looks-like-an-oom-and-is-not)
 - [Failures that produce silence rather than errors](#failures-that-produce-silence-rather-than-errors)
 - [Timeout units](#timeout-units)
@@ -110,6 +111,26 @@ dump ends the guessing immediately — reach for it earlier than feels justified
 A synchronous call on the event-loop thread stalls an activity indefinitely **while
 heartbeats keep flowing**, so it is never retried and never fails. The dump is the only thing
 that shows it.
+
+## Pipeline errors: a messy corpus or a stall
+
+A reprocess writes error lines steadily, and log volume alone cannot tell you which of two
+very different situations you are in. The distinction is whether anything is still growing.
+
+- **Errors accumulating while `text_content` grows is a messy corpus.** The activity
+  *succeeds*, records a `processing_errors` row, and the plan moves on. Malformed mail and
+  files that merely claim to be archives produce these by the dozen, and they are not a fault.
+- **The same error repeating verbatim while nothing grows is a stall**, and it needs a code
+  fix rather than patience.
+
+So the test is not how many errors there are but whether the stage tables are advancing:
+count rows in `text_content` for the collection, sample the error text to see whether it
+varies, and compare both a minute apart. Identical text plus a flat count is the stall.
+
+One reading to avoid while you are there: a stage showing no activity is not evidence of a
+hang if an earlier stage is busy. The stages run in order, so a collection in parsing
+legitimately shows nothing in embedding at that instant, and a single sample taken then looks
+alarming and means nothing. Sample twice.
 
 ## Memory that looks like an OOM and is not
 
