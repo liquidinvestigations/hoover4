@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "serena": {
-      "type": "sse",
-      "url": "http://127.0.0.1:21940/sse"
+      "type": "http",
+      "url": "http://127.0.0.1:21940/mcp"
     },
     "hoover4-web-search": {
       "type": "http",
