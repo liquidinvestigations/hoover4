@@ -931,6 +931,20 @@ page painted and completely inert — a failure `cargo check` cannot see and the
 reports only as `RuntimeError: unreachable`. See
 [`frontend/README.md`](frontend/README.md).
 
+**`cargo check` does not build test targets, so it cannot see a broken test binary.** A
+signature change updated at every call site in `src/` leaves `cargo check` clean and
+`cargo test` unable to compile, and nothing between the two says so — the tests do not fail,
+they never get built. `cargo check --workspace --tests` (fast) or `cargo test --no-run`
+(slower, and produces the binaries) is what closes that gap; run one of them alongside
+`cargo check` whenever a public signature moves.
+
+**Both fixture-driven suites are welded to the corpus `main_services/verify-stack.sh`
+ingests** — `screenshots.ini`'s routes and `stack_integration.rs`'s `TESTFILES`, `SHAPES`,
+`ZIPS` and `other`. On any other corpus they fail by naming a dataset that does not exist,
+which reads as a broken page or a broken endpoint and is neither. Run `verify-stack.sh`
+before either of them, or read their failures as a missing precondition rather than a
+regression.
+
 ### Screenshots
 
 `./take-screenshots.sh` walks `screenshots.ini` and writes a PNG, a text snapshot of the

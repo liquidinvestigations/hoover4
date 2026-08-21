@@ -326,6 +326,10 @@ async fn slow_missing_shard_degrades_to_partial_results() {
         mk_query(),
         "collection_dataset".to_string(),
         None,
+        // The whole facet. What is under test is a fan-out with a shard missing, and a
+        // restricted facet would narrow the answer for a reason that has nothing to do
+        // with the missing shard.
+        None,
     )
     .await;
     // Restricted to the degraded collection: the surviving shard's hits must
@@ -1624,6 +1628,10 @@ async fn the_entities_facet_offers_no_extraction_debris() {
             },
             column.to_string(),
             Some(ENTITY_TERM_FIELD.to_string()),
+            // The whole facet: every bucket the pane would show with an empty search
+            // box. Narrowing the terms would shrink the sweep this test exists to make,
+            // and `offered > 0` below is the guard against it passing vacuously.
+            None,
         )
         .await
         .unwrap_or_else(|e| panic!("{column} facet failed: {e}"));
@@ -1673,6 +1681,9 @@ async fn the_collections_facet_offers_exactly_the_registered_datasets() {
             ..Default::default()
         },
         "collection_dataset".to_string(),
+        None,
+        // The whole facet. The assertion below is set equality against the registry, so
+        // any narrowing of the terms makes it false by construction.
         None,
     )
     .await
