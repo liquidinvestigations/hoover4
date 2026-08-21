@@ -685,7 +685,7 @@ with get_global_client() as g:
         "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL "
         "WHERE is_deleted = 0").result_rows]
 client = get_s3_client()
-checked = missing = mismatched = 0
+checked = missing = mismatched = multipart = 0
 for coll in colls:
     with get_collection_client(coll) as ch:
         rows = ch.query(
@@ -699,9 +699,15 @@ for coll in colls:
         except Exception:
             missing += 1
             continue
+        # A multi-part ETag ends in "-<n>". Garage assembles those differently from a
+        # single PUT, so a corpus that exercises the path is worth knowing about --
+        # and a corpus that never does is worth knowing about too.
+        if str(getattr(st, "etag", "") or "").rstrip('"').rsplit("-", 1)[-1].isdigit() \
+                and "-" in str(getattr(st, "etag", "") or ""):
+            multipart += 1
         if int(st.size) != int(size):
             mismatched += 1
-print("%d %d %d" % (checked, missing, mismatched))
+print("%d %d %d %d" % (checked, missing, mismatched, multipart))
 PY
 )
 blobstat=$(docker exec -i "$WORKER" sh -lc 'cd /app && PYTHONPATH=/app uv run python -' <<<"$stat_script" 2>/dev/null | tail -1)
@@ -712,6 +718,11 @@ elif [ "$1" -eq 0 ]; then
     echo "NOTE - no externally stored blobs to stat; every blob is inline in ClickHouse"
 elif [ "${2:-1}" -eq 0 ] && [ "${3:-1}" -eq 0 ]; then
     ok "all $1 externally stored blobs exist in the object store at the size ClickHouse records"
+    if [ "${4:-0}" -gt 0 ]; then
+        ok "$4 of them came back with a multi-part ETag, so the multipart path round-trips"
+    else
+        echo "NOTE - no blob in this corpus was large enough to be stored multipart"
+    fi
 else
     fail "$1 blobs checked: ${2:-?} missing from the object store, ${3:-?} of a different size"
 fi
