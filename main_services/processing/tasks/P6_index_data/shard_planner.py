@@ -52,7 +52,12 @@ import logging
 from temporalio import activity
 
 from database.clickhouse import get_collection_client
-from database.manticore import create_shard_tables, create_vfs_table, probed_embedding_dims
+from database.manticore import (
+    create_entities_table,
+    create_shard_tables,
+    create_vfs_table,
+    probed_embedding_dims,
+)
 from .params import FinalizeIndexBatchParams, PlanShardsParams, RecordIndexedParams
 from tasks.heartbeat import with_heartbeat
 
@@ -382,10 +387,12 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
     vector_dims = probed_embedding_dims()
     for state in new_ledger:
         create_shard_tables(collectionname, state.shard_index, vector_dims=vector_dims)
-    # The collection's structure index, which is not sharded. Created here as well as in
-    # `manticore_migrate` because a collection created and indexed between two migrate
-    # runs would otherwise have nowhere for `index_vfs_structure` to write.
+    # The collection's structure and facet-term indexes, neither of which is sharded.
+    # Created here as well as in `manticore_migrate` because a collection created and
+    # indexed between two migrate runs would otherwise have nowhere for
+    # `index_vfs_structure` and `index_entity_terms` to write.
     create_vfs_table(collectionname)
+    create_entities_table(collectionname)
 
     # The read above and the write below are deliberately separate client blocks
     # with the pure packing in between. Correctness relies on the single planner

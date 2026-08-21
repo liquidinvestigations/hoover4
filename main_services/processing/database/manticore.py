@@ -46,6 +46,7 @@ _SHARD_NAME_RE = re.compile(r'^([a-z0-9_]+)_([0-9]+)$')
 PAGES_TABLE_SUFFIX = 'pages'
 VECTORS_TABLE_SUFFIX = 'vectors'
 VFS_TABLE_SUFFIX = 'vfs'
+ENTITIES_TABLE_SUFFIX = 'entities'
 
 
 @contextmanager
@@ -296,6 +297,22 @@ def pages_table_ddl(table_name: str) -> str:
       container, so the same folder name in two datasets or two archives is two ids.
     * ``email_from`` / ``email_to`` multi64 — term ids of normalised addresses;
       to+cc+bcc merge into ``email_to``.
+    * ``re_email`` / ``re_phone`` / ``re_bank_account`` / ``re_company_id`` /
+      ``re_money`` / ``re_crypto_wallet`` multi64 — term ids from the regex entity
+      scanner, per segment like the ``ner_*`` columns. ``re_email`` is NOT
+      ``email_from``/``email_to``: those are the envelope's sender and recipients, and
+      this is every address the body mentions. ``re_money``'s ids resolve to magnitude
+      buckets, never to amounts — thousands of distinct sums are not a facet.
+    * ``mentioned_dates`` multi64 — dates the document TALKS ABOUT, signed epoch seconds
+      snapped to midnight UTC, one entry per distinct day. Snapped because second
+      precision gives a term per instant and the corpus's distinct *days* are bounded by
+      its span. It is filtered with ``ANY(mentioned_dates) BETWEEN lo AND hi`` and never
+      with the interval-overlap test ``dates`` uses: a document that mentions 1936 and
+      2020 occupies neither 2005 nor anything in between, while a file created in 1990
+      and modified in 2020 genuinely occupies that whole span.
+    * ``mentioned_date_min`` / ``mentioned_date_max`` bigint — the histogram's domain,
+      and :data:`DATE_UNKNOWN` for a segment that mentions no date. They must never be
+      used to filter, for the reason above.
     """
     return f"""
         create table if not exists {table_name}(
@@ -319,7 +336,16 @@ def pages_table_ddl(table_name: str) -> str:
             struct_flags bigint,
             primary_filename string,
             email_from multi64,
-            email_to multi64
+            email_to multi64,
+            re_email multi64,
+            re_phone multi64,
+            re_bank_account multi64,
+            re_company_id multi64,
+            re_money multi64,
+            re_crypto_wallet multi64,
+            mentioned_dates multi64,
+            mentioned_date_min bigint,
+            mentioned_date_max bigint
         ) engine='columnar' {_INFIX_SETTING}
     """
 
@@ -365,6 +391,53 @@ def vfs_table_ddl(table_name: str) -> str:
             depth int
         ) engine='columnar' {_INFIX_SETTING}
     """
+
+
+def entities_table_name(collectionname: str) -> str:
+    """The term-search table of a collection (``testdata_entities``)."""
+    from database.clickhouse import validate_collectionname
+    validate_collectionname(collectionname)
+    return f'{collectionname}_{ENTITIES_TABLE_SUFFIX}'
+
+
+def entities_table_ddl(table_name: str) -> str:
+    """CREATE TABLE statement for a collection's facet-term search index.
+
+    It exists because **nothing in Manticore filters a facet by its bucket's name.** The
+    MVAs hold `hash_string_to_uint63` term ids and the text lives only in ClickHouse
+    `string_term_id_to_text`, so there is not even a string for a facet query to match.
+    A typed needle has to be resolved to term ids somewhere else first, and this is that
+    somewhere.
+
+    Without it the filter pane's "Search X" boxes narrow the twenty-one buckets already
+    on screen, which on a corpus with tens of thousands of distinct values answers
+    "nothing matches" for values that are present.
+
+    ``term_text`` is the only full-text field and is infix indexed, so a needle matches
+    inside a value rather than only at its start, and ``HIGHLIGHT()`` over it is what
+    gives a row its match reason. ``term_display`` is the same string as an attribute,
+    because a text field cannot be selected back exactly.
+
+    One table per COLLECTION, holding every facet field except ``filetype`` — that one
+    has few enough buckets to fit on screen and needs no search. Reads go through the
+    NON-caching Manticore primitive, for the same reason the tree does: it changes while
+    ingestion runs, and a stale term list is worse than a slow one.
+    """
+    return f"""
+        create table if not exists {table_name}(
+            term_field string,
+            term_text text,
+            term_display string,
+            collection_dataset string
+        ) engine='columnar' {_INFIX_SETTING}
+    """
+
+
+def create_entities_table(collectionname: str) -> str:
+    """Create a collection's facet-term search table if it does not exist. Idempotent."""
+    table = entities_table_name(collectionname)
+    _execute_ddl(entities_table_ddl(table))
+    return table
 
 
 def create_vfs_table(collectionname: str) -> str:
@@ -519,10 +592,11 @@ def manticore_migrate():
     from database.clickhouse import get_collection_client, list_collections
     vector_dims = probed_embedding_dims()
     for collectionname in list_collections():
-        # The structure index has no ledger to recover from — it is one table per
-        # collection, rebuilt from ClickHouse `vfs_nodes` by P6 — so it is healed here
-        # unconditionally rather than per recorded shard.
+        # The structure index and the facet-term index have no ledger to recover from —
+        # each is one table per collection, rebuilt from ClickHouse by P6 — so they are
+        # healed here unconditionally rather than per recorded shard.
         create_vfs_table(collectionname)
+        create_entities_table(collectionname)
         with get_collection_client(collectionname) as client:
             rows = client.query(
                 "SELECT shard_index FROM manticore_shards FINAL ORDER BY shard_index"

@@ -56,6 +56,8 @@ def _page_row(**overrides):
         "file_size_bytes": 1024,
         "struct_flags": 0,
         "primary_filename": "easychair.docx",
+        "mentioned_date_min": -3786825600,
+        "mentioned_date_max": 1370000000,
         "ner_per": "(11,22)",
         "ner_org": "(33)",
         "ner_loc": "()",
@@ -67,6 +69,13 @@ def _page_row(**overrides):
         "dates": "(-3786825600,1370000000)",
         "email_from": "(11)",
         "email_to": "()",
+        "re_email": "(51)",
+        "re_phone": "()",
+        "re_bank_account": "()",
+        "re_company_id": "()",
+        "re_money": "(52,53)",
+        "re_crypto_wallet": "()",
+        "mentioned_dates": "(-3786825600,1370000000)",
     }
     row.update(overrides)
     return row
@@ -78,12 +87,16 @@ class TestPagesReplaceSql:
         assert _normalize(sql) == _normalize("""
             REPLACE INTO testdata_1_pages (id, collection_dataset, file_hash,
                 extracted_by, page_id, page_text, date_min, date_max, file_size_bytes,
-                struct_flags, primary_filename, ner_per, ner_org, ner_loc, ner_misc,
+                struct_flags, primary_filename, mentioned_date_min, mentioned_date_max,
+                ner_per, ner_org, ner_loc, ner_misc,
                 file_types, file_mime_types, file_extensions, file_paths, dates,
-                email_from, email_to)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                email_from, email_to,
+                re_email, re_phone, re_bank_account, re_company_id, re_money,
+                re_crypto_wallet, mentioned_dates)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 (11,22), (33), (), (44),
-                (5), (6,7), (), (8,9), (-3786825600,1370000000), (11), ())
+                (5), (6,7), (), (8,9), (-3786825600,1370000000), (11), (),
+                (51), (), (), (), (52,53), (), (-3786825600,1370000000))
         """)
 
     def test_missing_mva_fields_default_to_empty_mva(self):
@@ -91,7 +104,7 @@ class TestPagesReplaceSql:
         # rather than None — the `row.get(...) or '()'` behaviour is load-bearing.
         sql = pages_replace_sql("testdata_1_pages", {})
         assert "None" not in sql
-        assert sql.count("()") == 11
+        assert sql.count("()") == 18
 
     def test_params_are_in_column_order(self):
         """The bound parameters and the placeholder list are two halves of one
@@ -111,6 +124,8 @@ class TestPagesReplaceSql:
             1024,
             0,
             "easychair.docx",
+            -3786825600,
+            1370000000,
         )
         sql = pages_replace_sql("testdata_1_pages", row)
         assert sql.count("%s") == len(params)

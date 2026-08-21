@@ -79,6 +79,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P6_index_data.activities import (
         build_vfs_nodes,
+        index_entity_terms,
         index_vfs_structure,
         resolve_canonical_file_type,
     )
@@ -249,6 +250,17 @@ class ExecutePlans:
         )
         await workflow.execute_activity(
             index_vfs_structure,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        # The facet-term index, alongside the structure index and for the same reason:
+        # it is one table per collection rebuilt from ClickHouse, and it is what lets the
+        # filter pane's search boxes ask the corpus instead of the buckets on screen.
+        await workflow.execute_activity(
+            index_entity_terms,
             vfs_params,
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,

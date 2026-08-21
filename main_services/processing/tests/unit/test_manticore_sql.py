@@ -50,7 +50,16 @@ def test_pages_table_ddl_golden():
             struct_flags bigint,
             primary_filename string,
             email_from multi64,
-            email_to multi64
+            email_to multi64,
+            re_email multi64,
+            re_phone multi64,
+            re_bank_account multi64,
+            re_company_id multi64,
+            re_money multi64,
+            re_crypto_wallet multi64,
+            mentioned_dates multi64,
+            mentioned_date_min bigint,
+            mentioned_date_max bigint
         ) engine='columnar' min_infix_len='3'
     """)
 

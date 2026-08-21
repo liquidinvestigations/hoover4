@@ -29,7 +29,12 @@ import os
 from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
-from database.manticore import DOCUMENT_COLUMNS, manticore_execute, shard_table_from_name
+from database.manticore import (
+    DATE_UNKNOWN,
+    DOCUMENT_COLUMNS,
+    manticore_execute,
+    shard_table_from_name,
+)
 from .params import (
     BuildEmailGraphParams,
     BuildVfsNodesParams,
@@ -39,6 +44,13 @@ from .params import (
 )
 from tasks.heartbeat import with_heartbeat
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
+from tasks.regex_entities import (
+    FACET_BY_ENTITY_TYPE,
+    FACET_FIELDS,
+    MENTIONED_DATE_TYPE,
+    mentioned_days,
+    money_bucket_from_value_json,
+)
 log = logging.getLogger(__name__)
 
 
@@ -78,6 +90,51 @@ def chunks(lst, n):
         yield lst[i:i + n]
 
 
+def regex_facets_by_segment(regex_rows):
+    """Group `regex_entity_hit` rows into the two things the index needs.
+
+    Returns ``({(hash, extracted_by, page_id): {term_field: [value, ...]}}, {key:
+    [day, ...]})`` — the facet values per term field, and the distinct days each segment
+    mentions.
+
+    Money is bucketed here rather than stored bucketed: 2 419 distinct amounts across
+    twenty-five documents is not a facet and ten magnitude buckets per currency is, and
+    keeping the amounts in ClickHouse is what lets a viewer show a bucket card containing
+    its own amounts. The ladder lives in `tasks.regex_entities` so that the scan stage and
+    this one cannot disagree about it.
+    """
+    facets: dict = {}
+    days: dict = {}
+    for row in regex_rows:
+        key = (row['file_hash'], row['extracted_by'], row['page_id'])
+        entity_type = row['entity_type']
+        if entity_type == MENTIONED_DATE_TYPE:
+            days[key] = mentioned_days(row['entity_values'] or [])
+            continue
+        field = FACET_BY_ENTITY_TYPE.get(entity_type)
+        if field is None:
+            # Stored and not indexed, by decision: `message_id` had 1 016 distinct values
+            # in 1 057 hits, so there is no question a facet over it would answer.
+            continue
+        if entity_type == 'money':
+            values = [
+                bucket for bucket in (
+                    money_bucket_from_value_json(payload)
+                    for payload in (row['entity_value_json'] or [])
+                ) if bucket
+            ]
+        else:
+            values = list(row['entity_values'] or [])
+        bucket = facets.setdefault(key, {}).setdefault(field.term_field, [])
+        # A segment can hold rows from more than one entity type mapping to one field
+        # only through a future rename, but deduplicating costs nothing and a repeated
+        # term id in an MVA is a bucket counted twice.
+        for value in values:
+            if value not in bucket:
+                bucket.append(value)
+    return facets, days
+
+
 #: The MVA columns of a pages row, in the order :func:`pages_replace_sql` writes them.
 #: Manticore cannot bind an MVA, so each one is interpolated as a literal tuple built by
 #: :func:`repr_manticore_tuple` — which is why they are listed apart from the scalars.
@@ -85,12 +142,15 @@ _MVA_COLUMNS = (
     'ner_per', 'ner_org', 'ner_loc', 'ner_misc',
     'file_types', 'file_mime_types', 'file_extensions', 'file_paths', 'dates',
     'email_from', 'email_to',
+    're_email', 're_phone', 're_bank_account', 're_company_id', 're_money',
+    're_crypto_wallet', 'mentioned_dates',
 )
 
 #: The bound (non-MVA) columns of a pages row, in the same order.
 _SCALAR_COLUMNS = (
     'collection_dataset', 'file_hash', 'extracted_by', 'page_id', 'page_text',
     'date_min', 'date_max', 'file_size_bytes', 'struct_flags', 'primary_filename',
+    'mentioned_date_min', 'mentioned_date_max',
 )
 
 
@@ -278,6 +338,22 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
         }).to_pylist()
+        # The regex scanner's values. `argMax(..., rule_set_version)` rather than FINAL:
+        # two rule sets' rows for one segment coexist by design, and only the newest is
+        # indexed — indexing both would put a value the current rules no longer accept
+        # into the facet beside one they do.
+        regex_rows = client.query_arrow("""
+            SELECT file_hash, extracted_by, page_id, entity_type,
+                    argMax(entity_values, rule_set_version) AS entity_values,
+                    argMax(entity_value_json, rule_set_version) AS entity_value_json
+            FROM regex_entity_hit FINAL
+            WHERE collection_dataset = {collection_dataset:String}
+            AND file_hash IN {item_hashes:Array(String)}
+            GROUP BY file_hash, extracted_by, page_id, entity_type
+        """, {
+            "collection_dataset": collection_dataset,
+            "item_hashes": item_hashes
+        }).to_pylist()
 
     processed_keys = {(row['file_hash'], row['extracted_by'], row['page_id']) for row in processed_rows}
 
@@ -289,6 +365,19 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     # Cache hits: the NLP stage already populated the 'ner' term dictionary
     # with these values (ids are content-derived via hash_string_to_uint63).
     ner_ids = get_string_term_ids(params.collectionname, collection_dataset, 'ner', ner_values)
+
+    regex_facets, mentioned_by_segment = regex_facets_by_segment(regex_rows)
+    # One dictionary per facet field, so a term id resolves to text meaningful for its
+    # own facet — and so money's ids resolve to bucket labels rather than to amounts.
+    # Cache hits: the scan stage populated the same fields with the same values.
+    regex_ids = {
+        field.term_field: get_string_term_ids(
+            params.collectionname, collection_dataset, field.term_field,
+            {value for segment in regex_facets.values()
+             for value in segment.get(field.term_field, ())},
+        )
+        for field in FACET_FIELDS
+    }
 
     rows = []
     for row in text_content:
@@ -316,6 +405,22 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             field_name = f"ner_{entity_type.lower()}"
             field_values = [ner_ids[value] for value in segment_entities.get(entity_type, [])]
             page[field_name] = repr_manticore_tuple(field_values)
+
+        segment_regex = regex_facets.get(key, {})
+        for field in FACET_FIELDS:
+            ids = regex_ids[field.term_field]
+            page[field.column] = repr_manticore_tuple(
+                [ids[value] for value in segment_regex.get(field.term_field, ())
+                 if value in ids]
+            )
+        days = mentioned_by_segment.get(key, [])
+        page['mentioned_dates'] = repr_manticore_tuple(days)
+        # A segment that mentions no date carries the unknown sentinel, exactly as an
+        # undated document does on `date_min`/`date_max`: the columns exist to measure
+        # the histogram's domain, and a zero there would put every such segment on
+        # 1970-01-01.
+        page['mentioned_date_min'] = days[0] if days else DATE_UNKNOWN
+        page['mentioned_date_max'] = days[-1] if days else DATE_UNKNOWN
         rows.append(page)
 
     for file_hash, document in metadata.items():
@@ -391,6 +496,10 @@ def empty_document_metadata() -> dict:
         'file_size_bytes': SIZE_UNKNOWN,
         'struct_flags': 0,
         'primary_filename': "",
+        # Per segment rather than per document, so a document nothing is known about
+        # supplies the "mentions nothing" state and each segment overwrites it.
+        'mentioned_date_min': DATE_UNKNOWN,
+        'mentioned_date_max': DATE_UNKNOWN,
         'basenames': [],
     })
     return row
@@ -647,6 +756,12 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             "email_to": repr_manticore_tuple(
                 sorted(address_ids[a] for a in to_by_hash.get(file_hash, ()))
             ),
+            # Mentioned dates are per SEGMENT, not per document, so what belongs here is
+            # the "no dates mentioned" state that the page loop then overwrites for the
+            # segments that do. The synthetic filename row keeps it, correctly: a list of
+            # filenames mentions nothing.
+            "mentioned_date_min": DATE_UNKNOWN,
+            "mentioned_date_max": DATE_UNKNOWN,
             # Not a column: the text of the document's `filename_index` row.
             #
             # **Only ever real basenames.** They come from `vfs_files` paths and never
@@ -1098,6 +1213,138 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
         client.commit()
     log.info("[P6] %s: indexed %d nodes into %s", collection_dataset, len(nodes), vfs_table)
     return f"{len(nodes)} nodes"
+
+
+#: Facet fields whose terms are searchable, and therefore what `<coll>_entities` holds.
+#:
+#: Everything except `filetype`: that facet has a handful of buckets, all of them on
+#: screen at once, so a search box over it would answer a question nobody has. `date`,
+#: `message_id` and the scanner's other unindexed types are stored in ClickHouse and get
+#: no rows here — there is no facet for them to search.
+SEARCHABLE_TERM_FIELDS = (
+    'ner',
+    'email_address',
+    'regex_email',
+    'regex_phone',
+    'regex_bank_account',
+    'regex_company_id',
+    'regex_money',
+    'regex_crypto_wallet',
+)
+
+
+def entity_term_row_id(term_field: str, term_id: int) -> int:
+    """Deterministic id for one `<coll>_entities` row, so REPLACE upserts in place.
+
+    The field is part of the key: one value can be a term in two fields — an address is
+    both an envelope sender and something the body mentions — and those are two rows,
+    because ticking them applies different filters.
+    """
+    return hash_string_to_uint63(f"{term_field}|{term_id}")
+
+
+def entities_replace_sql(entities_table: str, rows: list[dict]) -> tuple[str, tuple]:
+    """One multi-row ``REPLACE INTO`` for a chunk of facet terms."""
+    if not rows:
+        raise ValueError("entities_replace_sql needs at least one row")
+    params: list = []
+    for row in rows:
+        params.extend((
+            row['id'], row['term_field'], row['term_text'],
+            row['term_display'], row['collection_dataset'],
+        ))
+    groups = ", ".join(["(%s, %s, %s, %s, %s)"] * len(rows))
+    return (
+        f"REPLACE INTO {entities_table} "
+        f"(id, term_field, term_text, term_display, collection_dataset) VALUES {groups}",
+        tuple(params),
+    )
+
+
+def entities_scan_page_sql(entities_table: str) -> str:
+    """One keyset page of ``(id)`` for a dataset, bounded by ``max_matches``.
+
+    A bare ``SELECT`` returns Manticore's implicit ``LIMIT 20``, which would reduce the
+    reconciliation sweep to an arbitrary twenty terms and leave every removed value
+    searchable for ever.
+    """
+    return (
+        f"SELECT id FROM {entities_table} "
+        "WHERE collection_dataset = %s AND id > %s "
+        f"ORDER BY id ASC LIMIT {VFS_SCAN_PAGE} OPTION max_matches={VFS_SCAN_PAGE}"
+    )
+
+
+def entities_delete_ids_sql(entities_table: str, ids: list[int]) -> str:
+    """DELETE by primary key. Never a dataset-wide wipe: the search box would answer
+    nothing for the length of the rewrite."""
+    if not ids:
+        raise ValueError("entities_delete_ids_sql needs at least one id")
+    return f"DELETE FROM {entities_table} WHERE id IN ({','.join(str(int(i)) for i in ids)})"
+
+
+@activity.defn
+@with_heartbeat
+def index_entity_terms(params: BuildVfsNodesParams) -> str:
+    """Copy one dataset's searchable facet terms into ``<coll>_entities``.
+
+    This is what makes the filter pane's search boxes ask the corpus rather than the
+    twenty-one buckets already fetched. Same shape as `index_vfs_structure`: deterministic
+    ids so a REPLACE upserts in place, no dataset-wide DELETE first, and a reconciliation
+    sweep afterwards that removes rows whose term no longer exists.
+    """
+    from database.manticore import entities_table_name, get_manticore_client
+
+    collection_dataset: str = params.collection_dataset
+    entities_table = entities_table_name(params.collectionname)
+    with get_collection_client(params.collectionname) as client:
+        terms = client.query_arrow("""
+            SELECT term_field, term_id, term_value
+            FROM string_term_id_to_text FINAL
+            WHERE collection_dataset = {cd:String}
+            AND term_field IN {fields:Array(String)}
+        """, {
+            "cd": collection_dataset,
+            "fields": list(SEARCHABLE_TERM_FIELDS),
+        }).to_pylist()
+
+    index_rows = [{
+        "id": entity_term_row_id(row['term_field'], int(row['term_id'])),
+        "term_field": row['term_field'],
+        # The same string twice: `term_text` is the full-text field the needle matches
+        # and HIGHLIGHT() reads, `term_display` is the attribute, because a text field
+        # cannot be selected back exactly.
+        "term_text": row['term_value'],
+        "term_display": row['term_value'],
+        "collection_dataset": collection_dataset,
+    } for row in terms]
+    current_ids = {row['id'] for row in index_rows}
+
+    with get_manticore_client() as client:
+        for chunk in chunks(index_rows, INDEX_ROW_CHUNK_SIZE):
+            sql, bound = entities_replace_sql(entities_table, list(chunk))
+            manticore_execute(client, sql, bound)
+            client.commit()
+        cur = client.cursor()
+        stale: list[int] = []
+        last_id = 0
+        while True:
+            cur.execute(entities_scan_page_sql(entities_table), (collection_dataset, last_id))
+            page = cur.fetchall() or []
+            if not page:
+                break
+            stale.extend(int(row[0]) for row in page if int(row[0]) not in current_ids)
+            last_id = max(int(row[0]) for row in page)
+            if len(page) < VFS_SCAN_PAGE:
+                break
+        for chunk in chunks(stale, INDEX_ROW_CHUNK_SIZE):
+            manticore_execute(client, entities_delete_ids_sql(entities_table, list(chunk)))
+            client.commit()
+        client.commit()
+
+    log.info("[P6] %s: indexed %d facet terms into %s (%d removed)",
+             collection_dataset, len(index_rows), entities_table, len(stale))
+    return f"{len(index_rows)} terms"
 
 
 def repr_manticore_tuple(values: List[int]) -> str:
