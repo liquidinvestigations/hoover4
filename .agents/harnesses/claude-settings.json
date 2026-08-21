@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "The settings this repository expects at .claude/settings.json. A coding agent is deliberately not allowed to edit its own harness configuration, so the hooks block below is installed by a person: merge it into .claude/settings.json and restart the session. `.agents/verify-wiring.sh` reports whether it is in place.",
+  "permissions": {
+    "allow": [
+      "mcp__hoover4-browser",
+      "mcp__hoover4-web-search",
+      "mcp__hoover4-whois",
+      "mcp__serena",
+      "Bash(docker exec *)",
+      "Bash(*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/deny-unscoped-search.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/deny-long-commit-message.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/session-start-orientation.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

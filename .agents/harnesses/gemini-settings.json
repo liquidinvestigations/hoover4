@@ -1,0 +1,25 @@
+{
+  "_comment": "Gemini CLI — .gemini/settings.json in the repo, or ~/.gemini/settings.json. `httpUrl` is streamable HTTP; `url` is the older SSE transport. Use httpUrl for all four once serena moves. Gemini CLI has no skills mechanism and no hooks: everything the hooks enforce must also be prose in the instruction file, which is why each hook ships with a rule line.",
+  "mcpServers": {
+    "serena": {
+      "httpUrl": "http://127.0.0.1:21940/mcp"
+    },
+    "hoover4-web-search": {
+      "httpUrl": "http://127.0.0.1:21931/mcp"
+    },
+    "hoover4-browser": {
+      "httpUrl": "http://127.0.0.1:21932/mcp",
+      "headers": {
+        "x-hoover4-chat-session": "host-mcp-client",
+        "x-hoover4-user": "host"
+      }
+    },
+    "hoover4-whois": {
+      "httpUrl": "http://127.0.0.1:21934/mcp"
+    }
+  },
+  "context": {
+    "_comment": "NEEDS A MANUAL CHECK on the installed version: Gemini CLI's context file is GEMINI.md by default, and recent builds accept a list of context file names so AGENTS.md can be added. If the installed build has no such setting, bootstrap.sh symlinks GEMINI.md -> AGENTS.md instead.",
+    "fileName": ["AGENTS.md", "GEMINI.md"]
+  }
+}

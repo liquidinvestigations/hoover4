@@ -4,11 +4,23 @@ copilot-instructions.md
 .context
 context-*.md
 *-context.md
+# The root agent instructions are tracked; the same filenames deeper in the tree are not.
+# A service's own AGENTS.md is its author's scratch and is free to cite the scratch folder,
+# which the tracked tree forbids, so these rules stay unanchored and the root is negated.
 CLAUDE.md
 AGENTS.md
+!/CLAUDE.md
+!/AGENTS.md
+CLAUDE.local.md
 gain.ndjson
+# Local scratch at any depth, wiped when the work it belongs to finishes. Nothing tracked
+# may cite it, which is why it can be wiped safely.
 plans/
 hoover4.ini
+# The real host detail — addresses, users, credentials, the network in front of the demo
+# box. Deliberately at the top level so a scratch wipe cannot take it, and deliberately
+# never tracked: docs/ and the skills are public.
+INFRASTRUCTURE_INVENTORY.md
 .serena/*
 !.serena/project.yml
 

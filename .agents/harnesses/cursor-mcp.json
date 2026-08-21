@@ -1,0 +1,21 @@
+{
+  "_comment": "Cursor — .cursor/mcp.json in the repo (or ~/.cursor/mcp.json globally). A remote server is a bare `url`; Cursor picks the transport from the endpoint. Rules are .cursor/rules/*.mdc with `globs:` and `alwaysApply:` frontmatter, which is a different format from .agents/rules/, so bootstrap.sh generates the .mdc wrappers from the shared rule files rather than duplicating their text. NEEDS A MANUAL CHECK on the installed Cursor: whether this build reads SKILL.md skills, and whether it reads AGENTS.md at the repo root in addition to .cursor/rules.",
+  "mcpServers": {
+    "serena": {
+      "url": "http://127.0.0.1:21940/mcp"
+    },
+    "hoover4-web-search": {
+      "url": "http://127.0.0.1:21931/mcp"
+    },
+    "hoover4-browser": {
+      "url": "http://127.0.0.1:21932/mcp",
+      "headers": {
+        "x-hoover4-chat-session": "host-mcp-client",
+        "x-hoover4-user": "host"
+      }
+    },
+    "hoover4-whois": {
+      "url": "http://127.0.0.1:21934/mcp"
+    }
+  }
+}

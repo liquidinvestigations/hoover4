@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "_comment": "opencode reads .agents/skills/<name>/SKILL.md natively — the layout this plan chose is opencode's own compatibility path, so no symlink and no copy is needed there. It also reads .claude/skills. Unknown frontmatter keys are ignored, which is what makes one skill file serve every harness. Instructions come from AGENTS.md.",
+  "mcp": {
+    "serena": {
+      "type": "remote",
+      "url": "http://127.0.0.1:21940/mcp",
+      "enabled": true
+    },
+    "hoover4-web-search": {
+      "type": "remote",
+      "url": "http://127.0.0.1:21931/mcp",
+      "enabled": true
+    },
+    "hoover4-browser": {
+      "type": "remote",
+      "url": "http://127.0.0.1:21932/mcp",
+      "enabled": true,
+      "headers": {
+        "x-hoover4-chat-session": "host-mcp-client",
+        "x-hoover4-user": "host"
+      }
+    },
+    "hoover4-whois": {
+      "type": "remote",
+      "url": "http://127.0.0.1:21934/mcp",
+      "enabled": true
+    }
+  }
+}

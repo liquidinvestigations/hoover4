@@ -1,0 +1,30 @@
+# Codex CLI — append to ~/.codex/config.toml (user level) or .codex/config.toml (project).
+#
+# Codex speaks stdio and streamable HTTP only; it has no SSE transport, which is the
+# second reason serena's entrypoint moves to --transport streamable-http.
+# The features block is required on builds where remote MCP is still behind the flag;
+# it is harmless on builds where it is not.
+#
+# Instructions: Codex reads AGENTS.md from the repo root, so the root file is shared
+# with every other harness. It does not follow Claude Code's @import syntax, so the
+# root file must be self-contained prose rather than a stub that imports one.
+
+[features]
+experimental_use_rmcp_client = true
+
+[mcp_servers.serena]
+url = "http://127.0.0.1:21940/mcp"
+
+[mcp_servers.hoover4-web-search]
+url = "http://127.0.0.1:21931/mcp"
+
+[mcp_servers.hoover4-browser]
+url = "http://127.0.0.1:21932/mcp"
+
+[mcp_servers.hoover4-whois]
+url = "http://127.0.0.1:21934/mcp"
+
+# NOTE — needs a manual check: whether this Codex build passes custom headers to a
+# remote MCP server. The browser server wants x-hoover4-chat-session and
+# x-hoover4-user; without them it may hand every Codex session the same browser.
+# Verify before relying on the browser tools from Codex.
