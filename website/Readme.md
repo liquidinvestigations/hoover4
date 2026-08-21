@@ -213,6 +213,14 @@ nothing and returns no buckets; `None` is no needle and returns the whole facet,
 collapsing the two answers a failed search with everything. `file_types` keeps
 client-side narrowing: a handful of buckets, all visible, and no rows in the term table.
 
+**One pane serves eleven of the Entities rail's twelve children**, so a rail click changes
+that pane's `field` prop rather than building a new pane. Props are not reactive: a
+`String` prop is read once into the hooks and never again, and a `use_resource` that
+closed over it goes on asking about the column the reader left. The field is therefore a
+`ReadSignal`, read *inside* the resource, and the search box empties when it changes — the
+failure it prevents is a facet full of values answering "nothing matches" for a needle
+typed against a different list.
+
 Those queries are uncached, like the folder tree's, because the table changes while
 ingestion runs. **Manticore 14.1.0's SQL grammar has no `EXCLUDE FILTERS` clause** in any
 position a `FACET` accepts, so a facet drops its own selection by having it removed from

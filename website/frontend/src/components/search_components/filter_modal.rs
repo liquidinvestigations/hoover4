@@ -760,8 +760,14 @@ fn FilterModalFooter(
 fn SearchableFacetPane(
     original_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
-    field: String,
-    map_string_terms: Option<String>,
+    /// A SIGNAL, not a `String`, and that is load-bearing. The Entities rail renders one
+    /// instance of this pane for eleven of its twelve children, so switching child hands
+    /// the SAME component a different field. A plain prop is read once into the hooks
+    /// below and never again: the corpus-wide term search would keep asking about the
+    /// column the reader left, and answer the column they are looking at with its term
+    /// ids — which renders as "nothing matches" for a value the facet plainly holds.
+    field: ReadSignal<String>,
+    map_string_terms: ReadSignal<Option<String>>,
     placeholder: String,
     /// Ask the corpus rather than the buckets on screen. False only for a facet whose
     /// values are few enough to all be visible.
@@ -774,12 +780,18 @@ fn SearchableFacetPane(
 ) -> Element {
     let owns_box = shared_needle.is_none();
     let mut own_needle = use_signal(String::new);
+    // The box empties when the field under it changes. A needle typed for one list is
+    // not a needle for the next one, and leaving it in place narrows a list the reader
+    // never typed into.
+    use_effect(move || {
+        let _ = field.read();
+        own_needle.set(String::new());
+    });
     let needle: ReadSignal<String> = match shared_needle {
         Some(shared) => shared,
         None => ReadSignal::from(own_needle),
     };
-    let search_field = field.clone();
-    let hits = use_entity_term_search(original_query, needle, move || vec![search_field.clone()],
+    let hits = use_entity_term_search(original_query, needle, move || vec![field.read().clone()],
                                       server_side);
     let restrict_to_ids = use_memo(move || hits.read().as_ref().map(EntityTermHits::term_ids));
     let match_reasons = use_memo(move || match_reason_map(hits.read().as_ref()));
@@ -1040,22 +1052,14 @@ fn DatePane(
         pending.read().range_filters.get(&filter_key.read().clone()).cloned().unwrap_or_default()
     });
 
-    // The mode is read off the filter whenever the filter says something. `sticky` only
-    // decides which radio is lit while the filter is empty — picking "Before" and not yet
-    // naming a date has to leave the radio where you put it and the date box on screen.
+    // The mode a person picked outlives a half-filled filter. Without that, "Between"
+    // survives only until the first of its two boxes is typed into: one bound and no
+    // other reads as "After", which moves the radio and takes the second box off screen
+    // before it can be filled, so a closed range cannot be entered at all. `sticky` is
+    // empty only before anything is picked and after a page arrives carrying a filter in
+    // its URL, and the bounds are what names the mode in both of those.
     let mut sticky = use_signal(|| None::<DateMode>);
-    let mode = use_memo(move || {
-        let filter = current();
-        if !filter.is_active() {
-            return sticky().unwrap_or(DateMode::Off);
-        }
-        match (filter.min, filter.max, filter.include_unknown) {
-            (None, None, true) => DateMode::UnknownOnly,
-            (Some(_), Some(_), _) => DateMode::Between,
-            (None, Some(_), _) => DateMode::Before,
-            _ => DateMode::After,
-        }
-    });
+    let mode = use_memo(move || date_mode(&current(), sticky()));
 
     // The histogram's bin edges depend on the cutoffs, so it is the pending query that
     // goes over the wire — debounced for the same reason the footer count is, or dragging
@@ -1342,6 +1346,28 @@ enum DateMode {
     After,
     Between,
     UnknownOnly,
+}
+
+/// Which radio is lit, given the filter and the row the reader last clicked.
+///
+/// A picked mode wins over the bounds. Deriving the mode from the bounds alone makes
+/// "Between" collapse the instant one of its two boxes is filled — one bound and no other
+/// reads as "After" or "Before", and the box the reader has not typed into yet leaves the
+/// screen — so a closed range cannot be entered through the boxes at all. With nothing
+/// picked, which is the state a URL-borne filter arrives in, the bounds name the mode.
+fn date_mode(filter: &RangeFilter, picked: Option<DateMode>) -> DateMode {
+    if !filter.is_active() {
+        return picked.unwrap_or(DateMode::Off);
+    }
+    match picked {
+        Some(DateMode::Off) | None => match (filter.min, filter.max, filter.include_unknown) {
+            (None, None, true) => DateMode::UnknownOnly,
+            (Some(_), Some(_), _) => DateMode::Between,
+            (None, Some(_), _) => DateMode::Before,
+            _ => DateMode::After,
+        },
+        Some(chosen) => chosen,
+    }
 }
 
 impl DateMode {
@@ -1902,6 +1928,32 @@ mod tests {
                     "2013-05-01-1"] {
             assert!(iso_date_to_epoch(bad).is_none(), "{bad:?} should not parse");
         }
+    }
+
+    /// Filling one end of a range must not take the other end's box off screen.
+    #[test]
+    fn a_half_filled_between_is_still_between() {
+        let half = RangeFilter { min: Some(1_104_537_600), max: None, include_unknown: false };
+        assert_eq!(date_mode(&half, Some(DateMode::Between)), DateMode::Between);
+        assert!(date_mode(&half, Some(DateMode::Between)).shows_max());
+        let other_half = RangeFilter { min: None, max: Some(1_136_073_599), include_unknown: false };
+        assert_eq!(date_mode(&other_half, Some(DateMode::Between)), DateMode::Between);
+        assert!(date_mode(&other_half, Some(DateMode::Between)).shows_min());
+    }
+
+    /// A filter that arrived in the URL has no picked row behind it, so its bounds are
+    /// the only thing that can name the mode.
+    #[test]
+    fn an_unpicked_pane_reads_its_mode_off_the_bounds() {
+        let after = RangeFilter { min: Some(1), max: None, include_unknown: false };
+        assert_eq!(date_mode(&after, None), DateMode::After);
+        let before = RangeFilter { min: None, max: Some(1), include_unknown: false };
+        assert_eq!(date_mode(&before, None), DateMode::Before);
+        let between = RangeFilter { min: Some(1), max: Some(2), include_unknown: false };
+        assert_eq!(date_mode(&between, None), DateMode::Between);
+        let unknown = RangeFilter { min: None, max: None, include_unknown: true };
+        assert_eq!(date_mode(&unknown, None), DateMode::UnknownOnly);
+        assert_eq!(date_mode(&RangeFilter::default(), None), DateMode::Off);
     }
 
     #[test]
