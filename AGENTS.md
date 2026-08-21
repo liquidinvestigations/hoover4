@@ -78,3 +78,9 @@ skill yourself. Rules in `.agents/rules/` load on their own when you open a file
 | query ClickHouse, Manticore or Garage | `querying-the-datastores` |
 | work on the demo box or the GPU box | `operating-remote-hosts` |
 | take a screenshot or click through the UI | `driving-the-browser` |
+
+## Settled, so stop re-deciding it
+
+- **In demo mode an anonymous guest is an administrator, writes included.** That is deliberate
+  for the MVP and its small, known audience. Do not report it as a defect and do not narrow it
+  without being asked.
