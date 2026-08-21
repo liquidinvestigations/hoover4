@@ -1,7 +1,7 @@
 -- One row per ACTIVITY EXECUTION, successful or not. The success side of
--- `processing_errors` (00015), which only ever recorded failures -- so until this table
--- existed the only answer to "where does processing time go" was Temporal's own
--- history, which is retained for days and cannot be aggregated.
+-- `processing_errors` (00015), which records only failures. Without both, the only
+-- answer to "where does processing time go" is Temporal's own history, which is
+-- retained for days and cannot be aggregated.
 --
 -- Written by the worker-side Temporal activity interceptor in
 -- `tasks/task_timing.py`, batched a few hundred rows at a time. One row per *attempt*:

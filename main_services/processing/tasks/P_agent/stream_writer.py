@@ -80,10 +80,10 @@ def _chat_model() -> str:
 
 #: How many prior turns of the conversation the agent is given.
 #:
-#: A durable research turn used to be sent an EMPTY history, so a follow-up question in
-#: an open thread arrived with no idea what "it" referred to and the answer read as a
-#: non-sequitur. Bounded rather than whole: the transcript grows without limit and the
-#: oldest turns are the least relevant to the question just asked.
+#: A durable research turn sent an EMPTY history answers a follow-up question in an open
+#: thread with no idea what "it" refers to, and the answer reads as a non-sequitur.
+#: Bounded rather than whole: the transcript grows without limit and the oldest turns are
+#: the least relevant to the question just asked.
 CHAT_HISTORY_TURNS = int(os.getenv("RESEARCH_CHAT_HISTORY_TURNS", "20"))
 
 #: Per message, so one enormous pasted document in the history cannot crowd out the

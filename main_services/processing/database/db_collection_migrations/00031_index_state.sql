@@ -1,10 +1,10 @@
--- The backfill from manticore_shard_assignments that used to live here is gone with the
--- re-collapse: it existed for collections indexed before this table did, and after the
--- collapse there is no such collection -- every database is built from this file set in
--- one pass. This used to be the readiness sentinel, which moved to `vfs_nodes` in
--- 00034 when plan 3 appended three tables above the collapsed baseline. The rule is
--- unchanged: the sentinel names whatever the LAST table-creating migration creates,
--- because "collection is ready" means the schema is fully built.
+-- No backfill from manticore_shard_assignments is needed here: every collection database
+-- is built from this file set in one pass, so there is no collection that predates this
+-- table.
+--
+-- The readiness sentinel is NOT this table. The sentinel names whatever the LAST
+-- table-creating migration creates, because "collection is ready" means the schema is
+-- fully built -- so appending a table above the baseline moves the sentinel with it.
 --
 -- These lines are ABOVE the statement, not below it. The migration runner splits the
 -- file on the statement separator without parsing SQL, so a comment after the last one

@@ -29,10 +29,9 @@ use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 /// The biggest page this module will hand back in one call.
 ///
 /// A PAGE SIZE cap, not a per-node cap: the caller pages with `offset`, so a folder with
-/// 40 000 entries is reachable a page at a time. It used to be the same number the tree
-/// asks for (500), which meant a caller trying to widen its request had it clamped back
-/// to what it already had and the "N more…" row could never resolve. Keeping the two
-/// numbers different is what stops that from coming back.
+/// 40 000 entries is reachable a page at a time. It must stay ABOVE the number the tree
+/// asks for (500): set equal, a caller trying to widen its request is clamped back to
+/// what it already had, and the "N more…" row can never resolve.
 pub const MAX_CHILDREN_PER_PAGE: u64 = 2000;
 
 /// Ancestors walked before `vfs_tree_path_to` gives up. The tree can contain cycles
