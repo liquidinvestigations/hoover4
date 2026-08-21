@@ -170,7 +170,7 @@ The poll limiter's ladder is **flat** (1.00 in every window) and its refusal is 
 Polling is machine-paced — a tab watching a streaming answer polls at the 500 ms floor for
 as long as the model generates — so the decay that separates a human burst from an hour of
 one is simply wrong here: it put a single streaming tab on the 1 h window's ceiling. See
-`website/Readme.md`.
+`docs/architecture/Chat_And_Agents.md`.
 
 The chat API enforces the chat limiter and records the LLM events through:
 

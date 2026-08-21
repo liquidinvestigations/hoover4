@@ -237,7 +237,8 @@ async fn probe_domain(
             end = Some(end.map_or(hit._source.bound, |v: i64| v.max(hit._source.bound)));
         }
         // An aggregate over an empty match still returns one row, with count 0 — see
-        // `website/Readme.md`. Summing it is correct; assuming a row means a hit is not.
+        // `docs/architecture/Search_Architecture.md`. Summing it is correct; assuming a row
+        // means a hit is not.
         unknown_count += undated.hits.hits.first().map_or(0, |h| h._source.doc_count);
     }
 

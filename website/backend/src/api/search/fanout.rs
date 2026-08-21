@@ -88,7 +88,7 @@ fn query_permits() -> &'static Semaphore {
 /// another would be truncated away before the merge if every shard only returned
 /// the display limit, so each shard over-fetches proportional to the shard count.
 /// Facet counts remain approximate when a shard has more distinct values than this
-/// limit — documented in `website/Readme.md`.
+/// limit — documented in `docs/architecture/Search_Architecture.md`.
 pub fn per_shard_facet_limit(n_shards: usize) -> u64 {
     (FACET_DISPLAY_LIMIT as u64 * n_shards.max(1) as u64).clamp(FACET_DISPLAY_LIMIT as u64, MAX_PER_SHARD_FACET_BUCKETS)
 }

@@ -35,7 +35,8 @@ const TOOL_SUMMARY_CHARS: usize = 400;
 /// Reject anonymous use. Guests are allowed only when demo mode is on
 /// (`HOOVER4_DEMO_MODE`), keyed by their `guest-*` username like any other user.
 ///
-/// Revisit whether guests should have LLM access at all — see `website/Readme.md`.
+/// Which users may chat follows from the deployment's mode — see
+/// `docs/architecture/Chat_And_Agents.md`.
 fn require_named_user(user: &CurrentUser) -> anyhow::Result<&str> {
     require_named_user_inner(user, crate::auth::session_middleware::demo_mode())
 }
