@@ -209,22 +209,26 @@ curl http://localhost:8000/performance-stats
 
 ## Testing
 
-The server includes comprehensive tests for all functionality:
+`tests/` holds HTTP tests that drive a **running** server: they read its base URL from the
+environment and skip themselves when nothing answers, so they check the deployed tier rather
+than the code in isolation.
+
+**The runtime image carries neither the tests nor a test runner.** Only the server modules
+are copied in, so there is nothing to run inside the container — run them from a checkout,
+against a reachable server:
 
 ```bash
-# Run all tests
-poetry run pytest tests/
-
-# Run specific test categories
-poetry run python tests/test_embeddings.py      # Embedding tests
-poetry run python tests/test_reranking.py       # Reranking tests
-poetry run python tests/test_ner.py            # NER tests
-poetry run python tests/test_health.py         # Health check tests
-
-# Performance benchmarks
-poetry run python tests/test_throughput.py      # Throughput analysis
-poetry run python tests/test_batch_optimization.py  # Batch size optimization
+cd ai_services/hoover4_ai_server
+pytest tests/                                   # everything
+pytest tests/test_embeddings.py                 # embeddings
+pytest tests/test_reranking.py                  # reranking
+pytest tests/test_ner.py                        # NER
+pytest tests/test_health.py                     # health and model readiness
+pytest tests/test_admission.py                  # admission control
 ```
+
+`tests/test_throughput.py` and `tests/test_batch_optimization.py` are benchmarks rather
+than assertions: they measure and print, and they take as long as the hardware takes.
 
 ##  Related Components
 
