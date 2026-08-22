@@ -15,6 +15,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import CancelledError
 
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
@@ -91,6 +92,33 @@ async def _write_payload(params, payload: dict, empty_answer: str) -> str:
         model=payload.get("model") or "",
     )
     return answer
+
+
+def _was_cancelled(exc: BaseException) -> bool:
+    """Whether this failure is a cancellation wearing another exception's clothes.
+
+    Temporal wraps a cancelled activity in an `ActivityError` and hands that to the
+    workflow, so the cancellation is only visible down the `__cause__` chain. The chain is
+    walked rather than the top type inspected, because how deeply it is wrapped is the
+    SDK's business and not a thing to depend on.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        if isinstance(seen, (asyncio.CancelledError, CancelledError)):
+            return True
+        seen = seen.__cause__
+    return False
+
+
+async def _write_ending(params, message: str) -> None:
+    """Write a turn's last row, whatever is happening to the workflow around it.
+
+    Shielded because the common reason a turn needs an ending is that it was cancelled,
+    and a cancelled workflow cannot schedule new work in its own scope. Without the shield
+    the stop button leaves a user row with nothing after it and the page follows a turn
+    that will never speak again.
+    """
+    await asyncio.shield(_write_row(params, params.start_seq, "error", message))
 
 
 async def _name_the_conversation(params, answer: str) -> None:
@@ -170,18 +198,18 @@ class ChatTurn:
                 retry_policy=RetryPolicy(maximum_attempts=2),
             )
         except asyncio.CancelledError:
-            await asyncio.shield(
-                _write_row(
-                    params, params.start_seq, "error",
-                    "This turn was stopped.",
-                )
-            )
+            await _write_ending(params, "This turn was stopped.")
             raise
         except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
-            await _write_row(
-                params, params.start_seq, "error",
-                f"The assistant could not answer: {e}",
-            )
+            # A stop reaches here too, not only through `CancelledError`: cancelling a
+            # workflow cancels the activity it is waiting on, and Temporal reports that as
+            # an `ActivityError` wrapping the cancellation. Read as a failure it put
+            # "The assistant could not answer: Activity cancelled" in front of a user who
+            # had just pressed stop and knew perfectly well why the answer had ended.
+            if _was_cancelled(e):
+                await _write_ending(params, "This turn was stopped.")
+            else:
+                await _write_ending(params, f"The assistant could not answer: {e}")
             raise
 
         answer = await _write_payload(
