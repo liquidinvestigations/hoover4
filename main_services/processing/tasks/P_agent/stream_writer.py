@@ -95,6 +95,13 @@ def context_window_for(model_id: str) -> int:
     **0 is the representation of "the provider never said."** It is not a fallback and
     nothing may substitute a plausible number for it -- a compaction trigger downstream
     divides by this, and a wrong denominator is believed exactly as a right one is.
+
+    The catalog is keyed by (provider, model), and which provider served this turn is
+    not on the row. Two providers listing the same model id with different windows is
+    the ambiguous case, and the **smallest** stated window wins. Guessing high reads as
+    plenty of room left and lets a turn run into a real overflow; guessing low only
+    compacts something that did not quite need it yet. Rows that state nothing are
+    excluded rather than winning as 0.
     """
     if not model_id:
         return 0
@@ -103,9 +110,9 @@ def context_window_for(model_id: str) -> int:
 
         with get_global_client() as client:
             rows = client.query(
-                "SELECT argMax(context_window, updated_at) FROM llm_models "
+                "SELECT argMax(context_window, updated_at) AS w FROM llm_models "
                 "WHERE model_id = {m:String} GROUP BY provider, model_id "
-                "ORDER BY 1 DESC LIMIT 1",
+                "HAVING w > 0 ORDER BY w ASC LIMIT 1",
                 parameters={"m": model_id},
             ).result_rows
     except Exception:  # noqa: BLE001 - a missing denominator is not worth a turn

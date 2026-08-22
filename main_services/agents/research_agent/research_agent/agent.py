@@ -560,13 +560,23 @@ class MCPGatewayAgent:
                     message = event["data"].get("output")
                     latency_ms = call_timer.elapsed_ms() if call_timer else 0
                     call_timer = None
-                    stats = llm_events.stats_from_message(
-                        message,
-                        model_id=model_id,
-                        provider=provider,
-                        latency_ms=latency_ms,
-                        kind="chat",
-                    )
+                    # Hoisted out of the telemetry block below because the accounting
+                    # reads it too, and guarded for the same reason the block is: a
+                    # message shape this cannot read is a number lost, never an answer
+                    # lost.
+                    try:
+                        stats = llm_events.stats_from_message(
+                            message,
+                            model_id=model_id,
+                            provider=provider,
+                            latency_ms=latency_ms,
+                            kind="chat",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("could not read usage off a model turn: %s", exc)
+                        stats = llm_events.LlmCallStats(
+                            provider=provider, model_id=model_id, latency_ms=latency_ms
+                        )
                     if stats.prompt_tokens:
                         model_calls += 1
                         if not context_tokens:
