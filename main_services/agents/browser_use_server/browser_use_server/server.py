@@ -39,6 +39,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import Tool, ToolResult
 from mcp.types import TextContent
 
@@ -368,23 +369,40 @@ def exposed_tools() -> set[str]:
     return {name.strip() for name in raw.split(",") if name.strip()}
 
 
-#: The name `read_page` replaced. A model that learned the old name gets an error saying
-#: what to call instead, not a silent shim: a shim that quietly works means the model never
-#: discovers the batch form, which is the entire point of the rename.
+#: Names that no longer exist, and what to call instead.
+#:
+#: A model that learned an old name gets an error *naming the replacement*, not a silent
+#: shim: a shim that quietly works means the model never discovers the batched form, which
+#: is the entire point of the rename. And not the transport's bare `Unknown tool` either —
+#: that tells the model the capability is gone rather than that it moved, and it will either
+#: give up or retry the same name.
 RETIRED_TOOLS = {
-    "browse_page": "read_page",
+    "browse_page": (
+        "read_page",
+        "it takes a list of URLs and returns each page's readable text in one call",
+    ),
 }
 
 
-class RetiredTool(Tool):
-    """A removed tool name that answers with the name that replaced it."""
+class RetiredNames(Middleware):
+    """Answer a call to a retired name with the name that replaced it.
 
-    replacement: str = ""
+    Middleware rather than a registered tool, because those two states are not both
+    available from one flag. FastMCP's `enabled` governs listing **and** dispatch together:
+    a disabled tool is not advertised *and* cannot be called, so a hidden tool that answers
+    when called cannot be expressed as a `Tool` at all. Intercepting the call before the
+    registry is consulted is what makes the alias hidden and live at the same time.
+    """
 
-    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+    async def on_call_tool(self, context, call_next):
+        retired = RETIRED_TOOLS.get(getattr(context.message, "name", ""))
+        if retired is None:
+            return await call_next(context)
+        replacement, what = retired
+        log.info("call to retired tool %s; pointing at %s", context.message.name, replacement)
         return _refusal(
-            f"`{self.name}` no longer exists. Call `{self.replacement}` instead — it takes "
-            "a list of URLs and returns each page's readable text in one call."
+            f"`{context.message.name}` no longer exists. Call `{replacement}` instead — "
+            f"{what}."
         )
 
 
@@ -503,16 +521,7 @@ async def _register_tools() -> int:
     )
     advertised += 1
 
-    for old, new in RETIRED_TOOLS.items():
-        mcp.add_tool(
-            RetiredTool(
-                name=old,
-                description=f"Retired. Use `{new}`.",
-                parameters={"type": "object", "properties": {}},
-                enabled=False,
-                replacement=new,
-            )
-        )
+    mcp.add_middleware(RetiredNames())
 
     missing = sorted(allowed - {spec.name for spec in tools})
     if missing:
