@@ -242,6 +242,14 @@ restart_resilience() {
     local db="Hoover4_Collection_${coll}"
     local root="${INGEST_ROOT_RESTART:-$INGEST_ROOT_TESTDATA}"
 
+    # Purge first, so the check is repeatable. Without this a second run finds the
+    # dataset already complete, ingests nothing, restarts a worker that is doing no work,
+    # and passes all three assertions over the FIRST run's data -- a green gate that
+    # tested nothing, which is worse than a red one. Failure is tolerated: on the first
+    # run there is nothing to purge.
+    echo "== restart resilience: purging any previous $cd =="
+    run_step purge-dataset "$coll" "$cd" --apply --registered || true
+
     echo "== restart resilience: ingesting $cd from $root =="
     # Backgrounded because the restart has to happen while this is still running. The CLI
     # dies with the container it is exec'd into; the workflows it started do not, and
@@ -278,7 +286,20 @@ restart_resilience() {
     grace=$(docker exec "$WORKER" sh -lc 'echo ${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}' 2>/dev/null | tr -d '\r')
     grace="${grace:-60}"
     echo "     restarting the worker with a ${grace}s drain"
-    docker restart -t "$grace" "$WORKER" >/dev/null
+    # STOP then START, never `restart`. Under a rootless runtime `restart` refuses with
+    # "some dependencies of container ... are not started" because `garage-init` is
+    # `Exited (0)` -- which is its correct final state, not a fault. The error names the
+    # wrong container and reads as a broken stack.
+    if ! docker stop -t "$grace" "$WORKER" >/dev/null 2>&1; then
+        fail "restart resilience: could not stop the worker"
+        kill "$ingest_pid" 2>/dev/null || true
+        return 1
+    fi
+    if ! docker start "$WORKER" >/dev/null 2>&1; then
+        fail "restart resilience: the worker did not come back up"
+        kill "$ingest_pid" 2>/dev/null || true
+        return 1
+    fi
     wait "$ingest_pid" 2>/dev/null || true
     wait_for_worker
     wait_for_temporal
@@ -378,7 +399,14 @@ BODY
 write_filename_hit_fixture
 
 if [ "$RESTART_RESILIENCE" = "1" ]; then
-    restart_resilience || true
+    # `if !` and not `|| true`. Calling the function in a `||` list disables `set -e`
+    # inside its whole body, so a command that fails half way through does not stop it --
+    # and a bare `|| true` then throws the non-zero return away, leaving FAILURES at zero
+    # and the summary below announcing that all checks passed over a check that never
+    # finished. Every failure path inside the function calls `fail` for the same reason.
+    if ! restart_resilience; then
+        [ "$FAILURES" -gt 0 ] || fail "restart resilience: the check did not complete"
+    fi
     echo
     if [ "$FAILURES" -gt 0 ]; then
         echo "verify-stack --restart-resilience: $FAILURES check(s) FAILED"
