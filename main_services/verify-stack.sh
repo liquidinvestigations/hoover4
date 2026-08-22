@@ -1,9 +1,17 @@
 #!/bin/bash
 # End-to-end verification of the collections architecture.
 #
-# Usage: ./verify-stack.sh [--reset]
+# Usage: ./verify-stack.sh [--reset] [--restart-resilience]
 #
 #   --reset   wipe all containers and volumes first (destructive, dev only)
+#
+#   --restart-resilience
+#             ingest one fixture, restart the worker in the middle of it, and assert
+#             that every document ends up with chunks, vectors AND an index row. Runs
+#             INSTEAD of the checks below, not before them. Deliberately not part of a
+#             default run: it costs a worker restart and several minutes, and a gate that
+#             expensive is a gate nobody runs. Run it when the worker's process lifecycle
+#             changes. INGEST_ROOT_RESTART picks its fixture (default: the testdata root).
 #
 # Steps: migrate, create the two canonical collections (testdata + other),
 # ingest the three canonical datasets, wait for the pipeline, then assert the
@@ -174,6 +182,11 @@ ensure_collection_row() {
     run_step create-collection "$name" --fullname "$fullname"
 }
 
+RESTART_RESILIENCE=0
+for arg in "$@"; do
+    [ "$arg" = "--restart-resilience" ] && RESTART_RESILIENCE=1
+done
+
 if [ "${1:-}" = "--reset" ]; then
     # `--reset` tears the stack DOWN; it does not bring it back up. Without the deploy
     # that follows, every readiness gate below waits five minutes for a ClickHouse that
@@ -209,6 +222,117 @@ echo "== ensure collections =="
 ensure_collection_row testdata "Test Data"
 ensure_collection_row other "Other Collection"
 
+# --restart-resilience: ingest a fixture, kill the worker in the middle of it, and then
+# assert not that the workflow says "finished" but that every document actually carries
+# its chunks, its vectors and its index row.
+#
+# That distinction is the whole point of this mode. A plan is marked finished when its
+# stages RAN, not when every document succeeded, so workflow status reports success over
+# documents that lost their embeddings — which is how a restart under load left fourteen
+# documents in the corpus, searchable by text and invisible to semantic search, with
+# nothing anywhere saying so except a row count nobody was counting.
+#
+# It is a FLAG and not a phase because it costs a worker restart and several minutes, and
+# a gate that expensive stops being run. Run it when the worker's lifecycle changes:
+# `run_worker.py`, `heartbeat.py`, the graceful shutdown keys, the compose stop grace
+# period.
+restart_resilience() {
+    local coll=testdata ds=restartfixture
+    local cd="${coll}_${ds}"
+    local db="Hoover4_Collection_${coll}"
+    local root="${INGEST_ROOT_RESTART:-$INGEST_ROOT_TESTDATA}"
+
+    echo "== restart resilience: ingesting $cd from $root =="
+    # Backgrounded because the restart has to happen while this is still running. The CLI
+    # dies with the container it is exec'd into; the workflows it started do not, and
+    # re-running it is the supported resume (an existing registry row is a rescan).
+    ./run.sh add-disk-dataset "$coll" "$ds" "$root" >/tmp/restart-ingest.log 2>&1 &
+    local ingest_pid=$!
+
+    # Wait for real work to be in flight rather than for a fixed number of seconds: a
+    # restart before anything started proves nothing at all.
+    local deadline=$(( $(date +%s) + 300 ))
+    while true; do
+        local started
+        started=$(CH "SELECT count() FROM ${db}.text_content WHERE collection_dataset = '${cd}'" 2>/dev/null || echo 0)
+        if [ "${started:-0}" -gt 0 ]; then
+            echo "     $started text segment(s) written; restarting the worker now"
+            break
+        fi
+        if [ "$(date +%s)" -gt "$deadline" ]; then
+            fail "restart resilience: nothing was in flight within 300s, nothing to interrupt"
+            kill "$ingest_pid" 2>/dev/null || true
+            return 1
+        fi
+        sleep 2
+    done
+
+    docker restart "$WORKER" >/dev/null
+    wait "$ingest_pid" 2>/dev/null || true
+    wait_for_worker
+    wait_for_temporal
+
+    # Re-drive: the restart killed the client, not the work. Only the SEQUENCING of the
+    # three stages lived in that client, so this hands it back.
+    echo "== restart resilience: re-driving the client after the restart =="
+    run_step add-disk-dataset "$coll" "$ds" "$root" || true
+
+    deadline=$(( $(date +%s) + POLL_TIMEOUT ))
+    while true; do
+        local plans finished
+        plans=$(CH "SELECT count() FROM ${db}.processing_plans FINAL WHERE collection_dataset = '${cd}'")
+        finished=$(CH "SELECT count() FROM ${db}.processing_plan_finished FINAL WHERE collection_dataset = '${cd}'")
+        if [ "${plans:-0}" -gt 0 ] && [ "$plans" = "$finished" ]; then
+            ok "restart resilience: $cd finished $finished/$plans plans across a worker restart"
+            break
+        fi
+        if [ "$(date +%s)" -gt "$deadline" ]; then
+            fail "restart resilience: $cd did not finish after ${POLL_TIMEOUT}s ($finished/$plans)"
+            return 1
+        fi
+        sleep 5
+    done
+
+    # The three per-document assertions. Every document that produced text must carry
+    # chunks and vectors; "the plan finished" is explicitly NOT evidence for either.
+    local docs no_chunks no_vectors
+    docs=$(CH "SELECT uniqExact(file_hash) FROM ${db}.text_content FINAL WHERE collection_dataset = '${cd}'")
+    no_chunks=$(CH "SELECT count() FROM (
+        SELECT DISTINCT file_hash FROM ${db}.text_content FINAL WHERE collection_dataset = '${cd}'
+    ) AS t LEFT ANTI JOIN (
+        SELECT DISTINCT file_hash FROM ${db}.text_chunks FINAL WHERE collection_dataset = '${cd}'
+    ) AS c ON t.file_hash = c.file_hash")
+    no_vectors=$(CH "SELECT count() FROM (
+        SELECT DISTINCT file_hash FROM ${db}.text_content FINAL WHERE collection_dataset = '${cd}'
+    ) AS t LEFT ANTI JOIN (
+        SELECT DISTINCT file_hash FROM ${db}.text_chunk_vectors FINAL WHERE collection_dataset = '${cd}'
+    ) AS v ON t.file_hash = v.file_hash")
+    [ "$no_chunks" = "0" ] && ok "restart resilience: all $docs document(s) have chunks" \
+        || fail "restart resilience: $no_chunks of $docs document(s) have NO chunks"
+    [ "$no_vectors" = "0" ] && ok "restart resilience: all $docs document(s) have vectors" \
+        || fail "restart resilience: $no_vectors of $docs document(s) have NO vectors"
+
+    # The index row, counted out of Manticore itself rather than out of the ledger: the
+    # ledger is written by the same stage whose output is in question.
+    local indexed=0 n
+    for table in $(MC "show tables" | grep -oE "${coll}_[0-9]+_pages"); do
+        n=$(MC "SELECT file_hash FROM $table WHERE collection_dataset = '${cd}'
+                GROUP BY file_hash LIMIT 100000 OPTION max_matches=100000" | grep -c '^|' || true)
+        indexed=$((indexed + n))
+    done
+    [ "$indexed" -ge "$docs" ] && ok "restart resilience: $indexed indexed document(s) >= $docs with text" \
+        || fail "restart resilience: only $indexed of $docs document(s) have an index row"
+
+    # The count that made this work necessary: documents whose embedding stage recorded a
+    # failure and that have no vector to show for it. 87 errors against 73 recovered is
+    # what a restart cost before the worker learned to drain.
+    local p5_errors p5_recovered
+    p5_errors=$(CH "SELECT uniqExact(hash) FROM ${db}.processing_errors WHERE task_name = 'P5_ChunkEmbed' AND collection_dataset = '${cd}'" 2>/dev/null || echo 0)
+    p5_recovered=$(CH "SELECT uniqExact(file_hash) FROM ${db}.text_chunk_vectors WHERE collection_dataset = '${cd}' AND file_hash IN (
+        SELECT hash FROM ${db}.processing_errors WHERE task_name = 'P5_ChunkEmbed' AND collection_dataset = '${cd}')" 2>/dev/null || echo 0)
+    echo "     embedding failures recorded: ${p5_errors:-0}; of those, recovered: ${p5_recovered:-0}"
+}
+
 ingest_dataset() {
     local coll="$1" ds="$2" root="$3"
     # An empty root means "not this run" -- how the shapes fixture is switched off to
@@ -241,6 +365,17 @@ BODY
 "
 }
 write_filename_hit_fixture
+
+if [ "$RESTART_RESILIENCE" = "1" ]; then
+    restart_resilience || true
+    echo
+    if [ "$FAILURES" -gt 0 ]; then
+        echo "verify-stack --restart-resilience: $FAILURES check(s) FAILED"
+        exit 1
+    fi
+    echo "verify-stack --restart-resilience: all checks passed"
+    exit 0
+fi
 
 # These block until each dataset is fully ingested, which is correct: the three
 # stages (scan, compute plans, execute plans) must run in order, and only the
