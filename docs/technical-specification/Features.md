@@ -88,11 +88,13 @@ languages.
 | `F-chat-02` | Choose, at the first turn, whether the answer may use the open web and whether it is a deep research turn — then hold both for the conversation | `db_chat::lock_session_options` |
 | `F-chat-03` | Search the corpus from several query angles in one call, every hit naming the queries that found it | `search_collections`, `matched_queries` |
 | `F-chat-03a` | Read several documents in one call, sharing one character budget and naming what did not fit | `read_documents` |
-| `F-chat-03b` | List entities found in a document as an agent tool | `list_document_entities` |
-| `F-chat-04` | Search the open web through one tool covering several engines, merged and reranked | `main_services/agents/metasearch_server/` |
+| `F-chat-03b` | List the entities found in several documents in one call, in two tiers, sharing one character budget | `list_document_entities` |
+| `F-chat-04` | Search the open web from several query angles in one call, through one tool covering every source, merged into one pool and reranked once, every result naming the queries that found it | `main_services/agents/metasearch_server/` |
+| `F-chat-04a` | Search world news, structured entities, DOI metadata and two web archives as sources of that one tool | `gdelt`, `wikidata`, `crossref`, `wayback`, `archive_today` |
+| `F-chat-04b` | Search published fact-checks, present only where a key file is mounted and absent from the source list otherwise | `factcheck`, `FACTCHECK_API_KEY_FILE` |
 | `F-chat-05` | Read several web pages in one call with a real browser, each returning its text plus an archived copy | `read_page` |
 | `F-chat-05a` | Drive a page that has to be operated — navigate, snapshot, click, type, select, press — over a configurable allowlist of the browser sidecar's surface | `BROWSER_EXPOSED_TOOLS` |
-| `F-chat-06` | Look up domain registration | `main_services/agents/whois_search_server/` |
+| `F-chat-06` | Look up the registration of several domains in one call | `whois_lookup` |
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically | `chat_sessions`, `chat_messages` |

@@ -610,13 +610,13 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// - end:   `{"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}`
 ///
 /// `search_collections` content is `{"results":[{collection_dataset,file_hash,path,…}]}`.
-/// `read_documents` content is `{"documents":[…]}` — the same document objects in a list.
-/// `get_document_text` / `list_document_entities` / `show_document` content is a single
+/// `read_documents` and `list_document_entities` content is `{"documents":[…]}` — the same
+/// document objects in a list. `get_document_text` / `show_document` content is a single
 /// document object. Unknown tools are scanned for document-shaped objects generically.
 ///
-/// **The single-document arm stays even though `get_document_text` is retired.** No live
+/// **The single-document arms stay even though those call shapes are retired.** No live
 /// call produces one any more, but transcripts written before the batch form still hold
-/// its rows, and a card that cannot render an old row destroys the record this whole
+/// their rows, and a card that cannot render an old row destroys the record this whole
 /// design was reasoned from.
 pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocRef> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(tool_output_json) else {
@@ -630,9 +630,9 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
 
     match tool_name {
         "search_collections" => extract_from_search_results(content),
-        "read_documents" => extract_from_document_list(content),
+        "read_documents" | "list_document_entities" => extract_from_document_list(content),
         "cite_documents" => extract_from_citations(content),
-        "get_document_text" | "list_document_entities" | "show_document" => {
+        "get_document_text" | "show_document" => {
             doc_ref_from_value(content).into_iter().collect()
         }
         _ => {
@@ -721,12 +721,13 @@ pub fn handle_number(handle: &str) -> Option<u32> {
 /// Collapsed the same way search results are: `read_documents` de-duplicates its input,
 /// but a transcript row written before it did — or one where two entries named the same
 /// document through different argument shapes — must still render as one card.
+/// **A row with no `documents` array is an old single-document row**, not an empty result.
+/// `list_document_entities` answered with one document object before it was batched, and
+/// every such row in a stored transcript would otherwise render as nothing at all.
 fn extract_from_document_list(content: &serde_json::Value) -> Vec<ChatDocRef> {
-    let documents = content
-        .get("documents")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let Some(documents) = content.get("documents").and_then(|v| v.as_array()) else {
+        return doc_ref_from_value(content).into_iter().collect();
+    };
     collapse_by_document(documents.iter().filter_map(doc_ref_from_value).collect())
 }
 
@@ -1234,6 +1235,29 @@ mod tests {
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].file_hash, "aaa");
         assert_eq!(refs[1].file_hash, "bbb");
+    }
+
+    #[test]
+    fn extract_doc_refs_from_list_document_entities_batch() {
+        let output = r#"{"content": {"documents": [
+            {"collectionname": "t", "file_hash": "aaa", "entities": {"person": ["A"]}},
+            {"collectionname": "t", "file_hash": "bbb", "entities": {}}
+        ]}}"#;
+        let refs = extract_doc_refs("list_document_entities", output);
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[1].file_hash, "bbb");
+    }
+
+    #[test]
+    fn a_pre_batch_entities_row_still_renders() {
+        // The single-document shape `list_document_entities` answered with before it was
+        // batched. Stored transcripts still hold these rows and they must keep rendering.
+        let output = r#"{"content":
+            {"collectionname": "t", "collection_dataset": "d", "file_hash": "aaa",
+             "entities": {"person": ["A"]}}}"#;
+        let refs = extract_doc_refs("list_document_entities", output);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].file_hash, "aaa");
     }
 
     #[test]

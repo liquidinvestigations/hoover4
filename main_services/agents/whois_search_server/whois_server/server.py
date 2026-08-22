@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
 
+from agent_common.batching import as_list, corrective_note, dedupe, repeats_note
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
@@ -60,13 +61,27 @@ class WhoisData(BaseModel):
 
 
 class WhoisLookupResponse(BaseModel):
-    """Response structure for WHOIS lookup."""
-    
+    """Response structure for one domain's WHOIS lookup."""
+
     success: bool = Field(description="Whether the lookup was successful")
     domain: str = Field(description="The domain that was queried")
     data: WhoisData = Field(description="Structured WHOIS data")
     metadata: WhoisMetadata = Field(description="Lookup metadata")
     error: Optional[str] = Field(default=None, description="Error message if lookup failed")
+
+
+class WhoisBatchResponse(BaseModel):
+    """A batch lookup. The per-domain arm is `WhoisLookupResponse`, unchanged, so nothing
+    that reads one domain's registration had to learn a new shape."""
+
+    success: bool = Field(description="Whether any domain in the batch resolved")
+    domains: List[WhoisLookupResponse] = Field(
+        default_factory=list, description="One entry per domain, in the order asked"
+    )
+    note: Optional[str] = Field(
+        default=None, description="What was de-duplicated or not looked up, and why"
+    )
+    error: Optional[str] = Field(default=None, description="Error message if the call failed")
 
 
 # Create FastMCP instance
@@ -145,22 +160,78 @@ def format_whois_data(domain_data) -> WhoisData:
     )
 
 
+#: Domains one call may look up. Each is a WHOIS query against a registry that rate-limits
+#: per address, so this bounds what a single tool call spends and what it costs the
+#: registries. The surplus is named rather than silently trimmed.
+MAX_DOMAINS = int(os.getenv("WHOIS_MAX_DOMAINS", "10"))
+
+
 @whois_server.tool(
     name="whois_lookup",
-    description="""Perform WHOIS lookup for a domain. Retrieves detailed registration information including registrar, dates, name servers, and contact information.
+    description="""Look up the registration of several domains at once. Returns registrar, creation and expiry dates, name servers, and contact information per domain.
+
+Ask about every domain you are curious about in one call rather than one per turn.
 
 Args:
-    domain: str
-        The domain name to lookup (e.g., 'example.com')
+    domains: list[str]
+        The domain names to look up, e.g. ['example.com', 'example.org']
 """,
     structured_output=True,
 )
-async def whois_lookup(domain: str) -> WhoisLookupResponse:
-    """Perform WHOIS lookup for a domain.
-    
-    Args:
-        domain: The domain name to lookup
+async def whois_lookup(
+    domains: Optional[Any] = None, domain: Optional[Any] = None
+) -> WhoisBatchResponse:
+    """Look up a batch of domains, de-duplicated and capped.
+
+    `domain` is still accepted and is folded into `domains` rather than handled on its own
+    path: a model that learned the single-domain shape keeps working, and a batch of one is
+    then not a special case. Both arrive through `agent_common.batching.as_list`, so a bare
+    string, a comma-separated string and a JSON-encoded list all work — models produce all
+    three.
     """
+    asked = [_clean_domain(d) for d in as_list(domains) + as_list(domain)]
+    wanted, repeats = dedupe([d for d in asked if d])
+    over_cap = wanted[MAX_DOMAINS:]
+    wanted = wanted[:MAX_DOMAINS]
+
+    note = corrective_note(
+        repeats_note(repeats, "domain"),
+        (
+            f"{len(over_cap)} domain{'' if len(over_cap) == 1 else 's'} beyond the "
+            f"{MAX_DOMAINS}-per-call limit {'was' if len(over_cap) == 1 else 'were'} not "
+            f"looked up: {', '.join(over_cap)}. Ask about fewer at a time."
+            if over_cap
+            else ""
+        ),
+    )
+
+    if not wanted:
+        return WhoisBatchResponse(
+            success=False,
+            note=note or None,
+            error="no domain was named; pass one or more domain names in `domains`",
+        )
+
+    # Serial, not concurrent: WHOIS registries rate-limit per address and answering ten
+    # queries at once is how a batch turns into ten refusals.
+    results = [await _lookup_one(name) for name in wanted]
+    return WhoisBatchResponse(
+        success=any(r.success for r in results),
+        domains=results,
+        note=note or None,
+    )
+
+
+def _clean_domain(value: str) -> str:
+    """A bare hostname out of whatever the model wrote — a URL, a `www.` prefix, a path."""
+    text = (value or "").strip().lower()
+    text = text.replace("http://", "").replace("https://", "")
+    text = text.replace("www.", "")
+    return text.split("/")[0]
+
+
+async def _lookup_one(domain: str) -> WhoisLookupResponse:
+    """One domain's registration. Never raises: a failure is one entry's `error`."""
     # Create metadata object
     lookup_time = datetime.now().isoformat()
     metadata = WhoisMetadata(
@@ -191,13 +262,11 @@ async def whois_lookup(domain: str) -> WhoisLookupResponse:
     
     try:
         logger.info(f"Performing WHOIS lookup for: {domain}")
-        
-        # Clean domain (remove http/https, www, etc.)
-        clean_domain = domain.lower()
-        clean_domain = clean_domain.replace("http://", "").replace("https://", "")
-        clean_domain = clean_domain.replace("www.", "")
-        clean_domain = clean_domain.split("/")[0]  # Remove path if any
-        
+
+        # Already a bare hostname — the caller cleaned it, and cleaning it twice here is
+        # how the two rules drift apart.
+        clean_domain = domain
+
         # Run WHOIS lookup in executor to avoid blocking
         loop = asyncio.get_event_loop()
         

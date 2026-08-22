@@ -111,3 +111,92 @@ class TestDocumentPairs:
     def test_a_non_hash_is_malformed(self):
         pairs, bad = _document_pairs(None, "testdata", "not-a-hash")
         assert pairs == [] and len(bad) == 1
+
+
+class TestBatchedEntityListing:
+    """The shared value budget, and the tier that survives when only one fits."""
+
+    @staticmethod
+    def _stub(monkeypatch, structured_count, ner_count, structured_width=6):
+        import collection_search_server.server as srv
+
+        monkeypatch.setattr(srv, "_caller", lambda: _AllowAll())
+        monkeypatch.setattr(
+            srv,
+            "_structured_entities",
+            lambda c, h: [
+                srv.StructuredEntity(
+                    entity_type="iban", value=f"{i}".rjust(structured_width, "X")
+                )
+                for i in range(structured_count)
+            ],
+        )
+        monkeypatch.setattr(
+            srv,
+            "clickhouse_query",
+            lambda *a, **k: [
+                {"entity_type": "person", "values": [f"p{i}" for i in range(ner_count)]}
+            ],
+        )
+        return srv
+
+    def test_the_budget_divides_across_the_batch(self, monkeypatch):
+        """Two documents share one budget, so each gets half — and both say they were cut
+        rather than returning a full-looking list that is not one."""
+        srv = self._stub(monkeypatch, structured_count=0, ner_count=2000)
+        monkeypatch.setattr(srv, "LIST_ENTITIES_TOTAL_CHARS", 2000)
+        out = srv.list_document_entities.fn(
+            documents=[
+                {"collectionname": "testdata", "file_hash": HASH_A},
+                {"collectionname": "testdata", "file_hash": HASH_B},
+            ]
+        )
+        kept = [len(d.entities["person"]) for d in out.documents]
+        assert kept[0] == kept[1] and 0 < kept[0] < 2000
+        assert all(d.truncated for d in out.documents)
+        assert "cut to the most frequent" in (out.note or "")
+
+    def test_the_validated_tier_survives_when_only_one_fits(self, monkeypatch):
+        """A checksum-validated identifier is evidence and a model's guess at a span of
+        prose is a lead. When only one tier fits, it is the evidence that stays."""
+        # Ten identifiers wide enough to spend the whole per-document share, which is
+        # never less than the shared floor however small the total is set.
+        srv = self._stub(
+            monkeypatch, structured_count=10, ner_count=2000, structured_width=48
+        )
+        monkeypatch.setattr(srv, "LIST_ENTITIES_TOTAL_CHARS", 500)
+        out = srv.list_document_entities.fn(
+            documents=[{"collectionname": "testdata", "file_hash": HASH_A}]
+        )
+        one = out.documents[0]
+        assert len(one.structured) == 10
+        assert one.entities.get("person", []) == []
+        assert one.truncated is True
+
+    def test_a_repeat_is_read_once_and_said_so(self, monkeypatch):
+        srv = self._stub(monkeypatch, structured_count=1, ner_count=1)
+        out = srv.list_document_entities.fn(
+            documents=[
+                {"collectionname": "testdata", "file_hash": HASH_A},
+                {"collectionname": "testdata", "file_hash": HASH_A},
+            ]
+        )
+        assert len(out.documents) == 1
+        assert "repeated document" in (out.note or "")
+
+    def test_the_single_document_call_still_works(self, monkeypatch):
+        """The shape this tool took before it was batched. It must not be a special
+        case — `_document_pairs` reads it as a batch of one."""
+        srv = self._stub(monkeypatch, structured_count=1, ner_count=1)
+        out = srv.list_document_entities.fn(collectionname="testdata", file_hash=HASH_A)
+        assert [d.file_hash for d in out.documents] == [HASH_A]
+
+    def test_no_document_at_all_names_the_parameters(self, monkeypatch):
+        srv = self._stub(monkeypatch, structured_count=0, ner_count=0)
+        out = srv.list_document_entities.fn(documents=[])
+        assert out.success is False and "file_hash" in (out.error or "")
+
+
+class _AllowAll:
+    def check(self, collections):
+        return None

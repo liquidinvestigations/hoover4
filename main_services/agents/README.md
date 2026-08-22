@@ -15,15 +15,16 @@ from the repo root, no separate tier to start.
 | Server | Directory | Port | Used by | What it does |
 |---|---|---|---|---|
 | Collection search | [`collection_search_server/`](collection_search_server/README.md) | 21930 | both agents | ACL-bounded full-text search of the user's own documents (Manticore + ClickHouse) |
-| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: four HTML scrapers + DuckDuckGo text/news + Wikipedia, fused with RRF and reranked by the GPU cross-encoder |
+| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: `web_search` over a list of queries across the scrapers, DuckDuckGo and GDELT news, Wikipedia, Wikidata, Crossref and two web archives, fused with RRF and reranked once by the GPU cross-encoder |
 | Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
-| WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | Domain registration lookup |
+| WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | `whois_lookup` over a list of domains |
 
 **There is exactly one web-search tool, and it must stay that way.** Choosing between
 three overlapping "search the web" tools is something a small model does badly and
 inconsistently, so every open-web source lives behind `web_search` in
 [`metasearch_server/metasearch_server/sources.py`](metasearch_server/metasearch_server/sources.py)
-— `ddg_api`, `ddg_news`, `wikipedia` and the scrapers — selectable through
+— the scrapers, `ddg_api`, `ddg_news`, `gdelt`, `wikipedia`, `wikidata`, `crossref`,
+`wayback`, `archive_today` and a key-gated fact-check source — selectable through
 `web_search(sources=[…])`. The `hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` directories
 are still in the tree but nothing builds or deploys them, and `hoover4.ini` has no
 `mcp_ddg_port` / `mcp_wikipedia_port`. Do not revive them.
@@ -276,7 +277,8 @@ New servers follow **`collection_search_server`**: a plain `python:3.12-slim` im
 It builds in seconds and has no build toolchain.
 
 `whois_search_server` is older and uses a Poetry multi-stage build. It works; do not copy
-it for anything new.
+it for anything new. Its build context is the agents directory all the same, because
+`agent_common` is vendored into it for the batching mechanics.
 
 `ddg_search_server/` and `wikipedia_search_server/` are **gone**, not disabled. Their
 sources live in `metasearch_server` as `ddg_api`, `ddg_news` and `wikipedia`; the

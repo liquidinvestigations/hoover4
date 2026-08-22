@@ -275,6 +275,22 @@ class DocumentEntities(BaseModel):
             "run over this document."
         ),
     )
+    truncated: bool = Field(
+        default=False,
+        description="The shared budget could not carry every value this document has",
+    )
+    error: str | None = None
+
+
+class DocumentsEntities(BaseModel):
+    """A batch entity listing. The per-document arm is `DocumentEntities`, unchanged, so
+    nothing that reads one document's entities had to learn a new shape."""
+
+    success: bool
+    documents: list[DocumentEntities] = Field(default_factory=list)
+    note: str | None = Field(
+        default=None, description="What was de-duplicated, cut or not read, and why"
+    )
     error: str | None = None
 
 
@@ -1050,15 +1066,91 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
 @mcp.tool(
     name="list_document_entities",
     description=(
-        "List what the pipeline extracted from one document, in two tiers. `entities` is "
-        "a language model's reading of the prose: people, organisations, locations. "
-        "`structured` is what a rule's validator accepted: checksum-validated "
-        "identifiers, normalised dates, money with an ISO 4217 code. Treat the two "
-        "differently — a name is a judgement, an IBAN either has a valid check digit or "
-        "it does not. Useful for finding names and identifiers to search for next."
+        "List what the pipeline extracted from several documents at once, in two tiers. "
+        "Each entry names its collection and the file_hash a search returned — pass them "
+        "as `[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
+        "parallel lists in `collectionname` and `file_hash`. `entities` is a language "
+        "model's reading of the prose: people, organisations, locations. `structured` is "
+        "what a rule's validator accepted: checksum-validated identifiers, normalised "
+        "dates, money with an ISO 4217 code. Treat the two differently — a name is a "
+        "judgement, an IBAN either has a valid check digit or it does not. Ask about "
+        "every promising document in one call: this is how you find the names and "
+        "identifiers to search for next."
     ),
 )
-def list_document_entities(collectionname: str, file_hash: str) -> DocumentEntities:
+def list_document_entities(
+    documents: list[dict] | str | None = None,
+    collectionname: list[str] | str | None = None,
+    file_hash: list[str] | str | None = None,
+) -> DocumentsEntities:
+    """List entities for a batch of documents, sharing one value budget across them.
+
+    Same three parameter shapes as `read_documents`, through the same `_document_pairs`:
+    a list of objects, two parallel lists, and a bare pair of strings — which is exactly
+    the single-document call this replaced, so there is no compatibility branch.
+    """
+    pairs, malformed = _document_pairs(documents, collectionname, file_hash)
+    wanted, repeats = batching.dedupe([f"{c}\x00{h}" for c, h in pairs], casefold=False)
+    pairs = [tuple(k.split("\x00", 1)) for k in wanted]
+
+    note = batching.corrective_note(
+        batching.repeats_note([r.replace("\x00", "/") for r in repeats], "document"),
+        (
+            f"{len(malformed)} entr{'y' if len(malformed) == 1 else 'ies'} could not be "
+            f"read as a collection and file hash: {', '.join(malformed)}. Each needs "
+            "both, exactly as search_collections returned them."
+            if malformed
+            else ""
+        ),
+    )
+
+    if not pairs:
+        return DocumentsEntities(
+            success=False,
+            note=note or None,
+            error="no document was named; pass the collectionname and file_hash of each",
+        )
+
+    per_doc, fits = batching.divide_budget(LIST_ENTITIES_TOTAL_CHARS, len(pairs))
+    dropped = [f"{c}/{h}" for c, h in pairs[fits:]]
+    pairs = pairs[:fits]
+    if dropped:
+        note = batching.corrective_note(note, batching.dropped_note(dropped, "document"))
+
+    out = [_document_entities(collection, digest, per_doc) for collection, digest in pairs]
+    truncated = [d.file_hash for d in out if d.truncated]
+    if truncated:
+        note = batching.corrective_note(
+            note,
+            f"{len(truncated)} document{'' if len(truncated) == 1 else 's'} had more "
+            f"entities than the shared budget carries and {'was' if len(truncated) == 1 else 'were'} "
+            f"cut to the most frequent: {', '.join(truncated)}. Ask about fewer at a time "
+            "to see the whole list.",
+        )
+
+    return DocumentsEntities(
+        success=any(d.success for d in out),
+        documents=out,
+        note=note or None,
+    )
+
+
+#: The whole call's entity budget, shared across the documents asked for. Measured in
+#: characters, like every other budget here, so one divider serves them all and the
+#: minimum-share floor below which documents are dropped means the same thing everywhere.
+LIST_ENTITIES_TOTAL_CHARS = int(os.getenv("LIST_ENTITIES_TOTAL_CHARS", "16000"))
+
+
+def _document_entities(
+    collectionname: str, file_hash: str, budget_chars: int
+) -> DocumentEntities:
+    """One document's two tiers, cut to `budget_chars` across both.
+
+    The rule-scanner tier is filled first and the NER tier takes what is left. That
+    ordering is deliberate: a checksum-validated identifier is evidence and a model's
+    guess at a span of prose is a lead, so when only one of the two fits, it is the
+    evidence that survives.
+    """
     try:
         acl = _caller()
         acl.check([collectionname])
@@ -1083,12 +1175,38 @@ def list_document_entities(collectionname: str, file_hash: str) -> DocumentEntit
     except Exception as exc:  # noqa: BLE001
         return DocumentEntities(success=False, error=f"lookup failed: {exc}")
 
+    # Every value costs its own length plus a separator, which is what it weighs in the
+    # serialised response the budget is really about.
+    spent, dropped_any = 0, False
+    structured = []
+    for entity in _structured_entities(collectionname, file_hash):
+        cost = len(entity.value) + len(entity.surface_text) + 2
+        if spent + cost > budget_chars:
+            dropped_any = True
+            continue
+        structured.append(entity)
+        spent += cost
+
+    entities: dict[str, list[str]] = {}
+    for row in rows:
+        kept = []
+        for value in row["values"]:
+            cost = len(str(value)) + 2
+            if spent + cost > budget_chars:
+                dropped_any = True
+                continue
+            kept.append(str(value))
+            spent += cost
+        if kept:
+            entities[row["entity_type"]] = kept
+
     return DocumentEntities(
         success=True,
         collectionname=collectionname,
         file_hash=file_hash,
-        entities={r["entity_type"]: list(r["values"]) for r in rows},
-        structured=_structured_entities(collectionname, file_hash),
+        entities=entities,
+        structured=structured,
+        truncated=dropped_any,
     )
 
 

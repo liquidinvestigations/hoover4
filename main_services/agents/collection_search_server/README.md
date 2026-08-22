@@ -15,7 +15,7 @@ because nothing ever populated it.
 | `list_collections` | what this user may read — always call first |
 | `search_collections` | full-text search across the permitted shards |
 | `read_documents` | the extracted text of several documents, each by `collectionname` + `file_hash`, sharing one budget |
-| `list_document_entities` | what the pipeline found in one document, in two tiers |
+| `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
 
 ## Two tiers of entity, and why they are not merged
@@ -25,6 +25,13 @@ and `structured`, the rule scanner's checksum-validated identifiers, normalised 
 money. They stay in separate blocks because the confidence behind them is not comparable:
 a name is a judgement, an IBAN either has a valid check digit or it does not. Merging them
 would tell the model the two are the same kind of fact.
+
+It takes the same three argument shapes as `read_documents` — a list of objects, two
+parallel lists, and a bare pair of strings, which is the single-document call it replaced —
+and shares one character budget across the batch. **The rule-scanner tier is filled first
+and the NER tier takes what is left**: when only one of the two fits, it is the
+checksum-validated evidence that survives and the model's guess at a span of prose that
+goes. A document that was cut says so in `truncated`, and the batch's `note` names them.
 
 The `structured` query is the same one the website's document viewer runs against the same
 table, and for the same reason: two different answers to "what identifiers are in this

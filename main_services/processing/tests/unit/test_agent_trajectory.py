@@ -141,6 +141,23 @@ def test_a_document_without_a_dataset_is_still_recorded():
     assert refs[0]["collection_dataset"] == ""
 
 
+def test_a_batch_entity_listing_yields_one_ref_per_document():
+    refs = extract_doc_refs(
+        "list_document_entities",
+        {"documents": [{"file_hash": "aaa"}, {"file_hash": "bbb"}]},
+    )
+    assert [r["file_hash"] for r in refs] == ["aaa", "bbb"]
+
+
+def test_a_pre_batch_entities_row_still_renders():
+    # The single-document shape the tool answered with before it was batched. Stored
+    # transcripts still hold these rows and a card that cannot render one loses the record.
+    refs = extract_doc_refs(
+        "list_document_entities", {"file_hash": "abc", "collection_dataset": "d"}
+    )
+    assert len(refs) == 1 and refs[0]["file_hash"] == "abc"
+
+
 def test_a_result_with_no_documents_yields_nothing():
     assert extract_doc_refs("search_collections", {"results": []}) == []
     assert extract_doc_refs("get_document_text", {"error": "not found"}) == []

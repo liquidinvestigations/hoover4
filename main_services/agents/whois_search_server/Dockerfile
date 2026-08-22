@@ -1,5 +1,11 @@
 # WHOIS Search MCP Server Dockerfile
-# This builds an MCP server that provides WHOIS domain lookup functionality
+# This builds an MCP server that provides WHOIS domain lookup functionality.
+#
+# BUILD CONTEXT IS `main_services/agents`, NOT THIS DIRECTORY. `agent_common/` is vendored
+# into the image — `whois_lookup` is a batched tool and takes its list coercion, divided
+# budget and corrective note from the shared package rather than keeping a fourth copy —
+# and a Docker build cannot reach outside its context. If you move this file, move
+# `context:` in ops/docker/compose/agents.yaml with it.
 FROM python:3.12-slim AS builder
 
 # Set environment variables
@@ -22,14 +28,16 @@ WORKDIR $PYSETUP_PATH
 RUN python -m venv $VENV_PATH
 
 # Copy project files
-COPY ./pyproject.toml ./poetry.lock ./
-COPY ./whois_server/ ./whois_server/
+COPY ./whois_search_server/pyproject.toml ./whois_search_server/poetry.lock ./
+COPY ./whois_search_server/whois_server/ ./whois_server/
+COPY ./agent_common/ ./agent_common/
 
 # Install dependencies
 RUN $VENV_PATH/bin/pip install --upgrade pip && \
     $VENV_PATH/bin/pip install poetry && \
     $VENV_PATH/bin/poetry config virtualenvs.create false && \
-    $VENV_PATH/bin/poetry install --no-root
+    $VENV_PATH/bin/poetry install --no-root && \
+    $VENV_PATH/bin/pip install --no-cache-dir ./agent_common
 
 # Runtime stage
 FROM python:3.12-slim AS runtime
@@ -48,8 +56,14 @@ WORKDIR /app
 COPY --from=builder $VENV_PATH $VENV_PATH
 
 # Copy application files
-COPY ./whois_server/ ./whois_server/
-COPY ./pyproject.toml ./
+COPY ./whois_search_server/whois_server/ ./whois_server/
+COPY ./whois_search_server/pyproject.toml ./
+COPY ./whois_search_server/tests/ ./tests/
+# The shared package's tests, under the one target a runner reaches. Without this they
+# ship in the image and run in nothing, so a regression in `agent_common` lands silently.
+COPY ./agent_common/tests/ ./tests/shared/
+
+RUN pip install --no-cache-dir pytest pytest-asyncio
 
 # Expose the port
 EXPOSE 8083

@@ -66,8 +66,10 @@ services:
   # --------------------------------------------------------------- MCP: whois
   hoover4-mcp-whois:
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/whois_search_server
-      dockerfile: Dockerfile
+      # Context is the agents directory, not this server's: agent_common/ is vendored in
+      # (the batching mechanics `whois_lookup` shares with every other batched tool).
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: whois_search_server/Dockerfile
     image: hoover4-mcp-whois:local
     container_name: hoover4-mcp-whois
     ports:
