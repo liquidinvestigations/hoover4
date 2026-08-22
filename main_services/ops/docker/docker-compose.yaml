@@ -452,6 +452,10 @@ services:
       - "HOOVER4_NLP_CONCURRENCY=${HOOVER4_NLP_CONCURRENCY:-}"
       - "HOOVER4_EMBED_CONCURRENCY=${HOOVER4_EMBED_CONCURRENCY:-}"
       - "HOOVER4_INDEXING_CONCURRENCY=${HOOVER4_INDEXING_CONCURRENCY:-}"
+      # A rendered .env is substituted INTO this file; it does not reach the container by
+      # itself. Without this line the worker reads no graceful shutdown period, falls
+      # back to its own default, and the ini key silently stops deciding anything.
+      - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
       - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"

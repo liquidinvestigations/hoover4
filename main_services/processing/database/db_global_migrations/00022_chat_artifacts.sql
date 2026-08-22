@@ -1,9 +1,9 @@
--- The index of everything a chat tool produced that is too big to put
+-- Plan 2 Phase 2/3: the index of everything a chat tool produced that is too big to put
 -- in the model's context but that the user should still be able to see -- the full
 -- before/after ordering of a web search, the captured HTML and screenshot of a page the
 -- agent visited.
 --
--- The bytes live in the blob store under derived/chat-artifacts/<session>/<id>/. This table is the
+-- The bytes live in MinIO under derived/chat-artifacts/<session>/<id>/. This table is the
 -- SOLE index of their existence: P0_scan_disk never walks that prefix (an artifact the
 -- ingest walker can see would be ingested, captured again, and produce another artifact,
 -- forever), so nothing else in the system knows those objects are there. verify-stack.sh
@@ -14,7 +14,7 @@
 -- before serving a byte. username is denormalised so that check never has to join.
 --
 -- ReplacingMergeTree with is_deleted gives the retention sweeper a soft delete: a
--- ClickHouse TTL cannot remove blob-store objects, so rows are tombstoned first, the objects
+-- ClickHouse TTL cannot remove MinIO objects, so rows are tombstoned first, the objects
 -- deleted, and only then are the rows dropped.
 --
 -- NOTE: keep semicolons out of comment strings. The migration runner splits on that
@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS chat_artifacts
     tool_name     LowCardinality(String) COMMENT 'Tool that produced it',
     url           String   DEFAULT ''    COMMENT 'Page URL for page_capture, empty otherwise',
     title         String   DEFAULT '',
-    thumb_key     String   DEFAULT ''    COMMENT 'Blob-store object key of the 1280x720 WebP, empty when none',
-    body_key      String   DEFAULT ''    COMMENT 'Blob-store object key of the self-contained HTML or JSON detail',
+    thumb_key     String   DEFAULT ''    COMMENT 'MinIO object key of the 1280x720 WebP, empty when none',
+    body_key      String   DEFAULT ''    COMMENT 'MinIO object key of the self-contained HTML or JSON detail',
     body_bytes    UInt64   DEFAULT 0,
     thumb_bytes   UInt64   DEFAULT 0,
     status        LowCardinality(String) DEFAULT 'ok' COMMENT 'ok | too_large | failed',
@@ -40,4 +40,4 @@ CREATE TABLE IF NOT EXISTS chat_artifacts
 )
 ENGINE = ReplacingMergeTree(updated_at, is_deleted)
 ORDER BY (username, session_id, artifact_id)
-COMMENT 'Chat tool artifacts: captured pages and search detail. Bytes live in the blob store under the derived prefix and this table is the sole index of their existence.';
+COMMENT 'Chat tool artifacts: captured pages and search detail. Bytes live in MinIO under the derived prefix and this table is the sole index of their existence.';

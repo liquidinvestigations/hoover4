@@ -1,5 +1,5 @@
--- Streaming chat: what makes an in-flight turn collision-safe and progressively
--- renderable.
+-- Plan 2 Phase 1 (streaming chat): make in-flight turns collision-safe and
+-- progressively renderable.
 --
 -- message_uuid: next_seq is max(seq)+1 with no database-side sequence behind it, so
 -- two senders in one session can pick the same seq. Carrying a per-turn uuid on every
