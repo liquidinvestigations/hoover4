@@ -20,7 +20,12 @@ scratch and is wiped when the work finishes.** Everything follows from that:
 - Knowledge that must survive the wipe is **lifted** into the `Readme.md` beside the code, or
   into `docs/`, as a present-tense statement about how the system works. Do that as the work
   lands, not afterwards — afterwards never comes.
-- Archive a finished folder by moving it under `plans/old/<DDMMYYYY>/`.
+- Archive a finished folder by moving it under `plans/old/<DDMMYYYY>/`. **Never delete one** —
+  `plans/` is gitignored, so an archived folder exists only on this disk.
+- Two standing files sit at the top of `plans/` and outlive every folder: **`TODO.md`** for
+  work that was wanted and not built, and **`DEFECTS.md`** for defects and limitations awaiting
+  re-verification before they move into `docs/development/`. A pass ends by appending to them.
+  Without somewhere for unbuilt intent and open defects to go, a folder can never be archived.
 
 ## The file sequence
 

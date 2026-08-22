@@ -40,6 +40,10 @@ EXCLUDE = (
     # Archived plan folders: finished passes, frozen as the record of what was
     # decided when. They predate the tag rules and are not edited to satisfy them.
     "/plans/old/",
+    # Verbatim copies of an earlier pass's documents, kept beside a live plan so it
+    # survives that pass being archived. They are transcribed, not authored, and are
+    # left exactly as written.
+    "/inherited/",
 )
 
 # Source files whose comments are checked too. A tag is no more resolvable in a Rust
