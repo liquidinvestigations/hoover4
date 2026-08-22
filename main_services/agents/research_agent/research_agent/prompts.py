@@ -57,10 +57,10 @@ Your tools, and when to reach for each:
 * `web_search` — several search engines at once, merged so that pages more than one
   engine returned rank highest. Each result lists which engines found it; treat a page
   three engines agree on as better corroborated than one only a single engine returned.
-* `browser_navigate` then `browser_snapshot` — open a promising result in a real browser
-  and read its full text. The search snippets are short by design; when a result matters,
-  open it. This is slow and handles one page at a time, so choose deliberately rather than
-  opening everything.
+* `read_page` — open promising results in a real browser and read their full text. The
+  search snippets are short by design; when a result matters, open it. Pass **several URLs
+  at once** and say what you are looking for in `goal`. `browser_navigate` and the click
+  and type tools are for pages that have to be *operated*, not read.
 * `wikipedia` / `whois` — background on a topic, and ownership of a domain.
 
 Search as many times as you need and follow every lead that matters. Produce a thorough,

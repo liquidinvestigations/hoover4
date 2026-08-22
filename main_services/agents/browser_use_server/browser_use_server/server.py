@@ -1,12 +1,16 @@
 """FastMCP router in front of one playwright-mcp sidecar per chat.
 
-This server used to expose a single `browse_page` tool over a shared Chromium. It now
-exposes **Playwright's whole browser surface** — navigate, click, type, fill forms, read
-the accessibility snapshot, list network requests and console messages, take screenshots,
-manage tabs — routed to a browser that belongs to the calling conversation and nobody
-else. `browse_page` does not survive: reading a page is `browser_navigate` followed by
-`browser_snapshot`, and keeping a fifth way to do it would only give a small model another
-thing to pick wrongly.
+Each chat gets a browser that belongs to it and to nobody else. What this server
+*advertises* over that browser is deliberately small: `read_page`, which opens a list of
+URLs and returns their readable text with a screenshot and an archived copy each, plus six
+interactive tools for pages that have to be driven — navigate, snapshot, click, type,
+select an option, press a key.
+
+The sidecar's other two dozen tools are registered **disabled**: absent from `list_tools`,
+still routable, and one entry in `BROWSER_EXPOSED_TOOLS` away from coming back. Advertising
+all of them made this one server four fifths of a research agent's tool list, and a tool
+list that long costs accuracy — the evidence is that a seven-tool adaptive shortlist scores
+level with a fixed fifty. `read_page` covers what almost all of them were reached for.
 
 How a call flows:
 
@@ -42,6 +46,7 @@ from agent_common import artifacts, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
+from browser_use_server import read_page
 from browser_use_server import router as router_mod
 from browser_use_server.router import router
 from browser_use_server.urlcheck import UrlNotAllowed, check_tool_arguments
@@ -66,14 +71,16 @@ mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_browser"),
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
-        "Drive a real browser. Use this when a page renders its content with JavaScript, "
-        "when a search result needs reading in full, or when the task requires "
-        "interacting with a page rather than just reading it — clicking, filling a form, "
-        "paging through results. Start with `browser_navigate`, then `browser_snapshot` "
-        "to see the page as an accessibility tree with a `ref` for every element you can "
-        "act on. Each conversation has its own browser: cookies and logged-in state "
-        "persist between your calls within one chat and are invisible to every other "
-        "chat. Only public http/https URLs are reachable.",
+        "Read web pages with a real browser, and drive one when a page needs it. To read "
+        "pages — including ones that render their content with JavaScript — call "
+        "`read_page` with a list of URLs; it returns each page's text in one call. Only "
+        "when a page must be *operated* — a form filled, a control clicked, results paged "
+        "through — use `browser_navigate` then `browser_snapshot` to see the page as an "
+        "accessibility tree with a `ref` for every element, then `browser_click`, "
+        "`browser_type`, `browser_select_option` and `browser_press_key`. Each "
+        "conversation has its own browser: cookies and logged-in state persist between "
+        "your calls within one chat and are invisible to every other chat. Only public "
+        "http/https URLs are reachable.",
     ),
 )
 
@@ -335,11 +342,139 @@ def _append_marker(
     return ToolResult(content=content, structured_content=structured)
 
 
+#: The sidecar tools this server *advertises*, as a comma-separated env var.
+#:
+#: The sidecar exposes about thirty tools and every one of them used to be re-advertised
+#: here, which made the browser router alone four fifths of a research agent's tool list.
+#: A tool list that long costs accuracy: an adaptive shortlist averaging seven tools scores
+#: level with a fixed fifty and beats a fixed five by six points, so thirty from one server
+#: is the opposite of adaptive. `read_page` below covers reading a page — the overwhelming
+#: majority of what the rest were used for — and these six cover driving one.
+#:
+#: **The unadvertised tools are not deleted.** They are registered disabled, so they are
+#: absent from `list_tools` and one env var away from returning, and `read_page` still
+#: composes `browser_evaluate` internally. A hardcoded list would drift silently the first
+#: time the sidecar is upgraded, which is why this is configuration.
+DEFAULT_EXPOSED_TOOLS = (
+    "browser_navigate,browser_snapshot,browser_click,"
+    "browser_type,browser_select_option,browser_press_key"
+)
+
+
+def exposed_tools() -> set[str]:
+    raw = os.getenv("BROWSER_EXPOSED_TOOLS")
+    if raw is None or not raw.strip():
+        raw = DEFAULT_EXPOSED_TOOLS
+    return {name.strip() for name in raw.split(",") if name.strip()}
+
+
+#: The name `read_page` replaced. A model that learned the old name gets an error saying
+#: what to call instead, not a silent shim: a shim that quietly works means the model never
+#: discovers the batch form, which is the entire point of the rename.
+RETIRED_TOOLS = {
+    "browse_page": "read_page",
+}
+
+
+class RetiredTool(Tool):
+    """A removed tool name that answers with the name that replaced it."""
+
+    replacement: str = ""
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        return _refusal(
+            f"`{self.name}` no longer exists. Call `{self.replacement}` instead — it takes "
+            "a list of URLs and returns each page's readable text in one call."
+        )
+
+
+class ReadPageTool(Tool):
+    """`read_page(urls=[…], goal=…)` — the batched ninety-percent case.
+
+    Implemented here rather than forwarded, because it *is* several sidecar calls: navigate,
+    extract, capture, per URL. See :mod:`.read_page`.
+    """
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        await router.ensure_reaper()
+        session_id = _header(SESSION_HEADER)
+        username = _header(USER_HEADER)
+
+        try:
+            chat = await router.get(session_id)
+        except chat_browser.BrowserSpawnFailed as exc:
+            log.error("could not start a browser for chat %r: %s", session_id, exc)
+            return _refusal(f"no browser could be started: {exc}")
+
+        async with chat.lock:
+            if chat.client is None or not chat_browser.sidecar_alive(chat):
+                await chat_browser.restart_sidecar(chat)
+            outcome = await read_page.read(
+                chat,
+                arguments.get("urls"),
+                str(arguments.get("goal") or ""),
+                username,
+            )
+            await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
+
+        failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
+        telemetry.record_async(
+            "browser", provider="read_page",
+            latency_ms=0.0, ok=not failed, detail=f"{len(outcome.pages)} page(s)",
+            session_id=chat.session_id,
+        )
+        result = ToolResult(
+            content=[TextContent(type="text", text=read_page.render(outcome))],
+            structured_content=None,
+        )
+        return _append_marker(result, outcome.artifacts, failed=failed)
+
+
+READ_PAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "urls": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "The http/https pages to read, most promising first. Up to six.",
+        },
+        "goal": {
+            "type": "string",
+            "description": (
+                "What you are looking for on these pages, in a few words. Used to choose "
+                "which part of a long page survives the length limit."
+            ),
+        },
+    },
+    "required": ["urls"],
+}
+
+READ_PAGE_DESCRIPTION = (
+    "Open several web pages and read them, in one call. Give it the URLs of search "
+    "results worth reading in full and it navigates to each, waits for it to load, and "
+    "returns the page's readable text with the navigation and adverts stripped, plus a "
+    "screenshot and an archived copy the user can open. This is how you read a page: use "
+    "it instead of navigating and snapshotting one URL at a time. Pass `goal` to say what "
+    "you are looking for, so long pages are cut around the relevant part. Pages that "
+    "refuse, time out or return nothing are reported individually — the rest still come "
+    "back."
+)
+
+
 async def _register_tools() -> int:
-    """Copy the sidecar's tool list onto this server, once, from the template session."""
+    """Register `read_page`, the interactive allowlist, and the rest as disabled.
+
+    Every sidecar tool is still registered, so restoring one is a change to
+    `BROWSER_EXPOSED_TOOLS` and a restart rather than a code change, and a future adaptive
+    layer has something to enable. What changes is which of them `list_tools` answers with.
+    """
     template = await router.template()
     tools = await template.client.list_tools()
+    allowed = exposed_tools()
+
+    advertised = 0
     for spec in tools:
+        enabled = spec.name in allowed
         mcp.add_tool(
             RoutedTool(
                 name=spec.name,
@@ -347,21 +482,59 @@ async def _register_tools() -> int:
                 description=spec.description or "",
                 parameters=spec.inputSchema or {"type": "object", "properties": {}},
                 output_schema=getattr(spec, "outputSchema", None),
+                enabled=enabled,
             )
         )
-    log.info("registered %d browser tools from the template session", len(tools))
-    return len(tools)
+        advertised += int(enabled)
+
+    mcp.add_tool(
+        ReadPageTool(
+            name="read_page",
+            description=READ_PAGE_DESCRIPTION,
+            parameters=READ_PAGE_SCHEMA,
+        )
+    )
+    advertised += 1
+
+    for old, new in RETIRED_TOOLS.items():
+        mcp.add_tool(
+            RetiredTool(
+                name=old,
+                description=f"Retired. Use `{new}`.",
+                parameters={"type": "object", "properties": {}},
+                enabled=False,
+                replacement=new,
+            )
+        )
+
+    missing = sorted(allowed - {spec.name for spec in tools})
+    if missing:
+        log.warning(
+            "BROWSER_EXPOSED_TOOLS names %s, which the sidecar does not provide",
+            ", ".join(missing),
+        )
+    log.info(
+        "registered %d sidecar tools, advertising %d (%d held back)",
+        len(tools), advertised, len(tools) - (advertised - 1),
+    )
+    return advertised
 
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_request: Any):
     from starlette.responses import JSONResponse
 
+    # `tools` is what a model is offered; `tools_registered` is everything routable,
+    # including the held-back sidecar surface. Reporting only the second made the router
+    # look as if the allowlist had done nothing.
+    registered = await mcp.get_tools()
     return JSONResponse(
         {
             "status": "ok",
             "service": "hoover4-browser",
-            "tools": len(await mcp.get_tools()),
+            "tools": sum(1 for tool in registered.values() if tool.enabled),
+            "tools_registered": len(registered),
+            "exposed_tools": sorted(exposed_tools()),
             "sessions": router.describe(),
             **router.health(),
             "artifacts_enabled": artifacts.enabled(),

@@ -88,7 +88,8 @@ languages.
 | `F-chat-02` | Choose, at the first turn, whether the answer may use the open web and whether it is a deep research turn — then hold both for the conversation | `db_chat::lock_session_options` |
 | `F-chat-03` | Search the corpus, read documents and list entities as agent tools | `main_services/agents/` |
 | `F-chat-04` | Search the open web through one tool covering several engines, merged and reranked | `main_services/agents/metasearch_server/` |
-| `F-chat-05` | Drive a real browser to read a page in full | `main_services/agents/browser_use_server/` |
+| `F-chat-05` | Read several web pages in one call with a real browser, each returning its text plus an archived copy | `read_page` |
+| `F-chat-05a` | Drive a page that has to be operated — navigate, snapshot, click, type, select, press — over a configurable allowlist of the browser sidecar's surface | `BROWSER_EXPOSED_TOOLS` |
 | `F-chat-06` | Look up domain registration | `main_services/agents/whois_search_server/` |
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |

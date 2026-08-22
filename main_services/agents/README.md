@@ -16,7 +16,7 @@ from the repo root, no separate tier to start.
 |---|---|---|---|---|
 | Collection search | [`collection_search_server/`](collection_search_server/README.md) | 21930 | both agents | ACL-bounded full-text search of the user's own documents (Manticore + ClickHouse) |
 | Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: four HTML scrapers + DuckDuckGo text/news + Wikipedia, fused with RRF and reranked by the GPU cross-encoder |
-| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | Playwright's whole browser surface, routed to one Chromium **per chat**, with automatic page capture |
+| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | Domain registration lookup |
 
 **There is exactly one web-search tool, and it must stay that way.** Choosing between

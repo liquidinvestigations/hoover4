@@ -3,14 +3,78 @@
 Drives a real browser for the full research agent. Port `21932`, container
 `hoover4-mcp-browser`.
 
-It exposes **Playwright's whole browser surface** — 30 tools: navigate, click, type, fill
-forms, read the accessibility snapshot, list network requests and console messages, take
-screenshots, manage tabs — routed to a browser that belongs to the calling conversation and
-nobody else, with every page automatically captured.
+Every chat gets a browser that belongs to it and to nobody else, and every page it looks at
+is captured. What the router **advertises** over that browser is seven tools: `read_page`,
+which reads a list of URLs, and six for driving a page that has to be operated.
 
-There is no single-shot `browse_page` tool and one must not be added. Reading a page is `browser_navigate` followed by
-`browser_snapshot`, and keeping a fifth way to do it would only give a small model another
-thing to pick wrongly.
+## The tool surface
+
+The sidecar provides about thirty tools. Six of them, plus `read_page`, are advertised; the
+rest are registered **disabled** — absent from `list_tools`, still routable, and one entry
+in `BROWSER_EXPOSED_TOOLS` away from returning. Nothing is deleted, so a future adaptive
+layer has a surface to select from.
+
+Advertising all thirty made this one server four fifths of the full-research agent's tool
+list, and a long tool list costs accuracy: a seven-tool adaptive shortlist scores level with
+a fixed fifty and beats a fixed five by six points. Thirty from one server is the opposite
+of adaptive.
+
+### `read_page(urls=[…], goal=…)`
+
+The way to read a page. Navigate, wait for the load to settle, extract the readable text
+with the navigation and adverts stripped, capture, return — for each URL, in one call.
+
+```json
+{"urls": ["https://en.wikipedia.org/wiki/Enron_scandal",
+          "https://www.sec.gov/litigation/litreleases"],
+ "goal": "who audited Enron"}
+```
+
+comes back as one text block per page, each headed by its title and final URL, then the
+trailing artifact marker carrying **one capture per page**:
+
+```
+## Enron scandal - Wikipedia
+https://en.wikipedia.org/wiki/Enron_scandal
+
+The Enron scandal was an accounting scandal … Arthur Andersen …
+
+[truncated — this page's share of the shared budget ran out]
+
+---
+
+NOTE: 1 repeated URL ("https://example.com") was run once. Send each distinct URL once; …
+```
+
+Three behaviours are worth knowing before changing it:
+
+* **`goal` is not an inner agent loop**, and one must not be added. It is passed to the
+  extraction, which keeps the paragraphs carrying the goal's words when the budget forces a
+  cut, and it is recorded on the artifact. An LLM loop inside a tool hides cost and latency
+  behind something that looks like a function call and cannot be debugged from outside.
+* **The budget is shared and divided**, not per page — `READ_PAGE_TOTAL_CHARS` over the
+  number of URLs, never below a floor. Under the floor the surplus URLs are dropped *and
+  named*, because a page the model can read beats five it cannot.
+* **A page that failed is reported as failed**, per URL, and the rest of the call still
+  returns. A navigation that errored is still extracted and still captured: a cookie wall or
+  a CAPTCHA is the most valuable screenshot this server produces.
+
+### The interactive six
+
+`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`,
+`browser_select_option`, `browser_press_key` — for a page that has to be *operated* rather
+than read. Navigate, snapshot to get a `ref` for every element, then act on the refs.
+
+The mouse-coordinate family, drag and drop, file upload, tab management,
+`browser_run_code_unsafe`, and the console and network inspectors are not advertised. A page
+that needs one of them fails where it used to work; restoring it is one env var and a
+restart.
+
+### Retired names
+
+`browse_page` is registered as a **disabled tool that returns an error naming `read_page`**,
+not a silent shim. A shim that quietly works means a model which learned the old name never
+discovers the batched form, which is the whole point of the rename.
 
 ## Shape
 
@@ -320,6 +384,10 @@ without them and `/health` lists what it loaded.
 
 | Variable | Default | Notes |
 |---|---|---|
+| `BROWSER_EXPOSED_TOOLS` | the interactive six | comma-separated sidecar tool names to advertise; the rest are registered disabled |
+| `READ_PAGE_TOTAL_CHARS` | `30000` | the whole call's text budget, divided across its URLs |
+| `READ_PAGE_MAX_URLS` | `6` | more than this in one call is refused by name, not silently trimmed |
+| `READ_PAGE_NAVIGATE_TIMEOUT_MS` | `25000` | one dead host must not spend a batched call's whole wall clock |
 | `BROWSER_NAV_TIMEOUT` | `30` | seconds, handed to the sidecar as `--timeout-navigation` |
 | `BROWSER_ACTION_TIMEOUT` | `15` | seconds, `--timeout-action` |
 | `BROWSER_WINDOW_WIDTH` / `_HEIGHT` | `1280` / `720` | viewport, and the thumbnail's ceiling |
