@@ -71,6 +71,12 @@ EVICTION_PLACEHOLDER = (
     "if you need its content again.]"
 )
 
+#: A tool result shorter than the placeholder is left alone, because replacing it makes
+#: the context bigger. Measured on the first driven run: a `list_collections` result is 91
+#: characters and evicting it added 36. Most tool results here are kilobytes and this
+#: guard never sees them -- it exists for the handful that are one line.
+MIN_EVICTABLE_CHARS = len(EVICTION_PLACEHOLDER)
+
 #: How long a context window read from the catalog is trusted before it is read again.
 #: The catalog is refreshed on a schedule and a model's window does not change between
 #: refreshes, so this only bounds how long a stale denominator can survive a re-list.
@@ -209,6 +215,29 @@ def _content_length(message: BaseMessage) -> int:
     return len(content)
 
 
+def summarise_list(messages: Sequence[BaseMessage]) -> str:
+    """One line per message: what it is, what it called, how long its content is.
+
+    Logged either side of an applied compaction, because the question anyone debugging a
+    compaction asks first is what the model could still see. A compaction is rare by
+    construction, so this costs nothing until the one moment it is the only record of what
+    happened.
+    """
+    lines = []
+    for i, message in enumerate(messages):
+        kind = type(message).__name__
+        detail = ""
+        if isinstance(message, ToolMessage):
+            detail = f" result of {getattr(message, 'name', '') or '?'}"
+            if message.content == EVICTION_PLACEHOLDER:
+                detail += " EVICTED"
+        calls = getattr(message, "tool_calls", None) or []
+        if calls:
+            detail = " calls " + ", ".join(str(c.get("name") or "?") for c in calls)
+        lines.append(f"  {i:3d} {kind}{detail} [{_content_length(message)} chars]")
+    return "\n".join(lines)
+
+
 @dataclass
 class EvictionReport:
     """What one eviction did, for the trail and for the tests."""
@@ -246,6 +275,8 @@ def evict_tool_results(
     Only `ToolMessage` is ever touched. The user's own messages, the assistant's prose,
     and every `tool_calls` block stay exactly as they were, which is what leaves the model
     able to see that it searched and what for.
+
+    A result no longer than the placeholder is left alone -- see `MIN_EVICTABLE_CHARS`.
     """
     out = list(messages)
     tool_indexes = [i for i, m in enumerate(out) if isinstance(m, ToolMessage)]
@@ -261,6 +292,9 @@ def evict_tool_results(
         if message.content == EVICTION_PLACEHOLDER:
             # Already evicted on an earlier call of the same turn. Counting it again would
             # report the same kilobytes freed twice.
+            continue
+        if _content_length(message) <= MIN_EVICTABLE_CHARS:
+            report.kept_count += 1
             continue
         report.evicted.append(str(getattr(message, "name", "") or "tool"))
         report.evicted_count += 1
@@ -303,14 +337,18 @@ def compact_messages(
     report.threshold_tokens = threshold
     report.model_id = model_id or ""
     log.info(
-        "compacted context: %d tokens over threshold %d of window %d, "
-        "evicted %d tool results (%d chars), kept %d",
+        "compacted context %s: %d tokens over threshold %d of window %d, "
+        "evicted %d tool results (%d chars), kept %d\n"
+        "model-visible list BEFORE:\n%s\nmodel-visible list AFTER:\n%s",
+        report.compaction_id,
         billed,
         threshold,
         resolved_window,
         report.evicted_count,
         report.chars_freed,
         report.kept_count,
+        summarise_list(messages),
+        summarise_list(evicted),
     )
     return evicted, report
 

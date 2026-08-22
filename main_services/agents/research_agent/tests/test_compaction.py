@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from research_agent.compaction import (
     DEFAULT_COMPACTION_FRACTION,
     EVICTION_PLACEHOLDER,
+    MIN_EVICTABLE_CHARS,
     compact_messages,
     compaction_fraction,
     evict_tool_results,
@@ -203,6 +204,25 @@ def test_a_turn_under_the_threshold_is_left_completely_alone():
     out, report = compact_messages(messages, model_id="m", window=262144)
     assert report is None
     assert not any(m.content == EVICTION_PLACEHOLDER for m in out)
+
+
+def test_a_result_shorter_than_the_placeholder_is_left_alone():
+    # Replacing it makes the context bigger, which is the opposite of the point. Found on
+    # the first driven run: a one-line result grew by 36 characters on being evicted.
+    messages = [SystemMessage(content="sys"), HumanMessage(content="q")]
+    messages += _call("tiny", {}, "ok")
+    messages += _call("tiny_too", {}, "also ok")
+    for i in range(4):
+        messages += _call(f"big_{i}", {}, "x" * (MIN_EVICTABLE_CHARS + 1000))
+    messages[-2].usage_metadata = {
+        "input_tokens": 200_000, "output_tokens": 0, "total_tokens": 200_000
+    }
+
+    out, report = compact_messages(messages, model_id="m", window=262144)
+    assert report.evicted == ["big_0"]
+    assert report.chars_after < report.chars_before
+    tiny = [m for m in out if isinstance(m, ToolMessage) and m.name.startswith("tiny")]
+    assert [m.content for m in tiny] == ["ok", "also ok"]
 
 
 def test_over_the_threshold_with_nothing_evictable_changes_nothing():
