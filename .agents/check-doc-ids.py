@@ -37,6 +37,9 @@ EXCLUDE = (
     "/.venv/", "/.container/cargo/", "/vendored/", "/tmp/stage/", "/__pycache__/",
     "/components/pdf-viewer/embed-pdf-viewer/", "/components/pdf-viewer/pdfjs/",
     "/bx/", "/site-packages/", "/plans/tmp/",
+    # Archived plan folders: finished passes, frozen as the record of what was
+    # decided when. They predate the tag rules and are not edited to satisfy them.
+    "/plans/old/",
 )
 
 # Source files whose comments are checked too. A tag is no more resolvable in a Rust
