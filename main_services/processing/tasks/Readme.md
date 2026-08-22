@@ -108,6 +108,16 @@ addressed to a queue nothing polls waits for ever with no error anywhere.
 Two activities per turn on purpose: the agent call is slow and retryable, the write is fast
 and keyed, so a retried agent call cannot leave half a transcript.
 
+`nagging.py` is why a chat turn is a loop rather than one call. An agent stops when the
+model stops calling tools, which is not the same as the work being done, so `ChatTurn` reads
+the session's todo afterwards and runs the agent again — under its own `nag` role in the
+transcript — while items are still open. **The counters live in the workflow, not in the
+agent**, because they have to outlive an agent process that restarts mid-turn. Two nags
+while the plan is not moving, five in the whole turn, and each buys a fixed extra tool
+budget rather than resetting it. What counts as the plan moving is
+`database/chat_todos.py`'s question and not a second copy of it: a status flip is not
+progress, or a model could keep a turn alive for ever by toggling one row.
+
 `trajectory.py` turns the agent's raw event list into transcript rows, and
 `stream_writer.py` mirrors the same events live while they arrive. The two must agree, and
 for a while they did not: this path wrote `json.dumps(event)[:400]` as the message body
