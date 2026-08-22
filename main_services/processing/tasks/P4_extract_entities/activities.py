@@ -16,7 +16,7 @@ from temporalio import activity
 
 from database.clickhouse import get_collection_client, insert_arrow_idempotent
 from tasks.entity_stoplist import filter_entity_values
-from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.text_sources import ner_reads_variant
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids
@@ -171,6 +171,10 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     # provider that never saw them.
     served_models: list[str] = []
     for batch in batch_texts_by_chars(ner_texts):
+        # Batch boundary. Nothing is written until the whole activity finishes, so a
+        # drained worker gives the batch straight back instead of holding a slot until
+        # its heartbeat deadline expires and losing the same work anyway.
+        stop_if_worker_is_stopping(f"NER {len(ner_results)}/{len(ner_texts)} texts")
         batch_results, batch_model = extract_ner_from_texts(batch)
         ner_results.extend(batch_results)
         served_models.extend([batch_model] * len(batch))

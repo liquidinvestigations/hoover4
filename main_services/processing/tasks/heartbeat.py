@@ -74,6 +74,53 @@ HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
 ACTIVITY_MAX_ATTEMPTS = 5
 
 
+def worker_is_stopping() -> bool:
+    """Whether this activity has been asked to stop.
+
+    Two different requests, and a batch loop wants to obey both. The worker sets its
+    shutdown event as soon as it is told to drain, which is the polite early warning;
+    cancellation arrives later, through the heartbeat, when the graceful period runs out.
+    Outside an activity -- in a unit test, or in the CLI -- neither exists and the answer
+    is no.
+    """
+    if not activity.in_activity():
+        return False
+    return activity.is_worker_shutdown() or activity.is_cancelled()
+
+
+def stop_if_worker_is_stopping(*progress) -> None:
+    """Abandon a batch at a clean item boundary when the worker is being drained.
+
+    Call this between items of a batch activity, never inside one. Everything completed
+    before the call is already durable -- these loops write to ClickHouse as they go and
+    skip finished work on the next attempt via a left-anti join or a watermark -- so
+    stopping here costs one partial item at most.
+
+    **Why this raises instead of returning a partial result.** A batch activity that
+    returned early would report success over work it did not do, and its workflow would
+    mark the stage finished: exactly the silent hole this exists to close. Raising a
+    RETRYABLE error hands the batch back to Temporal, which redelivers it to a live
+    worker, which skips what is already written and finishes the rest.
+
+    **Why raising immediately is cheaper than being killed.** A killed activity is not
+    noticed until its heartbeat deadline expires, and that lost time comes out of the
+    same budget the retries need -- the reason a restart under load produced timeouts
+    rather than exhausted attempts. Failing at once spends an attempt instead of a
+    deadline.
+    """
+    if not worker_is_stopping():
+        return
+    from temporalio.exceptions import ApplicationError
+
+    detail = " ".join(str(p) for p in progress)
+    if activity.in_activity():
+        activity.heartbeat(*progress)
+    raise ApplicationError(
+        "worker is shutting down; stopped at an item boundary"
+        + (" after %s" % detail if detail else "")
+    )
+
+
 class HeartbeatClock:
     """Rate-limiter for in-loop heartbeats.
 

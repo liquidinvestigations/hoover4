@@ -360,6 +360,12 @@ services:
     # rather than reading the intent off this file.
     memswap_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
     mem_limit: ${HOOVER4_WORKER_MEM_LIMIT:-29000M}
+    # NOT a number to tune here. deploy.py derives it from the single ini key that also
+    # sets the Temporal worker's graceful shutdown period, adding a margin for the
+    # activities that get cancelled at the end of it. The default 10 seconds this
+    # replaces is what made the SDK's graceful period unreachable: the runtime sent
+    # SIGKILL while activities were still being told to stop, so they were never told.
+    stop_grace_period: ${HOOVER4_WORKER_STOP_GRACE_PERIOD:-90s}
     volumes:
       # Host path for ingest test data. Defaults to the in-repo (git-tracked)
       # testdata dir so the stack comes up out of the box; override with

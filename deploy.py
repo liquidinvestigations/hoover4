@@ -125,6 +125,11 @@ DEFAULTS = {
         "nlp_concurrency": "",
         "embed_concurrency": "",
         "indexing_concurrency": "",
+        # How long a shutting-down worker may keep its in-flight activities before they
+        # are cancelled. The container's stop grace period is DERIVED from this (see
+        # render_main_env) rather than configured beside it, because an SDK grace period
+        # longer than the container's is a lie: the runtime kills the process first.
+        "worker_graceful_shutdown_seconds": "60",
         # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
         "gpu_connect_timeout_ms": "2000",
@@ -377,6 +382,27 @@ class Config:
 # Rendering: ini -> .env
 # --------------------------------------------------------------------------------------
 
+#: Seconds the container runtime waits beyond the worker's own graceful period.
+#:
+#: The worker spends its graceful period letting in-flight activities finish, and only
+#: then cancels the ones still running. Those cancellations still have to unwind, and if
+#: SIGKILL arrives at that moment the graceful period bought nothing. This margin is
+#: what the unwinding gets.
+WORKER_SHUTDOWN_MARGIN_SECONDS = 30
+
+
+def worker_graceful_shutdown_seconds(cfg):
+    """The worker's graceful shutdown period, in whole seconds."""
+    raw = cfg.get("main_services", "worker_graceful_shutdown_seconds")
+    try:
+        value = int(raw)
+    except ValueError:
+        fail("[main_services] worker_graceful_shutdown_seconds is not a number: %r" % raw)
+    if value < 0:
+        fail("[main_services] worker_graceful_shutdown_seconds must not be negative")
+    return value
+
+
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini; no port
     literal appears here except the website's 12345 (which is not rendered at all — it
@@ -539,6 +565,18 @@ def render_main_env(cfg):
         value = cfg.get(m, "%s_concurrency" % tier)
         if value:
             env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
+
+    # Graceful shutdown, rendered twice from ONE ini key. The first value is what the
+    # Temporal worker gives its in-flight activities before cancelling them; the second
+    # is how long the container runtime waits after SIGTERM before SIGKILL. The runtime
+    # wins, so its number must be the larger one -- the margin is what the cancelled
+    # activities get to unwind, close their files and record what they finished. Keeping
+    # the two in one place is the point: split across the ini and the compose file they
+    # drift, and the setting silently stops being true.
+    graceful = worker_graceful_shutdown_seconds(cfg)
+    env["HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS"] = str(graceful)
+    env["HOOVER4_WORKER_STOP_GRACE_PERIOD"] = "%ds" % (
+        graceful + WORKER_SHUTDOWN_MARGIN_SECONDS)
 
     return env
 

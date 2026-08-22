@@ -3,6 +3,9 @@
 import asyncio
 import concurrent.futures
 import logging
+import os
+import signal
+from datetime import timedelta
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
@@ -10,6 +13,72 @@ from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxR
 from .task_timing import TaskTimingInterceptor, attach_temporal_client
 
 log = logging.getLogger(__name__)
+
+#: Graceful shutdown period when `HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS` says nothing.
+#:
+#: The SDK's own default is `timedelta()` -- ZERO -- which means a worker that is told to
+#: stop kills its in-flight activities where they stand. The server does not find out
+#: until each one's heartbeat deadline expires, and every one of them then comes back as
+#: a timeout against a retry budget that was never meant to absorb a deploy. That is not
+#: a hypothetical: one restart under load produced 87 activity timeouts and left 14
+#: documents permanently without embeddings on a plan that reported success.
+DEFAULT_GRACEFUL_SHUTDOWN_SECONDS = 60
+
+
+def graceful_shutdown_timeout() -> timedelta:
+    """How long in-flight activities get before cancellation, from the environment.
+
+    The container's own stop grace period is derived from the same ini key, with a
+    margin on top. Do not raise this by editing a literal here: a graceful period longer
+    than the container's grace period is a lie, because the runtime sends SIGKILL first.
+    """
+    raw = os.environ.get("HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS", "").strip()
+    seconds = DEFAULT_GRACEFUL_SHUTDOWN_SECONDS
+    if raw:
+        try:
+            seconds = max(0, int(raw))
+        except ValueError:
+            log.warning(
+                "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS is not a number: %r", raw)
+    return timedelta(seconds=seconds)
+
+
+async def run_until_signalled(worker: Worker) -> None:
+    """Run a worker until it finishes or the process is asked to stop.
+
+    `Worker.run()` returns when `shutdown()` is called, and nothing calls it unless
+    something listens for the signal. Without this, SIGTERM kills the interpreter
+    mid-activity and the graceful period configured on the worker never happens --
+    the setting is present, correct and unreachable.
+
+    Both SIGTERM (what a container runtime sends) and SIGINT (Ctrl-C) are handled, and
+    a second signal is left to the default disposition so an operator can still force
+    the issue.
+    """
+    loop = asyncio.get_running_loop()
+    name = worker.task_queue
+    stopping = False
+
+    def request_shutdown(signum: int) -> None:
+        nonlocal stopping
+        if stopping:
+            return
+        stopping = True
+        log.info("%s: %s received, draining in-flight activities",
+                 name, signal.Signals(signum).name)
+        loop.remove_signal_handler(signum)
+        loop.create_task(worker.shutdown())
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, request_shutdown, signum)
+        except (NotImplementedError, RuntimeError):
+            # No signal handling on this loop (a non-main thread, or a platform
+            # without it). The worker still runs; it just dies abruptly.
+            log.warning("%s: cannot install a %s handler", name, signum)
+
+    await worker.run()
+    log.info("%s: shut down", name)
 
 
 def sandboxed_runner() -> SandboxedWorkflowRunner:
@@ -216,6 +285,7 @@ async def run_common_worker():
           interceptors=[TaskTimingInterceptor()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-common-queue",
+          graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflows=[
             IngestDiskDataset,
             IngestAndProcessDataset,
@@ -309,7 +379,7 @@ async def run_common_worker():
           max_concurrent_activity_task_polls=CONCURRENCY*2,
           max_concurrent_workflow_task_polls=CONCURRENCY*2,
         )
-        await worker.run()
+        await run_until_signalled(worker)
 
 
 async def run_tika_worker():
@@ -327,6 +397,7 @@ async def run_tika_worker():
           interceptors=[TaskTimingInterceptor()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-tika-queue",
+          graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflows=[],
           activities=[run_tika_and_store],
           activity_executor=activity_executor,
@@ -336,7 +407,7 @@ async def run_tika_worker():
           max_concurrent_activity_task_polls=CONCURRENCY*2,
           max_concurrent_workflow_task_polls=CONCURRENCY*2,
         )
-        await worker.run()
+        await run_until_signalled(worker)
 
 
 async def run_ocr_worker():
@@ -362,6 +433,7 @@ async def run_ocr_worker():
           interceptors=[TaskTimingInterceptor()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-ocr-queue",
+          graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflows=[],
           activities=[run_ocr_and_store, run_ocr_pdf_and_store],
           activity_executor=activity_executor,
@@ -371,7 +443,7 @@ async def run_ocr_worker():
           max_concurrent_activity_task_polls=CONCURRENCY*2,
           max_concurrent_workflow_task_polls=CONCURRENCY*2,
         )
-        await worker.run()
+        await run_until_signalled(worker)
 
 
 async def run_nlp_worker():
@@ -394,12 +466,13 @@ async def run_nlp_worker():
       interceptors=[TaskTimingInterceptor()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-nlp-queue",
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[],
       activities=[extract_entities_for_hashes],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
-    await worker.run()
+    await run_until_signalled(worker)
 
 
 async def run_embed_worker():
@@ -422,12 +495,13 @@ async def run_embed_worker():
       interceptors=[TaskTimingInterceptor()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-embed-queue",
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[],
       activities=[chunk_embed_for_hashes],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
-    await worker.run()
+    await run_until_signalled(worker)
 
 
 async def run_indexing_worker():
@@ -450,6 +524,7 @@ async def run_indexing_worker():
       interceptors=[TaskTimingInterceptor()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-indexing-queue",
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
                   index_vfs_structure, build_email_graph, optimize_shard_tables,
@@ -457,7 +532,7 @@ async def run_indexing_worker():
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
-    await worker.run()
+    await run_until_signalled(worker)
 
 
 async def run_index_planner_worker():
@@ -477,11 +552,12 @@ async def run_index_planner_worker():
       interceptors=[TaskTimingInterceptor()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-index-planner-queue",
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[],
       activities=[plan_shards, finalize_index_batch, record_indexed],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )
-    await worker.run()
+    await run_until_signalled(worker)
 
 # Removed parallel run_worker. Each worker runs in its own process via main CLI.

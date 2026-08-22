@@ -854,10 +854,34 @@ def worker(worker_type: str | None = None):
         return
 
     # No type: spawn subprocesses for each worker and monitor/restart
+    import signal
     import time
+    from tasks.run_worker import graceful_shutdown_timeout
     this = sys.argv[0]
     workers = []  # [{ 'type': str, 'cmd': List[str], 'proc': Popen|None, 'restart_at': float|None }]
     shutting_down = False
+
+    # THE TRAP THIS EXISTS FOR: a container runtime signals PID 1 only. This process is
+    # the supervisor, and every Temporal worker is a CHILD of it -- so without forwarding
+    # here, no worker ever sees SIGTERM, none of them drains, and the graceful shutdown
+    # period each one is configured with is unreachable. The setting looks right in
+    # `tasks/run_worker.py` and does nothing.
+    def request_shutdown(signum, _frame):
+        nonlocal shutting_down
+        if shutting_down:
+            return
+        shutting_down = True
+        log.warning("%s received. Draining %d worker processes.",
+                    signal.Signals(signum).name, len(workers))
+        for w in workers:
+            p = w["proc"]
+            if p is not None:
+                try:
+                    p.send_signal(signal.SIGTERM)
+                except Exception:
+                    pass
+
+    signal.signal(signal.SIGTERM, request_shutdown)
 
     # Initial spawn set. "index-planner" MUST stay at exactly one process:
     # a second planner worker would corrupt the Manticore shard ledger. The common tier
@@ -874,7 +898,7 @@ def worker(worker_type: str | None = None):
 
     try:
         # Monitor loop: restart crashed/ended processes after 10s
-        while True:
+        while not shutting_down:
             now = time.time()
             for w in workers:
                 p = w["proc"]
@@ -912,14 +936,20 @@ def worker(worker_type: str | None = None):
                 except Exception:
                     pass
     finally:
-        # Best-effort short wait for processes to exit
+        # Wait out the drain. A one-second wait was right when the only way out was
+        # Ctrl-C and a kill, and it is wrong now: a worker told to stop is finishing
+        # in-flight activities, and hurrying it here throws away exactly what the
+        # graceful period was configured to buy. Ctrl-C still kills, so this only
+        # lengthens the SIGTERM path.
+        deadline = time.time() + graceful_shutdown_timeout().total_seconds()
         for w in workers:
             p = w["proc"]
             if p is not None:
                 try:
-                    p.wait(timeout=1)
+                    p.wait(timeout=max(1.0, deadline - time.time()))
                 except Exception:
-                    pass
+                    log.warning("Worker '%s' did not exit before the drain deadline",
+                                w["type"])
 
 
 if __name__ == '__main__':

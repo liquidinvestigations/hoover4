@@ -26,7 +26,7 @@ import pyarrow as pa
 from temporalio import activity
 
 from database.clickhouse import get_collection_client, insert_arrow_idempotent
-from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.regex_entities import (
     FACET_BY_ENTITY_TYPE,
@@ -134,6 +134,10 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
     scan_texts = [cleaned_texts[i] for i in scan_indices]
     scanned: list[dict] = []
     for batch in batch_texts_by_chars(scan_texts):
+        # Batch boundary. Nothing is written until the whole activity finishes, so a
+        # drained worker gives the batch straight back instead of holding a slot until
+        # its heartbeat deadline expires and losing the same work anyway.
+        stop_if_worker_is_stopping(f"scanned {len(scanned)}/{len(scan_texts)} texts")
         result = post_json(
             [("regex-scanner", scanner_url("/scan_batch"))],
             {"texts": batch},

@@ -316,10 +316,18 @@ class IngestAndProcessDataset:
 
         attributes = dataset_search_attributes(params.collection_dataset)
 
+        # Children are keyed on the parent's RUN, not on the dataset. A fixed
+        # `<stage>-<dataset>` id collides with the same stage of a run that is still
+        # alive, so starting a second ingest of a dataset while the first is running
+        # fails on the child rather than doing the work. The run id is the one
+        # identifier that is unique per run and stable across replay, which is what a
+        # child workflow id has to be.
+        run = workflow.info().run_id
+
         await workflow.execute_child_workflow(
             IngestDiskDataset.run,
             params,
-            id=f"ingest-disk-{params.collection_dataset}",
+            id=f"ingest-disk-{params.collection_dataset}-{run}",
             task_queue="processing-common-queue",
             search_attributes=attributes,
         )
@@ -329,7 +337,7 @@ class IngestAndProcessDataset:
                 "collectionname": params.collectionname,
                 "collection_dataset": params.collection_dataset,
             },
-            id=f"compute-plans-{params.collection_dataset}",
+            id=f"compute-plans-{params.collection_dataset}-{run}",
             task_queue="processing-common-queue",
             search_attributes=attributes,
         )
@@ -340,7 +348,7 @@ class IngestAndProcessDataset:
                 collection_dataset=params.collection_dataset,
                 base_temp_dir="/tmp/hoover4",
             ),
-            id=f"execute-plans-{params.collection_dataset}",
+            id=f"execute-plans-{params.collection_dataset}-{run}",
             task_queue="processing-common-queue",
             search_attributes=attributes,
         )

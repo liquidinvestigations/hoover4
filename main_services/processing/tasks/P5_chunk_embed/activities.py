@@ -27,7 +27,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from database.clickhouse import get_collection_client, get_server_setting
-from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.remote import post_json
 from tasks.text_quality import non_linguistic_reason
 
@@ -144,6 +144,11 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     saw_any = False
 
     for text_content in _segment_pages():
+        # Page boundary. Every page before this one is fully written, and the anti-join
+        # above skips it on the next attempt, so a worker being drained gives the batch
+        # back here rather than being killed part-way through a page.
+        stop_if_worker_is_stopping(
+            f"{collection_dataset} plan {plan_hash[:8]}: {total_vectors} vectors written")
         saw_any = True
         total_segments += len(text_content)
         # Scoped to this page: the anti-join below must not pull back the key set of a
@@ -245,6 +250,12 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
 
         page_vectors = 0
         for i in range(0, len(missing), EMBED_BATCH_TEXTS):
+            # Embed-batch boundary, and the finest one worth honouring: the previous
+            # batch's vectors are already inserted and the anti-join is keyed on
+            # chunk_index, so only the chunks with no vector are redone.
+            stop_if_worker_is_stopping(
+                f"{collection_dataset} plan {plan_hash[:8]}: "
+                f"{total_vectors + page_vectors} vectors written")
             batch = missing[i:i + EMBED_BATCH_TEXTS]
             prefixed = [embedding_input(serving_model, "passage", c["text"])[0] for c in batch]
             result = post_json(
