@@ -35,6 +35,24 @@ with workflow.unsafe.imports_passed_through():
 #: polling waits for ever with no error anywhere, which presents as chat hanging.
 CHAT_TASK_QUEUE = "chat-queue"
 
+#: How long the chat agent activity may go without proving it is alive before Temporal
+#: reschedules it on another worker.
+#:
+#: **This number and the website's `CHAT_STREAM_STALL_SECONDS` are one pair and must be
+#: read together.** This one is how long a dead worker goes unnoticed; that one is how
+#: long the page waits before telling the user the turn is dead. The page must never give
+#: up first, because its advice is "ask again to retry" and a user who follows it while a
+#: reschedule is still coming gets the same answer twice, from two workflows. So the
+#: stall window is deliberately the larger of the two, by a wide margin: 60 s here
+#: against a 180 s default there.
+#:
+#: 60 s is four missed beats -- `run_research_agent` carries `@with_heartbeat`, whose
+#: pump beats every `HEARTBEAT_INTERVAL` (15 s) for as long as the body runs, so the
+#: agent's own latency never enters this budget. Lowering it further starts trading
+#: against a loaded box missing beats; raising it is worse than it looks, because the
+#: deadline is also how long a wedged slot stays occupied (see `tasks.heartbeat`).
+CHAT_AGENT_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
+
 async def _write_row(params, seq: int, role: str, content: str, **extra) -> None:
     """Append one finished transcript row.
 
@@ -194,7 +212,7 @@ class ChatTurn:
                 # that has produced nothing for a quarter of an hour is wedged, and
                 # failing it returns the answer slot to them.
                 start_to_close_timeout=timedelta(seconds=900),
-                heartbeat_timeout=timedelta(minutes=5),
+                heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=2),
             )
         except asyncio.CancelledError:

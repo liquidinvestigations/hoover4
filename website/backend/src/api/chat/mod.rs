@@ -687,15 +687,32 @@ pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) ->
     db_chat::mark_stream_final(username, &session_id).await
 }
 
-/// A stream row that has not advanced for this long is an interrupted turn — the worker
-/// running it died and Temporal has not rescheduled it — rather than a slow one. The
-/// worker's keepalive rewrites the open rows well inside this window, so silence for
-/// longer than it means nobody is writing.
+/// How long a turn's stream rows may stand still before the page calls it interrupted.
+///
+/// **This number and the worker's chat-activity heartbeat timeout are one pair and must
+/// be read together.** The heartbeat timeout (`CHAT_AGENT_HEARTBEAT_TIMEOUT` in
+/// `main_services/processing/tasks/P_agent/workflows.py`, 60 s) is how long a dead worker
+/// goes unnoticed; this is how long the page waits before saying so. This one is
+/// deliberately the larger, by a wide margin, because the marker's advice is "ask again
+/// to retry" and Temporal reschedules the activity on its own: a page that gave up first
+/// would talk a user into a second question while the first answer was still coming, and
+/// they would get the same answer twice from two workflows.
+///
+/// 180 s against a 60 s heartbeat timeout leaves 120 s for the reschedule to be noticed,
+/// a worker to pick the activity up and its first row to land. Raising the heartbeat
+/// timeout without raising this by more reintroduces the defect; setting them equal
+/// reintroduces it at a different scale.
+const CHAT_STREAM_STALL_DEFAULT_SECONDS: u64 = 180;
+
+/// A stream row that has not advanced for this long is an interrupted turn rather than a
+/// slow one — nothing is writing it, and no reschedule is close enough to wait for. The
+/// worker's keepalive rewrites the open rows every 30 s, so silence for longer than this
+/// means neither the original attempt nor a retry of it is running.
 fn stream_stall() -> Duration {
     let secs = std::env::var("CHAT_STREAM_STALL_SECONDS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(60);
+        .unwrap_or(CHAT_STREAM_STALL_DEFAULT_SECONDS);
     Duration::from_secs(secs.clamp(5, 3600))
 }
 

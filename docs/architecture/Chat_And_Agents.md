@@ -176,8 +176,11 @@ to the workflow id the turn's reserved seq gives it. `ChatTurn` catches the canc
 and writes an ending into the transcript inside `asyncio.shield` — a cancelled workflow
 that simply vanished would leave a user row with nothing after it, and the page would
 follow a turn that will never speak again. A turn whose rows stop advancing for
-`CHAT_STREAM_STALL_SECONDS` (default 60) renders as **interrupted** with a Dismiss button
-— never a spinner, and never promoted into `chat_messages`.
+`CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button
+— never a spinner, and never promoted into `chat_messages`. A stop therefore discards the
+partial answer the user was watching stream in: the agent writes `chat_messages` only when
+its run finishes, so a cancelled run has written none of them. The transcript keeps the
+question and the stop, and the control says so rather than promising the partial back.
 
 Both kinds of turn write the empty stream row before they dispatch. It is the only thing
 telling the poller a turn exists before the worker picks the activity up, and the worker
@@ -187,10 +190,18 @@ rewrites that seq, keepalive included.
 
 A turn is bounded twice, and the two bounds do different jobs.
 
-**The activity** gets `start_to_close` 900 s and a 5-minute heartbeat — much shorter than a
+**The activity** gets `start_to_close` 900 s and a 60-second heartbeat — much shorter than a
 research run's 2 400 s and 10 minutes. A chat turn somebody is watching that has produced
 nothing for a quarter of an hour is wedged, and failing it hands the answer slot back to
 them.
+
+**The heartbeat timeout and the stall window above are one pair.** The heartbeat timeout is
+how long a dead worker goes unnoticed; the stall window is how long the page waits before
+telling the user so. The page must never give up first: the interrupted marker's advice is
+to ask again, and Temporal reschedules the activity on its own, so a page that gave up
+early would earn the user the same answer twice from two workflows. 180 s against 60 s
+leaves the reschedule 120 s to be noticed, picked up and write its first row. Both numbers
+carry that reasoning where they are declared.
 
 **The agent connection** is bounded by *silence*, not by duration: the worker's read
 timeout is the longest gap between two bytes, and there is a separate absolute ceiling for

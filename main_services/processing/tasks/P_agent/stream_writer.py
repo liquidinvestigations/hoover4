@@ -129,7 +129,7 @@ AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
 STREAM_WRITE_MIN_INTERVAL = 0.3
 
 #: How often open rows are rewritten unchanged so the stall detector keeps seeing the
-#: turn as alive. Well under the website's CHAT_STREAM_STALL_SECONDS (default 60).
+#: turn as alive. Well under the website's CHAT_STREAM_STALL_SECONDS (default 180).
 KEEPALIVE_SECONDS = 30.0
 
 #: Short: a dead agent host must fail the activity in seconds, not minutes.
