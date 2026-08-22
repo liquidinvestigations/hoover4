@@ -151,9 +151,10 @@ Four servers, all streamable HTTP on loopback, ports from `hoover4.ini`:
 `hoover4-web-search`, `hoover4-browser`, `hoover4-whois`, and `serena` for symbol-level
 navigation and editing.
 
-`hoover4-mcp-collections` is deliberately absent from the host-side configuration: its tools
-require a collections header that only the website backend can resolve, so an entry would be
-a server whose every tool denies.
+`hoover4-mcp-collections` and `hoover4-mcp-todo` are deliberately absent from the host-side
+configuration: their tools require a header only the chat tier can supply — the permitted
+collections for one, the chat session for the other — so an entry would be a server whose
+every tool denies.
 
 **The symbol server runs over streamable HTTP, and the reason is a failure mode worth
 knowing.**

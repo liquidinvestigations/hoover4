@@ -181,7 +181,8 @@ is the map back to the group above that explains it.
 - `temporal_ui_port`, `clickhouse_monitoring_port`, `ch_ui_port`, `cassandra_port`
 - `elasticsearch_port`, `pdf_to_html_port`, `tesseract_cpu_port`, `ocr_pdf_port`
 - `ner_spacy_port`, `embeddings_cpu_port`, `regex_entity_scanner_port`, `mcp_collections_port`
-- `mcp_metasearch_port`, `mcp_browser_port`, `mcp_whois_port`, `internal_search_agent_port`
+- `mcp_metasearch_port`, `mcp_browser_port`, `mcp_whois_port`, `mcp_todo_port`
+- `internal_search_agent_port`
 - `full_research_agent_port`, `cassandra_version`, `elasticsearch_version`, `temporal_version`
 - `temporal_ui_version`, `temporal_history_shards`, `garage_version`, `garage_image_digest`
 - `garage_capacity`
