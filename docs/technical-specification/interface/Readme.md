@@ -22,6 +22,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AdminCollectionPage` | `/admin/collections/:collection_id` | — |
 | `UI-AdminCollectionProcessingPage` | `/admin/collections/:collection_id/processing` | — |
 | `UI-AdminDatasetPage` | `/admin/collections/:collection_id/datasets/:dataset_id` | — |
+| `UI-AdminOperationsPage` | `/admin/operations` | — |
 | `UI-AdminUsersPage` | `/admin/users` | — |
 | `UI-AdminUserPage` | `/admin/users/:username` | — |
 | `UI-AdminUserLlmPage` | `/admin/users/:username/llm` | — |

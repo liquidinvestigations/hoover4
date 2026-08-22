@@ -20,9 +20,16 @@ the actual gate.
   *name* validated against the listing of `DATASETS_MOUNT_PATH`, never a path.
 - `temporal_trigger.rs` — starts pipeline workflows over the Temporal HTTP API,
   tagging dataset-scoped starts with the `CollectionDataset` search attribute.
-  `start_ocr_language_job` is the one kind with a **timestamped** workflow id: the others
-  reuse theirs so a second click is a no-op, but two OCR-language changes are two
-  different jobs with two different before/after states.
+  `start_ocr_language_job` is the one kind here with a **timestamped** workflow id: the
+  rest reuse theirs so a second click is a no-op, but two OCR-language changes are two
+  different jobs with two different before/after states. The two ingest kinds no longer
+  come through here at all — `admin_trigger_workflow` dispatches them as operations,
+  which is what gives a button-started run its own id and its own row.
+- `operations.rs` — the operations log behind `/admin/operations` and the scoped list on
+  a collection page: reads of `operations FINAL`, the per-task error rates, and the
+  dispatch path that writes the row and starts the `Operation` workflow on that row's id.
+  Its `KINDS` table mirrors the processing side's registry, including which kinds are
+  destructive; a kind added on one side must be added on the other.
 - `metrics.rs` — aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
 - `llm.rs` — the model catalog, the defaults and the allowlist. See below.
 
