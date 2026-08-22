@@ -500,8 +500,10 @@ def search_collections(
     corrective = batching.corrective_note(
         batching.repeats_note(repeats, "query"),
         (
-            f"{len(over_cap)} queries beyond the {MAX_QUERIES_PER_CALL}-per-call limit "
-            f"were not run: {', '.join(over_cap)}. Send the most distinct angles first."
+            f"{len(over_cap)} quer{'y' if len(over_cap) == 1 else 'ies'} beyond the "
+            f"{MAX_QUERIES_PER_CALL}-per-call limit "
+            f"{'was' if len(over_cap) == 1 else 'were'} not run: {', '.join(over_cap)}. "
+            "Send the most distinct angles first."
             if over_cap
             else ""
         ),
@@ -582,7 +584,13 @@ def _fuse_across_queries(
         for position, hit in enumerate(hits):
             key = (hit.collectionname, hit.file_hash, hit.page_id)
             fused_score[key] = fused_score.get(key, 0.0) + 1.0 / (RRF_K + position + 1)
-            matched.setdefault(key, []).append(one)
+            # Distinct queries only. One query's ranking can carry the same page more
+            # than once — the shards are searched independently and a page can win a slot
+            # in several — and listing "due date" four times says a page is corroborated
+            # when only one query found it, which inverts the meaning of the field.
+            seen = matched.setdefault(key, [])
+            if one not in seen:
+                seen.append(one)
             kept = merged.get(key)
             if kept is None:
                 merged[key] = hit

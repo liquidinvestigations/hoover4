@@ -49,6 +49,13 @@ class TestFuseAcrossQueries:
         )
         assert out[0].file_hash == HASH_A
 
+    def test_one_query_finding_a_page_twice_names_it_once(self):
+        # A query's own ranking can carry the same page more than once, since shards are
+        # searched independently. Listing it repeatedly would claim corroboration that
+        # does not exist, which inverts the whole meaning of the field.
+        out = _fuse_across_queries({"due date": [hit(HASH_A), hit(HASH_A)]}, 10)
+        assert out[0].matched_queries == ["due date"]
+
     def test_a_single_query_is_not_a_special_case(self):
         out = _fuse_across_queries({"only": [hit(HASH_A), hit(HASH_B)]}, 10)
         assert [h.file_hash for h in out] == [HASH_A, HASH_B]
