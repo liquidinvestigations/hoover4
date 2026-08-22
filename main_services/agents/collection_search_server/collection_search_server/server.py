@@ -3,7 +3,7 @@
 Tools:
     ``list_collections``      what the calling user may read
     ``search_collections``    hybrid search across the permitted Manticore shards
-    ``get_document_text``     the extracted text of one document
+    ``read_documents``        the extracted text of several documents
     ``list_document_entities`` named entities found in one document
 
 Every tool resolves the caller's ACL from request headers (see :mod:`.acl`) before it
@@ -32,6 +32,7 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
+from agent_common import batching, retired
 from agent_common import embeddings as embeddings_client
 from agent_common import fusion, rerank as rerank_client
 from collection_search_server import vectors
@@ -93,7 +94,7 @@ PAYLOAD_BUDGET_CHARS = int(os.getenv("SEARCH_PAYLOAD_BUDGET_CHARS", "24000"))
 #: Floor on the per-hit snippet, so a large result set still says why each hit matched.
 MIN_SNIPPET_CHARS = int(os.getenv("SEARCH_MIN_SNIPPET_CHARS", "120"))
 
-#: How much text `get_document_text` may return in one call.
+#: How much text one document may contribute to a `read_documents` call.
 MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "40000"))
 
 #: Candidate pool per shard (keyword) and per `_vectors` shard (KNN) when the fused
@@ -126,6 +127,18 @@ mcp = FastMCP(
     instructions=os.getenv("SERVER_INSTRUCTIONS", SERVER_INSTRUCTIONS),
 )
 
+mcp.add_middleware(
+    retired.RetiredNames(
+        {
+            "get_document_text": (
+                "read_documents",
+                "it reads several documents in one call, each named by its "
+                "collectionname and file_hash",
+            ),
+        }
+    )
+)
+
 
 class CollectionInfo(BaseModel):
     collectionname: str = Field(description="Identifier to pass to the other tools")
@@ -136,7 +149,7 @@ class CollectionInfo(BaseModel):
 class SearchHit(BaseModel):
     collectionname: str
     collection_dataset: str = Field(description="Dataset within the collection")
-    file_hash: str = Field(description="Document id, pass to get_document_text")
+    file_hash: str = Field(description="Document id, pass to read_documents")
     path: str | None = Field(default=None, description="File path, when known")
     page_id: int = Field(description="Page or segment number within the document")
     score: float | None = Field(
@@ -147,6 +160,13 @@ class SearchHit(BaseModel):
     match_sources: list[str] = Field(
         default_factory=list,
         description="Which rankings found this hit: keyword, vector, or both",
+    )
+    matched_queries: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Which of your queries returned this passage. A hit several queries agree "
+            "on is better corroborated than one only a single query found."
+        ),
     )
 
 
@@ -176,7 +196,13 @@ class _Candidate:
 
 class SearchResponse(BaseModel):
     success: bool
+    #: Every query this call ran, joined. Kept alongside `queries` because the website's
+    #: transcript renderer and every stored historical row read this field, and a card
+    #: that renders old rows is not optional.
     query: str
+    queries: list[str] = Field(
+        default_factory=list, description="The queries this call ran, after de-duplication"
+    )
     collections_searched: list[str]
     results: list[SearchHit]
     error: str | None = None
@@ -196,6 +222,18 @@ class DocumentText(BaseModel):
     path: str | None = None
     text: str = ""
     truncated: bool = False
+    error: str | None = None
+
+
+class DocumentsText(BaseModel):
+    """A batch read. The per-document arm is `DocumentText`, unchanged and still used by
+    `cite_documents`, so nothing that reads one document had to learn a new shape."""
+
+    success: bool
+    documents: list[DocumentText] = Field(default_factory=list)
+    note: str | None = Field(
+        default=None, description="What was de-duplicated, truncated or not read, and why"
+    )
     error: str | None = None
 
 
@@ -401,58 +439,191 @@ def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
     name="search_collections",
     description=(
         "Full-text search across the user's document collections. Returns matching "
-        "text passages with the document id needed to read the full document. Phrase "
-        "the query as a sentence or several descriptive words rather than one keyword. "
+        "text passages with the document id needed to read the full document.\n\n"
+        "**Pass several queries at once** in `queries` — different angles on the same "
+        "question, phrased as sentences or several descriptive words rather than single "
+        "keywords. They run together and the results are merged, and **every hit lists "
+        "the queries that found it** in `matched_queries`: a passage three of your "
+        "queries agree on is better corroborated than one only a single query returned. "
+        "Two or three distinct angles in one call beats the same number of separate "
+        "calls. Repeating a query you already sent does nothing and is reported back "
+        "to you.\n\n"
         f"Leave max_results at the default of {DEFAULT_MAX_RESULTS}: it is already a "
-        "broad look at the collections. One result set has a fixed size budget, so asking "
-        "for more returns a shorter passage from each and then drops the weakest hits, "
-        "never more to read. Use get_document_text to read a hit in full."
+        "broad look at the collections. One result set has a fixed size budget shared "
+        "across all your queries, so asking for more returns a shorter passage from "
+        "each and then drops the weakest hits, never more to read. Use read_documents "
+        "to read hits in full."
     ),
 )
 def search_collections(
-    query: str,
+    queries: list[str] | str | None = None,
     collections: list[str] | str | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
+    query: str | None = None,
 ) -> SearchResponse:
-    """Search, fanning out over every live shard of every permitted collection.
+    """Search several queries at once, fanning out over every live shard.
 
-    `collections` is typed to accept a string as well as a list because XML-style
-    tool-call parsers send it as one — see :func:`_as_collection_list`. Declaring the
-    union keeps the coercion out of pydantic's way rather than fighting it.
+    `query` is still accepted, so a transcript replayed from before the batch form — and
+    a model that learned the single-query shape — keeps working. It is folded into
+    `queries` rather than handled separately: one code path, and the batch of one is not
+    a special case.
+
+    `queries` and `collections` are typed to accept a string as well as a list because
+    XML-style tool-call parsers send every list parameter as one. Declaring the union
+    keeps the coercion out of pydantic's way rather than fighting it.
     """
     try:
         acl = _caller()
         targets = acl.check(_as_collection_list(collections))
     except AccessDenied as exc:
         return SearchResponse(
-            success=False, query=query, collections_searched=[], results=[], error=str(exc)
+            success=False, query="", collections_searched=[], results=[], error=str(exc)
         )
 
-    if not query or not query.strip():
+    asked = batching.as_list(queries) + batching.as_list(query)
+    wanted, repeats = batching.dedupe(asked)
+    over_cap = wanted[MAX_QUERIES_PER_CALL:]
+    wanted = wanted[:MAX_QUERIES_PER_CALL]
+
+    if not wanted:
         return SearchResponse(
             success=False,
-            query=query,
+            query="",
             collections_searched=targets,
             results=[],
-            error="query cannot be empty",
+            error="queries cannot be empty; pass a list of one or more search phrases",
         )
 
     limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS))
+
+    notes: list[str] = []
+    corrective = batching.corrective_note(
+        batching.repeats_note(repeats, "query"),
+        (
+            f"{len(over_cap)} queries beyond the {MAX_QUERIES_PER_CALL}-per-call limit "
+            f"were not run: {', '.join(over_cap)}. Send the most distinct angles first."
+            if over_cap
+            else ""
+        ),
+    )
+    if corrective:
+        notes.append(corrective)
+
+    per_query: dict[str, list[SearchHit]] = {}
+    errors: list[str] = []
+    for one in wanted:
+        hits, query_notes, error = _search_one(one, targets, limit, notes)
+        per_query[one] = hits
+        if error:
+            errors.append(error)
+        notes.extend(query_notes)
+
+    hits = _fuse_across_queries(per_query, limit)
+    _attach_paths(hits)
+
+    # Every query failing the same way is a query problem, not an infrastructure one.
+    error = errors[0] if errors and not hits else None
+
+    response = SearchResponse(
+        success=not error,
+        query="; ".join(wanted),
+        queries=wanted,
+        collections_searched=targets,
+        results=hits,
+        error=error,
+        note="; ".join(dict.fromkeys(notes)) or None,
+    )
+    found = len(hits)
+    size, dropped = _apply_payload_budget(response)
+    if dropped:
+        # The model has to know the set was cut, or it reads "12 results" as "there are
+        # twelve". The note is inside the budget: it is added before the final measure.
+        response.note = "; ".join(
+            filter(None, [response.note,
+                          f"{dropped} lower-ranked result(s) omitted to fit the "
+                          f"{PAYLOAD_BUDGET_CHARS}-character tool payload budget"])
+        )
+        size, extra = _apply_payload_budget(response)
+        dropped += extra
+    # The one number that says how heavy this tool call was. `chat_messages.tool_output`
+    # cannot answer it — that column is truncated and the model's copy is not — so the
+    # size the model actually received is only observable if it is recorded here.
+    log.info(
+        "search_collections payload: %d chars, %d quer(ies), %d of %d hit(s), %d dropped",
+        size, len(wanted), len(response.results), found, dropped,
+    )
+    return response
+
+
+#: More angles than this in one call is a model listing synonyms rather than choosing.
+#: The surplus is refused by name — silently running the first few would hide the cost.
+MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "5"))
+
+
+def _fuse_across_queries(
+    per_query: dict[str, list[SearchHit]], limit: int
+) -> list[SearchHit]:
+    """Merge each query's ranking into one, recording which queries found each hit.
+
+    Reciprocal rank over the per-query positions, which is the same rule the keyword and
+    vector rankings are already fused by one level down — a hit several queries rank
+    highly beats one query's top hit, and no query's scores have to be comparable with
+    another's for that to hold. BM25 across two different queries is not comparable at
+    all, so summing scores here would be arithmetic on unrelated units.
+
+    `matched_queries` is the point of the whole batch form: corroboration is only usable
+    by the model if it can see it **on the hit**.
+    """
+    merged: dict[tuple, SearchHit] = {}
+    fused_score: dict[tuple, float] = {}
+    matched: dict[tuple, list[str]] = {}
+
+    for one, hits in per_query.items():
+        for position, hit in enumerate(hits):
+            key = (hit.collectionname, hit.file_hash, hit.page_id)
+            fused_score[key] = fused_score.get(key, 0.0) + 1.0 / (RRF_K + position + 1)
+            matched.setdefault(key, []).append(one)
+            kept = merged.get(key)
+            if kept is None:
+                merged[key] = hit
+            elif len(hit.snippet) > len(kept.snippet):
+                # Keep the longest snippet: different queries match different passages of
+                # the same page, and the fuller one is the more useful evidence.
+                merged[key] = hit
+
+    ordered = sorted(merged.items(), key=lambda kv: -fused_score[kv[0]])
+    out: list[SearchHit] = []
+    for key, hit in ordered[:limit]:
+        hit.matched_queries = matched[key]
+        hit.score = round(fused_score[key], 6) if len(per_query) > 1 else hit.score
+        out.append(hit)
+    return out
+
+
+#: RRF's rank offset for the cross-query fusion, matching the convention used one level
+#: down for keyword-vs-vector. It damps the top rank's dominance so a hit that is second
+#: for three queries outranks one that is first for exactly one.
+RRF_K = 60
+
+
+def _search_one(
+    query: str, targets: list[str], limit: int, shared_notes: list[str]
+) -> tuple[list[SearchHit], list[str], str | None]:
+    """One query's hybrid search. `(hits, notes, error)`; never raises."""
+    notes: list[str] = []
     prepared = prepare_match_query(query)
     if not prepared.expr:
         # Hand back the syntax reference along with the complaint: the model gets one
         # shot at understanding what went wrong, and "unbalanced quote" is only
         # actionable next to the rules it broke.
-        return SearchResponse(
-            success=False,
-            query=query,
-            collections_searched=targets,
-            results=[],
-            error=f"{prepared.error or 'query contained no searchable terms'}\n\n{MATCH_SYNTAX}",
+        return (
+            [],
+            notes,
+            f"{prepared.error or 'query contained no searchable terms'}\n\n{MATCH_SYNTAX}",
         )
     match_expr = prepared.expr
 
-    notes = list(prepared.repairs)
+    notes.extend(prepared.repairs)
 
     # The vector branch decides the keyword candidate budget: a keyword-only search
     # fetches `limit` rows per shard as it always did, while a fused search needs a
@@ -543,7 +714,6 @@ def search_collections(
             )
             for c in keyword_list[:limit]
         ]
-    _attach_paths(hits)
 
     if failed_targets:
         notes.append(
@@ -557,34 +727,9 @@ def search_collections(
     if shard_errors and not hits:
         error = f"{sorted(set(shard_errors))[0]}\n\n{MATCH_SYNTAX}"
 
-    response = SearchResponse(
-        success=not error,
-        query=query,
-        collections_searched=targets,
-        results=hits,
-        error=error,
-        note="; ".join(notes) or None,
-    )
-    found = len(hits)
-    size, dropped = _apply_payload_budget(response)
-    if dropped:
-        # The model has to know the set was cut, or it reads "12 results" as "there are
-        # twelve". The note is inside the budget: it is added before the final measure.
-        response.note = "; ".join(
-            filter(None, [response.note,
-                          f"{dropped} lower-ranked result(s) omitted to fit the "
-                          f"{PAYLOAD_BUDGET_CHARS}-character tool payload budget"])
-        )
-        size, extra = _apply_payload_budget(response)
-        dropped += extra
-    # The one number that says how heavy this tool call was. `chat_messages.tool_output`
-    # cannot answer it — that column is truncated and the model's copy is not — so the
-    # size the model actually received is only observable if it is recorded here.
-    log.info(
-        "search_collections payload: %d chars, %d of %d hit(s) returned, %d dropped",
-        size, len(response.results), found, dropped,
-    )
-    return response
+    for hit in hits:
+        hit.matched_queries = [query]
+    return hits, notes, error
 
 
 def _fused_pipeline(
@@ -716,14 +861,120 @@ def _attach_paths(hits: list[SearchHit]) -> None:
 
 
 @mcp.tool(
-    name="get_document_text",
+    name="read_documents",
     description=(
-        "Read the extracted text of one document, identified by the file_hash returned "
-        "from search_collections. Use this to check a promising hit before citing it."
+        "Read the extracted text of several documents at once. Each entry names its "
+        "collection and the file_hash a search returned — pass them as "
+        "`[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
+        "parallel lists in `collectionname` and `file_hash`. Read every promising hit "
+        "in one call rather than one per turn. The character budget is shared across "
+        "the batch, so a document that had to be cut says so, and documents that did "
+        "not fit are named rather than dropped silently."
     ),
 )
-def get_document_text(collectionname: str, file_hash: str) -> DocumentText:
-    return _read_document_text(collectionname, file_hash)
+def read_documents(
+    documents: list[dict] | str | None = None,
+    collectionname: list[str] | str | None = None,
+    file_hash: list[str] | str | None = None,
+) -> DocumentsText:
+    """Read a batch of documents, sharing one character budget across them.
+
+    The three parameter shapes are all shapes models actually produce: a list of objects
+    (what the description asks for), two parallel lists, and — through
+    `batching.as_list` — a single pair of bare strings, which is the single-document call
+    this replaced. That last one is why no separate compatibility path is needed.
+    """
+    pairs, malformed = _document_pairs(documents, collectionname, file_hash)
+    wanted, repeats = batching.dedupe([f"{c}\x00{h}" for c, h in pairs], casefold=False)
+    pairs = [tuple(k.split("\x00", 1)) for k in wanted]
+
+    note = batching.corrective_note(
+        batching.repeats_note([r.replace("\x00", "/") for r in repeats], "document"),
+        (
+            f"{len(malformed)} entr{'y' if len(malformed) == 1 else 'ies'} could not be "
+            f"read as a collection and file hash: {', '.join(malformed)}. Each needs "
+            "both, exactly as search_collections returned them."
+            if malformed
+            else ""
+        ),
+    )
+
+    if not pairs:
+        return DocumentsText(
+            success=False,
+            documents=[],
+            note=note or None,
+            error="no document was named; pass the collectionname and file_hash of each",
+        )
+
+    per_doc, fits = batching.divide_budget(READ_DOCUMENTS_TOTAL_CHARS, len(pairs))
+    dropped = [f"{c}/{h}" for c, h in pairs[fits:]]
+    pairs = pairs[:fits]
+    if dropped:
+        note = batching.corrective_note(note, batching.dropped_note(dropped, "document"))
+
+    out: list[DocumentText] = []
+    for collection, digest in pairs:
+        one = _read_document_text(collection, digest)
+        if one.text and len(one.text) > per_doc:
+            one.text, cut = batching.truncate(one.text, per_doc)
+            one.truncated = one.truncated or cut
+        out.append(one)
+
+    return DocumentsText(
+        success=any(d.success for d in out),
+        documents=out,
+        note=note or None,
+    )
+
+
+#: The whole call's text budget, shared across the documents asked for. Sized to match
+#: the search tool's payload budget: a batch read of six hits should not cost more than
+#: the search that produced them.
+READ_DOCUMENTS_TOTAL_CHARS = int(os.getenv("READ_DOCUMENTS_TOTAL_CHARS", "40000"))
+
+
+def _document_pairs(
+    documents: object, collectionname: object, file_hash: object
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """`(pairs, malformed)` from any of the three shapes. Never raises."""
+    pairs: list[tuple[str, str]] = []
+    malformed: list[str] = []
+
+    entries: list = []
+    if isinstance(documents, str):
+        text = documents.strip()
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, list):
+                entries = parsed
+    elif isinstance(documents, list):
+        entries = documents
+
+    for entry in entries:
+        if isinstance(entry, dict):
+            collection = str(entry.get("collectionname") or "").strip()
+            digest = str(entry.get("file_hash") or "").strip()
+            if collection and _is_hash(digest):
+                pairs.append((collection, digest))
+                continue
+        malformed.append(str(entry)[:80])
+
+    # Two parallel lists, and the bare-string pair that was the single-document call.
+    collections = batching.as_list(collectionname)
+    hashes = batching.as_list(file_hash)
+    if collections and hashes:
+        if len(collections) == 1 and len(hashes) > 1:
+            collections = collections * len(hashes)
+        for collection, digest in zip(collections, hashes):
+            if collection and _is_hash(digest):
+                pairs.append((collection, digest))
+            else:
+                malformed.append(f"{collection}/{digest}"[:80])
+    return pairs, malformed
 
 
 def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:

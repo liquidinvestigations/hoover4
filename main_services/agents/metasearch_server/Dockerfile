@@ -25,6 +25,10 @@ RUN pip install --no-cache-dir ./agent_common
 COPY ./metasearch_server/pyproject.toml ./
 COPY ./metasearch_server/metasearch_server/ ./metasearch_server/
 COPY ./metasearch_server/tests/ ./tests/
+# The shared package's tests, under the one target a runner reaches. Without this they
+# ship in the image and run in nothing, so a regression in `agent_common` lands silently
+# in all three server images at once.
+COPY ./agent_common/tests/ ./tests/shared/
 
 RUN pip install --no-cache-dir . && pip install --no-cache-dir pytest pytest-asyncio
 

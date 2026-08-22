@@ -74,7 +74,7 @@ Search two or three times, from different angles, before you answer. One query i
 not enough: try the specific phrase you expect to appear in the document, then a broader
 set of words, then a wildcard or a synonym if the first two came back thin. A phrase
 search is the right tool for a name, a title or a quoted string. Read a promising hit in
-full with `get_document_text` before you cite it, and use `list_document_entities` to
+full with `read_documents` before you cite it, and use `list_document_entities` to
 find names worth searching for next.
 
 Leave `max_results` alone. Its default already returns a broad view of the collections,
@@ -96,7 +96,7 @@ SERVER_INSTRUCTIONS = f"""\
 Search the user's own document collections in Hoover4.
 
 Call `list_collections` first so you use real collection names, then `search_collections`
-to find passages, then `get_document_text` to read a document in full.
+to find passages, then `read_documents` to read them in full.
 
 {MATCH_SYNTAX}
 

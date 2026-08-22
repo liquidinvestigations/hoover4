@@ -14,7 +14,7 @@ because nothing ever populated it.
 |---|---|
 | `list_collections` | what this user may read — always call first |
 | `search_collections` | full-text search across the permitted shards |
-| `get_document_text` | the extracted text of one document, by `file_hash` |
+| `read_documents` | the extracted text of several documents, each by `collectionname` + `file_hash`, sharing one budget |
 | `list_document_entities` | what the pipeline found in one document, in two tiers |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
 
@@ -131,7 +131,7 @@ of what is left after the envelopes, clamped between `SEARCH_MIN_SNIPPET_CHARS` 
 `SEARCH_SNIPPET_CHARS` (1200); when the envelopes alone no longer leave room for a
 readable line each, it drops the lowest-ranked hits and says so in `note`. Eight hits
 still get the full 1 200 characters each; a request for 200 comes back as ~60 with a line
-apiece. Reading one properly is `get_document_text`.
+apiece. Reading them properly is `read_documents`.
 
 Bounding a field is not bounding a payload. A per-snippet budget with a count cap leaves
 every hit's envelope — `collection_dataset`, `collectionname`, a 64-character `file_hash`,
