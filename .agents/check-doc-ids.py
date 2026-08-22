@@ -87,6 +87,9 @@ NOT_TAGS_SOURCE = {
 
 KEY_HEADING_RE = re.compile(r"^#{1,4}\s+Key\b", re.I)
 
+# `T1-T6`, `A1 - A7`, `Q1–Q7` in a Key row: one entry standing for a whole series.
+RANGE_RE = re.compile(r"\b([A-Z]{1,2})(\d{1,2})\s*[–—-]\s*(?:[A-Z]{1,2})?(\d{1,2})\b")
+
 
 def is_plan_doc(rel):
     return rel.startswith("plans/") or "/plans/" in rel
@@ -99,11 +102,18 @@ def strip_noise(lines):
     parameter -- never a citation.
     """
     fence = False
+    code = False
     for i, line in enumerate(lines, 1):
-        if line.lstrip().startswith("```"):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            if not fence:
+                # A fence that names a language holds code, and a tag inside it is a
+                # variable or a sample. A bare fence holds a diagram or a transcript,
+                # which a reader still has to resolve -- so it is scanned.
+                code = bool(stripped[3:].strip())
             fence = not fence
             continue
-        if fence:
+        if fence and code:
             continue
         yield i, re.sub(r"`[^`]*`", lambda m: " " * len(m.group(0)), line)
 
@@ -111,8 +121,13 @@ def strip_noise(lines):
 def defines(line, tag):
     """Does this line define the tag rather than merely cite it?"""
     s = line.strip()
-    if s.startswith("#") and tag in s:
-        return True
+    if s.startswith("#"):
+        # A heading defines its own SUBJECT, not every tag it happens to mention.
+        # A heading like `### Q1 -- does chat chapter 3 (X3) come back?` defines the
+        # question and merely cites the cut; counting the whole heading as a definition
+        # is what let the cut through unnamed.
+        subject = re.split(r"[-—–:(]", s.lstrip("# "), maxsplit=1)[0]
+        return bool(re.search(r"\b" + re.escape(tag) + r"\b", subject))
     if s.startswith("|"):
         cells = s.split("|")
         if len(cells) > 1 and tag in cells[1]:
@@ -137,6 +152,12 @@ def key_table_tags(lines):
             cells = s.split("|")
             if len(cells) > 1:
                 declared.update(TAG_RE.findall(cells[1]))
+                # A Key row usually declares a range -- `T1-T6`, `A1-A7`. Expand it, or
+                # only the two endpoints count as declared and the middle reads as
+                # undefined.
+                for pre, lo, hi in RANGE_RE.findall(cells[1]):
+                    for n in range(int(lo), int(hi) + 1):
+                        declared.add(f"{pre}{n}")
     return declared
 
 
