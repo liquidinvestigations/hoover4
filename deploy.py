@@ -1188,6 +1188,47 @@ def compose_up(cfg, side, rt, build):
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if rt.name == "podman" and build:
         podman_stale_image_fix(cfg, side, rt, files)
+    if side == "main":
+        report_worker_stop_timeout(cfg, rt)
+
+
+def report_worker_stop_timeout(cfg, rt):
+    """Say out loud whether the worker's graceful shutdown period is actually reachable.
+
+    `stop_grace_period` in the compose file is not the whole story under podman, and the
+    difference is invisible unless something says so -- which is the entire reason this
+    prints rather than staying silent on the happy path.
+
+    podman-compose applies the grace period only when IT stops the container: it passes
+    `-t <seconds>` to `podman stop` on down/stop/restart. It does NOT write the value into
+    the container, and `podman update` cannot set it afterwards -- `--stop-timeout` is
+    accepted only at creation. So the container keeps podman's own default of 10 seconds,
+    and anything that stops it directly (`docker stop`, `docker restart`, a supervisor,
+    a person) kills through the graceful period at ten seconds no matter what the
+    configuration says.
+
+    A worker SIGKILLed part-way through draining is the exact failure the graceful period
+    exists to prevent, so the number that is really in force is printed either way.
+    """
+    want = worker_graceful_shutdown_seconds(cfg) + WORKER_SHUTDOWN_MARGIN_SECONDS
+    got = rt.run(["inspect", "hoover4-worker", "--format", "{{.Config.StopTimeout}}"],
+                 capture_output=True, text=True)
+    if got.returncode != 0:
+        return
+    raw = got.stdout.strip()
+    try:
+        effective = int(raw)
+    except ValueError:
+        return
+    if effective >= want:
+        print("preflight: worker stop grace period %ds, as configured" % effective)
+        return
+    print("preflight: WARNING: hoover4-worker was created with a %ds stop timeout, not "
+          "the configured %ds — %s drops stop_grace_period at creation and cannot set it "
+          "afterwards." % (effective, want, rt.describe()))
+    print("preflight:          `./deploy --down` and `%s compose stop` still honour the "
+          "full period; a direct `stop`/`restart` of this container does not, and must "
+          "pass `-t %d` itself." % (rt.describe(), want))
 
 
 def podman_stale_image_fix(cfg, side, rt, files):

@@ -267,7 +267,18 @@ restart_resilience() {
         sleep 2
     done
 
-    docker restart "$WORKER" >/dev/null
+    # `-t` explicitly, and not because the default is merely short. podman drops
+    # stop_grace_period at container creation and cannot set it afterwards, so the
+    # container carries a 10-second stop timeout however the stack is configured. A
+    # restart that SIGKILLs after ten seconds tests the old behaviour, not the new one:
+    # the drain would be cut off part-way and this check would fail for a reason that has
+    # nothing to do with the pipeline. Read the period from the worker's own environment
+    # so this cannot drift from the ini key that set it.
+    local grace
+    grace=$(docker exec "$WORKER" sh -lc 'echo ${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}' 2>/dev/null | tr -d '\r')
+    grace="${grace:-60}"
+    echo "     restarting the worker with a ${grace}s drain"
+    docker restart -t "$grace" "$WORKER" >/dev/null
     wait "$ingest_pid" 2>/dev/null || true
     wait_for_worker
     wait_for_temporal
