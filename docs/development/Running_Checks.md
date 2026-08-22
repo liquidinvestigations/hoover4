@@ -29,6 +29,7 @@ are easy to get wrong.
 | "the pipeline logic is right" | the Python unit tests |
 | "the endpoint works" | a stack test, or a request made from inside a container |
 | "ingestion works end to end" | `main_services/verify-stack.sh` |
+| "a worker restart loses nothing" | `main_services/verify-stack.sh --restart-resilience`, per-document assertions read |
 | "it is deployed" | the container is up *and* answering, checked from inside the network |
 | "the bug is fixed" | the failing case reproduced before, and not reproducible after |
 
@@ -90,6 +91,29 @@ mandatory.
 list and the stack integration tests. Away from that corpus they fail by naming a dataset that
 does not exist, which reads as a broken site and is not. Check the fixtures before concluding
 anything from a wall of red lines.
+
+### Restart resilience
+
+`main_services/verify-stack.sh --restart-resilience` runs **instead of** the checks above, not
+before them. It ingests one fixture dataset, stops and starts the worker in the middle of it,
+and then asserts what the workflow status does not: that every document ends up with chunks,
+with vectors, and with an index row.
+
+**That last part is the whole point.** A plan is marked finished when its stages *ran*, not
+when every document succeeded, so workflow status reports success over documents whose
+embeddings were lost. Only a per-document assertion tells the two apart.
+
+It is **deliberately not on the per-deploy or per-commit path.** It costs a worker restart and
+several minutes, and a gate that expensive stops being run. Run it when the worker's process
+lifecycle changes — `tasks/run_worker.py`, `tasks/heartbeat.py`, the graceful shutdown
+configuration, or the worker's stop grace period. It purges its own fixture dataset first, so
+it is repeatable; without that a second run would pass over the first run's data having tested
+nothing.
+
+Two things it prints that are not failures. The re-drive after the restart can fail with
+`WorkflowAlreadyStartedError`: that is durable execution working — the workflows survived and
+the client that died was only sequencing them. And `INGEST_ROOT_RESTART` selects the fixture,
+defaulting to the same testdata root the normal run uses.
 
 ## Screenshots
 
