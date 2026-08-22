@@ -220,6 +220,31 @@ rebuild — and the build output read in full, not tailed.
 A generated environment file hand-edited is overwritten by the next deploy, and looks like it
 worked until then.
 
+## Traps that have cost real time here
+
+Each of these presented as something other than what it was.
+
+**Every route returns 500 with nothing logged, repeatedly, a few seconds after start.** A
+supervisor that kills by the pid in a pid file, having only checked that *something* is alive
+at that pid, will eventually kill the wrong process: pid files survive restarts and pids are
+recycled. It killed the website's own binary seconds after launch, and each restart repeated
+it. A supervisor must confirm the process is the one it means — `/proc/<pid>/cmdline`, not
+liveness alone.
+
+**A 502 immediately after a deploy is expected, not a fault.** The deploy command returns
+about five minutes before the site serves, because the release build runs inside the
+container. Wait for it before diagnosing anything.
+
+**A log line that no log level can filter** is a `println!` rather than a logging call.
+Searching for the message text finds it faster than adjusting log configuration that was never
+going to apply.
+
+**Deleting an apparently unreferenced page can break something with no build error.** An asset
+bundle held alive by a `#[used] static … asset!()` binding is loaded by literal URL, so nothing
+in the source refers to it. Removing the page that carries the binding compiles cleanly and
+404s the feature at runtime. Before deleting a page, search for what its assets are named, not
+just for references to the page.
+
 ## The host itself is unresponsive
 
 The load average plus a process list sorted by CPU names the cause in one step. Three things

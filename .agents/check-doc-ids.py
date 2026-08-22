@@ -250,7 +250,10 @@ def check_file(path, rel):
 
 
 def walk(roots):
-    for root in roots:
+    # Absolute paths throughout: the exclusion patterns are anchored with a leading
+    # slash, so a relative root like `plans/` would match none of them and quietly scan
+    # the archive it is meant to skip.
+    for root in (os.path.abspath(r) for r in roots):
         if os.path.isfile(root):
             yield root
             continue

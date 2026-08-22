@@ -25,6 +25,16 @@ an `unreachable` trap with no site named. `dx check --package frontend` names th
 .agents/skills/verifying-before-claiming/scripts/dx-check.sh
 ```
 
+**A `key:` must be unique among its siblings, and a humanized value is not.** Keying chart
+axis ticks by their formatted label gives every tick on an all-zero axis the same key. A
+release build silently misdiffs; a debug build panics on the first re-diff and the page dies.
+Key by index or by the raw value, never by display text.
+
+**`dioxus-html` has no SVG `title` element.** A `title` inside an `svg` is created with
+`createElement` and yields an HTML title element instead, so the tooltip never renders in
+either navigation mode. Use a different tooltip mechanism rather than assuming the markup
+worked.
+
 **`rsx!` string interpolation takes an expression, not a block.** `style: "…{if x {a} else
 {b}}"` fails to parse with an error naming an identifier or expression. Resolve the
 conditional into a `let` above the `rsx!` and interpolate the variable.

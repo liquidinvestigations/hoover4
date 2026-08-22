@@ -516,6 +516,14 @@ of the whole match, and the pager is what you can walk. The page states the diff
 the count rather than implying the rest are reachable. Narrow the query — with words, a
 filter, or a folder — to bring what you want inside the reachable range.
 
+**The assistant's searches are capped per query, and it cannot page past the cap.** When you
+ask the assistant a question it runs its own searches, and each one returns at most a set
+number of documents — enough to answer from, not the whole match. There is no "next page" for
+it to ask for, so a second search on the same words returns the same documents rather than the
+ones after them. It reaches new material by asking a *different* question — other words, a
+narrower filter, a particular folder — which is also the most useful way to steer it when an
+answer looks thin.
+
 **A document with no confirmed date can never fall inside a date range.** It matches only
 through the *no confirmed date* option, which is why that option exists alongside before,
 after and between. A range that silently included undated documents would be a different
