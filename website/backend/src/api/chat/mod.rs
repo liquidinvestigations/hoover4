@@ -272,10 +272,11 @@ pub async fn send_message(
     // returns is the one the poller continues from.
     let turn_uuid = crate::db_auth::sessions::generate_session_id();
     let user_seq = db_chat::next_seq(username, &session_id).await?;
-    // Seq 0 is the first row a session can hold, so this message opening at 0 *is* the
-    // first turn. Cheaper than reading the transcript back to count it, and it is the
-    // same fact.
-    let is_first_turn = user_seq == 0;
+    // Read, not inferred from the seq. `next_seq` starts a fresh session at 1, not 0 —
+    // ClickHouse's `max()` over an empty UInt32 column is 0 rather than NULL, so the
+    // "no rows yet" case and "one row at seq 0" case produce the same number. Deriving
+    // the first turn from it silently stopped the conversation ever being titled.
+    let is_first_turn = db_chat::list_messages(username, &session_id).await?.is_empty();
     db_chat::append_message(
         username,
         &session_id,

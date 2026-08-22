@@ -22,12 +22,24 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-#: Budget for a *reasoning* model, not for two lines of output. At 120 the configured
+#: Budget for a *reasoning* model, not for two lines of output. At 120 a configured
 #: provider spent the entire allowance thinking, came back `finish_reason: "length"` with
 #: its scratchpad mirrored into `content`, and the sidebar filled up with titles reading
 #: "We need to output exactly two lines: line1 short title max 8 words...". The reply is
 #: still two lines; the thinking in front of it is what needs the room.
 MAX_TOKENS = 512
+
+#: Ask the model not to think about it. Naming a conversation is not a reasoning problem,
+#: and a reasoning model given one spends its whole token budget on the thought and hits
+#: `length` with nothing usable in `content` — measured at 512 and again at 1 536 tokens
+#: against the model this deployment runs on. With thinking off the same call answers in
+#: about a second and its budget is generous.
+#:
+#: Provider-specific, so it is sent as a hint and dropped on a refusal rather than
+#: assumed: a provider that has never heard of it rejects the whole request, and a
+#: summariser that fails on every call is invisible in exactly the way the telemetry row
+#: exists to prevent.
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
 #: A summariser that has not answered in this long has cost the conversation nothing but
 #: a title, so it is given far less rope than the turn itself.
@@ -143,10 +155,20 @@ def _model() -> str:
     return (os.getenv("LLM_MODEL") or "").strip()
 
 
-def title_and_summary(user_message: str, answer: str) -> TitleSummary:
-    """Ask the LLM for a title and a summary of one turn. Never raises."""
+def _post(base_url: str, body: dict):
+    """One completion request. Raises only what the caller already catches."""
     import requests
 
+    return requests.post(
+        f"{base_url}/chat/completions",
+        headers={"Authorization": f"Bearer {_api_key()}"},
+        json=body,
+        timeout=REQUEST_TIMEOUT,
+    )
+
+
+def title_and_summary(user_message: str, answer: str) -> TitleSummary:
+    """Ask the LLM for a title and a summary of one turn. Never raises."""
     model = _model()
     if not model:
         return TitleSummary(error="no summarisation model configured")
@@ -166,21 +188,21 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
     def elapsed() -> int:
         return int((time.monotonic() - started) * 1000)
 
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": MAX_TOKENS,
+    }
     try:
-        response = requests.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {_api_key()}"},
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.2,
-                "max_tokens": MAX_TOKENS,
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
+        response = _post(base_url, {**body, **NO_THINKING})
+        if 400 <= response.status_code < 500:
+            # The hint is the likeliest thing a provider objects to, so it is the first
+            # thing dropped. A second refusal is a real one and is reported.
+            response = _post(base_url, body)
     except Exception as exc:  # noqa: BLE001 - a dead endpoint costs a title, not a turn
         return TitleSummary(model=model, latency_ms=elapsed(), error=str(exc)[:500])
 

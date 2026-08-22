@@ -54,10 +54,11 @@ pub async fn chat_set_collections(
         .map_err(to_server_fn_error)
 }
 
-/// Send a message and get the updated trajectory back.
+/// Send a message and get the transcript back with the message in it.
 ///
-/// This is a long call — the agent runs several LLM turns and searches before it
-/// answers — so the UI must show a pending state while it is in flight.
+/// Returns as soon as the turn has been accepted and dispatched — the answer arrives
+/// through `chat_poll`, not through this call. The UI shows a pending state until the
+/// poll says the turn is no longer active.
 ///
 /// `options.internet_tools` routes to the full research agent
 /// (`HOOVER4_FULL_AGENT_URL`) instead of the internal search agent. The options are
