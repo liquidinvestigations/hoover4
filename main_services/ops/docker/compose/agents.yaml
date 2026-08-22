@@ -1,4 +1,4 @@
-# Always-on overlay: the six MCP servers and the two research agents.
+# Always-on overlay: the MCP servers and the two research agents.
 #
 # These belong to the MAIN stack, not ai_services: they read ClickHouse and
 # Manticore directly and serve the website's chat.
@@ -85,6 +85,44 @@ services:
       - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES:-3}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
+    networks:
+      - hoover4
+
+  # ---------------------------------------------------------------- MCP: todo
+  # The agent's plan for one conversation: a goal and a list of steps, read and written
+  # through four tools. The rules live in processing/database/chat_todos.py, which the
+  # chat workflow reads directly — this container is a wrapper over that module, which
+  # is why its build context is main_services rather than main_services/agents.
+  #
+  # No ClickHouse environment: the store uses the pipeline's own client, which addresses
+  # `clickhouse` on this network. Being on the network is the whole configuration.
+  hoover4-mcp-todo:
+    build:
+      # Wider than every other server's on purpose — see the Dockerfile. The context is
+      # narrowed by main_services/.dockerignore.
+      context: ${HOOVER4_REPO_ROOT}/main_services
+      dockerfile: agents/agent_todo_server/Dockerfile
+    image: hoover4-mcp-todo:local
+    container_name: hoover4-mcp-todo
+    ports:
+      - "127.0.0.1:${MCP_TODO_PORT}:8088"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8088
+      - SERVER_NAME=${TODO_SERVER_NAME:-hoover4_todo}
+      # The plan belongs to one user's one conversation, and both halves of that key
+      # arrive as headers. acl-style bearer check in front of them, same secret file.
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     networks:
       - hoover4
 
@@ -285,7 +323,9 @@ services:
       # as a YAML default was unreadable and drifted from the tool descriptions.
       # Set this only to override for an experiment.
       - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
-      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp
+      # Collections, plus the todo server: a plan is not a research tool and both
+      # profiles keep one.
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -303,6 +343,7 @@ services:
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
     depends_on:
       - hoover4-mcp-collections
+      - hoover4-mcp-todo
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
@@ -348,7 +389,7 @@ services:
       - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
       # One search server, one browser router, one whois. Do not add a second
       # web-search server here; every source belongs inside metasearch.
-      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -367,6 +408,7 @@ services:
       - hoover4-mcp-metasearch
       - hoover4-mcp-browser
       - hoover4-mcp-whois
+      - hoover4-mcp-todo
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]

@@ -18,6 +18,7 @@ from the repo root, no separate tier to start.
 | Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: `web_search` over a list of queries across the scrapers, DuckDuckGo and GDELT news, Wikipedia, Wikidata, Crossref and two web archives, fused with RRF and reranked once by the GPU cross-encoder |
 | Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | `whois_lookup` over a list of domains |
+| Todo | [`agent_todo_server/`](agent_todo_server/Readme.md) | 21935 | both agents | `read_todo` / `write_todo` / `edit_todo` / `mark_todo` over one plan per conversation |
 
 **There is exactly one web-search tool, and it must stay that way.** Choosing between
 three overlapping "search the web" tools is something a small model does badly and
@@ -35,12 +36,17 @@ are still in the tree but nothing builds or deploys them, and `hoover4.ini` has 
 own: the chat-artifact writer, the S3 helper both artifact writers sit on, and the
 rerank client with its circuit breaker.
 
-**It is vendored, not installed from an index.** The metasearch and browser Dockerfiles
-build with `main_services/agents` as their **build context** and `COPY ./agent_common/`.
-If you move either Dockerfile, move its `context:` in
+**It is vendored, not installed from an index.** The server Dockerfiles build with
+`main_services/agents` as their **build context** and `COPY ./agent_common/`. If you move
+one, move its `context:` in
 [`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml) with it — a
 Docker build cannot reach outside its context, and the failure is a missing-module
 traceback at container start, not at build time.
+
+The todo server is the exception: it also vendors
+[`../processing/database/`](../processing/database/Readme.md), so its context is
+`main_services` and [`../.dockerignore`](../.dockerignore) narrows that back down to the
+two directories it copies.
 
 ### Chat artifacts
 

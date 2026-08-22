@@ -1,0 +1,29 @@
+[project]
+name = "hoover4-agent-todo-server"
+version = "0.1.0"
+description = "MCP server exposing the agent's per-conversation todo list"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    # fastmcp v2, matching the collection search server. The upper bound is not
+    # housekeeping: v3 is a different API, and `fastmcp.server.dependencies` is how this
+    # server reads the caller's headers.
+    "fastmcp>=2.12,<3",
+    "pydantic>=2.0",
+    # The store this server wraps talks to ClickHouse through the same driver the
+    # pipeline uses, because it is the same module -- see the Dockerfile.
+    "clickhouse-connect>=0.10.0",
+    "pyarrow>=21.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent_todo_server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

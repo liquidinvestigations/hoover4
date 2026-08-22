@@ -194,6 +194,7 @@ DEFAULTS = {
         "mcp_metasearch_port": "21931",
         "mcp_browser_port": "21932",
         "mcp_whois_port": "21934",
+        "mcp_todo_port": "21935",
         "internal_search_agent_port": "21936",
         "full_research_agent_port": "21937",
         # image pins (were env.example)
@@ -288,6 +289,7 @@ MAIN_PUBLISHED = [
     ("hoover4-mcp-metasearch", "main_services", "mcp_metasearch_port"),
     ("hoover4-mcp-browser", "main_services", "mcp_browser_port"),
     ("hoover4-mcp-whois", "main_services", "mcp_whois_port"),
+    ("hoover4-mcp-todo", "main_services", "mcp_todo_port"),
     ("hoover4-internal-search-agent", "main_services", "internal_search_agent_port"),
     ("hoover4-full-research-agent", "main_services", "full_research_agent_port"),
     ("hoover4-tesseract-cpu", "main_services", "tesseract_cpu_port"),

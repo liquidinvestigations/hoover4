@@ -30,6 +30,32 @@ class TestAsList:
         assert batching.as_list('["a", "b"') == ["a", "b"]
 
 
+class TestAsObjects:
+    def test_a_real_list_of_objects(self):
+        assert batching.as_objects([{"id": "a"}]) == [{"id": "a"}]
+
+    def test_a_json_encoded_list(self):
+        assert batching.as_objects('[{"id": "a"}, {"id": "b"}]') == [
+            {"id": "a"},
+            {"id": "b"},
+        ]
+
+    def test_a_lone_object_is_a_one_element_list(self):
+        assert batching.as_objects({"id": "a"}) == [{"id": "a"}]
+
+    def test_a_json_encoded_lone_object(self):
+        assert batching.as_objects('{"id": "a"}') == [{"id": "a"}]
+
+    def test_none_and_unparseable_text_are_empty(self):
+        assert batching.as_objects(None) == []
+        assert batching.as_objects("not json") == []
+        assert batching.as_objects("") == []
+
+    def test_a_non_object_member_is_kept_for_the_caller_to_refuse(self):
+        # Dropping it here would leave the model believing it wrote a row nobody stored.
+        assert batching.as_objects(["a", {"id": "b"}]) == ["a", {"id": "b"}]
+
+
 class TestDedupe:
     def test_order_is_preserved_and_repeats_returned(self):
         kept, repeats = batching.dedupe(["a", "b", "A", "c", "b"])

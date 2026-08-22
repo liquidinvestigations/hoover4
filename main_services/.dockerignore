@@ -1,0 +1,17 @@
+# The build context for the agent todo server is this whole directory, because that
+# server's image needs both `agents/agent_common` and `processing/database` and a build
+# cannot reach outside its context. Unnarrowed that context is the working tree --
+# `processing/.venv` and the `.testdata` corpus are gigabytes of it -- so everything is
+# excluded and the two directories the Dockerfile copies are added back.
+#
+# Nothing else builds from here: the worker's context is `processing`, every other MCP
+# server's is `agents`, and each of those reads its own ignore file, not this one.
+*
+!agents
+!processing
+processing/*
+!processing/database
+processing/database/db_collection_migrations
+processing/database/db_global_migrations
+**/__pycache__
+**/.pytest_cache

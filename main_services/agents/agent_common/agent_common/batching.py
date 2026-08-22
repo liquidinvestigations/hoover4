@@ -9,7 +9,9 @@ so a `list[str]` argument arrives as the literal `'["a","b"]'`. Pydantic rejects
 tool returns a validation error, and a small model retries the identical call until the
 recursion budget is gone. Models also send a bare string for a one-element list, and a
 comma-separated string when they have been told the parameter is a list. All three are
-accepted, because all three are things models actually produce.
+accepted, because all three are things models actually produce. A tool whose items are
+records rather than strings meets the same parser, so `as_objects` is the same coercion
+one level up.
 
 **The divided budget.** A batched tool has one character budget for the whole call, not
 one per item. Splitting it evenly and telling the model what was cut beats returning
@@ -70,6 +72,36 @@ def as_list(value: Any, *, separator: str = ",") -> list[str]:
 
 def _debracket(part: str) -> str:
     return part.strip().strip("[]").strip().strip("'\"").strip()
+
+
+def as_objects(value: Any) -> list[dict]:
+    """The same coercion as [`as_list`], for a list of *objects* rather than strings.
+
+    A batched tool whose items are records — `{id, text, status}` rather than a bare
+    query — meets the same stringifying parser, so `'[{"id": "a"}]'` arrives where a
+    list was declared. A single object is accepted as a one-element list for the same
+    reason a bare string is: models send it.
+
+    Anything that is not an object once unwrapped is left in place rather than dropped,
+    because the caller validates the items and a silently discarded row is a record the
+    model believes it wrote. `None` and unparseable text give an empty list.
+    """
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            value = json.loads(text)
+        except ValueError:
+            return []
+        return as_objects(value)
+    if isinstance(value, (list, tuple)):
+        return [v for v in value if v is not None]
+    return []
 
 
 def dedupe(items: Sequence[str], *, casefold: bool = True) -> tuple[list[str], list[str]]:
@@ -159,6 +191,7 @@ def dropped_note(dropped: Sequence[str], noun: str = "item") -> str:
 __all__ = [
     "MIN_ITEM_CHARS",
     "as_list",
+    "as_objects",
     "corrective_note",
     "dedupe",
     "divide_budget",
