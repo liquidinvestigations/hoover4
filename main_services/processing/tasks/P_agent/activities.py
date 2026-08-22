@@ -80,6 +80,10 @@ class ResearchTaskParams:
     #: turn only: the title is drawn from the exchange that started the thread. Defaults
     #: to false so an older caller keeps the title the website already wrote.
     summarize_session: bool = False
+    #: Tool turns granted on top of the agent's own budget. The nag loop raises it by a
+    #: fixed increment per nag (`tasks.P_agent.nagging`) so a nagged turn has room to do
+    #: something without a nag resetting the budget outright.
+    extra_tool_turns: int = 0
 
 
 @activity.defn
@@ -111,6 +115,42 @@ def run_research_agent(params: ResearchTaskParams) -> str:
         len(payload.get("tool_calls", [])),
     )
     return json.dumps(payload)
+
+
+@dataclass
+class ReadTodoParams:
+    """Whose todo list to read. One list per `(username, session_id)`."""
+
+    username: str
+    session_id: str
+
+
+@activity.defn
+@with_heartbeat
+def read_chat_todo(params: ReadTodoParams) -> str:
+    """The chat session's todo list as JSON, for the workflow's nag loop.
+
+    An activity because the workflow cannot touch ClickHouse, and JSON because the
+    snapshot crosses a Temporal payload. `updated_at` is dropped: the loop asks whether
+    the plan is open and whether it moved, and a timestamp answers neither while being
+    the one field that will not serialise.
+
+    **Never raises.** A todo that cannot be read is reported as no todo at all, which
+    makes the loop stop nagging -- the alternative is failing a turn whose answer is
+    already written over a list that is only advisory.
+    """
+    from database import chat_todos
+
+    try:
+        todo = chat_todos.read_todo(params.username, params.session_id)
+    except Exception:  # noqa: BLE001 - see the docstring: never worth the turn
+        log.warning("[P_agent] could not read the todo for %s", params.session_id, exc_info=True)
+        todo = chat_todos.empty_todo(params.session_id, params.username)
+    return json.dumps({
+        "version": int(todo["version"]),
+        "goal": todo["goal"],
+        "items": todo["items"],
+    })
 
 
 @dataclass

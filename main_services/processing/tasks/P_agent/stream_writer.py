@@ -31,6 +31,9 @@ import requests
 
 log = logging.getLogger(__name__)
 
+#: The tool call that makes the prose in front of it part of the answer.
+PLAN_FIRST_TOOL = "write_todo"
+
 
 def _tool_name(content: Any) -> str:
     """Tool name out of a LangGraph tool event, whichever shape it arrives in.
@@ -290,6 +293,7 @@ class ResearchStreamWriter:
                 "username": self.params.username,
                 "allowed_collections": self.params.allowed_collections,
                 "llm_model": llm_model,
+                "extra_tool_turns": getattr(self.params, "extra_tool_turns", 0),
             },
             timeout=(CONNECT_TIMEOUT_SECONDS, AGENT_TIMEOUT_SECONDS),
             stream=True,
@@ -339,8 +343,9 @@ class ResearchStreamWriter:
             self.answer += str(content or "")
             self._write_assistant()
         elif kind == "start_tool":
-            # Narration before a tool call is not the answer.
-            if self.answer.strip():
+            # Narration before a tool call is not the answer -- except the block that
+            # opens a plan-first turn, which stays in it. See `_keeps_preamble`.
+            if self.answer.strip() and not self._keeps_preamble(content):
                 if self.reasoning:
                     self.reasoning += "\n\n"
                 self.reasoning += self.answer.strip()
@@ -375,6 +380,21 @@ class ResearchStreamWriter:
             # quiet between tools with nothing open would read as finished.
             self._write_assistant(force=True)
         # start / start_reasoning / start_response / end need no row writes.
+
+    def _keeps_preamble(self, content: Any) -> bool:
+        """Whether the prose before this tool call belongs in the answer.
+
+        Both agent profiles are told to open a fresh plan by restating the task and
+        weighing two or three approaches before writing the chosen one into the todo.
+        That prose is the part a user would correct, so it is shown rather than folded
+        into `reasoning` behind the disclosure. Narrow on purpose: the first tool call
+        of the run, and only when it is the plan being written.
+
+        The agent has the same rule in `research_agent/agent.py::keeps_preamble`, for
+        its own non-streaming path. Two copies because the two run in different images;
+        they are one rule and must move together.
+        """
+        return self.tool_count == 0 and _tool_name(content) == PLAN_FIRST_TOOL
 
     def _take_pending(self, tool_call_id):
         """Pop the start this end belongs to — by tool_call_id when it has one, else the

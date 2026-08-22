@@ -56,11 +56,17 @@ impl Default for ChatOptions {
 /// `Tool` and `Error` are first-class rather than folded into `Assistant` because the
 /// point of showing a trajectory is being able to see what the agent actually did and
 /// where it failed.
+///
+/// `Nag` is the turn prodding its own agent to finish an unresolved todo. It has its
+/// own role for one reason: it must never look like the user speaking. Rendering it as
+/// a user bubble would put words in their mouth, and rendering it as an error would
+/// call a working protocol a failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ChatRole {
     User,
     Assistant,
     Tool,
+    Nag,
     Error,
 }
 
@@ -71,6 +77,7 @@ impl ChatRole {
             Self::User => "user",
             Self::Assistant => "assistant",
             Self::Tool => "tool",
+            Self::Nag => "nag",
             Self::Error => "error",
         }
     }
@@ -83,6 +90,7 @@ impl ChatRole {
             "user" => Self::User,
             "assistant" => Self::Assistant,
             "tool" => Self::Tool,
+            "nag" => Self::Nag,
             _ => Self::Error,
         }
     }
@@ -854,7 +862,13 @@ mod tests {
 
     #[test]
     fn roles_round_trip_through_their_wire_value() {
-        for role in [ChatRole::User, ChatRole::Assistant, ChatRole::Tool, ChatRole::Error] {
+        for role in [
+            ChatRole::User,
+            ChatRole::Assistant,
+            ChatRole::Tool,
+            ChatRole::Nag,
+            ChatRole::Error,
+        ] {
             assert_eq!(ChatRole::from_str(role.as_str()), role);
         }
     }
@@ -871,6 +885,9 @@ mod tests {
         assert!(ChatRole::Assistant.is_conversational());
         assert!(!ChatRole::Tool.is_conversational());
         assert!(!ChatRole::Error.is_conversational());
+        // A nag is the turn talking to its own agent. Replaying it as conversation on a
+        // later turn would show the model a prod that is no longer about anything.
+        assert!(!ChatRole::Nag.is_conversational());
     }
 
     fn doc_ref(snippet: &str) -> ChatDocRef {

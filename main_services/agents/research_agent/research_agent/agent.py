@@ -39,6 +39,39 @@ log = logging.getLogger(__name__)
 #: hard backstop behind this.
 MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
 
+#: The tool call that makes the prose in front of it part of the answer.
+PLAN_FIRST_TOOL = "write_todo"
+
+
+def tool_name_of(content: Any) -> str:
+    """The tool's name out of a LangGraph tool event, whichever shape it arrives in."""
+    if not isinstance(content, dict):
+        return ""
+    name = content.get("name") or content.get("tool")
+    if not name:
+        output = content.get("output")
+        if isinstance(output, dict):
+            name = output.get("name")
+    return str(name or "")
+
+
+def keeps_preamble(is_first_tool: bool, content: Any) -> bool:
+    """Whether the prose before this tool call belongs in the answer, not the reasoning.
+
+    Everything a model says before calling a tool is normally narration about the call
+    -- "let me search the collections first" -- and it is folded into `reasoning`,
+    behind the disclosure, so the scratchpad does not reach the transcript.
+
+    **The plan-first block is the one exception, and it is deliberate.** Both profiles
+    are told to open a fresh plan by restating the task and weighing two or three
+    approaches before writing the chosen one into the todo. That prose is the part the
+    user most needs to see -- it is what they would correct -- so hiding it behind a
+    disclosure would defeat the instruction that produced it. The exception is narrow:
+    the *first* tool call of the run, and only when it is the plan being written.
+    """
+    return is_first_tool and tool_name_of(content) == PLAN_FIRST_TOOL
+
+
 #: How many compiled graphs to keep. Each holds one MCP client with a live connection
 #: per configured server (six, for the full research agent), so this cache is not free
 #: and cannot be unbounded — it is keyed partly by chat session id, which an agent
@@ -47,8 +80,13 @@ MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
 MAX_CACHED_GRAPHS = int(os.getenv("AGENT_MAX_CACHED_GRAPHS", "24"))
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    #: This run's tool-turn budget, when the caller sets one. In the state rather than
+    #: baked into the graph because graphs are cached and reused across requests, while
+    #: the budget is per run: the chat workflow raises it by a fixed increment each time
+    #: it nags, so a nagged turn has room to act. Absent means MAX_TOOL_TURNS.
+    max_tool_turns: int
 
 
 #: Headers the ACL-aware MCP servers read to scope a call to one user. The agent never
@@ -329,8 +367,9 @@ class MCPGatewayAgent:
             if _repeated_call(state):
                 log.warning("agent repeated a tool call; forcing a final answer")
                 return "finalize_entry"
-            if _tool_turns(state) >= MAX_TOOL_TURNS:
-                log.warning("agent hit the %d-turn tool budget; forcing a final answer", MAX_TOOL_TURNS)
+            budget = int(state.get("max_tool_turns") or MAX_TOOL_TURNS)
+            if _tool_turns(state) >= budget:
+                log.warning("agent hit the %d-turn tool budget; forcing a final answer", budget)
                 return "finalize_entry"
             return "tools"
 
@@ -377,6 +416,7 @@ class MCPGatewayAgent:
         username: str = None,
         allowed_collections: List[str] = None,
         llm_model: str = None,
+        extra_tool_turns: int = 0,
     ) -> AsyncIterable[dict[str, Any]]:
         # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
         # chat session, keyed also by the model that will answer.
@@ -398,7 +438,13 @@ class MCPGatewayAgent:
         # Add current query
         messages.append(HumanMessage(content=query))
         
-        inputs = {"messages": messages}
+        # The budget travels with the run, not with the cached graph. `extra_tool_turns`
+        # is what the chat workflow adds per nag: the base budget stays, so the total a
+        # nagged turn may spend is bounded rather than multiplied.
+        inputs = {
+            "messages": messages,
+            "max_tool_turns": MAX_TOOL_TURNS + max(0, int(extra_tool_turns or 0)),
+        }
 
         # Prepare config with Langfuse callback if available
         # langgraph counts every node visit, so one search costs two steps (agent +
@@ -583,6 +629,7 @@ class MCPGatewayAgent:
         username: str = None,
         allowed_collections: List[str] = None,
         llm_model: str = None,
+        extra_tool_turns: int = 0,
     ) -> Dict[str, Any]:
         """Run to completion and return the whole trajectory in one object.
 
@@ -617,6 +664,7 @@ class MCPGatewayAgent:
             username=username,
             allowed_collections=allowed_collections,
             llm_model=llm_model,
+            extra_tool_turns=extra_tool_turns,
         ):
             kind = chunk.get("type")
             if kind == "response":
@@ -625,8 +673,11 @@ class MCPGatewayAgent:
                 reasoning_parts.append(str(chunk.get("content") or ""))
             elif kind == "start_tool":
                 # Whatever the model said before deciding to call a tool is narration
-                # about the call, not the answer.
-                if answer_parts:
+                # about the call, not the answer -- except for the block that opens a
+                # plan-first turn, which is kept. See `keeps_preamble`.
+                if answer_parts and not keeps_preamble(
+                    not tool_calls, chunk.get("content")
+                ):
                     preamble_parts.extend(answer_parts)
                     answer_parts = []
                 tool_calls.append({"phase": "start", "content": chunk.get("content")})

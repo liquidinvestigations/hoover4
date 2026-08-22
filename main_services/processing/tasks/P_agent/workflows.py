@@ -11,6 +11,7 @@ queue makes impossible, and it costs one worker process.
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 from temporalio import workflow
@@ -18,11 +19,15 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import CancelledError
 
 with workflow.unsafe.imports_passed_through():
+    from database import chat_todos
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+    from tasks.P_agent import nagging
     from tasks.P_agent.activities import (
+        ReadTodoParams,
         ResearchTaskParams,
         SummarizeSessionParams,
         WriteResultParams,
+        read_chat_todo,
         run_research_agent,
         summarize_session,
         write_chat_message,
@@ -80,14 +85,20 @@ async def _write_row(params, seq: int, role: str, content: str, **extra) -> None
     )
 
 
-async def _write_payload(params, payload: dict, empty_answer: str) -> str:
-    """Write a finished agent payload into the transcript and return the answer.
+async def _write_payload(
+    params, payload: dict, empty_answer: str, start_seq: int
+) -> tuple[str, int]:
+    """Write a finished agent payload into the transcript; return the answer and the
+    next free `seq`.
 
     Shared by both workflows because a research transcript and a chat transcript are the
     same rows -- keeping one writer is what stops them drifting into rendering
     differently, which they have done before.
+
+    The starting position is passed rather than read off `params` because a nagged chat
+    turn writes several payloads into one turn, and each has to land after the last.
     """
-    seq = params.start_seq
+    seq = start_seq
 
     # Pair start/end events into one row each, with the arguments, the result and any
     # documents surfaced, so every tool call renders as one card.
@@ -109,7 +120,7 @@ async def _write_payload(params, payload: dict, empty_answer: str) -> str:
         reasoning=payload.get("reasoning") or "",
         model=payload.get("model") or "",
     )
-    return answer
+    return answer, seq + 1
 
 
 def _was_cancelled(exc: BaseException) -> bool:
@@ -128,7 +139,7 @@ def _was_cancelled(exc: BaseException) -> bool:
     return False
 
 
-async def _write_ending(params, message: str) -> None:
+async def _write_ending(params, seq: int, message: str) -> None:
     """Write a turn's last row, whatever is happening to the workflow around it.
 
     Shielded because the common reason a turn needs an ending is that it was cancelled,
@@ -136,7 +147,7 @@ async def _write_ending(params, message: str) -> None:
     the stop button leaves a user row with nothing after it and the page follows a turn
     that will never speak again.
     """
-    await asyncio.shield(_write_row(params, params.start_seq, "error", message))
+    await asyncio.shield(_write_row(params, seq, "error", message))
 
 
 async def _name_the_conversation(params, answer: str) -> None:
@@ -200,41 +211,101 @@ class ChatTurn:
     than vanishing: a user row with nothing after it leaves the page following a turn
     that will never speak again. The write is shielded because a cancelled workflow
     cannot schedule new work in its own scope.
+
+    **The nag loop lives here** rather than in the agent, for the same reason the turn
+    does: the workflow is what knows a user's turn is still going, and both nag counters
+    have to outlive an agent process that may be restarted mid-turn. See
+    `tasks.P_agent.nagging` for the rules it applies.
     """
 
     @workflow.run
     async def run(self, params: "ResearchTaskParams") -> str:
-        try:
-            raw = await workflow.execute_activity(
-                run_research_agent,
-                params,
-                # Shorter than a research run on purpose. A chat turn a user is watching
-                # that has produced nothing for a quarter of an hour is wedged, and
-                # failing it returns the answer slot to them.
-                start_to_close_timeout=timedelta(seconds=900),
-                heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
-            )
-        except asyncio.CancelledError:
-            await _write_ending(params, "This turn was stopped.")
-            raise
-        except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
-            # A stop reaches here too, not only through `CancelledError`: cancelling a
-            # workflow cancels the activity it is waiting on, and Temporal reports that as
-            # an `ActivityError` wrapping the cancellation. Read as a failure it put
-            # "The assistant could not answer: Activity cancelled" in front of a user who
-            # had just pressed stop and knew perfectly well why the answer had ended.
-            if _was_cancelled(e):
-                await _write_ending(params, "This turn was stopped.")
-            else:
-                await _write_ending(params, f"The assistant could not answer: {e}")
-            raise
+        seq = params.start_seq
+        answer = ""
+        #: Nags since the plan last actually moved, and nags in this whole user turn.
+        #: The first resets on progress; the second never does, which is what keeps a
+        #: model from farming resets and nagging itself forever.
+        nags_without_progress = 0
+        nags_this_turn = 0
+        #: The snapshot taken when the last nag was written, to compare against.
+        todo_before_nag: dict | None = None
+        round_params = params
 
-        answer = await _write_payload(
-            params, json.loads(raw), "(the assistant returned an empty answer)"
-        )
+        while True:
+            try:
+                raw = await workflow.execute_activity(
+                    run_research_agent,
+                    round_params,
+                    # Shorter than a research run on purpose. A chat turn a user is
+                    # watching that has produced nothing for a quarter of an hour is
+                    # wedged, and failing it returns the answer slot to them.
+                    start_to_close_timeout=timedelta(seconds=900),
+                    heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+            except asyncio.CancelledError:
+                await _write_ending(params, seq, "This turn was stopped.")
+                raise
+            except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
+                # A stop reaches here too, not only through `CancelledError`: cancelling
+                # a workflow cancels the activity it is waiting on, and Temporal reports
+                # that as an `ActivityError` wrapping the cancellation. Read as a failure
+                # it put "The assistant could not answer: Activity cancelled" in front of
+                # a user who had just pressed stop and knew perfectly well why the answer
+                # had ended.
+                if _was_cancelled(e):
+                    await _write_ending(params, seq, "This turn was stopped.")
+                else:
+                    await _write_ending(params, seq, f"The assistant could not answer: {e}")
+                raise
+
+            answer, seq = await _write_payload(
+                params, json.loads(raw), "(the assistant returned an empty answer)", seq
+            )
+
+            todo = await self._read_todo(params)
+            # Progress is the store's question, asked of the two snapshots either side of
+            # the last nag. It is deliberately indifferent to status: see `nagging`.
+            if todo_before_nag is not None and chat_todos.is_material_change(
+                todo_before_nag, todo
+            ):
+                nags_without_progress = 0
+
+            stop = nagging.stop_reason(todo, nags_without_progress, nags_this_turn)
+            if stop:
+                if stop != "resolved":
+                    await _write_row(params, seq, nagging.NAG_ROLE, stop)
+                    seq += 1
+                break
+
+            nags_this_turn += 1
+            nags_without_progress += 1
+            todo_before_nag = todo
+            message = nagging.nag_message(todo, nags_without_progress)
+            await _write_row(params, seq, nagging.NAG_ROLE, message)
+            seq += 1
+            round_params = replace(
+                params,
+                query=message,
+                start_seq=seq,
+                # Extended, never reset: five nags on a reset budget would be sixty tool
+                # turns, and a nag with no budget left cannot do anything at all.
+                extra_tool_turns=nags_this_turn * nagging.NAG_TOOL_TURN_INCREMENT,
+            )
+
         await _name_the_conversation(params, answer)
         return answer
+
+    async def _read_todo(self, params: "ResearchTaskParams") -> dict:
+        """This session's todo list, as the nag loop's two questions need it."""
+        raw = await workflow.execute_activity(
+            read_chat_todo,
+            ReadTodoParams(username=params.username, session_id=params.session_id),
+            start_to_close_timeout=timedelta(seconds=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
+        return json.loads(raw)
 
 
 @workflow.defn
@@ -268,6 +339,7 @@ class ResearchTask:
             )
             raise
 
-        return await _write_payload(
-            params, json.loads(raw), "(the research agent returned an empty answer)"
+        answer, _ = await _write_payload(
+            params, json.loads(raw), "(the research agent returned an empty answer)", seq
         )
+        return answer

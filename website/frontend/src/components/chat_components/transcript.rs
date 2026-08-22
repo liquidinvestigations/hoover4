@@ -208,6 +208,20 @@ fn MessageEntry(
                 }
             }
         }
+        // Deliberately unlike both neighbours it could be confused with: not the blue
+        // user bubble, because the user did not write it, and not the red error card,
+        // because nothing has gone wrong. A narrow inset note, aligned with the
+        // assistant's own column, reads as the turn talking to itself.
+        ChatRole::Nag => rsx! {
+            div {
+                style: "align-self: flex-start; max-width: 88%; background: #F5F3FF; \
+                        color: #5B21B6; border-left: 3px solid #A78BFA; padding: 8px 12px; \
+                        border-radius: 0 8px 8px 0; font-size: 0.9em; \
+                        white-space: pre-wrap; word-break: break-word; {ring}",
+                div { style: "font-weight: 600; margin-bottom: 2px;", "Nudged to continue" }
+                div { "{message.content}" }
+            }
+        },
         ChatRole::Error => {
             let retries = message.parsed_retry_errors();
             rsx! {

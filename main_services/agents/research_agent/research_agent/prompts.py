@@ -17,6 +17,35 @@ from __future__ import annotations
 
 import os
 
+#: The plan-first protocol, shared verbatim by both profiles.
+#:
+#: **When it applies is a mechanical rule, not a judgement.** `read_todo` reports
+#: `needs_plan`, which is true exactly when there is no plan yet or every item is
+#: resolved. Asking the model instead to decide whether a follow-up question started a
+#: new investigation is a judgement it makes inconsistently, and the answer would be
+#: unauditable either way.
+#:
+#: The prose before `write_todo` is deliberately part of the answer rather than
+#: narration folded behind the reasoning disclosure -- see
+#: `research_agent/agent.py::keeps_preamble`. It is the part a user would correct, and a
+#: plan proposed where nobody reads it is not a proposal.
+#:
+#: Kept to one short block for the reason the note below gives: this prompt is read by
+#: small models that follow a long instruction by doing all of it forever.
+PLAN_FIRST = """\
+Before you start work, call `read_todo`. If it reports `needs_plan`, then in your first
+reply, before any other tool call:
+
+1. restate what you understand the task to be, in one or two sentences;
+2. give two or three approaches you could take, each with one sentence on its
+   trade-off;
+3. call `write_todo` with the approach you chose as the goal and the steps as items.
+
+Then do the work, and call `mark_todo` as each item is finished or `edit_todo` when the
+plan itself has to change. Keep the list honest: an item you are abandoning is
+`cancelled` with a note saying why, never left pending or quietly deleted.\
+"""
+
 #: Two profiles, because the tool sets differ and so must the instructions about them.
 #: Kept deliberately short and directive. Qwen3.5-2B follows a long, numbered,
 #: multi-clause prompt by doing *all* of it forever: an earlier draft that listed five
@@ -43,8 +72,9 @@ before citing them, passing every hit worth reading in one call.
 When you have the answer, call `cite_documents` once with the documents you actually
 relied on, each with a quote copied exactly from the document and one line saying what it
 supports. Write the handles it gives you — `[D1]`, `[D2]` — into your answer at the point
-each claim is made. Cite what you used, not everything a search returned.\
-"""
+each claim is made. Cite what you used, not everything a search returned.
+
+""" + PLAN_FIRST
 
 FULL_RESEARCH = """\
 You are a comprehensive research assistant. You can read the user's own document
@@ -78,13 +108,22 @@ the point each claim is made. Web sources keep their URLs; the handles are for t
 own documents.
 
 If the web tools report `degraded` engines, say so: it means fewer sources than usual
-were reachable and the picture may be incomplete.\
-"""
+were reachable and the picture may be incomplete.
+
+""" + PLAN_FIRST
 
 PROFILES = {
     "internal_search": INTERNAL_SEARCH,
     "full_research": FULL_RESEARCH,
 }
+
+__all__ = [
+    "PLAN_FIRST",
+    "INTERNAL_SEARCH",
+    "FULL_RESEARCH",
+    "PROFILES",
+    "system_prompt",
+]
 
 DEFAULT_PROFILE = "internal_search"
 
@@ -105,4 +144,3 @@ def system_prompt() -> str:
     return PROFILES.get(name, INTERNAL_SEARCH)
 
 
-__all__ = ["INTERNAL_SEARCH", "FULL_RESEARCH", "PROFILES", "system_prompt"]

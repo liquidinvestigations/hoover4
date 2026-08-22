@@ -45,6 +45,14 @@ class ChatRequest(BaseModel):
             "sending; an empty/None value uses the agent's configured default."
         ),
     )
+    extra_tool_turns: int = Field(
+        default=0,
+        description=(
+            "Tool turns granted on top of the agent's own budget for this run only. "
+            "The chat workflow raises it by a fixed increment each time it nags, so a "
+            "nagged turn has room to act without the budget being reset."
+        ),
+    )
 
 
 class ChatResult(BaseModel):
@@ -218,6 +226,7 @@ async def chat_stream(request: ChatRequest):
                         username=request.username,
                         allowed_collections=request.allowed_collections,
                         llm_model=request.llm_model,
+                        extra_tool_turns=request.extra_tool_turns,
                     ):
                         last_chunk = chunk
                         # Format as Server-Sent Events with proper JSON
@@ -266,6 +275,7 @@ async def chat(request: ChatRequest):
             username=request.username,
             allowed_collections=request.allowed_collections,
             llm_model=request.llm_model,
+            extra_tool_turns=request.extra_tool_turns,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
