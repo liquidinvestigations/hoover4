@@ -43,7 +43,7 @@ task is the whole of the outside view.
 
 | bucket | p50 | p75 | p90 | typical tool calls | samples |
 |---|---:|---:|---:|---:|---:|
-| **implementation** | 41 | 58 | 92 | 156 | 42 |
+| **implementation** | 43 | 58 | 92 | 156 | 50 |
 | **read-only review** | 10 | 12 | 14 | 46 | 24 |
 | **verify / browser** | 23 | 29 | 29 | 76 | 4 |
 | **deploy / remote** | 73 | 157 | 184 | 134 | 6 |
@@ -57,6 +57,21 @@ guess wearing a percentile.
 A pass is classified by what it *cost*, not by what it was called: a documentation pass that
 made sixty edits is an implementation pass, and the script buckets it that way. That is why
 the documentation row is as tight as it is — it holds only the passes that really were prose.
+
+**Two cautions about the two smallest buckets, both learned by getting an estimate wrong.**
+
+**A demonstration is not a browser pass — cost it as implementation.** A pass sent to restart
+infrastructure, wait for recovery and repeat runs was forecast from the verify/browser row at 30
+minutes and took **50.6**, which is the implementation row plus its adders almost exactly. The
+browser row holds passes that walked a page and took a screenshot; anything that restarts a
+container, waits on it, and repeats belongs in implementation however its deliverable reads.
+
+**The verify/browser and documentation rows cannot grow on their own.** Classification looks at
+the description first, so a pass whose title happens to avoid the words *verify*, *browser*,
+*acceptance*, *smoke* or *screenshot* falls through to the cost-based default. That is the right
+default and it is why those two rows stay small and stale. **Do not read their percentiles as
+having been confirmed by recent work** — reach for the implementation row when in doubt, because
+being wrong in that direction costs a forecast and being wrong in the other costs a schedule.
 
 How to pick: if it writes source, implementation. If it only reads, review. If its deliverable
 is a screenshot or a driven flow, verify/browser. If it touches a host that is not this one,
