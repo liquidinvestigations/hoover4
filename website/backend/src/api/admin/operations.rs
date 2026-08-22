@@ -483,10 +483,14 @@ async fn start_operation_workflow(
     } else {
         String::new()
     };
+    // No conflict or reuse policy is sent. This server's HTTP API rejects the request
+    // outright with `unknown field "workflowIdConflictPolicy"` rather than ignoring it,
+    // and the policy would decide nothing anyway: the id carries a timestamp, so two
+    // dispatches never share one, and the server's own default already refuses a start
+    // against a running execution of the same id.
     let body = serde_json::json!({
         "workflowType": { "name": "Operation" },
         "taskQueue": { "name": "operations-queue" },
-        "workflowIdConflictPolicy": "WORKFLOW_ID_CONFLICT_POLICY_FAIL",
         "input": [ {
             "op_id": op_id,
             "kind": kind,

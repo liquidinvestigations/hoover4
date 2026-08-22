@@ -92,6 +92,9 @@ fn OperationsContent() -> Element {
                 label { style: LABEL,
                     "State"
                     select {
+                        // Stable ids, because the screenshot harness drives these two
+                        // controls and a selector built from styling breaks silently.
+                        id: "x-ops-filter-state",
                         style: SELECT,
                         value: "{state_filter}",
                         onchange: move |e| {
@@ -107,6 +110,7 @@ fn OperationsContent() -> Element {
                 label { style: LABEL,
                     "Collection"
                     select {
+                        id: "x-ops-filter-collection",
                         style: SELECT,
                         value: "{collection_filter}",
                         onchange: move |e| {
