@@ -43,20 +43,25 @@ def graceful_shutdown_timeout() -> timedelta:
     return timedelta(seconds=seconds)
 
 
-async def run_until_signalled(worker: Worker) -> None:
-    """Run a worker until it finishes or the process is asked to stop.
+async def run_until_signalled(*workers: Worker) -> None:
+    """Run workers until they finish or the process is asked to stop.
 
     `Worker.run()` returns when `shutdown()` is called, and nothing calls it unless
     something listens for the signal. Without this, SIGTERM kills the interpreter
     mid-activity and the graceful period configured on the worker never happens --
     the setting is present, correct and unreachable.
 
+    Variadic because one process may serve several queues, and a per-worker handler
+    would not do: `add_signal_handler` REPLACES the handler for a signal rather than
+    adding to it, so the last worker to install one would be the only one ever told to
+    drain and the others would be killed mid-activity. One handler stops all of them.
+
     Both SIGTERM (what a container runtime sends) and SIGINT (Ctrl-C) are handled, and
     a second signal is left to the default disposition so an operator can still force
     the issue.
     """
     loop = asyncio.get_running_loop()
-    name = worker.task_queue
+    name = ", ".join(w.task_queue for w in workers)
     stopping = False
 
     def request_shutdown(signum: int) -> None:
@@ -67,7 +72,8 @@ async def run_until_signalled(worker: Worker) -> None:
         log.info("%s: %s received, draining in-flight activities",
                  name, signal.Signals(signum).name)
         loop.remove_signal_handler(signum)
-        loop.create_task(worker.shutdown())
+        for worker in workers:
+            loop.create_task(worker.shutdown())
 
     for signum in (signal.SIGTERM, signal.SIGINT):
         try:
@@ -77,7 +83,7 @@ async def run_until_signalled(worker: Worker) -> None:
             # without it). The worker still runs; it just dies abruptly.
             log.warning("%s: cannot install a %s handler", name, signum)
 
-    await worker.run()
+    await asyncio.gather(*(worker.run() for worker in workers))
     log.info("%s: shut down", name)
 
 
@@ -559,5 +565,78 @@ async def run_index_planner_worker():
       max_concurrent_activities=CONCURRENCY,
     )
     await run_until_signalled(worker)
+
+
+#: Slots per operations queue. The numbers are the point of the split, not the split.
+#:
+#: `operations-queue` orchestrates and never does store work, so its slots are cheap.
+#: The three store queues are separated so a long backup on one store cannot starve
+#: another, and each is capped at what that store can usefully absorb: ClickHouse gets
+#: ONE because concurrent backups and restores are disabled in its server config
+#: anyway, and a second slot would only queue inside ClickHouse where nothing here can
+#: see it.
+OPERATIONS_QUEUE_SLOTS = {
+    "operations-queue": 8,
+    "operations-clickhouse-queue": 1,
+    "operations-manticore-queue": 2,
+    "operations-garage-queue": 2,
+}
+
+
+async def run_operations_worker():
+  """Serve all four operations queues from one process.
+
+  One process rather than four because the slot counts, not the process boundary, are
+  what bounds the load: thirteen slots of mostly-waiting work do not need four
+  interpreters, and one process means one place for the container's memory budget to
+  apply. The queues stay separate so a store's work cannot starve another store's.
+
+  The three store queues carry no activities yet. They are declared because the queue
+  name is what a workflow addresses, and a workflow that names a queue nothing is
+  polling waits for ever with no error anywhere -- declaring them now means the first
+  store activity registered here is reachable the moment it exists. Each carries the
+  row writer, because the SDK refuses a worker with neither a workflow nor an
+  activity, and because it is the one activity every store path needs anyway.
+  """
+  from .P_ops.activities import (
+      record_operation_state, reindex_collection_activity, sample_dataset_progress,
+  )
+  from .P_ops.workflows import Operation
+  from .visibility import ensure_search_attributes
+  log.info("Starting Operations worker...")
+  client = await Client.connect("temporal:7233")
+  attach_temporal_client(client)
+  await ensure_search_attributes(client)
+
+  orchestration = worker_concurrency(
+      "operations", OPERATIONS_QUEUE_SLOTS["operations-queue"])
+  with concurrent.futures.ThreadPoolExecutor(max_workers=orchestration) as executor:
+    workers = [Worker(
+      client,
+      interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
+      task_queue="operations-queue",
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflows=[Operation],
+      activities=[record_operation_state, sample_dataset_progress,
+                  reindex_collection_activity],
+      activity_executor=executor,
+      max_concurrent_activities=orchestration,
+    )]
+    for queue, slots in OPERATIONS_QUEUE_SLOTS.items():
+      if queue == "operations-queue":
+        continue
+      workers.append(Worker(
+        client,
+        interceptors=[TaskTimingInterceptor()],
+        workflow_runner=sandboxed_runner(),
+        task_queue=queue,
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflows=[],
+        activities=[record_operation_state],
+        activity_executor=executor,
+        max_concurrent_activities=slots,
+      ))
+    await run_until_signalled(*workers)
 
 # Removed parallel run_worker. Each worker runs in its own process via main CLI.

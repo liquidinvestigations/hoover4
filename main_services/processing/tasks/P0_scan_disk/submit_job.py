@@ -43,22 +43,27 @@ def _insert_dataset_row(client, collectionname, dataset_name, collection_dataset
     log.info("Dataset row created")
 
 
-def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool = True):
+def prepare_disk_dataset(collectionname: str, dataset_name: str, path: str) -> str:
+    """Validate the request and make sure the dataset can be scanned. Returns the path.
+
+    Everything a dispatch needs to do BEFORE any workflow exists: check the names,
+    check the collection, provision the collection's storage, and write the registry
+    row if it is missing. Separate from starting the work because both entry points —
+    the direct workflow start and the operation — need exactly this and nothing more,
+    and because a caller must learn that a path does not exist from the command it
+    typed rather than from a workflow that fails a minute later.
+    """
     from database.clickhouse import (
         get_global_client,
         validate_collectionname,
     )
     from database.s3 import ensure_collection_storage
-    from temporalio.client import Client as TemporalClient
-    import temporalio.common
     import os
 
     try:
         validate_collectionname(collectionname)
     except ValueError as e:
         raise click.ClickException(str(e))
-
-    from tasks.visibility import dataset_search_attributes
 
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
     if _slugify_dataset_name(dataset_name) != dataset_name:
@@ -112,7 +117,21 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
             _insert_dataset_row(
                 client, collectionname, dataset_name, collection_dataset, path, now
             )
+    return path
 
+
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool = True):
+    """Prepare a disk dataset and start `IngestDiskDataset` for it directly.
+
+    The scan only. Plan computation and execution are separate workflows and must not
+    start until the scan has finished, so a caller of this drives them itself.
+    """
+    from temporalio.client import Client as TemporalClient
+    import temporalio.common
+    from tasks.visibility import dataset_search_attributes
+
+    collection_dataset = compose_collection_dataset(collectionname, dataset_name)
+    path = prepare_disk_dataset(collectionname, dataset_name, path)
 
     async def _start_workflow():
         log.info("Starting temporal workflow...")

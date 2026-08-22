@@ -178,35 +178,150 @@ def test_extract_ner_from_text():
 def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool):
     """Create a dataset inside an existing collection and start disk ingestion.
 
-    By default this BLOCKS through all three stages in order -- scan, compute
-    plans, execute plans -- because each one needs the previous to have
-    finished. Killing the CLI (a redeploy, a lost ssh session) does not stop
-    the workflows: they keep running server-side while the caller sees only a
-    dead command.
+    Submits an `add_dataset` operation, prints its id, and then follows it. All three
+    stages -- scan, compute plans, execute plans -- are sequenced server-side by the
+    operation, so this command holds nothing the work depends on.
 
-    --no-wait submits ONLY the disk scan and returns. It deliberately does not
-    submit the plan stages: computing plans over a half-scanned dataset would
-    silently plan a subset of the files. Use it when something else drives the
-    later stages, and poll processing_plan_finished to know when it is done.
+    Ctrl-C therefore DETACHES: it stops the watching, never the ingest. `--no-wait`
+    skips the watching from the start. Either way the operation id names the work for
+    as long as the log exists, which is for ever.
+
+    An existing dataset is a rescan, not a collision: the scan re-ingests every path it
+    finds and tombstones what it no longer finds, which is how an edited or deleted
+    file is picked up. A second dispatch is refused only while the first one is still
+    running.
     """
-    from tasks.P0_scan_disk.submit_job import add_disk_dataset, compose_collection_dataset
-    add_disk_dataset(collectionname, dataset_name, path, wait=wait)
-    if not wait:
-        click.echo(
-            "Submitted the disk scan only. Plan computation and execution were "
-            "NOT started: they must not run until the scan has finished. Watch the "
-            "IngestDiskDataset workflow in the Temporal UI, then start the rest from "
-            "the dataset's page in the admin UI, which triggers ComputePlans and "
-            "ExecutePlans for you."
-        )
-        return
+    from tasks.P0_scan_disk.submit_job import (
+        compose_collection_dataset, prepare_disk_dataset,
+    )
+    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
+    from database.operations import OperationLocked
+
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
+    path = prepare_disk_dataset(collectionname, dataset_name, path)
+    try:
+        op_id = submit_operation(
+            "add_dataset", collectionname=collectionname,
+            collection_dataset=collection_dataset, dataset_path=path,
+            detail={"dataset_path": path, "dataset_name": dataset_name},
+        )
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    if not wait:
+        click.echo(where_to_look(op_id))
+        return
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
-    from tasks.P1_compute_plans.submit_job import submit_compute_plans
-    asyncio.run(submit_compute_plans(collectionname, collection_dataset))
 
-    from tasks.P2_execute_plan.submit_job import submit_execute_plans
-    asyncio.run(submit_execute_plans(collectionname, collection_dataset))
+@cli.group()
+def operations():
+    """Inspect and control long-running operations.
+
+    Every significant command in this CLI dispatches one of these and then watches it.
+    The operation, not the command, is what the work belongs to: these subcommands are
+    how a caller that detached, or a caller that never attached, finds it again.
+    """
+
+
+@operations.command(name="list")
+@click.option("--state", type=click.Choice(["pending", "running", "finished",
+                                            "errored", "cancelled"]), default="")
+@click.option("--collection", "collectionname", type=str, default="")
+@click.option("--kind", type=str, default="")
+@click.option("--limit", type=int, default=25, show_default=True)
+def operations_list(state: str, collectionname: str, kind: str, limit: int):
+    """Recent operations, newest first."""
+    from database.operations import list_operations
+    from tasks.P_ops.cli import format_row
+
+    rows = list_operations(state=state, collectionname=collectionname, kind=kind,
+                           limit=limit)
+    if not rows:
+        click.echo("No operations match.")
+        return
+    for row in rows:
+        click.echo(format_row(row))
+
+
+@operations.command(name="show")
+@click.argument("op_id", type=str)
+@click.option("--follow/--no-follow", default=False, show_default=True,
+              help="Keep printing until it reaches a terminal state.")
+def operations_show(op_id: str, follow: bool):
+    """One operation in full, including the parameters it was dispatched with."""
+    from database.operations import get_operation
+    from tasks.P_ops.cli import format_row, tail_operation
+
+    row = get_operation(op_id)
+    if row is None:
+        raise click.ClickException(f"No operation with id {op_id}.")
+    click.echo(format_row(row))
+    click.echo(f"started   {row['started_at']}")
+    if row["finished_at"].timestamp() > 0:
+        click.echo(f"finished  {row['finished_at']}")
+    click.echo(f"user      {row['user_id']}")
+    if row["rerun_of"]:
+        click.echo(f"rerun of  {row['rerun_of']}")
+    if row["detail"]:
+        click.echo(f"detail    {row['detail']}")
+    if row["error"]:
+        click.echo(f"error     {row['error']}")
+    if follow:
+        tail_operation(op_id)
+
+
+@operations.command(name="rerun")
+@click.argument("op_id", type=str)
+@click.option("--wait/--no-wait", default=True, show_default=True)
+def operations_rerun(op_id: str, wait: bool):
+    """Dispatch a fresh operation with the same kind and target as an existing one.
+
+    A new id and a new row, never a resumption: the original run's record is what the
+    log is for, and overwriting it would hide the attempt that made a re-run necessary.
+    """
+    import json
+    from database.operations import OperationLocked, get_operation
+    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
+
+    row = get_operation(op_id)
+    if row is None:
+        raise click.ClickException(f"No operation with id {op_id}.")
+    try:
+        detail = json.loads(row["detail"] or "{}")
+    except ValueError:
+        detail = {}
+    try:
+        new_id = submit_operation(
+            row["kind"], collectionname=row["collectionname"],
+            collection_dataset=row["collection_dataset"],
+            dataset_path=detail.get("dataset_path", ""),
+            detail=detail, rerun_of=op_id,
+        )
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {new_id}")
+    if not wait:
+        click.echo(where_to_look(new_id))
+        return
+    tail_operation(new_id)
+
+
+@operations.command(name="cancel")
+@click.argument("op_id", type=str)
+def operations_cancel(op_id: str):
+    """Cancel an operation and release the lock it holds.
+
+    `cancelled` is a state of its own, not a failure, and it is re-runnable: every
+    pipeline stage is idempotent, so stopping one part-way loses progress and nothing
+    else.
+    """
+    from tasks.P_ops.cli import request_cancel
+
+    request_cancel(op_id)
+    click.echo(f"{op_id} cancelled")
 
 
 async def _open_index_workflows(collectionname: str) -> list[str]:
@@ -243,17 +358,36 @@ def reindex_collection(collectionname: str):
     place, they are rebuilt from scratch here.
 
     This truncates the shard ledger, the assignments and index_state, so it refuses
-    while any IndexDatasetPlan workflow is open for the collection: an in-flight writer
-    would otherwise record index_state rows into shards this is about to drop, and the
-    result is a ledger that claims documents no table holds.
+    while ANY operation for the collection is non-terminal, and while any
+    IndexDatasetPlan workflow is open for it: an in-flight writer would otherwise
+    record index_state rows into shards this is about to drop, and the result is a
+    ledger that claims documents no table holds. The docstring used to ask the caller
+    to stop the indexing workers first; the operations lock is what enforces it.
+
+    Dispatched as an operation and then followed, so Ctrl-C detaches rather than
+    abandoning a collection with a truncated ledger.
     """
-    from database.clickhouse import get_collection_client, validate_collectionname
-    from database.manticore import drop_collection_tables
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked, open_operations_for_collection
+    from tasks.P_ops.cli import submit_operation, tail_operation
 
     try:
         validate_collectionname(collectionname)
     except ValueError as e:
         raise click.ClickException(str(e))
+
+    # Two guards, and they answer different questions. The operations lock refuses a
+    # second dispatch of anything that is writing to this collection; the Temporal
+    # query catches an indexing run started before operations existed, or started by a
+    # surface that does not go through them yet.
+    holding = open_operations_for_collection(collectionname)
+    if holding:
+        names = ", ".join(f"{r['op_id']} ({r['kind']}, {r['state']})" for r in holding[:5])
+        raise click.ClickException(
+            f"{len(holding)} operation(s) are still open for {collectionname} — "
+            f"{names}. Wait for them, or cancel one with `main.py operations cancel "
+            f"<op_id>`, then run this again."
+        )
 
     running = asyncio.run(_open_index_workflows(collectionname))
     if running:
@@ -263,47 +397,14 @@ def reindex_collection(collectionname: str):
             f"them in the Temporal UI, then run this again."
         )
 
-    dropped = drop_collection_tables(collectionname)
-    log.info("Dropped %d Manticore shard tables of %s", len(dropped), collectionname)
-
-    with get_collection_client(collectionname) as client:
-        client.command("TRUNCATE TABLE manticore_shards")
-        client.command("TRUNCATE TABLE manticore_shard_assignments")
-        client.command("TRUNCATE TABLE index_state")
-        plans = client.query(
-            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
-            "ORDER BY collection_dataset, plan_hash"
-        ).result_rows
-
-    if not plans:
-        log.warning("No finished plans found for %s - nothing to re-index", collectionname)
-        return
-
-    async def _start_workflows():
-        from temporalio.client import Client as TemporalClient
-        import temporalio.common
-        from tasks.P6_index_data.workflows import IndexDatasetPlan
-        from tasks.P6_index_data.params import IndexDatasetPlanParams
-        from tasks.visibility import dataset_search_attributes
-
-        client = await TemporalClient.connect("temporal:7233")
-        for collection_dataset, plan_hash in plans:
-            await client.start_workflow(
-                IndexDatasetPlan.run,
-                IndexDatasetPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
-                id=f"reindex-{collection_dataset}-{plan_hash}",
-                task_queue="processing-common-queue",
-                # Every CLI invocation must actually re-index: allow reusing the id of
-                # a previous (completed) run, and dedupe only concurrent invocations
-                # while one is still running.
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            log.info("Re-index queued: %s plan %s", collection_dataset, plan_hash[:8])
-
-    asyncio.run(_start_workflows())
-    print(f"reindex of {collectionname}: {len(plans)} plan(s) queued")
+    try:
+        op_id = submit_operation("reindex_collection", collectionname=collectionname)
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="purge-dataset")
@@ -819,9 +920,15 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "operations"]))
 def worker(worker_type: str | None = None):
-    """Run worker(s). If worker_type provided, runs that worker; else spawns all."""
+    """Run worker(s). If worker_type provided, runs that worker; else spawns all.
+
+    `operations` is deliberately NOT in the spawn set below: it runs in its own
+    container, with its own memory and CPU budget and the datastore volumes mounted,
+    so that a backup or a restore cannot take capacity from ingestion. Adding it here
+    would run a second copy of it beside the pipeline fleet.
+    """
     import sys
     import subprocess
 
@@ -849,6 +956,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "index-planner":
             from tasks.run_worker import run_index_planner_worker
             asyncio.run(run_index_planner_worker())
+        elif worker_type == "operations":
+            from tasks.run_worker import run_operations_worker
+            asyncio.run(run_operations_worker())
         else:
             raise click.ClickException(f"Unknown worker type: {worker_type}")
         return

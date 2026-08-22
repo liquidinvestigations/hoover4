@@ -174,6 +174,19 @@ indexing_concurrency  =            ; default 1
 # activities to unwind.
 worker_graceful_shutdown_seconds = 60
 
+# ---- the operations container ---------------------------------------------------
+# Backups, restores, re-indexes and every other long operation a person can start run
+# here rather than in the pipeline fleet, with a budget of their own, so that a restore
+# cannot take capacity from ingestion. The split is enforced by the runtime rather than
+# by the queues being trusted to behave.
+ops_mem_limit  = 4000M
+ops_cpus       = 4
+; Host directory for backups, mounted read-write. Empty uses a managed volume.
+ops_backup_dir =
+; Base URL of the admin UI, used only to tell a detached CLI where to watch its
+; operation. Empty prints the operation id and the command that shows it, with no URL.
+admin_base_url =
+
 # ---- runtime behaviour when the GPU host is unreachable -------------------------
 gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
 gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline

@@ -130,6 +130,18 @@ DEFAULTS = {
         # render_main_env) rather than configured beside it, because an SDK grace period
         # longer than the container's is a lie: the runtime kills the process first.
         "worker_graceful_shutdown_seconds": "60",
+        # The operations container. Its own budget, separate from the worker's, because
+        # that is what makes "operations cannot starve ingestion" a property of the
+        # runtime instead of a convention nobody enforces.
+        "ops_mem_limit": "4000M",
+        "ops_cpus": "4",
+        # Where backups are written. Empty uses a managed volume; a host path here is
+        # bind-mounted instead, and must exist.
+        "ops_backup_dir": "",
+        # Base URL of the admin UI, used only to tell a detached CLI where to look.
+        # Empty prints the operation id and the command that shows it, with no URL --
+        # which is correct for a deployment whose address this file does not know.
+        "admin_base_url": "",
         # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
         "gpu_connect_timeout_ms": "2000",
@@ -577,6 +589,18 @@ def render_main_env(cfg):
     env["HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS"] = str(graceful)
     env["HOOVER4_WORKER_STOP_GRACE_PERIOD"] = "%ds" % (
         graceful + WORKER_SHUTDOWN_MARGIN_SECONDS)
+
+    # The operations container. It is a Temporal worker like the pipeline fleet, so it
+    # reads the same graceful period from the same key above; only its budget and its
+    # backup root are its own.
+    env["HOOVER4_OPS_MEM_LIMIT"] = cfg.get(m, "ops_mem_limit")
+    env["HOOVER4_OPS_CPUS"] = cfg.get(m, "ops_cpus")
+    # A host path bind-mounts; the empty default names a managed volume instead, so the
+    # container comes up on a box where no backup directory has been created yet.
+    env["HOOVER4_OPS_BACKUP_DIR"] = cfg.get(m, "ops_backup_dir") or "ops_backups"
+    # Only ever used to tell a detached CLI where its operation can be watched. Not a
+    # default anywhere in the tree: a deployment's address belongs to its own config.
+    env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
 
     return env
 

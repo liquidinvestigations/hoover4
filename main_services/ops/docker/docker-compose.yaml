@@ -468,6 +468,62 @@ services:
       - "LLM_MODEL=${LLM_MODEL:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
 
+  # Long operations a person can start: ingests, re-indexes, and the backup and restore
+  # paths that need file access to the stores. Split out of hoover4-worker so that its
+  # load is bounded by the runtime rather than by the queues behaving: a restore that
+  # saturated the pipeline fleet would stall ingestion with nothing in the pipeline to
+  # blame. It runs the SAME image as the worker; only the command and the budget differ.
+  hoover4-ops:
+    container_name: hoover4-ops
+    build:
+      context: ../../processing
+      dockerfile: Dockerfile
+    # No `migrate` here. The worker owns that, and two containers racing the migration
+    # runner at boot is how a checksum mismatch becomes an outage on both of them.
+    command: bash -exc "uv run main.py worker operations"
+    networks:
+      - hoover4
+    restart: unless-stopped
+    mem_limit: ${HOOVER4_OPS_MEM_LIMIT:-4000M}
+    memswap_limit: ${HOOVER4_OPS_MEM_LIMIT:-4000M}
+    cpus: ${HOOVER4_OPS_CPUS:-4}
+    # It is a Temporal worker, so it drains exactly like the pipeline fleet does and
+    # takes the same period from the same ini key.
+    stop_grace_period: ${HOOVER4_WORKER_STOP_GRACE_PERIOD:-90s}
+    volumes:
+      - ../../processing:/app
+      # The backup root, read-write. A host path if one is configured, otherwise the
+      # managed volume named here, so this container comes up on a box where no backup
+      # directory has been created — podman refuses a missing bind-mount source.
+      - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/backups
+      # The three stores' data directories, READ-ONLY. Read-only because nothing here
+      # may write into a live store's files: the backup paths read, and the restore
+      # paths go through each store's own protocol, which is the only writer that
+      # knows how to keep a store consistent with itself.
+      - clickhouse_data:/stores/clickhouse:ro
+      - manticore_data_v14:/stores/manticore:ro
+      - garage_data:/stores/garage/data:ro
+      - garage_meta:/stores/garage/meta:ro
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+    depends_on:
+      temporal:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
+    environment:
+      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
+      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
+      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
+      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
+      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
+      # Same passthrough as the worker, and for the same reason: a rendered .env is
+      # substituted INTO this file and does not reach the container by itself.
+      - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
+      - "HOOVER4_OPERATIONS_CONCURRENCY=${HOOVER4_OPERATIONS_CONCURRENCY:-}"
+      - "HOOVER4_BACKUP_ROOT=/backups"
+
   hoover4-website:
     # image: hoover4-website
     container_name: hoover4-website
@@ -635,6 +691,10 @@ volumes:
   hoover4-website-target:
     driver: local
   easyocr_models_cache:
+    driver: local
+  # The default backup root, used when no host directory is configured. Not named
+  # *_cache: a backup is the one thing a reset must not remove.
+  ops_backups:
     driver: local
   # vllm_huggingface_cache:
   #   driver: local
