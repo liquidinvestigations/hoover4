@@ -142,6 +142,36 @@ not just a live thread. `threading`/`contextvars`/`time` are imported lazily ins
 helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from
 here and the workflow sandbox restricts those modules.
 
+## Stopping a worker, and what a deploy of this directory may break
+
+A worker being shut down gets a graceful period — `worker_graceful_shutdown_seconds` in
+the configuration — before its in-flight activities are cancelled, and the worker
+container's stop grace period is derived from that same key with a margin on top, so the
+runtime cannot SIGKILL through it. Both halves are needed: without the SDK setting the
+activities die where they stand, and without the container setting the SDK's period is
+unreachable. The supervisor process forwards `SIGTERM` to every worker child, because a
+container runtime signals only PID 1 and the workers are its grandchildren.
+
+Batch activities check `stop_if_worker_is_stopping()` between items. It raises a
+retryable error rather than returning early: a batch that returned a partial result would
+report success over work it had not done, and its workflow would mark the stage finished.
+Raising hands the batch back to Temporal, which redelivers it to a live worker, which
+skips the already-written work through the same left-anti joins and watermarks that make
+every stage re-runnable. Failing at once also costs an attempt instead of a heartbeat
+deadline, which is what makes a restart under load survivable: an activity killed in
+place is not noticed until its deadline expires, and that time comes out of the same
+budget the retries need.
+
+**The asymmetric deploy rule.** A running execution replays its history against the code
+deployed *now*. Changing an `activities.py` is free — activity results are already in the
+history, and the new code only runs for the next call. Changing a `workflows.py` — the
+order of its commands, the ids it gives its children, a loop, a timer — makes a live
+execution's replay disagree with its history, and it wedges with a non-determinism error
+until someone terminates it. So a workflow change requires no live executions of the
+workflows it touches: drain the queue, or terminate and re-drive, and only then restart
+the worker. `.agents/check-workflow-diff.py` says which of the two a diff is and names
+the files.
+
 Outbound HTTP from activities (NER, OCR, embeddings) goes through
 `remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
 2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,

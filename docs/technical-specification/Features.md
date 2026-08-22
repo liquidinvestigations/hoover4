@@ -36,6 +36,7 @@ languages.
 | `F-ingest-12` | Re-run one stage for the documents it failed on, without re-ingesting | `main.py retry-failed-files` |
 | `F-ingest-13` | Re-index a collection from parsed content, without re-parsing | `main.py reindex-collection` |
 | `F-ingest-14` | Purge an abandoned dataset's rows from every table and the index | `main.py purge-dataset` |
+| `F-ingest-15` | Survive a worker restart mid-ingest: in-flight activities are drained rather than killed, batch stages give their work back at an item boundary, and the dataset finishes with every document's chunks, vectors and index rows | `tasks/run_worker.py`, `tasks/heartbeat.py`, `main_services/verify-stack.sh --restart-resilience` |
 
 ## Search
 

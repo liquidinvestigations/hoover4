@@ -84,6 +84,25 @@ uptime
 Batch your fixes so one restart serves several. On a shared machine, check the owner column
 of the process list before concluding that the load is yours.
 
+**Check whether the diff is one you may deploy under live executions.** A running workflow
+replays its history against the code deployed *now*. An activity change is free: its
+results are already in the history and the new code only runs for the next call. A
+workflow change — the order of its commands, the ids it gives its children, a loop, a
+timer — makes the replay disagree with the history, and the execution wedges with a
+non-determinism error until someone terminates it. A workflow change therefore requires no
+live executions of the workflows it touches: drain the queue, or terminate what is running
+and re-drive it, and only then deploy.
+
+```
+.agents/check-workflow-diff.py
+```
+
+Exit 0 means activity-only, deploy whenever. Exit 1 names the workflow files and means
+drain first. The worker's own restart is graceful — in-flight activities get
+`worker_graceful_shutdown_seconds` to finish before they are cancelled, and the container's
+stop grace period is derived from the same key — but no graceful period helps a replay that
+no longer matches its history.
+
 ## What a deploy does not do
 
 **Bringing containers up is not a deployment; it is a no-op with opinions.** It reuses
