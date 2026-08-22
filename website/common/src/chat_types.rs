@@ -257,14 +257,15 @@ impl ChatMessageItem {
     }
 }
 
-/// One agent run currently in flight, for the admin "live chats" panel.
+/// One agent turn currently running, for the admin "live chats" panel.
 ///
-/// Held in memory by the website process, not in ClickHouse: it describes work being
-/// done *right now* by this process, and a row that outlives the process that was doing
-/// the work would be a lie. See `backend::api::chat::live_runs`.
+/// Read from Temporal, not from the website's memory: every turn is a workflow, so the
+/// list is true across a website restart in both directions — it does not lose the turns
+/// that were already running, and it does not keep listing the ones whose process died.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiveChatRun {
-    pub run_id: u64,
+    /// The Temporal workflow id — the handle the kill button cancels.
+    pub workflow_id: String,
     pub username: String,
     pub session_id: String,
     pub title: String,
@@ -276,10 +277,6 @@ pub struct LiveChatRun {
     pub running_ms: u64,
     /// RFC3339 start time.
     pub started_at: String,
-    /// Which attempt is in flight (1-based).
-    pub attempt: u32,
-    /// Set when an admin has asked for it to stop and it has not noticed yet.
-    pub cancel_requested: bool,
 }
 
 /// One in-flight tool call, as far as the stream has reported it.

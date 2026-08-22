@@ -1,20 +1,22 @@
-"""Activities for long-running AI research tasks.
+"""Activities for durable AI agent turns.
 
-A chat message is answered synchronously by the website (seconds to a couple of
-minutes). A *research* task is the other mode: the full research agent searching
-exhaustively across collections and the open web, which can run far longer than an HTTP
-request should. Those runs live here, in Temporal, so they survive a browser reload, a
-website restart, and a worker crash.
+**Every turn runs here** — an ordinary chat message and an exhaustive research run alike.
+They differ in which agent they reach, how long they are allowed to take and which queue
+they wait on, not in what they do. The website holds nothing open, so a browser reload, a
+website restart and a worker crash all cost the turn nothing.
 
-The ACL travels with the task. This activity never resolves permissions itself — the
-website resolved them when the task was submitted and passed the resulting collection
-list in, exactly as it does for a synchronous chat.
+The ACL travels with the task. These activities never resolve permissions themselves —
+the website resolved them against the caller's identity when the turn was submitted and
+passed the resulting collection list in. The same goes for the model id: a forged one has
+to be refused where the user is known, which is not here.
 """
 
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import requests
 from temporalio import activity
@@ -74,6 +76,10 @@ class ResearchTaskParams:
     #: a format that both sides have to keep reimplementing. Empty derives the research
     #: form from `(session_id, start_seq)`, which is what older callers rely on.
     turn_uuid: str = ""
+    #: Whether this turn should name the conversation when it finishes. Set on the first
+    #: turn only: the title is drawn from the exchange that started the thread. Defaults
+    #: to false so an older caller keeps the title the website already wrote.
+    summarize_session: bool = False
 
 
 @activity.defn
@@ -191,3 +197,140 @@ def write_chat_message(params: WriteResultParams) -> int:
         params.role, params.seq, params.session_id,
     )
     return params.seq
+
+
+@dataclass
+class SummarizeSessionParams:
+    """One conversation to name, and the exchange to name it from."""
+
+    username: str
+    session_id: str
+    user_message: str
+    answer: str
+
+
+@activity.defn
+@with_heartbeat
+def summarize_session(params: SummarizeSessionParams) -> str:
+    """Name a conversation from its first exchange. Returns the title, or empty.
+
+    **This activity cannot fail.** It runs after the answer is written and read, so
+    everything that could go wrong here -- a dead endpoint, an unusable reply, an
+    unreachable database -- is worth exactly one mediocre title and nothing more. It
+    returns instead of raising, and the workflow shields the call as well, because the
+    caller must not have to trust this one to be careful.
+
+    The provisional title the website wrote from the first message stays in place
+    whenever this produces nothing.
+    """
+    activity.heartbeat("summarising the conversation")
+    from tasks.P_agent.summarize import title_and_summary
+
+    try:
+        result = title_and_summary(params.user_message, params.answer)
+    except Exception:  # noqa: BLE001 - see the docstring: a title is never worth a turn
+        log.warning("[P_agent] the summariser raised", exc_info=True)
+        return ""
+
+    _record_summarizer_call(params, result)
+    if not result.title:
+        log.info(
+            "[P_agent] session %s keeps its provisional title: %s",
+            params.session_id, result.error or "no title produced",
+        )
+        return ""
+
+    try:
+        _set_session_title(params.username, params.session_id, result.title, result.summary)
+    except Exception:  # noqa: BLE001
+        log.warning("[P_agent] could not store the session title", exc_info=True)
+        return ""
+    return result.title
+
+
+def _set_session_title(username: str, session_id: str, title: str, summary: str) -> None:
+    """Rewrite one `chat_sessions` row with a new title and summary.
+
+    Read-modify-write rather than an UPDATE: the table is a ReplacingMergeTree keyed on
+    `(username, session_id)` and versioned by `updated_at`, so a whole row with a newer
+    timestamp replaces the old one. Every other column is carried over unchanged -- most
+    of them, the two agent switches especially, are the conversation's settings and would
+    silently reset to their defaults if this wrote a partial row.
+    """
+    from database.clickhouse import get_global_client
+
+    columns = [
+        "session_id", "username", "title", "collections", "summary",
+        "use_internet_tools", "deep_research", "options_locked",
+        "created_at", "updated_at", "is_deleted",
+    ]
+    with get_global_client() as client:
+        rows = client.query(
+            f"SELECT {', '.join(columns)} FROM chat_sessions FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String}",
+            parameters={"u": username, "s": session_id},
+        ).result_rows
+        if not rows:
+            log.warning("[P_agent] session %s vanished before it could be titled", session_id)
+            return
+        row = list(rows[0])
+        row[columns.index("title")] = title
+        row[columns.index("summary")] = summary
+        row[columns.index("updated_at")] = datetime.now(timezone.utc).replace(tzinfo=None)
+        client.insert("chat_sessions", [row], column_names=columns)
+
+
+def _record_summarizer_call(params: SummarizeSessionParams, result) -> None:
+    """Record the call in the two tables `/admin/ai_status` reads.
+
+    Written for a discarded answer as well as a failed request, and with `ok = 0` for
+    both: the endpoint worked, the *call* produced nothing usable, and counting a
+    discarded answer as a success would make the error rate say the summariser is healthy
+    while every title falls back to the user's own words.
+    """
+    from database.clickhouse import get_global_client
+
+    ok = 1 if result.title else 0
+    username = params.username.strip()
+    # Guests are one bucket: their usernames are per-session and would otherwise turn the
+    # telemetry into a cardinality problem with one row per visitor.
+    if not username or username == "guest" or username.startswith("guest-"):
+        username = "guest"
+    provider = _provider_label()
+    reply_bytes = len(result.title) + len(result.summary)
+    event_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        with get_global_client() as client:
+            client.insert(
+                "llm_call_events",
+                [[event_time, username, params.session_id, "title", provider,
+                  result.model, 0, 0, 0, reply_bytes, result.latency_ms, ok,
+                  result.error[:500]]],
+                column_names=[
+                    "event_time", "username", "session_id", "kind", "provider",
+                    "model_id", "prompt_tokens", "completion_tokens", "reasoning_tokens",
+                    "reply_bytes", "latency_ms", "ok", "error",
+                ],
+            )
+            client.insert(
+                "ai_service_telemetry",
+                [[event_time, "llm", provider, username, params.session_id,
+                  result.latency_ms, ok, result.model]],
+                column_names=[
+                    "event_time", "service", "provider", "username", "session_id",
+                    "latency_ms", "ok", "detail",
+                ],
+            )
+    except Exception:  # noqa: BLE001 - telemetry is never worth a turn either
+        log.warning("[P_agent] could not record the summariser call", exc_info=True)
+
+
+def _provider_label() -> str:
+    """A short, stable name for the endpoint that served the call."""
+    from tasks.llm_catalog import provider_label
+
+    name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
+    if name:
+        return name
+    host = re.sub(r"^https?://", "", os.getenv("LLM_BASE_URL") or "").split("/")[0]
+    return provider_label(host) if host else "unknown"

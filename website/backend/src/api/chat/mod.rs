@@ -3,34 +3,43 @@
 //! The security property this module exists to hold: **an agent answering for a user
 //! can only read collections that user could read in the search UI.** That is enforced
 //! in one place — [`send_message`] resolves the live permission set and passes it to the
-//! agent, which passes it to the MCP servers. The collection selection stored on a
-//! session is a *preference*; it is intersected with live permissions on every message,
-//! so a permission revoked after a chat started takes effect on the next message.
+//! workflow, which passes it to the agent, which passes it to the MCP servers. The
+//! collection selection stored on a session is a *preference*; it is intersected with
+//! live permissions on every message, so a permission revoked after a chat started takes
+//! effect on the next message.
+//!
+//! **Every turn is a Temporal workflow.** This process never holds an agent call open:
+//! [`send_message`] writes the user row, reserves the transcript position and dispatches
+//! `ChatTurn`, then returns. The worker writes the answer back into the same tables the
+//! poller was already reading, so a website restart, a closed tab or a timed-out request
+//! costs nothing — the turn carries on and the page picks it up again.
+//!
+//! What follows from that, and is the whole reason for the shape of this module:
+//!
+//! * liveness is read from the transcript and the stream table, not from a registry in
+//!   this process — see [`stream_state`];
+//! * stopping a turn is a Temporal cancellation, not a flag another task polls;
+//! * the admin live-run list is a Temporal visibility query, so it cannot show a run
+//!   this process forgot about or hide one it never knew about.
 
-pub mod agent_client;
-pub mod live_runs;
 pub mod llm_events;
-pub mod summarize;
 
 use std::time::{Duration, Instant};
 
 use common::chat_types::{
-    extract_doc_refs, title_from_message, truncate_tool_payload, ChatOptions, ChatPollResult, ChatRole,
-    ChatSendResult, ChatSessionDetail, ChatSessionItem, StreamToolRow, StreamTurn,
-    MAX_MESSAGE_CHARS, TOOL_PAYLOAD_CHARS,
+    title_from_message, ChatOptions, ChatPollResult, ChatRole, ChatSendResult, ChatSessionDetail,
+    ChatSessionItem, StreamToolRow, StreamTurn, MAX_MESSAGE_CHARS,
 };
 use common::current_user::CurrentUser;
+use time::format_description::well_known::Rfc3339;
 
 use crate::api::rate_limit::{check_and_record, RateLimitKind};
-use crate::api::telemetry::{self, EVENT_LLM_CHAT_MESSAGE, EVENT_LLM_MCP_TOOL_CALL};
+use crate::api::telemetry::{self, EVENT_LLM_CHAT_MESSAGE};
 use crate::db_chat::{self, AppendMessageExtras};
 use crate::db_utils::clickhouse_utils::list_permitted_collections;
 
 /// Cap on sessions returned to the history sidebar / homepage.
 const SESSION_LIST_LIMIT: u32 = 100;
-
-/// How much of a tool call's payload is stored in the short `content` summary column.
-const TOOL_SUMMARY_CHARS: usize = 400;
 
 /// Reject anonymous use. Guests are allowed only when demo mode is on
 /// (`HOOVER4_DEMO_MODE`), keyed by their `guest-*` username like any other user.
@@ -151,16 +160,6 @@ pub async fn set_chat_collections(
     db_chat::touch_session(username, &session_id, None, Some(&selected)).await
 }
 
-/// Serialise the failed-attempt list for the `retry_errors` column. Empty stays empty
-/// rather than becoming `"[]"`, so "no retries" costs no bytes on the overwhelmingly
-/// common row.
-fn encode_errors(errors: &[String]) -> String {
-    if errors.is_empty() {
-        return String::new();
-    }
-    serde_json::to_string(errors).unwrap_or_default()
-}
-
 /// Keep only requested collections the user may actually read.
 ///
 /// An empty request means "everything I am allowed to see" — that is the useful default
@@ -181,25 +180,28 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
     out
 }
 
-/// Send one user message; the agent turn runs in a spawned task.
+/// Send one user message; the turn runs as a `ChatTurn` workflow on `chat-queue`.
 ///
-/// The user row, the seq allocation and the history read happen **here**, under the
-/// session's turn lock, before this returns: the caller gets a transcript that already
-/// contains the message it just sent, and the returned `seq` is the one the poller
-/// counts from. Only the agent call and the finalisation move to the spawned task,
-/// which inherits the lock guard and the live-run registration and holds both until the
-/// turn is completely written.
+/// The user row, the seq allocation and the provisional title happen **here**, under
+/// the session's turn lock, before this returns: the caller gets a transcript that
+/// already contains the message it just sent, and the returned rows are what the poller
+/// counts from. Everything after the dispatch belongs to the worker, so this process
+/// holds nothing open and a restart costs the turn nothing.
 ///
 /// The lock is taken with `try_lock`: one turn at a time per session. A second send
 /// while a turn is running is a client bug (the composer shows a stop button, not a
-/// send button), and blocking the request for the length of an agent run would be worse
-/// than saying so.
+/// send button), and blocking the request while a turn runs would be worse than saying
+/// so. The lock only covers this process, so [`stream_state`] is asked the same
+/// question the poller asks — that is the check that actually holds across processes.
 ///
 /// When the rate limiter refuses, nothing is written and `retry_after_seconds` is set.
 ///
 /// `requested_options` only has effect on the **first** turn of a conversation; after
 /// that the frozen values on the session win, so a client that forgets to send them —
 /// or forges them — cannot change which agent a thread is talking to mid-way.
+///
+/// The model is resolved **here**, where the caller's identity is known: a forged id has
+/// to be refused where the user is, not in a worker that cannot check it.
 pub async fn send_message(
     user: &CurrentUser,
     session_id: String,
@@ -253,26 +255,27 @@ pub async fn send_message(
     // this returns what was frozen and ignores what the client asked for.
     let options = db_chat::lock_session_options(username, &session_id, requested_options).await?;
 
-    let guard = db_chat::turn_lock(username, &session_id)
+    let _guard = db_chat::turn_lock(username, &session_id)
         .try_lock_owned()
         .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
 
-    // The lock above only covers turns this process is running. A deep-research turn is
-    // run by a Temporal worker and its lock was released the moment `start_research_task`
-    // returned — minutes before the workflow writes its answer at the seq it reserved. So
+    // The lock above only covers this process, and it is released when this function
+    // returns — long before the worker writes the answer at the seq reserved here. So
     // ask the same question the poller asks: is a turn still being produced? Without
-    // this, an inline send during a research turn took the reserved seq and one of the
-    // two messages was silently dropped by ReplacingMergeTree.
+    // this, a second send during a running turn took the reserved seq and one of the two
+    // messages was silently dropped by ReplacingMergeTree.
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is already running in this conversation");
     }
 
-    // Everything that decides seqs happens before the spawn, so the transcript this
+    // Everything that decides seqs happens before the dispatch, so the transcript this
     // returns is the one the poller continues from.
-    let history = db_chat::list_messages(username, &session_id).await?;
-    let is_first_turn = history.is_empty();
     let turn_uuid = crate::db_auth::sessions::generate_session_id();
     let user_seq = db_chat::next_seq(username, &session_id).await?;
+    // Seq 0 is the first row a session can hold, so this message opening at 0 *is* the
+    // first turn. Cheaper than reading the transcript back to count it, and it is the
+    // same fact.
+    let is_first_turn = user_seq == 0;
     db_chat::append_message(
         username,
         &session_id,
@@ -289,52 +292,91 @@ pub async fn send_message(
     // a resend; not checking costs them the message.
     db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
 
-    // Provisional title from the first user turn; LLM title/summary replaces it at the
-    // end of the turn.
-    let provisional_title = title_from_message(&message);
+    // Provisional title from the first user turn; the summariser replaces it at the end
+    // of the turn, and it stays as the fallback when the summariser produces nothing.
     if is_first_turn {
+        let provisional_title = title_from_message(&message);
         db_chat::touch_session(username, &session_id, Some(&provisional_title), None).await?;
     } else {
         db_chat::touch_session(username, &session_id, None, None).await?;
     }
 
-    // Registered before the spawn: `poll_chat` reports the turn as active from the
-    // moment this function returns, so the client never sees a gap between "sent" and
-    // "the first stream row exists".
-    let run = live_runs::register(
+    let start_seq = user_seq + 1;
+    // An empty *stream* row, written before the dispatch and load-bearing rather than
+    // decorative. This process runs nothing for the turn, so an open stream row is the
+    // only thing telling the poller the turn exists — without it the page would stop
+    // following the turn in the seconds before the worker picks the activity up. The
+    // worker takes this same seq over and keeps rewriting it, which is what stops the
+    // stall detector calling a healthy run interrupted.
+    db_chat::append_stream_row(
         username,
         &session_id,
-        &provisional_title,
-        &message,
-        options,
-    );
+        start_seq,
+        ChatRole::Assistant,
+        "",
+        "",
+        "",
+        0,
+        false,
+        &turn_uuid,
+    )
+    .await?;
 
-    let ctx = TurnContext {
-        username: username.to_string(),
-        session_id: session_id.clone(),
-        message,
-        allowed,
-        options,
-        llm_model,
-        history,
-        is_first_turn,
-        turn_uuid,
-        user_seq,
-    };
-    tokio::spawn(async move {
-        let session_id = ctx.session_id.clone();
-        // The guard rides along and is released only when the turn is fully written.
-        let _guard = guard;
-        if let Err(e) = run_turn(ctx, run).await {
-            tracing::error!("chat turn for {session_id} could not be finalised: {e:#}");
-        }
-    });
+    if let Err(e) = start_agent_workflow(AgentWorkflowStart {
+        workflow_type: "ChatTurn",
+        task_queue: CHAT_TASK_QUEUE,
+        workflow_id: &chat_workflow_id(&session_id, start_seq),
+        username,
+        session_id: &session_id,
+        query: &message,
+        allowed_collections: &allowed,
+        start_seq,
+        internet_tools: options.internet_tools,
+        llm_model: &llm_model,
+        turn_uuid: &turn_uuid,
+        summarize_session: is_first_turn,
+    })
+    .await
+    {
+        // Nothing will ever rewrite that stream row, so the turn owes the transcript an
+        // ending here rather than leaving the page spinning until the stall timeout.
+        tracing::error!("could not dispatch the chat turn for {session_id}: {e:#}");
+        let _ = db_chat::append_message(
+            username,
+            &session_id,
+            start_seq,
+            ChatRole::Error,
+            &format!("The assistant could not be reached: {e}"),
+            AppendMessageExtras {
+                message_uuid: turn_uuid.clone(),
+                ..Default::default()
+            },
+        )
+        .await;
+        let _ = db_chat::mark_stream_final(username, &session_id).await;
+        return Err(e);
+    }
+    telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat");
 
     let messages = db_chat::list_messages(username, &session_id).await?;
     Ok(ChatSendResult {
         messages,
         retry_after_seconds: None,
     })
+}
+
+/// The workflow id one chat turn runs under.
+///
+/// Session- and seq-keyed so a double submit is a no-op rather than two agents racing to
+/// write the same transcript row, and so the stop button and the admin panel can address
+/// a running turn without a lookup table.
+fn chat_workflow_id(session_id: &str, start_seq: u32) -> String {
+    format!("chat-{session_id}-{start_seq}")
+}
+
+/// The workflow id one deep-research turn runs under.
+fn research_workflow_id(session_id: &str, start_seq: u32) -> String {
+    format!("research-{session_id}-{start_seq}")
 }
 
 // ---------------------------------------------------------------------------
@@ -391,18 +433,19 @@ impl Drop for HeldPollGuard {
 /// The live tail of a transcript, as [`TurnTail`]. Shared by the poll endpoint and
 /// session load, so a refresh mid-answer shows exactly what a poller sees.
 ///
-/// **Liveness comes from the transcript, not from an open stream row.** A turn is
-/// unfinished when the last user row has no assistant or error row after it; the stream
-/// table only says how recently something happened. Deriving `active` from "a non-final
-/// stream row exists right now" looked equivalent and was not: the writer finalises one
-/// row and opens the next as two separate inserts, and a poll landing in that gap
-/// reported the turn as over. Inline turns hid it behind their `live_runs` entry;
-/// Temporal research turns, which have no entry in this process, dropped the page out of
-/// its poll loop a couple of seconds in.
+/// **Liveness comes from the transcript and the stream table, and from nothing in this
+/// process.** A turn is unfinished when the last user row has no assistant or error row
+/// after it; the stream table says how recently something happened. Deriving `active`
+/// from "a non-final stream row exists right now" looked equivalent and was not: the
+/// writer finalises one row and opens the next as two separate inserts, and a poll
+/// landing in that gap reported the turn as over.
+///
+/// Every turn is a workflow now, so there is no registry of runs this process is holding
+/// open, and there must not be one: a website restart would empty it while the turns
+/// themselves carried on, and every one of them would read as interrupted. That is why
+/// [`send_message`] opens the stream row before it dispatches — the row is the turn's
+/// heartbeat from the moment it is accepted, and the worker keeps it beating.
 async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTail> {
-    // A turn registered by `send_message` is running before it has written any stream
-    // row at all, and that window is the other place a poller must not give up.
-    let running = live_runs::has_run_for(username, session_id);
     let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, session_id).await?;
     let turn_open = match (last_user_seq, last_answer_seq) {
         (Some(user), Some(answer)) => answer < user,
@@ -423,12 +466,12 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     let stall_ms = stream_stall().as_millis() as i64;
     let advancing = newest_ms.is_some_and(|ms| now_ms - ms <= stall_ms);
 
-    // Interrupted = an unfinished turn that nothing is working on any more: no live run
-    // here, and its stream rows stopped advancing a stall window ago. A turn that never
-    // wrote a stream row at all is not "interrupted", it is a turn this process is
-    // simply not running — that is what `running` covers.
-    let interrupted = turn_open && !running && newest_ms.is_some() && !advancing;
-    let active = turn_open && (running || advancing);
+    // Interrupted = an unfinished turn whose stream rows stopped advancing a stall window
+    // ago. A turn that never wrote a stream row at all is not "interrupted": nothing has
+    // claimed it yet, and `send_message` writes that row before it dispatches precisely
+    // so the window does not exist for an accepted turn.
+    let interrupted = turn_open && newest_ms.is_some() && !advancing;
+    let active = turn_open && advancing;
 
     let live: Vec<_> = rows.iter().filter(|r| r.is_final == 0).collect();
     if live.is_empty() {
@@ -589,93 +632,65 @@ pub async fn poll_chat(
     }
 }
 
-/// The stop button: ask this user's in-flight turn on this session to stop.
+/// The stop button: cancel this session's in-flight turn.
 ///
-/// Cooperative and quick: the turn notices within a poll step and finalises the
-/// partial answer with a truncation marker. `false` means nothing was in flight.
-pub fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<bool> {
+/// A Temporal cancellation, not a flag some other task in this process polls. That is
+/// what makes the stop button mean the same thing after a website restart as before one,
+/// and it is why a stopped turn cannot be orphaned: `ChatTurn` catches the cancellation
+/// and writes an ending into the transcript, so the page stops following a turn that
+/// will never speak again.
+///
+/// The turn is addressed by the seq it reserved, which is derived from the transcript
+/// rather than remembered — the last user row with no answer after it is the running
+/// turn, and its answer seq is the workflow's id. Both workflow kinds are tried because
+/// the composer knows the conversation, not which of the two is running in it.
+///
+/// `false` means nothing was in flight, which is the ordinary outcome of a stop that
+/// arrives just after the turn finished.
+pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<bool> {
     let username = require_named_user(user)?;
-    Ok(live_runs::request_cancel_for(username, &session_id))
+    // Ownership: stopping another user's turn is not allowed even though the id is theirs.
+    db_chat::get_session(username, &session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+
+    let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, &session_id).await?;
+    let Some(user_seq) = last_user_seq else {
+        return Ok(false);
+    };
+    if last_answer_seq.is_some_and(|answer| answer >= user_seq) {
+        return Ok(false);
+    }
+    let start_seq = user_seq + 1;
+
+    let mut cancelled = cancel_workflow(&chat_workflow_id(&session_id, start_seq)).await?;
+    if !cancelled {
+        cancelled = cancel_workflow(&research_workflow_id(&session_id, start_seq)).await?;
+    }
+    if cancelled {
+        telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat_stopped");
+    }
+    Ok(cancelled)
 }
 
 /// Dismiss an interrupted turn's leftover stream rows.
 ///
-/// Refused while a live run owns the session — dismissing a running turn would hide
-/// it from the poller that is following it.
+/// Refused while the turn is still advancing — dismissing a running turn would hide it
+/// from the poller that is following it. "Advancing" is the same question the poller
+/// asks, so the button is enabled exactly when the page is showing the interrupted
+/// marker.
 pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
     let username = require_named_user(user)?;
-    if live_runs::has_run_for(username, &session_id) {
+    if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is still running in this session");
     }
     db_chat::mark_stream_final(username, &session_id).await
 }
 
-/// Mutable state of one streaming turn, folded over the agent's event feed.
-struct TurnState {
-    /// Visible answer so far — content produced after the last tool call.
-    answer: String,
-    /// Reasoning trace plus pre-tool narration (the agent's own rule: content before a
-    /// tool call is narration about the call, not the answer).
-    reasoning: String,
-    /// How many tool calls have started; the assistant partial lives at
-    /// `first_tool_seq + tool_count`, always after the last tool.
-    tool_count: u32,
-    /// `seq` of the first tool row (== user seq + 1).
-    first_tool_seq: u32,
-    /// Start payloads not yet paired with an end, each with the `seq` its stream row
-    /// was written at, in arrival order. The seq travels **with the start**, not in a
-    /// "currently running" slot: a graph node may run several tools at once, and a
-    /// single slot would let the second start overwrite the first, finalising the
-    /// wrong row when its end arrived.
-    pending_starts: Vec<(u32, agent_client::AgentToolCall)>,
-    /// Whether the assistant stream row has ever been written.
-    assistant_row_started: bool,
-    last_stream_write: Instant,
-}
-
-impl TurnState {
-    fn new(first_tool_seq: u32) -> Self {
-        Self {
-            answer: String::new(),
-            reasoning: String::new(),
-            tool_count: 0,
-            first_tool_seq,
-            pending_starts: Vec::new(),
-            assistant_row_started: false,
-            last_stream_write: Instant::now() - Duration::from_secs(60),
-        }
-    }
-
-    fn answer_seq(&self) -> u32 {
-        self.first_tool_seq + self.tool_count
-    }
-
-    /// Move the visible answer so far into the reasoning trace.
-    ///
-    /// Prose is only an *answer* if nothing follows it. Content produced before a tool
-    /// call is narration about that call, and content produced by an attempt that then
-    /// broke is narration about a run that did not finish — in both cases keeping it in
-    /// the answer body would splice two halves of different thoughts into one bubble.
-    fn fold_answer_into_reasoning(&mut self) {
-        if self.answer.trim().is_empty() {
-            self.answer.clear();
-            return;
-        }
-        if !self.reasoning.is_empty() {
-            self.reasoning.push_str("\n\n");
-        }
-        self.reasoning.push_str(self.answer.trim());
-        self.answer.clear();
-    }
-}
-
-/// How often the growing assistant partial is rewritten at most. Each rewrite is a
-/// ClickHouse insert, so per-token writes are out; 300 ms is brisk enough to read as
-/// live and slow enough to keep the stream table small.
-const STREAM_WRITE_MIN_INTERVAL: Duration = Duration::from_millis(300);
-
-/// A stream row that has not advanced for this long with no live run owning it is an
-/// interrupted turn (the website restarted mid-turn), not a slow one.
+/// A stream row that has not advanced for this long is an interrupted turn — the worker
+/// running it died and Temporal has not rescheduled it — rather than a slow one. The
+/// worker's keepalive rewrites the open rows well inside this window, so silence for
+/// longer than it means nobody is writing.
 fn stream_stall() -> Duration {
     let secs = std::env::var("CHAT_STREAM_STALL_SECONDS")
         .ok()
@@ -684,653 +699,12 @@ fn stream_stall() -> Duration {
     Duration::from_secs(secs.clamp(5, 3600))
 }
 
-/// Everything [`send_message`] settled before spawning the turn.
-struct TurnContext {
-    username: String,
-    session_id: String,
-    message: String,
-    allowed: Vec<String>,
-    options: ChatOptions,
-    /// Resolved, allowlist-checked model id for this turn.
-    llm_model: String,
-    /// The transcript as it stood *before* the user row — what the agent is told.
-    history: Vec<common::chat_types::ChatMessageItem>,
-    is_first_turn: bool,
-    turn_uuid: String,
-    user_seq: u32,
-}
-
-/// Run the agent half of a turn and write its ending. The turn lock and the live-run
-/// registration are both held by the caller's spawned task for the whole of this.
-async fn run_turn(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::Result<()> {
-    let username = ctx.username.clone();
-    let session_id = ctx.session_id.clone();
-    let turn_uuid = ctx.turn_uuid.clone();
-    if let Err(e) = run_turn_inner(ctx, run).await {
-        // A turn that dies outside its own error handling still owes the transcript an
-        // ending — an orphaned stream row would otherwise render "interrupted" for an
-        // hour. Still under the turn lock, so the error row's seq allocation is safe.
-        tracing::error!("chat turn for {session_id} failed outside the agent call: {e:#}");
-        // If even the seq allocation fails, the write is dropped. `unwrap_or(0)` wrote the
-        // row at seq 0 instead, which is a real seq in every session and therefore an
-        // error message landing on top of whatever is already there. Losing the error row
-        // when the database is unreachable is the lesser outcome — and `mark_stream_final`
-        // below still ends the turn, so the page stops spinning either way.
-        match db_chat::next_seq(&username, &session_id).await {
-            Ok(seq) => {
-                let _ = db_chat::append_message(
-                    &username,
-                    &session_id,
-                    seq,
-                    ChatRole::Error,
-                    &format!("The assistant could not answer: {e}"),
-                    AppendMessageExtras {
-                        message_uuid: turn_uuid,
-                        ..Default::default()
-                    },
-                )
-                .await;
-            }
-            Err(seq_err) => tracing::error!(
-                "could not allocate a seq for the error row in {session_id}: {seq_err:#} \
-                 — dropping it rather than colliding at seq 0"
-            ),
-        }
-        let _ = db_chat::mark_stream_final(&username, &session_id).await;
-    }
-    Ok(())
-}
-
-/// The turn body: the streamed agent call and the finalisation.
-async fn run_turn_inner(ctx: TurnContext, run: live_runs::RunGuard) -> anyhow::Result<()> {
-    let TurnContext {
-        username,
-        session_id,
-        message,
-        allowed,
-        options,
-        llm_model,
-        history,
-        is_first_turn,
-        turn_uuid,
-        user_seq,
-    } = ctx;
-    let (username, session_id, message) = (username.as_str(), session_id.as_str(), message.as_str());
-    let allowed = allowed.as_slice();
-
-    let agent_history: Vec<agent_client::AgentChatMessage> = history
-        .iter()
-        .filter(|m| m.role.is_conversational())
-        .map(|m| agent_client::AgentChatMessage {
-            r#type: match m.role {
-                ChatRole::User => "human".to_string(),
-                _ => "ai".to_string(),
-            },
-            content: m.content.clone(),
-        })
-        .collect();
-
-    let seq = user_seq + 1;
-    let message_id = format!("{session_id}-{user_seq}");
-    let started = Instant::now();
-
-    let mut state = TurnState::new(seq);
-
-    // Open the assistant row before the agent is even called, so the turn owns exactly
-    // one non-final stream row from here until finalisation. That invariant is what the
-    // interrupted detector runs on: a process killed with nothing open leaves a
-    // transcript that simply stops after the last tool row, with no marker and nothing
-    // for the page to explain. Content is empty; the row exists to be a heartbeat.
-    if let Err(e) = maybe_write_assistant_row(username, session_id, &turn_uuid, &mut state, true).await
-    {
-        tracing::warn!("opening the stream row for {session_id} failed: {e:#}");
-    }
-
-    let attempts = agent_client::agent_attempts();
-    let base = agent_client::agent_retry_base();
-    let max_resumes = agent_client::agent_stream_resumes();
-    let mut resumes_used = 0u32;
-    let mut attempt_errors: Vec<String> = Vec::new();
-    let mut outcome: anyhow::Result<()> = Err(anyhow::anyhow!("no attempt ran"));
-
-    for attempt in 1..=attempts {
-        if attempt > 1 {
-            if run.is_cancelled() {
-                break;
-            }
-            tokio::time::sleep(agent_client::backoff_for_attempt(attempt, base)).await;
-            if run.is_cancelled() {
-                break;
-            }
-        }
-        run.set_attempt(attempt);
-
-        let mut saw_event = false;
-        let result = stream_agent_attempt(
-            username,
-            session_id,
-            &message_id,
-            message,
-            &agent_history,
-            allowed,
-            options.internet_tools,
-            Some(llm_model.as_str()),
-            &turn_uuid,
-            &mut state,
-            &mut saw_event,
-            &run,
-        )
-        .await;
-        match result {
-            Ok(()) => {
-                outcome = Ok(());
-                break;
-            }
-            Err(e) => {
-                attempt_errors.push(format!("attempt {attempt}/{attempts}: {e}"));
-                // The turn is already part-told. Replaying it repeats every tool call and
-                // every provider call the agent has made, so it is worth doing only for a
-                // connection that broke under a run that was otherwise healthy, and only
-                // `max_resumes` times — a deadline or a refusal lands in the same place on
-                // the replay and would turn a slow turn into a multiple of itself.
-                let resumable = saw_event
-                    && resumes_used < max_resumes
-                    && agent_client::is_resumable_break(&e);
-                if saw_event && !resumable {
-                    tracing::error!(
-                        "chat turn {turn_uuid} in {session_id} failed mid-stream after \
-                         {} tool call(s), attempt {attempt}/{attempts}, \
-                         {resumes_used}/{max_resumes} replays used: {e:#}",
-                        state.tool_count,
-                    );
-                    outcome = Err(e);
-                    break;
-                }
-                if resumable {
-                    resumes_used += 1;
-                    tracing::error!(
-                        "chat turn {turn_uuid} in {session_id} broke mid-stream after {} \
-                         tool call(s) — replaying it ({resumes_used}/{max_resumes}): {e:#}",
-                        state.tool_count,
-                    );
-                    // Whatever prose the broken attempt produced is demoted to reasoning
-                    // rather than carried into the answer, or the replay's answer would
-                    // be appended to half of the previous one. Tool rows already written
-                    // keep their seqs; the replay's rows follow them, so the transcript
-                    // records both runs instead of overwriting one with the other.
-                    state.fold_answer_into_reasoning();
-                }
-                outcome = Err(e);
-            }
-        }
-    }
-
-    let agent_duration_ms = started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
-    let cancelled = run.is_cancelled();
-
-    let result = finalise_turn(FinaliseArgs {
-        username,
-        session_id,
-        turn_uuid: &turn_uuid,
-        llm_model: &llm_model,
-        state: &state,
-        outcome,
-        cancelled,
-        agent_duration_ms,
-        attempt_errors,
-        is_first_turn,
-        message,
-    })
-    .await;
-    // Deregistered only now, with the finished rows already written: `poll_chat`
-    // reports `active` straight off the registry, and a gap between "no longer
-    // running" and "the answer is in the transcript" is exactly the window in which a
-    // poller would stop one write too early.
-    drop(run);
-    result
-}
-
-#[allow(clippy::too_many_arguments)]
-struct FinaliseArgs<'a> {
-    username: &'a str,
-    session_id: &'a str,
-    turn_uuid: &'a str,
-    /// The model this turn actually ran on, resolved and allowlist-checked in
-    /// `send_message`. Not `env LLM_MODEL`: that variable is unset in the website
-    /// container, so every row recorded an empty string, and it would be the wrong answer
-    /// anyway the moment a user picks a model from the dropdown.
-    llm_model: &'a str,
-    state: &'a TurnState,
-    outcome: anyhow::Result<()>,
-    cancelled: bool,
-    agent_duration_ms: u32,
-    attempt_errors: Vec<String>,
-    is_first_turn: bool,
-    message: &'a str,
-}
-
-/// Write the turn's ending: assistant row (or error row), stream rows to final, and —
-/// on the first turn — the LLM title/summary.
-async fn finalise_turn(args: FinaliseArgs<'_>) -> anyhow::Result<()> {
-    let FinaliseArgs {
-        username,
-        session_id,
-        turn_uuid,
-        llm_model,
-        state,
-        outcome,
-        cancelled,
-        agent_duration_ms,
-        attempt_errors,
-        is_first_turn,
-        message,
-    } = args;
-
-    let mut assistant_answer_for_summary: Option<String> = None;
-
-    if cancelled {
-        // The stop button: the partial is finalised (the user already read it) with an
-        // explicit marker, and the stop is recorded.
-        let partial = state.answer.trim();
-        let content = if partial.is_empty() {
-            "_(stopped before the assistant answered)_".to_string()
-        } else {
-            format!("{partial}\n\n_(stopped before the answer finished)_")
-        };
-        db_chat::append_message(
-            username,
-            session_id,
-            state.answer_seq(),
-            ChatRole::Assistant,
-            &content,
-            AppendMessageExtras {
-                agent_duration_ms,
-                retry_errors: encode_errors(&attempt_errors),
-                reasoning: state.reasoning.clone(),
-                model: llm_model.to_string(),
-                message_uuid: turn_uuid.to_string(),
-                ..Default::default()
-            },
-        )
-        .await?;
-        telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat_stopped");
-    } else if let Err(e) = outcome {
-        // Logged as well as written to the transcript. Without this line a failed turn
-        // leaves nothing in `docker logs` at all — the only record is an `error` row in
-        // `chat_messages`, which nobody looks at while a user is asking why the assistant
-        // stopped answering.
-        tracing::error!(
-            "chat turn {turn_uuid} in session {session_id} for {username} failed after \
-             {agent_duration_ms} ms and {} attempt(s): {e:#}",
-            attempt_errors.len().max(1),
-        );
-        // A failed agent call belongs in the transcript: the user asked something and
-        // deserves to see what went wrong in place, not a toast that vanishes. The
-        // partial answer, if any, is NOT promoted — an interrupted transcript must not
-        // contain half-sentences with no marker.
-        db_chat::append_message(
-            username,
-            session_id,
-            state.answer_seq(),
-            ChatRole::Error,
-            &format!("The assistant could not answer: {e}"),
-            AppendMessageExtras {
-                agent_duration_ms,
-                retry_errors: encode_errors(&attempt_errors),
-                message_uuid: turn_uuid.to_string(),
-                ..Default::default()
-            },
-        )
-        .await?;
-    } else {
-        let answer = if state.answer.trim().is_empty() {
-            // A turn that called tools and then said nothing new: the narration is the
-            // only thing the model produced, so it becomes the answer rather than
-            // rendering as a blank bubble.
-            if state.reasoning.trim().is_empty() {
-                "(the assistant returned an empty answer)".to_string()
-            } else {
-                state.reasoning.trim().to_string()
-            }
-        } else {
-            state.answer.trim().to_string()
-        };
-        assistant_answer_for_summary = Some(answer.clone());
-        db_chat::append_message(
-            username,
-            session_id,
-            state.answer_seq(),
-            ChatRole::Assistant,
-            &answer,
-            AppendMessageExtras {
-                agent_duration_ms,
-                retry_errors: encode_errors(&attempt_errors),
-                reasoning: state.reasoning.clone(),
-                model: llm_model.to_string(),
-                message_uuid: turn_uuid.to_string(),
-                ..Default::default()
-            },
-        )
-        .await?;
-        telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat");
-    }
-
-    db_chat::mark_stream_final(username, session_id).await?;
-
-    // Title/summary from the LLM after the first turn — never blocks / fails the turn.
-    if is_first_turn {
-        if let Some(answer) = assistant_answer_for_summary {
-            let username_owned = username.to_string();
-            let session_owned = session_id.to_string();
-            let user_msg = message.to_string();
-            tokio::spawn(async move {
-                if let Some(ts) = summarize::generate_title_and_summary_for(
-                    &user_msg,
-                    &answer,
-                    &username_owned,
-                    &session_owned,
-                )
-                .await
-                {
-                    let _ = db_chat::set_session_title_summary(
-                        &username_owned,
-                        &session_owned,
-                        Some(&ts.title),
-                        Some(&ts.summary),
-                    )
-                    .await;
-                }
-            });
-        }
-    }
-    Ok(())
-}
-
-/// One attempt of the streamed agent call, folding events into `state` and writing
-/// stream rows as they arrive.
+/// Hand a question to the research agent rather than the chat agent.
 ///
-/// Cancellation aborts the consumer task — and with it the in-flight HTTP request —
-/// instead of waiting out a slow generation. A failed *stream-row* write is logged and
-/// skipped: it only degrades the live progress display, and must not cost the turn an
-/// answer the model already produced.
-#[allow(clippy::too_many_arguments)]
-async fn stream_agent_attempt(
-    username: &str,
-    session_id: &str,
-    message_id: &str,
-    message: &str,
-    agent_history: &[agent_client::AgentChatMessage],
-    allowed: &[String],
-    internet_tools: bool,
-    llm_model: Option<&str>,
-    turn_uuid: &str,
-    state: &mut TurnState,
-    saw_event: &mut bool,
-    run: &live_runs::RunGuard,
-) -> anyhow::Result<()> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<agent_client::AgentStreamEvent>();
-    let handle = {
-        let username = username.to_string();
-        let session_id = session_id.to_string();
-        let message_id = message_id.to_string();
-        let message = message.to_string();
-        let history = agent_history.to_vec();
-        let allowed = allowed.to_vec();
-        let llm_model = llm_model.map(str::to_string);
-        tokio::spawn(async move {
-            agent_client::ask_agent_stream_once(
-                &username,
-                &session_id,
-                &message_id,
-                &message,
-                &history,
-                &allowed,
-                internet_tools,
-                llm_model.as_deref(),
-                &mut |event| {
-                    let _ = tx.send(event);
-                },
-            )
-            .await
-        })
-    };
-
-    loop {
-        if run.is_cancelled() {
-            handle.abort();
-            break;
-        }
-        tokio::select! {
-            event = rx.recv() => {
-                let Some(event) = event else { break };
-                *saw_event = true;
-                if let Err(e) = handle_stream_event(username, session_id, turn_uuid, state, event).await {
-                    tracing::warn!("stream-row write failed for {session_id}: {e:#}");
-                }
-            }
-            // The cancel flag is polled between events too, or a model that goes quiet
-            // for minutes would ignore the stop button until it spoke again.
-            _ = tokio::time::sleep(Duration::from_millis(200)) => {}
-        }
-    }
-
-    match handle.await {
-        Ok(result) => result,
-        Err(e) if e.is_cancelled() && run.is_cancelled() => Ok(()),
-        Err(e) => Err(anyhow::anyhow!("agent stream task failed: {e}")),
-    }
-}
-
-/// Fold one agent event into the turn state, writing stream rows as needed.
-async fn handle_stream_event(
-    username: &str,
-    session_id: &str,
-    turn_uuid: &str,
-    state: &mut TurnState,
-    event: agent_client::AgentStreamEvent,
-) -> anyhow::Result<()> {
-    use agent_client::AgentStreamEvent as Ev;
-    match event {
-        Ev::Start => {}
-        Ev::Reasoning(text) => {
-            state.reasoning.push_str(&text);
-            maybe_write_assistant_row(username, session_id, turn_uuid, state, false).await?;
-        }
-        Ev::Response(text) => {
-            state.answer.push_str(&text);
-            maybe_write_assistant_row(username, session_id, turn_uuid, state, false).await?;
-        }
-        Ev::StartTool(payload) => {
-            // Content before a tool call is narration about the call, not the answer.
-            state.fold_answer_into_reasoning();
-            // The running tool takes the seq the assistant partial occupied (if any);
-            // the assistant row resumes one seq later. Ordering stays user, tools,
-            // answer — identical between the live stream and the finalised transcript.
-            let tool_seq = state.answer_seq();
-            if state.assistant_row_started {
-                db_chat::mark_stream_row_final(username, session_id, tool_seq).await?;
-            }
-            state.assistant_row_started = false;
-            let call = agent_client::AgentToolCall {
-                phase: "start".to_string(),
-                content: payload,
-            };
-            let tool_name = call.tool_name();
-            db_chat::append_stream_row(
-                username,
-                session_id,
-                tool_seq,
-                ChatRole::Tool,
-                &call.summary(TOOL_SUMMARY_CHARS),
-                "",
-                &tool_name,
-                state.tool_count,
-                false,
-                turn_uuid,
-            )
-            .await?;
-            state.pending_starts.push((tool_seq, call.clone()));
-            state.tool_count += 1;
-        }
-        Ev::EndTool(payload) => {
-            let end = agent_client::AgentToolCall {
-                phase: "end".to_string(),
-                content: payload,
-            };
-            // Pair with the matching start: by run_id first, because that is the only
-            // identity a start event carries and the only one that survives two
-            // concurrent calls to the same tool; by tool_call_id next, for a transcript
-            // streamed by an agent image that predates run_id; and FIFO last, so an
-            // event with neither still renders.
-            let matched = end
-                .run_id()
-                .map(str::to_string)
-                .and_then(|rid| {
-                    state
-                        .pending_starts
-                        .iter()
-                        .position(|(_, c)| c.run_id() == Some(rid.as_str()))
-                        .map(|pos| state.pending_starts.remove(pos))
-                })
-                .or_else(|| {
-                    end.tool_call_id().map(str::to_string).and_then(|tid| {
-                        state
-                            .pending_starts
-                            .iter()
-                            .position(|(_, c)| c.tool_call_id() == Some(tid.as_str()))
-                            .map(|pos| state.pending_starts.remove(pos))
-                    })
-                })
-                // FIFO, not LIFO: with several tools in flight the oldest unmatched
-                // start is the one an unidentified end most likely belongs to.
-                .or_else(|| {
-                    if state.pending_starts.is_empty() {
-                        None
-                    } else {
-                        Some(state.pending_starts.remove(0))
-                    }
-                });
-            let start = matched.as_ref().map(|(_, c)| c);
-            let tool_name = {
-                let from_end = end.tool_name();
-                if from_end != "tool" {
-                    from_end
-                } else if let Some(s) = start {
-                    s.tool_name()
-                } else {
-                    "tool".to_string()
-                }
-            };
-            let tool_input = start
-                .map(|s| s.input_json())
-                .filter(|s| s != "{}")
-                .unwrap_or_else(|| end.input_json());
-            let paired = agent_client::PairedToolCall {
-                tool_name,
-                tool_input,
-                tool_output: end.output_json(),
-                summary: end.summary(TOOL_SUMMARY_CHARS),
-            };
-            // The tool's result is a completed fact: it is finalised into
-            // chat_messages immediately, and its stream row goes final. Only the
-            // *answer* waits for the end of the turn.
-            let tool_seq = matched
-                .as_ref()
-                .map(|(seq, _)| *seq)
-                .unwrap_or_else(|| state.answer_seq().saturating_sub(1));
-            finalize_tool_row(username, session_id, tool_seq, turn_uuid, &paired).await?;
-            db_chat::mark_stream_row_final(username, session_id, tool_seq).await?;
-            telemetry::record_event(username, EVENT_LLM_MCP_TOOL_CALL, &paired.tool_name);
-            // Reopen the assistant row immediately. The model can spend a long time
-            // between one tool ending and the next starting, and a process killed in
-            // that gap would otherwise leave nothing non-final behind — the turn would
-            // vanish without an interrupted marker.
-            maybe_write_assistant_row(username, session_id, turn_uuid, state, true).await?;
-        }
-        Ev::End => {
-            maybe_write_assistant_row(username, session_id, turn_uuid, state, true).await?;
-        }
-    }
-    Ok(())
-}
-
-/// Persist one completed tool call as a finished transcript row.
-async fn finalize_tool_row(
-    username: &str,
-    session_id: &str,
-    seq: u32,
-    turn_uuid: &str,
-    call: &agent_client::PairedToolCall,
-) -> anyhow::Result<()> {
-    // Inside the JSON, never across it: a `{` stored without its `}` is a result the whole
-    // read path reports as missing. See `truncate_tool_payload`.
-    let tool_input = truncate_tool_payload(&call.tool_input, TOOL_PAYLOAD_CHARS);
-    let tool_output = truncate_tool_payload(&call.tool_output, TOOL_PAYLOAD_CHARS);
-    let refs = extract_doc_refs(&call.tool_name, &call.tool_output);
-    let doc_refs = if refs.is_empty() {
-        String::new()
-    } else {
-        serde_json::to_string(&refs).unwrap_or_default()
-    };
-    db_chat::append_message(
-        username,
-        session_id,
-        seq,
-        ChatRole::Tool,
-        &call.summary,
-        AppendMessageExtras {
-            tool_name: call.tool_name.clone(),
-            tool_input,
-            tool_output,
-            doc_refs,
-            agent_duration_ms: 0,
-            retry_errors: String::new(),
-            // A tool row is the tool's output, not the model's: leaving these empty is
-            // what makes "which model wrote this" a question only the assistant rows
-            // answer.
-            model: String::new(),
-            reasoning: String::new(),
-            message_uuid: turn_uuid.to_string(),
-        },
-    )
-    .await
-}
-
-/// Rewrite the assistant's in-flight row, throttled unless `force`d.
-async fn maybe_write_assistant_row(
-    username: &str,
-    session_id: &str,
-    turn_uuid: &str,
-    state: &mut TurnState,
-    force: bool,
-) -> anyhow::Result<()> {
-    if !force && state.last_stream_write.elapsed() < STREAM_WRITE_MIN_INTERVAL {
-        return Ok(());
-    }
-    state.last_stream_write = Instant::now();
-    state.assistant_row_started = true;
-    db_chat::append_stream_row(
-        username,
-        session_id,
-        state.answer_seq(),
-        ChatRole::Assistant,
-        &state.answer,
-        &state.reasoning,
-        "",
-        0,
-        false,
-        turn_uuid,
-    )
-    .await
-}
-
-/// Hand a question to the long-running research workflow instead of answering it inline.
-///
-/// The synchronous path in [`send_message`] holds an HTTP request open for the whole
-/// agent run, which is fine for a chat turn and wrong for an exhaustive research run.
-/// This variant records the user's turn, reserves the transcript position, and starts a
-/// Temporal `ResearchTask` that writes the answer back when it finishes — so the user
-/// can close the tab.
+/// Both are durable now and both reserve their transcript position the same way; what
+/// differs is which agent answers, how long it is allowed to take, and which queue it
+/// waits on. A research run is exhaustive and measured in minutes, so it must never sit
+/// behind a chat turn, and a chat turn must never sit behind it.
 ///
 /// Returns the Temporal run id, or a rate-limit refusal via the same `ChatSendResult`
 /// shape used by [`send_message`] when limited (here encoded as an error string with
@@ -1421,16 +795,14 @@ pub async fn start_research_task(
     }
 
     // No "Research task started" placeholder in `chat_messages`: the Temporal activity
-    // streams its progress into chat_message_stream, so the turn renders live
-    // exactly like an inline one and the workflow writes the finished rows at `seq`.
+    // streams its progress into chat_message_stream, so the turn renders live exactly
+    // like a chat turn and the workflow writes the finished rows at `seq`.
     //
     // An empty *stream* row does go in, though, and it is load-bearing rather than
-    // decorative. A research turn has no `live_runs` entry in this process, so an open
-    // stream row is the only thing that tells the poller the turn exists — without it
-    // the page would stop following the turn in the seconds before the worker picks the
-    // activity up. The activity rewrites this same seq (and keeps rewriting it on its
-    // keepalive, which is what stops the stall detector calling a healthy run
-    // interrupted).
+    // decorative — the same reason it is in `send_message`. It is the only thing telling
+    // the poller the turn exists before the worker picks the activity up, and the
+    // activity keeps rewriting it, which is what stops the stall detector calling a
+    // healthy run interrupted.
     db_chat::append_stream_row(
         username,
         &session_id,
@@ -1445,14 +817,23 @@ pub async fn start_research_task(
     )
     .await?;
 
-    let run_id = match start_research_workflow(
+    let run_id = match start_agent_workflow(AgentWorkflowStart {
+        workflow_type: "ResearchTask",
+        task_queue: RESEARCH_TASK_QUEUE,
+        workflow_id: &research_workflow_id(&session_id, seq),
         username,
-        &session_id,
-        &message,
-        &allowed,
-        seq,
-        requested_options.internet_tools,
-    )
+        session_id: &session_id,
+        query: &message,
+        allowed_collections: &allowed,
+        start_seq: seq,
+        internet_tools: requested_options.internet_tools,
+        llm_model: "",
+        turn_uuid: &turn_uuid,
+        // A research thread is titled from its first message. Its answer arrives minutes
+        // later and is exhaustive rather than conversational, so a title drawn from it
+        // describes the report, not the question that was asked.
+        summarize_session: false,
+    })
     .await
     {
         Ok(run_id) => run_id,
@@ -1466,24 +847,100 @@ pub async fn start_research_task(
     Ok(Ok(run_id))
 }
 
-/// Every agent run this website process currently has in flight. Admin only.
+/// Every agent turn running anywhere right now. Admin only.
 ///
-/// Scope is honest about its limits: this is *this process's* inline chat turns. Deep
-/// research runs in a Temporal worker and is visible in the Temporal UI instead — the
-/// admin page links there rather than pretending to own that view.
-pub fn admin_list_live_runs(user: &CurrentUser) -> anyhow::Result<Vec<common::chat_types::LiveChatRun>> {
+/// A Temporal visibility query, not a registry in this process. That is the difference
+/// between a list that is true and one that was true: an in-process registry could not
+/// see a turn started before the last website restart, and kept listing one whose
+/// process died — a restart mid-turn left a run in this panel for ever.
+///
+/// Chat turns and research turns are both here, because both are workflows and an admin
+/// hunting "who is on the GPU" wants one table rather than a page that lists half of them
+/// and links elsewhere for the rest.
+///
+/// The session header behind each run is read from ClickHouse rather than carried in the
+/// workflow's memo: the title changes when the summariser writes a better one, and a memo
+/// stamped at dispatch would show the admin the old one for the length of the turn.
+pub async fn admin_list_live_runs(
+    user: &CurrentUser,
+) -> anyhow::Result<Vec<common::chat_types::LiveChatRun>> {
     require_admin(user)?;
-    Ok(live_runs::snapshot())
+    let running = list_running_agent_workflows().await?;
+    if running.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let session_ids: Vec<String> = running.iter().map(|r| r.session_id.clone()).collect();
+    let sessions = db_chat::sessions_by_ids(&session_ids).await?;
+    let by_id: std::collections::HashMap<&str, &db_chat::ChatSessionRow> = sessions
+        .iter()
+        .map(|s| (s.session_id.as_str(), s))
+        .collect();
+
+    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() as i64 / 1_000_000;
+    let mut out = Vec::with_capacity(running.len());
+    for run in running {
+        let Some(session) = by_id.get(run.session_id.as_str()) else {
+            // A workflow whose session has been deleted. Skipped rather than shown with
+            // blanks: the row would name a conversation nobody can open.
+            continue;
+        };
+        let options = session.options();
+        // The question this turn is answering: the user row one below the seq the turn
+        // reserved. One query per running turn, and there are single digits of them.
+        let message_preview = db_chat::list_messages_after(
+            &session.username,
+            &run.session_id,
+            i64::from(run.start_seq) - 2,
+        )
+        .await
+        .ok()
+        .and_then(|rows| {
+            rows.into_iter()
+                .find(|m| m.role == ChatRole::User)
+                .map(|m| preview(&m.content))
+        })
+        .unwrap_or_default();
+
+        out.push(common::chat_types::LiveChatRun {
+            workflow_id: run.workflow_id,
+            username: session.username.clone(),
+            session_id: run.session_id,
+            title: session.title.clone(),
+            message_preview,
+            deep_research: options.deep_research,
+            internet_tools: options.internet_tools,
+            running_ms: now_ms.saturating_sub(run.started_ms).max(0) as u64,
+            started_at: run.started_at,
+        });
+    }
+    // Longest-running first — the order an admin hunting a stuck chat wants, without
+    // having to sort the table themselves.
+    out.sort_by(|a, b| b.running_ms.cmp(&a.running_ms));
+    Ok(out)
 }
 
-/// Ask an in-flight run to stop. Admin only.
+/// How much of the question is shown to the admin. Enough to recognise a runaway chat,
+/// short enough that the panel is not a transcript viewer — an admin looking for "who is
+/// burning the GPU" does not need the whole prompt.
+const PREVIEW_CHARS: usize = 200;
+
+fn preview(message: &str) -> String {
+    let flat: String = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= PREVIEW_CHARS {
+        return flat;
+    }
+    format!("{}\u{2026}", flat.chars().take(PREVIEW_CHARS).collect::<String>())
+}
+
+/// Cancel a running turn by its workflow id. Admin only.
 ///
-/// Cooperative: the run notices between retry attempts and before it writes. It cannot
-/// abort an HTTP call already in flight against the agent, so a kill during a slow
-/// generation takes effect when that call returns.
-pub fn admin_cancel_live_run(user: &CurrentUser, run_id: u64) -> anyhow::Result<bool> {
+/// The same cancellation the user's own stop button sends, so a turn an admin stops ends
+/// the way a turn a user stops does: with an ending written into the transcript rather
+/// than a workflow that vanishes. `false` means it had already finished.
+pub async fn admin_cancel_live_run(user: &CurrentUser, workflow_id: String) -> anyhow::Result<bool> {
     require_admin(user)?;
-    Ok(live_runs::request_cancel(run_id))
+    cancel_workflow(&workflow_id).await
 }
 
 fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
@@ -1493,46 +950,80 @@ fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Start the `ResearchTask` workflow over Temporal's HTTP API.
+// ---------------------------------------------------------------------------
+// Temporal, over its HTTP API
+// ---------------------------------------------------------------------------
+
+/// The queue chat turns are dispatched to.
+///
+/// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`** — the worker
+/// polls the name it declares there and this addresses the name it declares here, and a
+/// workflow addressed to a queue nothing polls waits for ever with no error anywhere. It
+/// presents as chat hanging, so the two move in the same patch or not at all.
+const CHAT_TASK_QUEUE: &str = "chat-queue";
+
+/// The queue research turns are dispatched to — the general processing queue, where a run
+/// measured in minutes can sit behind ingestion without anyone watching it.
+const RESEARCH_TASK_QUEUE: &str = "processing-common-queue";
+
+fn temporal_base_url() -> String {
+    std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())
+}
+
+/// One durable agent turn, as dispatched.
+struct AgentWorkflowStart<'a> {
+    workflow_type: &'a str,
+    task_queue: &'a str,
+    workflow_id: &'a str,
+    username: &'a str,
+    session_id: &'a str,
+    query: &'a str,
+    allowed_collections: &'a [String],
+    start_seq: u32,
+    internet_tools: bool,
+    /// Resolved and allowlist-checked against the caller's identity. Empty means "the
+    /// worker's server default", which is what a research turn takes.
+    llm_model: &'a str,
+    turn_uuid: &'a str,
+    summarize_session: bool,
+}
+
+/// Start one agent workflow over Temporal's HTTP API, and return its run id.
 ///
 /// The workflow id is session- and seq-keyed so a double submit is a no-op rather than
 /// two agents racing to write the same transcript row.
-async fn start_research_workflow(
-    username: &str,
-    session_id: &str,
-    query: &str,
-    allowed_collections: &[String],
-    start_seq: u32,
-    internet_tools: bool,
-) -> anyhow::Result<String> {
-    let base_url = std::env::var("TEMPORAL_HTTP_URL")
-        .unwrap_or_else(|_| "http://localhost:21908".to_string());
-    let workflow_id = format!("research-{session_id}-{start_seq}");
-    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{workflow_id}");
+async fn start_agent_workflow(start: AgentWorkflowStart<'_>) -> anyhow::Result<String> {
+    let url = format!(
+        "{}/api/v1/namespaces/default/workflows/{}",
+        temporal_base_url(),
+        start.workflow_id
+    );
 
     let body = serde_json::json!({
-        "workflowType": { "name": "ResearchTask" },
-        "taskQueue": { "name": "processing-common-queue" },
+        "workflowType": { "name": start.workflow_type },
+        "taskQueue": { "name": start.task_queue },
         "input": [{
-            "username": username,
-            "session_id": session_id,
-            "query": query,
-            "allowed_collections": allowed_collections,
-            "start_seq": start_seq,
-            // The conversation's own switch. Without it the durable path always reaches
-            // the agent that has the open web, whatever the thread was started with.
-            "internet_tools": internet_tools,
+            "username": start.username,
+            "session_id": start.session_id,
+            "query": start.query,
+            "allowed_collections": start.allowed_collections,
+            "start_seq": start.start_seq,
+            // The conversation's own switch. Without it the turn always reaches the agent
+            // that has the open web, whatever the thread was started with.
+            "internet_tools": start.internet_tools,
+            "llm_model": start.llm_model,
+            // Passed rather than derived. The user row is written with this uuid before
+            // the workflow exists, so both processes must agree on it, and passing it is
+            // how they agree without a format string each side reimplements.
+            "turn_uuid": start.turn_uuid,
+            "summarize_session": start.summarize_session,
         }],
     });
 
-    let response = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
-        .send()
-        .await?;
+    let response = reqwest::Client::new().post(&url).json(&body).send().await?;
     if !response.status().is_success() {
         let text = response.text().await.unwrap_or_default();
-        anyhow::bail!("could not start research task: {text}");
+        anyhow::bail!("could not start {}: {text}", start.workflow_type);
     }
     let json: serde_json::Value = response.json().await?;
     Ok(json
@@ -1540,6 +1031,105 @@ async fn start_research_workflow(
         .and_then(|v| v.as_str())
         .unwrap_or("started")
         .to_string())
+}
+
+/// Request cancellation of one workflow. `false` means Temporal has never heard of it,
+/// which is the ordinary outcome of stopping a turn that has already finished.
+async fn cancel_workflow(workflow_id: &str) -> anyhow::Result<bool> {
+    let url = format!(
+        "{}/api/v1/namespaces/default/workflows/{workflow_id}/cancel",
+        temporal_base_url()
+    );
+    let response = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({}))
+        .send()
+        .await?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("could not cancel {workflow_id}: {text}");
+    }
+    Ok(true)
+}
+
+/// One running agent workflow, as Temporal's visibility index reports it.
+struct RunningWorkflow {
+    workflow_id: String,
+    session_id: String,
+    /// The seq the turn reserved for its answer.
+    start_seq: u32,
+    started_ms: i64,
+    started_at: String,
+}
+
+/// Every `ChatTurn` and `ResearchTask` currently running.
+async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> {
+    let query = "WorkflowType IN ('ChatTurn', 'ResearchTask') AND ExecutionStatus = 'Running'";
+    let url = format!(
+        "{}/api/v1/namespaces/default/workflows",
+        temporal_base_url()
+    );
+    let response = reqwest::Client::new()
+        .get(&url)
+        .query(&[("query", query)])
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("could not list running agent turns: {text}");
+    }
+    let json: serde_json::Value = response.json().await?;
+    let Some(executions) = json.get("executions").and_then(|v| v.as_array()) else {
+        return Ok(Vec::new());
+    };
+
+    let mut out = Vec::new();
+    for execution in executions {
+        let Some(workflow_id) = execution
+            .pointer("/execution/workflowId")
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+        let Some((session_id, start_seq)) = split_agent_workflow_id(workflow_id) else {
+            continue;
+        };
+        let started_at = execution
+            .get("startTime")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let started_ms = time::OffsetDateTime::parse(&started_at, &Rfc3339)
+            .map(|t| t.unix_timestamp_nanos() as i64 / 1_000_000)
+            .unwrap_or(0);
+        out.push(RunningWorkflow {
+            workflow_id: workflow_id.to_string(),
+            session_id,
+            start_seq,
+            started_ms,
+            started_at,
+        });
+    }
+    Ok(out)
+}
+
+/// Split an agent workflow id back into the session and the seq it reserved.
+///
+/// The id is built by [`chat_workflow_id`] / [`research_workflow_id`] and is the only
+/// thing Temporal's visibility index carries about the turn, so it is parsed rather than
+/// looked up. A session id contains no `-`, so the last one separates the seq.
+fn split_agent_workflow_id(workflow_id: &str) -> Option<(String, u32)> {
+    let rest = workflow_id
+        .strip_prefix("chat-")
+        .or_else(|| workflow_id.strip_prefix("research-"))?;
+    let (session_id, seq) = rest.rsplit_once('-')?;
+    if session_id.is_empty() {
+        return None;
+    }
+    Some((session_id.to_string(), seq.parse().ok()?))
 }
 
 #[cfg(test)]
@@ -1590,6 +1180,40 @@ mod tests {
             is_guest,
             groups: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_workflow_id_round_trips_through_its_split() {
+        // The id is the only thing Temporal's visibility index carries about a turn, so
+        // the admin panel depends on this being exactly the inverse of the builders.
+        let session = "4f3a9c2b1d";
+        for id in [
+            chat_workflow_id(session, 7),
+            research_workflow_id(session, 7),
+        ] {
+            assert_eq!(
+                split_agent_workflow_id(&id),
+                Some((session.to_string(), 7)),
+                "failed on {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_workflow_id_from_somewhere_else_is_not_an_agent_turn() {
+        // The query filters by workflow type, but the panel must not turn a stray id into
+        // a row naming a conversation that does not exist.
+        assert_eq!(split_agent_workflow_id("P0-ingest-abc-1"), None);
+        assert_eq!(split_agent_workflow_id("chat-noseq"), None);
+        assert_eq!(split_agent_workflow_id("chat--1"), None);
+        assert_eq!(split_agent_workflow_id("chat-abc-notanumber"), None);
+    }
+
+    #[test]
+    fn preview_collapses_whitespace_and_truncates() {
+        assert_eq!(preview("  a\n b  "), "a b");
+        let long = "x".repeat(PREVIEW_CHARS + 50);
+        assert_eq!(preview(&long).chars().count(), PREVIEW_CHARS + 1);
     }
 
     #[test]

@@ -20,8 +20,10 @@ with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_agent.activities import (
         ResearchTaskParams,
+        SummarizeSessionParams,
         WriteResultParams,
         run_research_agent,
+        summarize_session,
         write_chat_message,
     )
     from tasks.P_agent.trajectory import pair_tool_calls
@@ -91,6 +93,51 @@ async def _write_payload(params, payload: dict, empty_answer: str) -> str:
     return answer
 
 
+async def _name_the_conversation(params, answer: str) -> None:
+    """Give the conversation an LLM-written title, if this is the turn that names it.
+
+    **Fire and forget, and it can never fail the turn.** The answer is already written and
+    the user is already reading it by the time this runs, so a summariser that is down, or
+    slow, or returns nonsense, is worth a mediocre title and nothing else. Three things
+    enforce that together, because any one of them alone leaves a way for it to bite:
+
+      * one attempt, so a broken endpoint is not retried into the user's face;
+      * a short timeout, so a hung summariser cannot hold the workflow open;
+      * every exception swallowed here, including the Temporal timeout and the activity
+        failure that the activity itself cannot catch.
+
+    The activity is careful too. This is the belt to its braces: a caller must not have to
+    trust an activity to be harmless.
+
+    A cancellation still propagates -- it is a `BaseException`, and a stop button pressed
+    while the title is being written should end the workflow rather than be absorbed. The
+    answer is already in the transcript by then, so nothing is lost.
+
+    The fallback is the provisional title the website wrote from the first message, which
+    is already in place -- doing nothing is the correct failure.
+    """
+    if not getattr(params, "summarize_session", False):
+        return
+    try:
+        await workflow.execute_activity(
+            summarize_session,
+            SummarizeSessionParams(
+                username=params.username,
+                session_id=params.session_id,
+                user_message=params.query,
+                answer=answer,
+            ),
+            start_to_close_timeout=timedelta(seconds=90),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+    except Exception:  # noqa: BLE001 - a title is never worth an answer
+        workflow.logger.warning(
+            "could not title session %s; keeping the provisional title",
+            params.session_id,
+        )
+
+
 @workflow.defn
 class ChatTurn:
     """Own one ordinary chat turn, from dispatch to final answer.
@@ -137,9 +184,11 @@ class ChatTurn:
             )
             raise
 
-        return await _write_payload(
+        answer = await _write_payload(
             params, json.loads(raw), "(the assistant returned an empty answer)"
         )
+        await _name_the_conversation(params, answer)
+        return answer
 
 
 @workflow.defn

@@ -1,12 +1,11 @@
-//! Admin panel: LLM chats this website process is answering right now.
+//! Admin panel: agent turns running right now.
 //!
 //! Answers "who is on the GPU, and can I stop them". Polls rather than streams — the
 //! interesting runs last tens of seconds and a two-second refresh is enough to watch
 //! one, without a websocket for a page an admin has open for a minute at a time.
 //!
-//! Scope is stated on the page rather than hidden: these are *inline* chat turns held
-//! open by this process. Deep-research turns run in a Temporal worker and are listed in
-//! the Temporal UI, which the panel links to instead of half-reproducing.
+//! Chat turns and research turns both appear, because both are Temporal workflows and
+//! the list comes from Temporal rather than from the website's memory.
 
 use std::time::Duration;
 
@@ -57,8 +56,9 @@ pub fn LiveChatsPanel() -> Element {
             h2 { style: MODULE_CAPTION, "Live LLM chats" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Inline chat turns this website process is answering right now, longest-running first. \
-                     Refreshes every 2 s. Deep-research turns run in Temporal and are not listed here."
+                    "Agent turns running right now, longest-running first. Refreshes every 2 s. \
+                     Read from Temporal, so a turn that started before the last website restart \
+                     is here too."
                 }
                 if let Some(e) = action_error.read().clone() {
                     p { style: "color: #ba2121; font-size: 12px; margin: 0 0 8px;", "{e}" }
@@ -78,7 +78,6 @@ pub fn LiveChatsPanel() -> Element {
                                     th { style: TH, "Research" }
                                     th { style: TH, "Internet" }
                                     th { style: TH, "Running" }
-                                    th { style: TH, "Attempt" }
                                     th { style: TH, "Started" }
                                     th { style: TH, "" }
                                 }
@@ -86,7 +85,7 @@ pub fn LiveChatsPanel() -> Element {
                             tbody {
                                 for run in list {
                                     LiveChatRow {
-                                        key: "{run.run_id}",
+                                        key: "{run.workflow_id}",
                                         run: run.clone(),
                                         on_error: move |e| action_error.set(Some(e)),
                                         on_done: move |_| { tick += 1; },
@@ -108,7 +107,7 @@ fn LiveChatRow(
     on_done: EventHandler<()>,
 ) -> Element {
     let mut killing = use_signal(|| false);
-    let run_id = run.run_id;
+    let workflow_id = run.workflow_id.clone();
 
     let duration_style = if run.running_ms >= SLOW_RUN_MS {
         format!("{TD} color: #ba2121; font-weight: 700;")
@@ -132,34 +131,27 @@ fn LiveChatRow(
             td { style: TD, {yes_no(run.deep_research)} }
             td { style: TD, {yes_no(run.internet_tools)} }
             td { style: duration_style, "{humanize_duration(run.running_ms)}" }
-            td { style: TD, "{run.attempt}" }
             td { style: "{TD} font-size: 12px; color: #555;", "{run.started_at}" }
             td { style: TD,
-                if run.cancel_requested {
-                    span {
-                        style: "font-size: 12px; color: #b8860b;",
-                        title: "The run stops at its next checkpoint. It cannot abort a \
-                                generation already in flight.",
-                        "stopping\u{2026}"
-                    }
-                } else {
-                    button {
-                        style: "font-size: 12px; padding: 2px 8px; cursor: pointer;",
-                        disabled: *killing.read(),
-                        onclick: move |_| {
-                            killing.set(true);
-                            spawn(async move {
-                                match chat_admin_cancel_run(run_id).await {
-                                    // `false` means it finished on its own between the
-                                    // page rendering and the click — not an error.
-                                    Ok(_) => on_done.call(()),
-                                    Err(e) => on_error.call(e.to_string()),
-                                }
-                                killing.set(false);
-                            });
-                        },
-                        "Kill"
-                    }
+                button {
+                    style: "font-size: 12px; padding: 2px 8px; cursor: pointer;",
+                    disabled: *killing.read(),
+                    title: "Cancels the workflow. The turn ends with a stopped marker in \
+                            the transcript rather than vanishing.",
+                    onclick: move |_| {
+                        let workflow_id = workflow_id.clone();
+                        killing.set(true);
+                        spawn(async move {
+                            match chat_admin_cancel_run(workflow_id).await {
+                                // `false` means it finished on its own between the page
+                                // rendering and the click — not an error.
+                                Ok(_) => on_done.call(()),
+                                Err(e) => on_error.call(e.to_string()),
+                            }
+                            killing.set(false);
+                        });
+                    },
+                    "Kill"
                 }
             }
         }

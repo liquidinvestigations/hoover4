@@ -595,7 +595,7 @@ async def run_chat_worker():
   deployment. Each one holds a thread that is almost entirely waiting on the agent, so
   the number is about how many conversations may be live, not about this host's CPU.
   """
-  from .P_agent.activities import run_research_agent, write_chat_message
+  from .P_agent.activities import run_research_agent, summarize_session, write_chat_message
   from .P_agent.workflows import CHAT_TASK_QUEUE, ChatTurn
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
@@ -611,7 +611,7 @@ async def run_chat_worker():
       task_queue=CHAT_TASK_QUEUE,
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[ChatTurn],
-      activities=[run_research_agent, write_chat_message],
+      activities=[run_research_agent, summarize_session, write_chat_message],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

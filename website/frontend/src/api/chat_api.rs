@@ -99,21 +99,23 @@ pub async fn chat_start_research(
     }
 }
 
-/// Agent runs the website is holding open right now. Admin only.
-///
-/// Inline chat turns only — deep research runs in a Temporal worker and is visible in
-/// the Temporal UI, which the admin page links to rather than duplicating.
+/// Agent turns running right now, chat and research alike. Admin only.
 #[server]
 pub async fn chat_admin_live_runs() -> Result<Vec<LiveChatRun>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::admin_list_live_runs(&user).map_err(to_server_fn_error)
+    backend::api::chat::admin_list_live_runs(&user)
+        .await
+        .map_err(to_server_fn_error)
 }
 
-/// Ask an in-flight run to stop. Admin only. `false` means it had already finished.
+/// Cancel a running turn by its workflow id. Admin only. `false` means it had already
+/// finished.
 #[server]
-pub async fn chat_admin_cancel_run(run_id: u64) -> Result<bool, ServerFnError> {
+pub async fn chat_admin_cancel_run(workflow_id: String) -> Result<bool, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::admin_cancel_live_run(&user, run_id).map_err(to_server_fn_error)
+    backend::api::chat::admin_cancel_live_run(&user, workflow_id)
+        .await
+        .map_err(to_server_fn_error)
 }
 
 /// Long-poll the tail of a conversation: finished rows after `after_seq` (the last seq
@@ -132,12 +134,14 @@ pub async fn chat_poll(
         .map_err(to_server_fn_error)
 }
 
-/// The composer's stop button: finalise the running turn's partial answer with a
-/// truncation marker. `false` means the turn had already finished.
+/// The composer's stop button: cancel the running turn, which ends it with a stopped
+/// marker in the transcript. `false` means the turn had already finished.
 #[server]
 pub async fn chat_stop(session_id: String) -> Result<bool, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::stop_chat_turn(&user, session_id).map_err(to_server_fn_error)
+    backend::api::chat::stop_chat_turn(&user, session_id)
+        .await
+        .map_err(to_server_fn_error)
 }
 
 /// Clear an interrupted turn's leftover stream rows once the user has seen the marker.

@@ -177,6 +177,28 @@ pub async fn get_session(
     Ok(rows.pop())
 }
 
+/// Session headers by id, for the admin live-run panel.
+///
+/// **The one function here that does not filter on a username**, because its caller does
+/// not have one: a Temporal visibility query knows the session a running turn belongs to
+/// and nothing else. The exception is narrow on purpose — it returns the header a panel
+/// renders (owner, title, frozen switches) and never a message, so it cannot become a way
+/// to read someone's transcript. The caller checks for admin before it asks.
+pub async fn sessions_by_ids(session_ids: &[String]) -> anyhow::Result<Vec<ChatSessionRow>> {
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let client = get_global_client();
+    let rows = client
+        .query(&format!(
+            "{SESSION_SELECT} WHERE session_id IN ? AND is_deleted = 0"
+        ))
+        .bind(session_ids)
+        .fetch_all::<ChatSessionRow>()
+        .await?;
+    Ok(rows)
+}
+
 /// Sessions of one user, most recently active first.
 pub async fn list_sessions(username: &str, limit: u32) -> anyhow::Result<Vec<ChatSessionItem>> {
     let client = get_global_client();
