@@ -399,11 +399,14 @@ BODY
 write_filename_hit_fixture
 
 if [ "$RESTART_RESILIENCE" = "1" ]; then
-    # `if !` and not `|| true`. Calling the function in a `||` list disables `set -e`
-    # inside its whole body, so a command that fails half way through does not stop it --
-    # and a bare `|| true` then throws the non-zero return away, leaving FAILURES at zero
-    # and the summary below announcing that all checks passed over a check that never
-    # finished. Every failure path inside the function calls `fail` for the same reason.
+    # A bare `|| true` threw the non-zero return away, so the summary below announced
+    # that all checks passed over a check that never finished.
+    #
+    # `if !` does NOT restore `set -e` inside the function -- inverting a return value
+    # suppresses it exactly as a `||` list does, and a command that fails half way
+    # through still does not stop the body. That is why the honesty lives in the
+    # function instead: every failure path calls `fail` before returning, and the line
+    # below is the backstop for a non-zero return that recorded nothing.
     if ! restart_resilience; then
         [ "$FAILURES" -gt 0 ] || fail "restart resilience: the check did not complete"
     fi
