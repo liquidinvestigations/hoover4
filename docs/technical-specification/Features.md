@@ -107,6 +107,8 @@ languages.
 | `F-chat-14b` | Open a turn that has no live plan by restating the task and weighing two or three approaches in the answer itself, before writing the chosen one into the plan | `research_agent.prompts.PLAN_FIRST`, `keeps_preamble` |
 | `F-chat-15` | Run the agent again, in the same turn, when it stops with steps still unresolved — twice while the plan is not moving, five times in all, each nag buying a fixed extra tool budget | `ChatTurn`, `tasks/P_agent/nagging.py` |
 | `F-chat-15a` | Show each nudge in the transcript as its own kind of entry, neither the user's words nor an error | `ChatRole::Nag` |
+| `F-chat-16` | Count what a turn cost in tokens — the conversation it carried and the largest single context it was billed for, summed across every nudge round — and keep the conversation's running peak | `tasks/P_agent/`, `chat_messages`, `chat_sessions.peak_context_tokens` |
+| `F-chat-16a` | Show both numbers under an answer against the model's context window and the percentage used, and say the window is unknown rather than guessing one the provider never stated | `ChatMessageItem::context_footer` |
 
 ## Administration
 
@@ -119,6 +121,7 @@ languages.
 | `F-admin-05` | Change a dataset's OCR languages and apply it | `website/backend/src/api/admin/dataset_ocr.rs` |
 | `F-admin-06` | Manage users and groups, and grant a group read access to a collection | `website/backend/src/api/admin/users.rs`, `groups.rs` |
 | `F-admin-07` | Configure language-model providers, and the model each agent profile uses | `website/backend/src/api/admin/llm.rs` |
+| `F-admin-07a` | Discover each model's context window from the provider's own listing and keep it against the model, leaving it absent rather than guessed where the provider states none | `website/backend/src/api/admin/llm.rs`, `tasks/llm_catalog.py`, `llm_models.context_window` |
 | `F-admin-08` | See the accelerated tier's status and what it has loaded | `website/backend/src/api/admin/ai_status.rs` |
 | `F-admin-09` | See usage and API metrics, and the agent turns running right now, with a kill control | `website/backend/src/api/admin/metrics.rs`, `F-chat-13` |
 | `F-admin-10` | Change server settings that take effect without a redeploy | `website/backend/src/api/admin/settings.rs` |

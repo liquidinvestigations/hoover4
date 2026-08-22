@@ -7,7 +7,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `composer.rs` | Textarea + **Deep Research** / **Internet tools** checkboxes + send arrow. The checkboxes disappear once the conversation has a turn — see below. No paperclip / upload control: documents enter via the processing pipeline. |
 | `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
 | `session_card.rs` | Homepage / history card showing title + summary. |
-| `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, and the retry-attempt disclosure. |
+| `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
 | `tool_cards/mod.rs` | The card **registry**: dispatches on tool name, plus the shared card chrome, the elapsed-seconds counter, and the JSON/link helpers every card uses. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
