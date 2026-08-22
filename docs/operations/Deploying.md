@@ -117,6 +117,14 @@ reached. It is two commands: `./deploy --reset`, then `./deploy --build`.
 exited.** A `restart` refuses because an initialisation container is `Exited (0)`, which is
 its correct final state. Stop and then start works.
 
+**Restarting the worker by hand needs `main_services/restart-worker.sh`.** A direct
+`docker stop` or `docker restart` kills through the drain after ten seconds however the
+graceful period is configured: the runtime applies the compose file's stop grace period only
+when it is the one stopping the container, and the value cannot be set on the container
+afterwards. A deploy prints the number really in force. Anything else that stops the worker —
+a person, a script, a supervisor — has to pass the timeout itself, which is all the wrapper
+does.
+
 **Relative paths in a compose file resolve against the project directory** — the first
 compose file's directory — not against the file that declares them. An overlay in a
 subdirectory therefore points somewhere else entirely from where it reads as pointing.
