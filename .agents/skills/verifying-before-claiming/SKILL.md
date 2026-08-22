@@ -32,6 +32,7 @@ session pays for.
 | the frontend has no hook or `rsx!` defect | `dx check --package frontend` | `scripts/dx-check.sh` — a release build only says `unreachable`, this names the site |
 | the Python unit tests pass | pytest summary, 0 failed | `scripts/pytest-unit.sh` |
 | migrations are well-formed | the parity test passes | `scripts/pytest-unit.sh tests/unit/test_migrations_parity.py` |
+| the research agent's own tests pass | pytest summary, 0 failed | `scripts/pytest-research-agent.sh` — its image carries neither pytest nor the tests, so nothing else reaches them |
 | the pipeline still ingests end to end | `main_services/verify-stack.sh` reaching its final assertion | `reference/verification-runs.md` |
 | a container is healthy | `docker ps --format '{{.Names}}\t{{.Status}}'` plus its own logs | `scripts/stack-status.sh` |
 | the deploy succeeded | full `./deploy` output read, not the last 50 lines | `deploying-the-stack` |
@@ -48,6 +49,7 @@ directory, the `--offline` flag, the output filter.
 .agents/skills/verifying-before-claiming/scripts/cargo-check.sh   # ~10 s warm, ~90 s cold
 .agents/skills/verifying-before-claiming/scripts/dx-check.sh
 .agents/skills/verifying-before-claiming/scripts/pytest-unit.sh [path]
+.agents/skills/verifying-before-claiming/scripts/pytest-research-agent.sh [path]
 .agents/skills/verifying-before-claiming/scripts/stack-status.sh
 ```
 
