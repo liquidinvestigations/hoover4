@@ -39,8 +39,15 @@ log = logging.getLogger(__name__)
 #: hard backstop behind this.
 MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
 
-#: The tool call that makes the prose in front of it part of the answer.
-PLAN_FIRST_TOOL = "write_todo"
+#: The tool calls a plan-first opening is made of. Prose in front of any of them, before
+#: any other tool has run, is the plan being proposed and belongs in the answer.
+#:
+#: `read_todo` is in the list and it is not decoration: the protocol tells the model to
+#: check whether a plan is needed before writing one, so the very first call of a
+#: plan-first turn is a read. Watching a real turn is how that was found -- the
+#: understanding-and-approaches prose went behind the reasoning disclosure because the
+#: exception was written for `write_todo` alone.
+PLAN_FIRST_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
 
 
 def tool_name_of(content: Any) -> str:
@@ -55,7 +62,7 @@ def tool_name_of(content: Any) -> str:
     return str(name or "")
 
 
-def keeps_preamble(is_first_tool: bool, content: Any) -> bool:
+def keeps_preamble(in_plan_first_opening: bool, content: Any) -> bool:
     """Whether the prose before this tool call belongs in the answer, not the reasoning.
 
     Everything a model says before calling a tool is normally narration about the call
@@ -66,10 +73,12 @@ def keeps_preamble(is_first_tool: bool, content: Any) -> bool:
     are told to open a fresh plan by restating the task and weighing two or three
     approaches before writing the chosen one into the todo. That prose is the part the
     user most needs to see -- it is what they would correct -- so hiding it behind a
-    disclosure would defeat the instruction that produced it. The exception is narrow:
-    the *first* tool call of the run, and only when it is the plan being written.
+    disclosure would defeat the instruction that produced it.
+
+    The exception is bounded by the opening itself: it holds while every tool called so
+    far has been a todo tool, and ends for good at the first call that is real work.
     """
-    return is_first_tool and tool_name_of(content) == PLAN_FIRST_TOOL
+    return in_plan_first_opening and tool_name_of(content) in PLAN_FIRST_TOOLS
 
 
 #: How many compiled graphs to keep. Each holds one MCP client with a live connection
@@ -651,10 +660,15 @@ class MCPGatewayAgent:
         # disclosure rather than discarded. Content genuinely produced after the last
         # tool is the answer.
         answer_parts: List[str] = []
+        # The plan-first opening, held apart from the answer so the next fold into the
+        # preamble cannot sweep it up with the narration around it.
+        plan_parts: List[str] = []
         preamble_parts: List[str] = []
         reasoning_parts: List[str] = []
         tool_calls: List[Dict[str, Any]] = []
         resolved_model = self._resolve_model(llm_model)
+        # True until the first tool call that is not part of the plan-first opening.
+        in_plan_first_opening = True
 
         async for chunk in self.stream(
             query=query,
@@ -675,11 +689,11 @@ class MCPGatewayAgent:
                 # Whatever the model said before deciding to call a tool is narration
                 # about the call, not the answer -- except for the block that opens a
                 # plan-first turn, which is kept. See `keeps_preamble`.
-                if answer_parts and not keeps_preamble(
-                    not tool_calls, chunk.get("content")
-                ):
-                    preamble_parts.extend(answer_parts)
+                keep = keeps_preamble(in_plan_first_opening, chunk.get("content"))
+                if answer_parts:
+                    (plan_parts if keep else preamble_parts).extend(answer_parts)
                     answer_parts = []
+                in_plan_first_opening = keep
                 tool_calls.append({"phase": "start", "content": chunk.get("content")})
             elif kind == "end_tool":
                 tool_calls.append({"phase": "end", "content": chunk.get("content")})
@@ -688,7 +702,10 @@ class MCPGatewayAgent:
             elif kind == "end" and chunk.get("model"):
                 resolved_model = chunk["model"]
 
-        answer = "".join(answer_parts).strip()
+        answer = "\n\n".join(
+            part for part in ("".join(plan_parts).strip(), "".join(answer_parts).strip())
+            if part
+        )
         preamble = "".join(preamble_parts).strip()
         if not answer:
             # A turn that called tools and then said nothing new. Returning an empty

@@ -31,8 +31,12 @@ import requests
 
 log = logging.getLogger(__name__)
 
-#: The tool call that makes the prose in front of it part of the answer.
-PLAN_FIRST_TOOL = "write_todo"
+#: The tool calls a plan-first opening is made of. Prose in front of any of them, before
+#: any other tool has run, is the plan being proposed and belongs in the answer -- see
+#: `_keeps_preamble`. `read_todo` is in the list because the protocol tells the model to
+#: check whether a plan is needed before writing one, so a plan-first turn opens with a
+#: read and not a write.
+PLAN_FIRST_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
 
 
 def _tool_name(content: Any) -> str:
@@ -156,6 +160,10 @@ class ResearchStreamWriter:
             or f"research-{params.session_id}-{params.start_seq}"
         )
         self.answer = ""
+        #: The plan-first opening, held apart from `answer` so the next fold into
+        #: `reasoning` cannot sweep it up with the narration around it. It is prepended
+        #: to every rendering of the answer.
+        self.plan_prose = ""
         self.reasoning = ""
         self.tool_count = 0
         #: Started-but-not-ended tool calls, oldest first, as
@@ -165,6 +173,8 @@ class ResearchStreamWriter:
         #: wrong row when its end arrives.
         self.pending_tools: list[tuple[int, int, str, str, str | None]] = []
         self.assistant_row_started = False
+        #: True until the first tool call that is not part of the plan-first opening.
+        self.in_plan_first_opening = True
         self.tool_events: list[dict[str, Any]] = []
         self._last_write = 0.0
         self._closed = threading.Event()
@@ -224,12 +234,17 @@ class ResearchStreamWriter:
             rows.append((
                 self.params.start_seq + self.tool_count,
                 "assistant",
-                self.answer,
+                self._answer_text(),
                 self.reasoning,
                 "",
                 0,
             ))
         return rows
+
+    def _answer_text(self) -> str:
+        """The answer as the transcript should show it: the plan-first opening, then
+        whatever the model has said since."""
+        return "\n\n".join(part for part in (self.plan_prose, self.answer.strip()) if part)
 
     def _keepalive_loop(self) -> None:
         while not self._closed.wait(KEEPALIVE_SECONDS):
@@ -248,7 +263,7 @@ class ResearchStreamWriter:
         self._insert_stream_row(
             self.params.start_seq + self.tool_count,
             "assistant",
-            self.answer,
+            self._answer_text(),
             reasoning=self.reasoning,
         )
 
@@ -321,7 +336,7 @@ class ResearchStreamWriter:
             self._write_assistant(force=True)
         self._finish_stream_rows()
 
-        answer = self.answer.strip()
+        answer = self._answer_text()
         reasoning = self.reasoning.strip()
         if not answer and reasoning:
             # Same fallback as the inline path: a turn that called tools and then said
@@ -345,17 +360,23 @@ class ResearchStreamWriter:
         elif kind == "start_tool":
             # Narration before a tool call is not the answer -- except the block that
             # opens a plan-first turn, which stays in it. See `_keeps_preamble`.
-            if self.answer.strip() and not self._keeps_preamble(content):
-                if self.reasoning:
-                    self.reasoning += "\n\n"
-                self.reasoning += self.answer.strip()
+            keep_preamble = self._keeps_preamble(content)
+            if self.answer.strip():
+                if keep_preamble:
+                    if self.plan_prose:
+                        self.plan_prose += "\n\n"
+                    self.plan_prose += self.answer.strip()
+                else:
+                    if self.reasoning:
+                        self.reasoning += "\n\n"
+                    self.reasoning += self.answer.strip()
                 self.answer = ""
             # The tool takes the seq the assistant partial occupied; the assistant
             # resumes one later, so live and finalised transcripts order identically.
             tool_seq = self.params.start_seq + self.tool_count
             if self.assistant_row_started:
                 self._mark_final(
-                    tool_seq, "assistant", self.answer, reasoning=self.reasoning
+                    tool_seq, "assistant", self._answer_text(), reasoning=self.reasoning
                 )
                 self.assistant_row_started = False
             name = _tool_name(content)
@@ -382,19 +403,28 @@ class ResearchStreamWriter:
         # start / start_reasoning / start_response / end need no row writes.
 
     def _keeps_preamble(self, content: Any) -> bool:
-        """Whether the prose before this tool call belongs in the answer.
+        """Whether the prose before this tool call belongs in the answer, closing the
+        plan-first opening if this call is not part of it.
+
+        **Call it once per tool start, whether or not there is prose to place.** It is
+        what ends the opening, so skipping it when the answer happens to be empty would
+        leave a later todo call still inside an opening that finished several tools ago.
 
         Both agent profiles are told to open a fresh plan by restating the task and
         weighing two or three approaches before writing the chosen one into the todo.
         That prose is the part a user would correct, so it is shown rather than folded
-        into `reasoning` behind the disclosure. Narrow on purpose: the first tool call
-        of the run, and only when it is the plan being written.
+        into `reasoning` behind the disclosure. Bounded by the opening: it holds while
+        every tool called so far has been a todo tool, and ends for good at the first
+        call that is real work.
 
         The agent has the same rule in `research_agent/agent.py::keeps_preamble`, for
         its own non-streaming path. Two copies because the two run in different images;
         they are one rule and must move together.
         """
-        return self.tool_count == 0 and _tool_name(content) == PLAN_FIRST_TOOL
+        self.in_plan_first_opening = (
+            self.in_plan_first_opening and _tool_name(content) in PLAN_FIRST_TOOLS
+        )
+        return self.in_plan_first_opening
 
     def _take_pending(self, tool_call_id):
         """Pop the start this end belongs to — by tool_call_id when it has one, else the
