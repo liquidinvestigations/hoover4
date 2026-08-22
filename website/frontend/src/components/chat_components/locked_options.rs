@@ -7,6 +7,7 @@
 
 use common::chat_types::ChatOptions;
 use dioxus::prelude::*;
+use dioxus_free_icons::{Icon, icons::md_action_icons::MdLock};
 
 #[component]
 pub fn LockedOptionsBar(options: ChatOptions) -> Element {
@@ -19,10 +20,16 @@ pub fn LockedOptionsBar(options: ChatOptions) -> Element {
             LockedFlag { label: "Internet tools", on: options.internet_tools }
             div { style: "flex: 1;" }
             span {
-                style: "font-size: 12px; color: #94A3B8;",
+                style: "display: inline-flex; align-items: center; gap: 4px; \
+                        font-size: 12px; color: #94A3B8;",
                 title: "These decide which agent answers, so they are fixed once the \
                         conversation starts. Start a new chat to change them.",
-                "\u{1f512} locked for this conversation"
+                // The padlock comes from the icon crate, not from a code point: it
+                // inherits this line's colour and scales with it, where an emoji is
+                // rendered by whichever font the platform picked and is the one glyph
+                // the interface does not control.
+                Icon { icon: MdLock, style: "width: 13px; height: 13px; color: #94A3B8;" }
+                "locked for this conversation"
             }
         }
     }
