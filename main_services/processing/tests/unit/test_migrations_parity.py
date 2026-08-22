@@ -36,6 +36,7 @@ EXPECTED_GLOBAL_TABLES = {
     "chat_message_stream",
     "chat_messages",
     "chat_sessions",
+    "chat_todos",
     "collection_group_permissions",
     "collections",
     "dataset",
