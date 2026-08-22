@@ -7,7 +7,7 @@ use crate::components::session_gate::use_session_user;
 use crate::routes::Route;
 
 /// `active` selects the highlighted sidebar row: one of
-/// "dashboard", "collections", "users", "groups", "settings", "metrics".
+/// "dashboard", "collections", "operations", "users", "groups", "settings", "metrics".
 #[component]
 pub fn AdminShell(
     title: String,
@@ -71,6 +71,7 @@ pub fn AdminShell(
                     }
                     SidebarLink { to: Route::AdminDashboardPage {}, label: "Dashboard", selected: active == "dashboard" }
                     SidebarLink { to: Route::AdminCollectionsPage {}, label: "Collections", selected: active == "collections" }
+                    SidebarLink { to: Route::AdminOperationsPage {}, label: "Operations", selected: active == "operations" }
                     SidebarLink { to: Route::AdminUsersPage {}, label: "Users", selected: active == "users" }
                     SidebarLink { to: Route::AdminGroupsPage {}, label: "Groups", selected: active == "groups" }
                     SidebarLink { to: Route::AdminSettingsPage {}, label: "Settings", selected: active == "settings" }

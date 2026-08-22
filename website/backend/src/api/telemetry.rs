@@ -244,6 +244,7 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
 /// these three lists — the two above only if its own handler records the event.
 const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_add_member",
+    "admin_cancel_operation",
     "admin_collection_processing",
     "admin_create_collection",
     "admin_create_group",
@@ -260,11 +261,13 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_list_collections",
     "admin_list_document_failures",
     "admin_list_groups",
+    "admin_list_operations",
     "admin_list_settings",
     "admin_list_task_failures",
     "admin_list_users",
     "admin_list_workflows",
     "admin_remove_member",
+    "admin_rerun_operation",
     "admin_retry_document",
     "admin_retry_failed_task",
     "admin_revoke_permission",

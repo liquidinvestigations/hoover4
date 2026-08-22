@@ -142,6 +142,10 @@ DEFAULTS = {
         # Empty prints the operation id and the command that shows it, with no URL --
         # which is correct for a deployment whose address this file does not know.
         "admin_base_url": "",
+        # The failure rate above which the operations page calls a task type out as a
+        # possible tooling limitation. A judgement about what is acceptable on a messy
+        # corpus, so it is configuration rather than a literal in a component.
+        "error_rate_alert_percent": "5",
         # runtime behaviour when the GPU host is unreachable
         "gpu_fallback": "true",
         "gpu_connect_timeout_ms": "2000",
@@ -601,6 +605,7 @@ def render_main_env(cfg):
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
+    env["HOOVER4_ERROR_RATE_ALERT_PERCENT"] = cfg.get(m, "error_rate_alert_percent")
 
     return env
 

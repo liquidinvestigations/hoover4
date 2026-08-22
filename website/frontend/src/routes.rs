@@ -14,8 +14,8 @@ use crate::pages::admin::{
     collection_processing::AdminCollectionProcessingPage, collections_list::AdminCollectionsPage,
     dashboard::AdminDashboardPage, dataset_detail::AdminDatasetPage, group_detail::AdminGroupPage,
     groups_list::AdminGroupsPage, llm_config::AdminLlmPage, metrics::AdminMetricsPage,
-    settings::AdminSettingsPage, user_detail::AdminUserPage, user_llm::AdminUserLlmPage,
-    users_list::AdminUsersPage,
+    operations::AdminOperationsPage, settings::AdminSettingsPage, user_detail::AdminUserPage,
+    user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
@@ -108,6 +108,11 @@ pub enum Route {
 
     #[route("/admin/collections/:collection_id/datasets/:dataset_id")]
     AdminDatasetPage { collection_id: String, dataset_id: String },
+
+    // The operations log. Declared before /admin/users only for readability; the admin
+    // routes are all distinct literal prefixes and none of them shadows another.
+    #[route("/admin/operations")]
+    AdminOperationsPage {},
 
     #[route("/admin/users")]
     AdminUsersPage {},

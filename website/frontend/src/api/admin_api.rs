@@ -2,6 +2,7 @@
 
 use common::admin_types::*;
 use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics};
+use common::operations_types::OperationsPage;
 use common::processing_types::*;
 use dioxus::prelude::*;
 
@@ -74,6 +75,10 @@ admin_server_fn!(admin_retry_document, backend::api::admin::processing::admin_re
 admin_server_fn!(admin_list_eta_samples, backend::api::admin::processing::admin_list_eta_samples, (collectionname: String) -> Vec<EtaSamplePoint>);
 admin_server_fn!(admin_task_time_breakdown, backend::api::admin::processing::admin_task_time_breakdown, (collectionname: String) -> TaskTimeBreakdown);
 admin_server_fn!(admin_task_time_live, backend::api::admin::processing::admin_task_time_live, (collectionname: String, window_seconds: u32) -> LiveTaskActivity);
+
+admin_server_fn!(admin_list_operations, backend::api::admin::operations::admin_list_operations, (state: String, collectionname: String, limit: u32, offset: u32) -> OperationsPage);
+admin_server_fn!(admin_rerun_operation, backend::api::admin::operations::admin_rerun_operation, (op_id: String, confirm_target: String) -> String);
+admin_server_fn!(admin_cancel_operation, backend::api::admin::operations::admin_cancel_operation, (op_id: String));
 
 admin_server_fn!(admin_list_deployment_config, backend::api::admin::settings::admin_list_deployment_config, () -> Vec<ServerSettingItem>);
 

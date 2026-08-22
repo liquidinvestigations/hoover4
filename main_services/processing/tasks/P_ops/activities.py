@@ -50,14 +50,22 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     from this operation's own elapsed time rather than from the global sampler, so it
     is right for this run's data even when nothing comparable has ever been ingested.
 
+    It also counts the dataset's failed documents onto the row's `detail`, and that is
+    not a bonus: an operation whose stages all ran finishes `finished` whether or not
+    every document survived, so without a recorded failure count a plan that lost
+    documents is indistinguishable from one that did not. The count is of the dataset,
+    not of this run — a re-run over an already-damaged dataset should say so rather
+    than report a clean sheet because its own attempt added nothing new.
+
     Returns `[done, total]`. A dataset whose scan has not produced plans yet is
     `[0, 0]`, which the row records as "no estimate can be made" rather than as zero
     progress out of zero work.
     """
     from database.clickhouse import get_collection_client
-    from database.operations import get_operation, update_operation
+    from database.operations import get_operation, merge_detail, update_operation
 
     done = total = 0
+    failed_documents = failed_tasks = 0
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
             "SELECT count() FROM processing_plans FINAL "
@@ -73,6 +81,18 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
             parameters={"cd": params.collection_dataset},
         ).result_rows
         done = int(rows[0][0]) if rows else 0
+        # Documents rather than error rows: one document that failed six tasks is one
+        # failed document, and both numbers are recorded because they answer different
+        # questions. A dataset-level failure carries an empty hash and is excluded from
+        # the document count rather than counted as a document.
+        rows = client.query(
+            "SELECT uniqExactIf(hash, hash != ''), count() FROM processing_errors "
+            "WHERE collection_dataset = {cd:String}",
+            parameters={"cd": params.collection_dataset},
+        ).result_rows
+        if rows:
+            failed_documents = int(rows[0][0])
+            failed_tasks = int(rows[0][1])
 
     eta = 0
     row = get_operation(params.op_id)
@@ -81,6 +101,10 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
         eta = max(0, int(elapsed / done * (total - done)))
     update_operation(params.op_id, progress_done=done, progress_total=total,
                      eta_seconds=eta)
+    # Merged, not written over the whole field: `detail` also carries the parameters the
+    # operation was dispatched with, and another writer's counters.
+    merge_detail(params.op_id, failed_documents=failed_documents,
+                 failed_tasks=failed_tasks)
     return [done, total]
 
 

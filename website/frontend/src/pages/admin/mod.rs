@@ -10,6 +10,7 @@ pub mod group_detail;
 pub mod groups_list;
 pub mod llm_config;
 pub mod metrics;
+pub mod operations;
 pub mod settings;
 pub mod user_detail;
 pub mod user_llm;

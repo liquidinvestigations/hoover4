@@ -13,6 +13,7 @@ use crate::components::admin_components::{
     TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::pages::admin::operations::CollectionOperationsPanel;
 use crate::routes::Route;
 
 #[component]
@@ -134,6 +135,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
+        CollectionOperationsPanel { collectionname: cname.clone() }
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Datasets" }
             div { style: MODULE_BODY,

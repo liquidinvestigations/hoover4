@@ -602,6 +602,9 @@ services:
       # `${VAR:-}` renders an empty string, which the backend treats as unset.
       - HOOVER4_SEARCH_MAX_PARALLELISM=${HOOVER4_SEARCH_MAX_PARALLELISM:-}
       - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-}
+      # The failure rate above which the operations page calls a task type out as a
+      # possible tooling limitation rather than as ordinary corpus mess.
+      - HOOVER4_ERROR_RATE_ALERT_PERCENT=${HOOVER4_ERROR_RATE_ALERT_PERCENT:-5}
       # AI Chat: the research agent from compose/agents.yaml (same stack, same
       # `hoover4` network). Chat returns an error message in the transcript
       # when this is unreachable, so the site works fine without the agents running.

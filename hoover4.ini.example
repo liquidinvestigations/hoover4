@@ -187,6 +187,13 @@ ops_backup_dir =
 ; operation. Empty prints the operation id and the command that shows it, with no URL.
 admin_base_url =
 
+# Failures are unavoidable on a real corpus, so the operations page does not treat every
+# error as an alarm: it calls out only the task types failing above this rate, which are
+# the candidates for a genuine tooling limitation rather than for a messy input. It is a
+# judgement that will be revised, which is why it is configuration and not a number
+# buried in the page.
+error_rate_alert_percent = 5
+
 # ---- runtime behaviour when the GPU host is unreachable -------------------------
 gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
 gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline

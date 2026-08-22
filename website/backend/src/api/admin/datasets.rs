@@ -4,7 +4,7 @@ use common::admin_types::{AdminDatasetDetail, AdminDatasetItem, AdminDatasetStat
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::temporal_trigger;
+use crate::api::admin::{operations, temporal_trigger};
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::{collection_db_name, get_collection_client, get_global_client};
 
@@ -151,11 +151,41 @@ pub async fn admin_delete_dataset(
     Ok(())
 }
 
+/// Start one of the per-dataset pipeline runs from the admin UI.
+///
+/// The two ingest kinds are dispatched as **operations** rather than as bare workflows,
+/// so a run started from a button is one row in the same log as a run started from a
+/// terminal, takes the same lock, and gets a workflow id unique to its dispatch. Before
+/// that they started `ingest-and-process-<dataset>`, a fixed id, which meant a second
+/// click resolved to the first click's execution instead of running again.
+///
+/// The remaining kinds have no driver in the operations workflow yet and still start
+/// their workflow directly. They therefore leave no row in the operations log, which is
+/// why the collection page says so rather than showing an empty list as if nothing had
+/// been run.
 pub async fn admin_trigger_workflow(
     user: &CurrentUser,
     collection_dataset: String,
     kind: String,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
+    let operation_kind = match kind.as_str() {
+        "ingest_and_process" => Some("add_dataset"),
+        "rescan" => Some("rescan_dataset"),
+        _ => None,
+    };
+    if let Some(operation_kind) = operation_kind {
+        let Some(row) = get_dataset_row(&collection_dataset).await? else {
+            anyhow::bail!("dataset not found");
+        };
+        return operations::dispatch_operation(
+            operation_kind,
+            &row.collectionname,
+            &collection_dataset,
+            &user.username,
+            "",
+        )
+        .await;
+    }
     temporal_trigger::trigger_workflow(&collection_dataset, &kind).await
 }
