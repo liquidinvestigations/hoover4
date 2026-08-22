@@ -199,6 +199,26 @@ gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU 
 gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline
 gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
 
+# ---- chat context compaction ----------------------------------------------------
+; When a chat turn's context grows past a fraction of the model's stated context
+; window, the agent stops sending the older tool results to the model and sends a
+; placeholder instead. The calls that produced them stay, so the model still sees
+; what it searched for, and the transcript is never edited -- the user scrolling back
+; sees every result in full.
+;
+; The fraction is a fraction of what the provider says its window is. A model whose
+; window the provider never states is never compacted, because there is no
+; denominator and guessing one loses evidence silently.
+;
+; 0.6 is the specified figure and it does NOT fire on the traffic this stack produces
+; today: the widest measured turn used a tenth of the window. It is here so the
+; trigger is a setting rather than a constant, and because the window is a property
+; of the model in use, which changes.
+agent_compaction_fraction   = 0.6
+; How many of the most recent tool results survive intact. The model is usually still
+; working with what it just read.
+agent_compaction_keep_recent = 3
+
 # ---- dev tooling ----------------------------------------------------------------
 ; Serena MCP server for the host-side coding agent. Dev tool only, never
 ; part of the deployed stack; published on 127.0.0.1 only. Resets never touch it.
