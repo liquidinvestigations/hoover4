@@ -35,6 +35,8 @@ You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact pa
 
 ## 6. The report
 <the exact section list the report must carry>
+<end it with "Open questions for the user": each one written out in full with a recommended
+ answer, never a count and never a pointer elsewhere — and restated in the handover message>
 ```
 
 ## The sections that are always got wrong

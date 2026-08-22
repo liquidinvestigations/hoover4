@@ -43,6 +43,12 @@ skills. Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the reposi
   returned within seconds is wrong, not slow.
 - **Evidence before claims.** Never say something builds, passes, or is fixed unless you ran
   the check in this turn and read its output. Say which you fixed — the cause or the symptom.
+- **Anything you need from a person is asked, in full, where you say you need it.** Never
+  name a count — "three things", "a few decisions", "some open questions" — and leave the
+  content somewhere else. A request that cannot be acted on from where it is written has not
+  been made: the reader now knows they owe an answer and not what it is. Either write the
+  questions out, or link to the exact section holding them. This applies hardest at the end
+  of a long reply, which is precisely where a summary tends to compress them away.
 - **Reach for the Edit/Write tools or serena's symbol operations first** when changing code.
   `sed -i` cannot fail loudly on a stale match — it silently changes nothing — while Edit
   refuses and tells you. Bash editing stays available for the cases where it is genuinely
