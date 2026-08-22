@@ -559,7 +559,13 @@ def search_collections(
 
 #: More angles than this in one call is a model listing synonyms rather than choosing.
 #: The surplus is refused by name — silently running the first few would hide the cost.
-MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "5"))
+#:
+#: Eight rather than five because a capable model asks for six unprompted on an ordinary
+#: question, and a limit reached in ordinary use is measuring the limit rather than the
+#: behaviour it was meant to catch. Each angle costs a full hybrid fan-out and a rerank —
+#: about a third of a second each — so eight is still well short of where the search
+#: dominates the turn.
+MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "8"))
 
 
 def _fuse_across_queries(
