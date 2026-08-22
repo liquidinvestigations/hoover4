@@ -610,8 +610,14 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// - end:   `{"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}`
 ///
 /// `search_collections` content is `{"results":[{collection_dataset,file_hash,path,…}]}`.
+/// `read_documents` content is `{"documents":[…]}` — the same document objects in a list.
 /// `get_document_text` / `list_document_entities` / `show_document` content is a single
 /// document object. Unknown tools are scanned for document-shaped objects generically.
+///
+/// **The single-document arm stays even though `get_document_text` is retired.** No live
+/// call produces one any more, but transcripts written before the batch form still hold
+/// its rows, and a card that cannot render an old row destroys the record this whole
+/// design was reasoned from.
 pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocRef> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(tool_output_json) else {
         return Vec::new();
@@ -624,6 +630,7 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
 
     match tool_name {
         "search_collections" => extract_from_search_results(content),
+        "read_documents" => extract_from_document_list(content),
         "cite_documents" => extract_from_citations(content),
         "get_document_text" | "list_document_entities" | "show_document" => {
             doc_ref_from_value(content).into_iter().collect()
@@ -707,6 +714,20 @@ pub fn handle_number(handle: &str) -> Option<u32> {
         .strip_prefix("[D")
         .and_then(|rest| rest.strip_suffix(']'))
         .and_then(|digits| digits.parse().ok())
+}
+
+/// A batch read's documents, one card each.
+///
+/// Collapsed the same way search results are: `read_documents` de-duplicates its input,
+/// but a transcript row written before it did — or one where two entries named the same
+/// document through different argument shapes — must still render as one card.
+fn extract_from_document_list(content: &serde_json::Value) -> Vec<ChatDocRef> {
+    let documents = content
+        .get("documents")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    collapse_by_document(documents.iter().filter_map(doc_ref_from_value).collect())
 }
 
 fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
@@ -1192,5 +1213,48 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert!(refs[0].collection_dataset.is_empty());
         assert_eq!(refs[0].file_hash, "abc123");
+    }
+
+    #[test]
+    fn extract_doc_refs_from_read_documents_batch() {
+        let output = r#"{
+            "output": {
+                "content": {
+                    "documents": [
+                        {"collectionname": "t", "collection_dataset": "d",
+                         "file_hash": "aaa", "path": "/a.pdf"},
+                        {"collectionname": "t", "collection_dataset": "d",
+                         "file_hash": "bbb", "path": "/b.pdf"}
+                    ]
+                },
+                "name": "read_documents"
+            }
+        }"#;
+        let refs = extract_doc_refs("read_documents", output);
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].file_hash, "aaa");
+        assert_eq!(refs[1].file_hash, "bbb");
+    }
+
+    #[test]
+    fn read_documents_collapses_a_repeated_document() {
+        let output = r#"{"content": {"documents": [
+            {"collectionname": "t", "collection_dataset": "d", "file_hash": "aaa"},
+            {"collectionname": "t", "collection_dataset": "d", "file_hash": "aaa"}
+        ]}}"#;
+        assert_eq!(extract_doc_refs("read_documents", output).len(), 1);
+    }
+
+    #[test]
+    fn search_results_still_render_with_matched_queries_present() {
+        // The batch form adds a field to every hit. An older renderer would ignore it;
+        // what must not happen is the hit failing to parse because of it.
+        let output = r#"{"content": {"queries": ["a", "b"], "results": [
+            {"collectionname": "t", "collection_dataset": "d", "file_hash": "aaa",
+             "page_id": 1, "snippet": "x", "matched_queries": ["a", "b"]}
+        ]}}"#;
+        let refs = extract_doc_refs("search_collections", output);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].file_hash, "aaa");
     }
 }

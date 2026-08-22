@@ -260,7 +260,14 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
 
 
 #: Tools whose result is a single document rather than a result set.
+#:
+#: `get_document_text` is retired and no live call produces one — **the arm stays anyway**,
+#: because transcripts written before the batch form still hold its rows and a card that
+#: cannot render an old row loses the evidence base this design was built on.
 _SINGLE_DOCUMENT_TOOLS = {"get_document_text", "list_document_entities", "show_document"}
+
+#: Tools whose result is a list of documents under a named key.
+_DOCUMENT_LIST_TOOLS = {"read_documents": "documents"}
 
 
 def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
@@ -297,6 +304,13 @@ def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
                 one["snippet"] = one["quote"]
             refs.append(one)
         return refs
+
+    key = _DOCUMENT_LIST_TOOLS.get(tool_name)
+    if key is not None:
+        entries = _as_dict(result).get(key)
+        if not isinstance(entries, list):
+            return []
+        return [d for d in (_doc_ref(item) for item in entries) if d]
 
     if tool_name in _SINGLE_DOCUMENT_TOOLS:
         one = _doc_ref(result)
