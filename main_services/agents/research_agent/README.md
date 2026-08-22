@@ -142,6 +142,46 @@ runs the same model **with no tools bound** — a model that cannot call a tool 
 watch both. Omitting it is why the forced answer first came back as an empty string with a
 cheerful HTTP 200.
 
+## Context compaction — `AGENT_COMPACTION_FRACTION`
+
+A tool-using turn grows because every result it collected stays in the list sent back to
+the model on the next call. `research_agent/compaction.py` replaces the content of the
+older tool results with a placeholder once the last call the provider billed crosses a
+fraction of the model's stated context window. The assistant messages that requested them
+keep their `tool_calls`, so the model still sees that it searched and what for, and the
+`AGENT_COMPACTION_KEEP_RECENT` (default 3) most recent results stay intact because the
+model is usually still working with what it just read.
+
+| variable | default | meaning |
+|---|---|---|
+| `AGENT_COMPACTION_FRACTION` | `0.6` | fraction of the stated window at which eviction fires. Out of range, or unparseable, turns compaction off rather than clamping |
+| `AGENT_COMPACTION_KEEP_RECENT` | `3` | most recent tool results left intact |
+
+**It does not fire on the traffic this stack produces.** The widest turn measured here —
+the full research profile, sixteen tool calls, three web pages read and cited — peaked at
+about a tenth of the window, and an ordinary corpus question at half that. The trigger is
+sized against the window rather than against those measurements because the window is a
+property of the model in use: a smaller-window model, a larger corpus, sub-agents, or tool
+results replayed across turns all bring it into range.
+
+Three properties are load-bearing:
+
+* **Nothing is edited.** The transformation sits in front of the prompt template, not in a
+  node that writes state, so the graph state, the trajectory the website renders and the
+  transcript rows all keep every result in full. Only the model sees less.
+* **A result is shortened, never removed.** An assistant message whose `tool_calls` have no
+  matching tool result is rejected by an OpenAI-shaped API outright — the same constraint
+  `finalize` works around above — so the placeholder is what "dropped" has to mean here.
+* **An unknown window never fires the trigger.** `llm_models.context_window` is 0 when the
+  provider never stated one, and there is no default to fall back on. The catalog is the
+  source rather than the provider directly, so the number the trigger divides by is the
+  number the transcript footer shows the user.
+
+Every applied compaction writes a `chat_compactions` row — what was evicted, the trigger
+and its denominator, and the token counts before and after. The "after" is the prompt of
+the first call made on the shortened list, so it arrives one call later and supersedes the
+first insert under the same compaction id.
+
 ## `LLM_STREAMING` and `disable_streaming`
 
 **Streaming is back on** (`LLM_STREAMING=true`), and the workaround is retained.

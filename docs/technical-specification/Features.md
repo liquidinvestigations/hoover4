@@ -109,6 +109,10 @@ languages.
 | `F-chat-15a` | Show each nudge in the transcript as its own kind of entry, neither the user's words nor an error | `ChatRole::Nag` |
 | `F-chat-16` | Count what a turn cost in tokens — the conversation it carried and the largest single context it was billed for, summed across every nudge round — and keep the conversation's running peak | `tasks/P_agent/`, `chat_messages`, `chat_sessions.peak_context_tokens` |
 | `F-chat-16a` | Show both numbers under an answer against the model's context window and the percentage used, and say the window is unknown rather than guessing one the provider never stated | `ChatMessageItem::context_footer` |
+| `F-chat-17` | Stop sending the older tool results to the model once a turn's context passes a configured fraction of the model's stated context window — the calls that produced them stay, so the model still sees what it searched for, and the most recent results are kept intact. **The shipped fraction is 60% and no turn this stack produces reaches it**: the widest measured turn uses about a tenth of the window, so this does not fire on current traffic and is present for a smaller window, a larger corpus, or tool results replayed across turns | `research_agent/compaction.py`, `agent_compaction_fraction` |
+| `F-chat-17a` | Never compact a model whose context window the provider does not state, rather than compacting against a guessed denominator | `compaction.threshold_tokens` |
+| `F-chat-17b` | Leave the transcript exactly as it was — a compaction changes only what is sent to the model, so scrolling back through a conversation shows every tool result in full | `compaction.evict_tool_results`, `chat_messages` |
+| `F-chat-17c` | Record every applied compaction — what was evicted, the trigger and its denominator, and the token counts before and after — so a compaction error can be debugged | `chat_compactions` |
 
 ## Administration
 

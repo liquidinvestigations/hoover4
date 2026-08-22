@@ -2,15 +2,17 @@ import asyncio
 import logging
 import os
 from collections import OrderedDict
+from contextvars import ContextVar
 from typing import List, Any, AsyncIterable, Sequence, TypedDict, Annotated, Dict, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk, RemoveMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent import llm_events
+from research_agent import compaction, llm_events
 from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
 from pydantic import TypeAdapter
 import json
@@ -79,6 +81,18 @@ def keeps_preamble(in_plan_first_opening: bool, content: Any) -> bool:
     far has been a todo tool, and ends for good at the first call that is real work.
     """
     return in_plan_first_opening and tool_name_of(content) in PLAN_FIRST_TOOLS
+
+
+#: Compactions applied during the run currently executing, waiting for the token count
+#: that says what they bought.
+#:
+#: A `ContextVar` and not an attribute, because the compiled graph is cached and shared
+#: across concurrent requests while a compaction belongs to exactly one of them. Each
+#: `stream()` call installs its own list, and the graph nodes it drives inherit that
+#: context; another chat running at the same time appends to its own.
+_PENDING_COMPACTIONS: ContextVar[Optional[List[compaction.EvictionReport]]] = ContextVar(
+    "hoover4_pending_compactions", default=None
+)
 
 
 #: How many compiled graphs to keep. Each holds one MCP client with a live connection
@@ -323,6 +337,7 @@ class MCPGatewayAgent:
         #  * `finalize` writes prose and cannot call a tool. This is where thinking
         #    buys anything, so it gets AGENT_THINKING.
         log.info("LLM thinking configuration: %s", describe_thinking())
+        log.info("%s", compaction.describe())
         llm = ThinkingChatOpenAI(
             **llm_kwargs, extra_body=tool_turn_kwargs()
         ).bind_tools(tools)
@@ -333,12 +348,43 @@ class MCPGatewayAgent:
             ]
         )
 
-        agent_runnable = prompt | { "messages": llm }
+        def compact_state(state: AgentState) -> Dict[str, Any]:
+            """Shorten old tool results on the way to the model, when the trigger fires.
+
+            This sits in front of the prompt rather than inside a node that writes state,
+            and that placement is the whole design: what it returns is handed to the
+            template and thrown away, so the graph state, the trajectory the website
+            renders and the transcript rows all keep every tool result in full. Only the
+            model sees less.
+
+            See research_agent/compaction.py for the trigger, which is a configured
+            fraction of the model's stated context window and does not fire on this
+            stack's ordinary traffic.
+            """
+            messages = state.get("messages") or []
+            compacted, report = compaction.compact_messages(
+                messages, model_id=llm_model_env
+            )
+            if report is not None:
+                compaction.record_compaction(
+                    report, username=username, session_id=session_id
+                )
+                pending = _PENDING_COMPACTIONS.get()
+                if pending is not None:
+                    pending.append(report)
+            return {**state, "messages": compacted}
+
+        compact_step = RunnableLambda(compact_state, name="compact_context")
+        agent_runnable = compact_step | prompt | { "messages": llm }
 
         # The same model with no tools bound. Used by the `finalize` node below: a model
         # that cannot call a tool has to answer.
+        #
+        # It compacts too. `finalize` is the call that carries the most context in the
+        # whole run -- every tool result the turn collected, plus the instruction to stop
+        # and answer -- so exempting it would exempt the one call most likely to be over.
         plain_llm = ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs())
-        finalize_runnable = prompt | { "messages": plain_llm }
+        finalize_runnable = compact_step | prompt | { "messages": plain_llm }
 
         builder = StateGraph(AgentState)
         builder.add_node("agent", agent_runnable)
@@ -475,6 +521,11 @@ class MCPGatewayAgent:
         is_response = False
         call_timer: Optional[llm_events.CallTimer] = None
 
+        # This run's compaction trail. Installed here so the graph nodes, which are shared
+        # with every other request, append to a list belonging to this request only.
+        pending_compactions: List[compaction.EvictionReport] = []
+        _PENDING_COMPACTIONS.set(pending_compactions)
+
         # Token accounting for the whole run, summed over its model calls.
         #
         # Two numbers rather than one, because they answer different questions and differ
@@ -587,6 +638,23 @@ class MCPGatewayAgent:
                         )
                     prompt_tokens_total += stats.prompt_tokens
                     completion_tokens_total += stats.completion_tokens
+                    # A compaction's "after" is the prompt of the first call made on the
+                    # shortened list, so it only exists here, one call later. Re-inserting
+                    # the row under the same compaction id supersedes the placeholder 0 --
+                    # the table is a ReplacingMergeTree keyed on that id.
+                    if pending_compactions and stats.prompt_tokens:
+                        while pending_compactions:
+                            report = pending_compactions.pop(0)
+                            report.tokens_after = stats.prompt_tokens
+                            try:
+                                await asyncio.to_thread(
+                                    compaction.record_compaction,
+                                    report,
+                                    username=username or user_id,
+                                    session_id=session_id,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                log.warning("failed to close a compaction record: %s", exc)
                     try:
                         # `to_thread`, because this is two synchronous POSTs to ClickHouse
                         # inside the stream loop. On the event loop they stall every other

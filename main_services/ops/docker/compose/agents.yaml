@@ -327,6 +327,12 @@ services:
       # profiles keep one.
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      # Context compaction: at this fraction of the model's stated context window the
+      # older tool results stop being sent to the model, while the calls that made them
+      # stay. Unset means the agent's own default, which is the shipped trigger. It does
+      # not fire on the traffic this stack produces today — see research_agent/compaction.py.
+      - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
+      - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -391,6 +397,10 @@ services:
       # web-search server here; every source belongs inside metasearch.
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      # See the internal search agent: the compaction trigger, as a fraction of the
+      # model's stated context window. Unset means the agent's shipped default.
+      - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
+      - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}

@@ -562,6 +562,15 @@ def render_main_env(cfg):
     if cfg.get(m, "search_timeout_seconds"):
         env["HOOVER4_SEARCH_TIMEOUT_SECONDS"] = cfg.get(m, "search_timeout_seconds")
 
+    # Chat context compaction. Rendered only when set, so the agent's own default is the
+    # single place the shipped trigger is written down: an empty ini value reaching the
+    # container as an empty string would be read as an unparseable fraction and turn
+    # compaction off, which is not what leaving a key blank means anywhere else here.
+    if cfg.get(m, "agent_compaction_fraction"):
+        env["AGENT_COMPACTION_FRACTION"] = cfg.get(m, "agent_compaction_fraction")
+    if cfg.get(m, "agent_compaction_keep_recent"):
+        env["AGENT_COMPACTION_KEEP_RECENT"] = cfg.get(m, "agent_compaction_keep_recent")
+
     # Pipeline switches, rendered unconditionally so the worker can pick up a new one
     # without a deploy.py change.
     for key in ("ner_provider", "embeddings_provider",
