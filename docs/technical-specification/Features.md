@@ -98,7 +98,7 @@ languages.
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically | `chat_sessions`, `chat_messages` |
-| `F-chat-10` | Stop a turn in flight, and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
+| `F-chat-10` | Stop a turn in flight — discarding its partial answer rather than writing an unmarked fragment into the transcript, and saying so on the control — and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
 | `F-chat-11` | Retry a failed turn automatically, on whichever worker picks it up | `ChatTurn`, its activity retry policy |
 | `F-chat-12` | Run every turn durably, outside the request, so a website restart or a closed tab does not lose it | `main_services/processing/tasks/P_agent/` |
 | `F-chat-13` | List every agent turn running anywhere, and cancel one | `chat::admin_list_live_runs`, Temporal visibility |
