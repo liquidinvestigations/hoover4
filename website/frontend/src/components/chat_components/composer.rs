@@ -109,12 +109,14 @@ pub fn ChatComposer(
                                     background: #4F46E5; color: white; cursor: pointer; \
                                     display: flex; align-items: center; justify-content: center;",
                             // Says what a stop does, not what it might have done. The
-                            // agent writes the transcript only when its run finishes, so
-                            // a cancelled run discards everything the user watched stream
-                            // in. Keeping it would mean an unmarked fragment in the
-                            // conversation's permanent memory that a later turn reads
-                            // back as though the assistant had said it.
-                            title: "Stop the answer (the partial answer is discarded)",
+                            // agent writes `chat_messages` only when its run finishes, so
+                            // a cancelled run contributes nothing to the conversation:
+                            // the partial stays on screen as a leftover stream row and is
+                            // gone the moment the next question takes its seq. It is
+                            // deliberately not promoted — an unmarked fragment in the
+                            // conversation's permanent memory is read back by a later
+                            // turn as though the assistant had said it.
+                            title: "Stop the answer (the partial is not saved to the conversation)",
                             onclick: move |_| stop.call(()),
                             Icon { icon: MdStop, style: "width: 20px; height: 20px; color: white;" }
                         }

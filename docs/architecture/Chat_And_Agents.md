@@ -177,10 +177,11 @@ and writes an ending into the transcript inside `asyncio.shield` — a cancelled
 that simply vanished would leave a user row with nothing after it, and the page would
 follow a turn that will never speak again. A turn whose rows stop advancing for
 `CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button
-— never a spinner, and never promoted into `chat_messages`. A stop therefore discards the
-partial answer the user was watching stream in: the agent writes `chat_messages` only when
-its run finishes, so a cancelled run has written none of them. The transcript keeps the
-question and the stop, and the control says so rather than promising the partial back.
+— never a spinner, and never promoted into `chat_messages`. A stopped turn's partial answer
+is therefore never saved into the conversation: the agent writes `chat_messages` only when
+its run finishes, so a cancelled run has written none of them, and the partial survives only
+as a leftover stream row until the next question takes its seq. The transcript keeps the
+question and the stop, and the stop control says so rather than promising the partial back.
 
 Both kinds of turn write the empty stream row before they dispatch. It is the only thing
 telling the poller a turn exists before the worker picks the activity up, and the worker
