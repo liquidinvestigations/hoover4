@@ -59,6 +59,16 @@ reached. It is two commands: `./deploy --reset`, then `./deploy --build`.
 exited.** `docker restart <name>` refuses because an init container is `Exited (0)`, which is
 its correct final state. `docker stop <name>` followed by `docker start <name>` works.
 
+**Bringing one service up recreates its whole dependency chain**, and has taken the fleet down
+doing it. `--no-deps` is required whenever a single service is the target.
+
+**`stop_grace_period` is honoured only when the runtime is itself the process stopping the
+container.** It is not written onto the container and cannot be set afterwards, so the
+container carries the runtime's own ten-second default however the compose file is configured.
+A deploy prints the number really in force. **Restart the worker with
+`main_services/restart-worker.sh`**, which passes the period explicitly — a bare stop or
+restart cuts the drain short, silently, and a cut drain is how in-flight activities are lost.
+
 **Relative paths in a compose file resolve against the project directory** — the first `-f`
 file's directory — not against the file that declares them. An overlay in a subdirectory
 therefore points somewhere else entirely from where it reads as pointing.

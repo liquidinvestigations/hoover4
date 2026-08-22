@@ -70,8 +70,30 @@ only `unreachable`. `dx check --package frontend` names the site.
 **A structure query routed through the search cache.** The collection's tree changes while
 ingestion runs, so it is read uncached deliberately. A stale tree is worse than a slow one.
 
+**A field name on a wire that both type checks accept.** A Temporal dispatch shipped here
+naming a conflict-policy field the HTTP API rejects outright. `cargo check` and `dx check` were
+both green over it; it failed as an error string in a database row, and the feature had never
+worked. **A call across a wire is verified by making the call**, never by the build.
+
+**A gate that cannot fail.** A verification function was called in a `|| true` list, which
+discarded its return, so the run printed *all checks passed* over a check that had aborted at
+its first step. Note that `if ! f` does **not** fix this — inverting a return value suppresses
+`set -e` inside the body exactly as a `||` list does. The honesty has to live in the function:
+every failure path records a failure before returning.
+
+**An aggregate field that claims more than it knows.** A "which queries found this hit" list
+repeated the same query, because one query's ranking can carry a page more than once across
+shards — so the field asserted corroboration that did not exist, **inverting the meaning of the
+only signal it added**. Every unit test and both type checks passed. Check that a derived
+signal cannot report the opposite of the truth.
+
 **A comment made false by the change.** The most common real defect in this tree. Fix it in
 the same patch — `writing-project-docs`.
+
+**An edit inside an already-applied migration.** The runner records an md5 of the whole file,
+comments included, so correcting a stale word in one makes it refuse to start on every
+deployment that already ran it. A prose sweep that reaches the migration directories has gone
+too far.
 
 ## Then the standing checks
 

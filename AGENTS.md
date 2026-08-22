@@ -64,6 +64,12 @@ skills. Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the reposi
   with no row was never agreed; a row with no code is a lie. Read the affected rows before
   you change the feature.
 
+- **A plan costs work in passes, never in developer days.** A pass is one sub-agent
+  invocation and its cost comes from a measured reference class; a developer day is a unit
+  nothing here has ever been measured in, and it has never once been checked against an
+  outcome. Every plan that schedules work carries an estimate table, and the final report
+  restates it with an actuals column — that column is what stops the next estimate being
+  copied from the last guess. `planning-work` carries the method.
 - **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
   letter-and-number tags — a scope item, a decision, a question, a cut — are free and
   useful: they are what lets a scope table and a result table line up. Outside it they are

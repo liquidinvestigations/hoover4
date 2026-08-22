@@ -94,6 +94,31 @@ Two failure shapes to avoid:
 - **A stage that spans two verification cycles.** It will be reported as done when only the
   first is green.
 
+**One item per pass.** Measured across this repository's own runs: a brief listing five items
+delivered one, a brief listing six delivered one, and the only brief delivered whole had three
+items in a strict dependency chain that one check closed. A brief with a list in it is not an
+estimate of that list; it is an estimate of one item and a shortfall report.
+
+## Estimating it
+
+**Cost work in passes, never in developer days.** A pass is one sub-agent invocation, and its
+cost comes from a measured reference class rather than from judgement about the task — median
+41 minutes for a pass that writes, 10 for one that only reads, 73 for one that deploys. A
+developer day is a unit nothing here has ever been measured in.
+
+Every plan that schedules work carries an `## Estimate` table: one row per item with its
+bucket, its verification cost, and `T50`/`T90` in minutes; then passes, agent wall clock, and
+session wall clock at twice that for the organizer. **The final report restates the same table
+with an actuals column.**
+
+That last column is the whole point. Twenty-one plan headings in this repository's archive
+carried a parenthetical day-cost and not one was ever checked, because every report that
+followed was written in a different unit — so the estimates could not improve, and each new
+plan was written from the last plan's estimates rather than its outcomes.
+
+`reference/estimating.md` carries the method, the table and the adders;
+`reference/mine-wall-clock.py` regenerates the table from the harness's own transcripts.
+
 ## What a prompt file must contain
 
 A pass is only as good as its work package. Every one of these, or the pass reconstructs it
@@ -127,5 +152,8 @@ Before a stage is called finished:
 ## References
 
 - `reference/prompt-template.md` — the skeleton of a work package, with the sections above.
+- `reference/estimating.md` — the reference class, the verification adders, and the estimate
+  block every plan carries.
+- `reference/mine-wall-clock.py` — regenerates the reference class from recorded transcripts.
 - `reference/archiving.md` — closing a folder, and what gets lifted into the tree before the
   scratch is wiped.

@@ -18,8 +18,24 @@ whose failures are indistinguishable from each other in the logs.
   produce a merge you did not plan and a stack you cannot attribute a failure in.
 - **Waited on** — the launching agent blocks on the result and reviews it before the next
   pass starts. A pass that is not reviewed before the next one begins compounds its mistakes.
-- **Self-timeboxed** — around thirty minutes of work, and the pass reports what it did not
-  reach rather than running until it is stopped.
+- **Self-timeboxed** — the pass reports what it did not reach rather than running until it is
+  stopped. **A self-timebox is a budget of effort and attention, not a clock**: passes
+  reporting they had "roughly doubled" a one-hour box had used twenty-four minutes of it, and
+  one reporting a "2.5× overrun" had used forty-seven. Ask a pass what it did not reach, never
+  how long it took — an agent's sense of its own elapsed time is a feeling, and wall clock has
+  to come from outside it.
+- **One item per pass**, and two only when they are one item in a dependency chain that a
+  single check closes. A brief listing five items has been measured to deliver one.
+
+## Resume rather than replace
+
+A pass that runs out of attention with its item half-done is **resumed**, not replaced: it
+costs no slot, it keeps the context it has already paid for, and the work is finishing rather
+than starting. Three of five briefs in the last sprint needed one, so budget half a pass for
+every item that is not a single mechanical change.
+
+A resume still gets **a written work package**, not a paragraph — a new file beside the first,
+answering the questions the pass raised and naming what it must not revisit.
 - **A hand-written work package** — a file, written before launch, not a paragraph typed into
   the call. See `planning-work`'s prompt template.
 - **A report file** beside the prompt, so the pair is visible in the directory listing.

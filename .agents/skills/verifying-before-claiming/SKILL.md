@@ -77,6 +77,25 @@ several.
   would fire on a crash. Silence must not be indistinguishable from success.
 - Redirect full output to a file and grep it. Never judge a build from `tail -50`.
 
+## A green suite is not a working feature
+
+The two worst defects of a recent pass survived every unit test and both type checks, and were
+found only by driving a real conversation against the running stack. One of them **inverted the
+meaning of the signal it reported**. A third shipped a service call that could never have
+worked, because the API rejects a field the build has no opinion about.
+
+The pattern: a test exercises the code you wrote, and a type check exercises its shapes.
+Neither exercises **the thing on the other side** — a model deciding whether to call a tool, a
+server accepting a field name, a page rendering under a real browser. So:
+
+- **A tool is not verified by being registered.** Call it, from a real chat, and read what came
+  back.
+- **A call across a wire is verified by making the call**, never inferred from a build.
+- **A feature whose consumer is a model is verified by watching the model use it**, because
+  "the model can see it" and "the model can use it" are different claims.
+
+Cheap and worth the minutes: a real question through the real interface beats another test.
+
 ## What does not count
 
 - "Should work now", "I'm confident", "the linter passed", "the logs look fine".
