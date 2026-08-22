@@ -396,6 +396,9 @@ class ReadPageTool(Tool):
     """
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        import time
+
+        started = time.monotonic()
         await router.ensure_reaper()
         session_id = _header(SESSION_HEADER)
         username = _header(USER_HEADER)
@@ -418,9 +421,13 @@ class ReadPageTool(Tool):
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
+        # The real elapsed time, not zero: this is the slowest tool the router offers —
+        # several navigations and captures — and `/admin/ai_status` averaging a hardcoded
+        # zero into the browser column would make the one tool worth watching invisible.
         telemetry.record_async(
             "browser", provider="read_page",
-            latency_ms=0.0, ok=not failed, detail=f"{len(outcome.pages)} page(s)",
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            ok=not failed, detail=f"{len(outcome.pages)} page(s)",
             session_id=chat.session_id,
         )
         result = ToolResult(
