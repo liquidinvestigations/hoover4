@@ -54,7 +54,11 @@ skills. Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the reposi
   refuses and tells you. Bash editing stays available for the cases where it is genuinely
   the practical tool; the point is which one you try first.
 - **Change the comment in the same patch that changes what it describes.** A stale comment
-  outlives the code it lied about.
+  outlives the code it lied about. **An already-applied migration is the exception, and it
+  is frozen — comments included.** The runner records an md5 of the whole file, so
+  correcting a stale word in one refuses to start on every deployment that already ran it.
+  A prose sweep that reaches `db_global_migrations/` or `db_collection_migrations/` has gone
+  too far; the fix belongs in a new numbered file or beside the code that reads the table.
 - **A change that adds, removes or re-scopes a capability edits its row in
   `docs/technical-specification/` in the same patch** — never in a follow-up. A capability
   with no row was never agreed; a row with no code is a lie. Read the affected rows before
