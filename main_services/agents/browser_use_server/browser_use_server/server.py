@@ -344,12 +344,12 @@ def _append_marker(
 
 #: The sidecar tools this server *advertises*, as a comma-separated env var.
 #:
-#: The sidecar exposes about thirty tools and every one of them used to be re-advertised
-#: here, which made the browser router alone four fifths of a research agent's tool list.
-#: A tool list that long costs accuracy: an adaptive shortlist averaging seven tools scores
-#: level with a fixed fifty and beats a fixed five by six points, so thirty from one server
-#: is the opposite of adaptive. `read_page` below covers reading a page — the overwhelming
-#: majority of what the rest were used for — and these six cover driving one.
+#: The sidecar exposes about thirty tools. Advertising all of them makes this one server
+#: four fifths of the full-research agent's tool list, and a tool list that long costs
+#: accuracy: an adaptive shortlist averaging seven tools scores level with a fixed fifty and
+#: beats a fixed five by six points, so thirty from one server is the opposite of adaptive.
+#: `read_page` below covers reading a page — the overwhelming majority of what the rest are
+#: reached for — and these six cover driving one.
 #:
 #: **The unadvertised tools are not deleted.** They are registered disabled, so they are
 #: absent from `list_tools` and one env var away from returning, and `read_page` still
