@@ -32,6 +32,13 @@ pub struct ChatSessionRow {
     pub deep_research: u8,
     #[serde(default)]
     pub options_locked: u8,
+    /// Running maximum of `ChatMessageRow::peak_context_tokens` over the conversation's
+    /// turns, written by the worker. **Carried through every read-modify-write here**,
+    /// like every other column on this row: `chat_sessions` is a ReplacingMergeTree, so
+    /// a writer that omits a column writes a fresher row with the column's default and
+    /// silently erases what another writer put there.
+    #[serde(default)]
+    pub peak_context_tokens: u32,
 }
 
 impl ChatSessionRow {
@@ -125,8 +132,8 @@ pub struct ChatStreamRow {
 }
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
-     updated_at, is_deleted, use_internet_tools, deep_research, options_locked \
-     FROM chat_sessions FINAL";
+     updated_at, is_deleted, use_internet_tools, deep_research, options_locked, \
+     peak_context_tokens FROM chat_sessions FINAL";
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
@@ -169,6 +176,8 @@ pub async fn create_session(
         use_internet_tools: 0,
         deep_research: 0,
         options_locked: 0,
+        // Nothing has been counted yet. The worker raises it as turns complete.
+        peak_context_tokens: 0,
     };
     insert_row("chat_sessions", &row).await?;
     Ok(session_id)

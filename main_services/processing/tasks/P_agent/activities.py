@@ -356,7 +356,7 @@ def _set_session_title(username: str, session_id: str, title: str, summary: str)
     columns = [
         "session_id", "username", "title", "collections", "summary",
         "use_internet_tools", "deep_research", "options_locked",
-        "created_at", "updated_at", "is_deleted",
+        "created_at", "updated_at", "is_deleted", "peak_context_tokens",
     ]
     with get_global_client() as client:
         rows = client.query(
