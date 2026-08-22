@@ -221,6 +221,10 @@ datasets_mount_path = /testdata
 ; shared bearer token between the research agents and the MCP servers (host path to
 ; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
 mcp_shared_secret_file =
+; API key for metasearch's published-fact-check source (host path to a chmod-600 file
+; outside the repo). Empty = that source is not registered and the model is never told
+; about it, which is the intended state for a deployment without a key.
+factcheck_api_key_file =
 
 # ---- which interfaces the published ports answer on ------------------------------
 ; Address the website's 12345 is published on. 0.0.0.0 = every interface. Set this to a

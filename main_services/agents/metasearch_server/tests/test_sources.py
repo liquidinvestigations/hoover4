@@ -5,7 +5,11 @@ the live-tool checks). What matters here is that a bad `sources` argument from a
 degrades gracefully rather than costing a search.
 """
 
-from metasearch_server import sources as sources_mod
+import asyncio
+
+import pytest
+
+from metasearch_server import engines, sources as sources_mod
 
 
 class TestRegistry:
@@ -43,17 +47,20 @@ class TestConfiguration:
         monkeypatch.setenv("METASEARCH_SOURCES", "ddg,nosuchsource,wikipedia")
         assert sources_mod.configured_sources() == ["ddg", "wikipedia"]
 
-    def test_an_empty_setting_falls_back_rather_than_disabling_search(self, monkeypatch):
+    def test_an_empty_setting_is_unset_not_no_sources(self, monkeypatch):
+        """A compose file renders an unset variable as an empty string. Reading that as
+        "no sources" narrows the deployment to one scraper on every default deploy."""
+        monkeypatch.delenv("METASEARCH_ENGINES", raising=False)
         monkeypatch.setenv("METASEARCH_SOURCES", "")
-        assert sources_mod.configured_sources() == ["ddg"]
+        assert sources_mod.configured_sources() == list(sources_mod.SOURCES)
 
     def test_the_legacy_engines_variable_still_narrows_the_scrapers(self, monkeypatch):
         """An existing deployment's METASEARCH_ENGINES must keep meaning what it meant —
-        it names the HTML scrapers, and the three inherited sources come along."""
+        it names the HTML scrapers, and every non-scraper source comes along."""
         monkeypatch.delenv("METASEARCH_SOURCES", raising=False)
         monkeypatch.setenv("METASEARCH_ENGINES", "brave,yahoo")
         assert sources_mod.configured_sources() == [
-            "brave", "yahoo", "ddg_api", "ddg_news", "wikipedia",
+            "brave", "yahoo", *[n for n in sources_mod.SOURCES if n not in engines.ENGINES],
         ]
 
     def test_the_default_is_everything(self, monkeypatch):
@@ -164,3 +171,90 @@ class TestWikipediaSnippets:
         cannot raise and cannot leak markup, which is all a snippet needs."""
         assert sources_mod._strip_tags("a < b > c") == "a c"
         assert sources_mod._strip_tags("unterminated <span") == "unterminated"
+
+
+class TestKeyGating:
+    """A key-gated source with no key is absent, never present and failing."""
+
+    def test_an_unregistered_source_is_named_nowhere(self):
+        """Registration happens at import, and this suite runs without a key mounted, so
+        the source must be missing from the registry, the default set and the description
+        the model reads — all three, because absent from one of them is still a source a
+        model can be told about or asked for."""
+        assert "factcheck" not in sources_mod.SOURCES
+        assert "factcheck" not in sources_mod.DEFAULT_SOURCES.split(",")
+        assert not [s for s in sources_mod.describe_sources() if s["name"] == "factcheck"]
+
+    def test_no_key_means_no_key(self, monkeypatch):
+        monkeypatch.delenv("FACTCHECK_API_KEY_FILE", raising=False)
+        assert sources_mod._factcheck_key() == ""
+
+    def test_an_empty_mounted_file_is_no_key(self, monkeypatch, tmp_path):
+        """The compose file mounts /dev/null when no key is configured, so "the file
+        exists" is not the question — "the file has a key in it" is."""
+        empty = tmp_path / "key"
+        empty.write_text("   \n")
+        monkeypatch.setenv("FACTCHECK_API_KEY_FILE", str(empty))
+        assert sources_mod._factcheck_key() == ""
+
+    def test_a_missing_file_is_no_key_rather_than_a_crash(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("FACTCHECK_API_KEY_FILE", str(tmp_path / "nope"))
+        assert sources_mod._factcheck_key() == ""
+
+
+class TestArchiveQueries:
+    """Neither archive has a full-text index: they answer about a URL."""
+
+    def test_a_host_is_found_in_an_ordinary_question(self):
+        assert sources_mod.host_in("what did enron.com say in 2001") == "enron.com"
+        assert sources_mod.host_in("https://www.example.co.uk/a/b") == "www.example.co.uk"
+
+    def test_a_question_naming_no_host_yields_nothing(self):
+        assert sources_mod.host_in("who audited Enron") == ""
+        assert sources_mod.host_in("") == ""
+
+    def test_an_archive_asked_a_hostless_question_says_why(self):
+        for name in ("wayback", "archive_today"):
+            with pytest.raises(sources_mod.SourceUnavailable):
+                asyncio.run(sources_mod.SOURCES[name].fetch("who audited Enron", 5, None))
+
+    def test_the_archives_declare_their_own_kind(self):
+        for name in ("wayback", "archive_today"):
+            assert sources_mod.SOURCES[name].kind == sources_mod.KIND_ARCHIVE
+
+
+class TestNewSourceParsers:
+    """Response shapes, parsed without touching the network."""
+
+    def test_a_gdelt_timestamp_becomes_a_readable_date(self):
+        assert sources_mod._gdelt_date("20240115T093000Z") == "2024-01-15T09:30:00Z"
+        assert sources_mod._gdelt_date("nonsense") == "nonsense"
+
+    def test_a_crossref_date_part_list_becomes_a_date(self):
+        assert sources_mod._crossref_date({"date-parts": [[2011, 3, 4]]}) == "2011-03-04"
+        assert sources_mod._crossref_date({"date-parts": [[2011]]}) == "2011"
+        assert sources_mod._crossref_date(None) == ""
+
+    def test_a_wayback_timestamp_becomes_a_readable_date(self):
+        assert sources_mod._wayback_date("19981212024715") == "1998-12-12"
+
+    def test_only_short_code_links_are_archive_today_snapshots(self):
+        """The listing also links `/<host>`, `/*.<host>` and `/<the full url>`, which are
+        other views of the same page. Without the short-code rule the first result is the
+        page's link to itself."""
+        rows = list(
+            sources_mod._ARCHIVE_TODAY_ROW.finditer(
+                '<a href="https://archive.ph/enron.com">enron.com</a>'
+                '<a href="https://archive.ph/wCG1t">9 Dec 2025 17:45</a>'
+                '<a href="https://archive.ph/wCG1t">Enron Corporation</a>'
+                '<a href="https://archive.ph/https://enron.com/">https://enron.com/</a>'
+            )
+        )
+        assert [m.group("url") for m in rows] == [
+            "https://archive.ph/wCG1t",
+            "https://archive.ph/wCG1t",
+        ]
+
+    def test_a_capture_date_anchor_is_recognised(self):
+        assert sources_mod._ARCHIVE_TODAY_DATE.match("9 Dec 2025 17:45")
+        assert not sources_mod._ARCHIVE_TODAY_DATE.match("Enron Corporation")

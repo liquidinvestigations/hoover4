@@ -153,7 +153,7 @@ class TestRunSearch:
 
         monkeypatch.setattr(rerank_client, "rerank", dead)
 
-        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
         assert outcome.rerank_applied is False
         assert outcome.rerank_error
         assert [r.result.url for r in outcome.ranked] == [
@@ -176,7 +176,7 @@ class TestRunSearch:
 
         monkeypatch.setattr(rerank_client, "rerank", flip)
 
-        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
         assert outcome.rerank_applied is True
         assert [r.result.url for r in outcome.ranked] == [
             "https://b.example",
@@ -194,7 +194,7 @@ class TestRunSearch:
             "rerank",
             lambda q, d, model=None: (_ for _ in ()).throw(rerank_client.RerankUnavailable("no")),
         )
-        outcome = asyncio.run(pipeline.run_search("q"))
+        outcome = asyncio.run(pipeline.run_search(["q"]))
         assert outcome.degraded == ["brave"]
         # "brave returned nothing" reads the same for rot, an HTTP 429 and a dead host.
         assert outcome.degraded_reasons["brave"]
@@ -213,7 +213,7 @@ class TestRunSearch:
             "rerank",
             lambda q, d, model=None: ([rerank_client.RerankScore(index=2, score=9.0)], 3.0),
         )
-        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
         assert outcome.rerank_applied is True
         assert [r.result.url for r in outcome.ranked] == [
             "https://2.example",
@@ -240,11 +240,127 @@ class TestRunSearch:
                 3.0,
             ),
         )
-        outcome = asyncio.run(pipeline.run_search("q", max_results=10))
+        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
         assert [r.result.url for r in outcome.ranked] == [
             "https://1.example",
             "https://0.example",
         ]
+
+
+class TestBatchedQueries:
+    """One fan-out per query, one merged pool, ONE rerank over that pool."""
+
+    @staticmethod
+    def _stub_per_query(monkeypatch, per_query):
+        """`per_query` maps a query to `{source: [results]}`."""
+
+        async def fetch_all(query, names, per_source_results=15, timelimit=None):
+            table = per_query.get(query, {})
+            latency = {n: 1.0 for n in names}
+            degraded = [n for n in names if not table.get(n)]
+            reasons = {n: "answered with no results" for n in degraded}
+            return {n: list(table.get(n, [])) for n in names}, latency, degraded, reasons
+
+        monkeypatch.setattr(sources_mod, "fetch_all", fetch_all)
+        monkeypatch.setattr(
+            sources_mod,
+            "resolve_sources",
+            lambda requested: (
+                sorted({n for table in per_query.values() for n in table}), []
+            ),
+        )
+
+    def test_the_merged_pool_is_reranked_once_for_the_whole_batch(self, monkeypatch):
+        """The one substantive way to get batched search wrong is a rerank per query
+        followed by a merge: that ranks each query's results against each other rather
+        than against the question, and it looks correct from the outside."""
+        self._stub_per_query(
+            monkeypatch,
+            {
+                "one": {"ddg": [SearchResult("a", "https://a.example")]},
+                "two": {"ddg": [SearchResult("b", "https://b.example")]},
+            },
+        )
+        calls = []
+
+        def record(query, documents, model=None):
+            calls.append((query, len(documents)))
+            return [
+                rerank_client.RerankScore(index=i, score=float(len(documents) - i))
+                for i in range(len(documents))
+            ], 5.0
+
+        monkeypatch.setattr(rerank_client, "rerank", record)
+
+        outcome = asyncio.run(pipeline.run_search(["one", "two"], max_results=10))
+        assert len(calls) == 1, calls
+        # The one call saw the whole merged pool, and was asked the union of the angles.
+        assert calls[0] == ("one" + pipeline.QUERY_JOIN + "two", 2)
+        assert len(outcome.ranked) == 2
+
+    def test_a_page_two_queries_found_names_both(self, monkeypatch):
+        self._stub_per_query(
+            monkeypatch,
+            {
+                "one": {"ddg": [SearchResult("a", "https://a.example")]},
+                "two": {
+                    "ddg": [
+                        SearchResult("a", "https://a.example/"),
+                        SearchResult("b", "https://b.example"),
+                    ]
+                },
+            },
+        )
+        monkeypatch.setattr(
+            rerank_client,
+            "rerank",
+            lambda q, d, model=None: (_ for _ in ()).throw(rerank_client.RerankUnavailable("no")),
+        )
+        outcome = asyncio.run(pipeline.run_search(["one", "two"], max_results=10))
+        by_url = {r.result.url: r for r in outcome.ranked}
+        # The trailing slash is the same page: `matched_queries` is keyed on the
+        # normalised URL, or a batch would claim corroboration it does not have.
+        assert by_url["https://a.example"].matched_queries == ["one", "two"]
+        assert by_url["https://b.example"].matched_queries == ["two"]
+        # And the corroborated page outranks the one a single query found.
+        assert outcome.ranked[0].result.url == "https://a.example"
+
+    def test_a_source_answering_one_query_of_two_is_not_degraded(self, monkeypatch):
+        """One empty query is a query with no results, not a broken source. Counting it
+        as one degrades every source on any batch carrying a narrow angle."""
+        self._stub_per_query(
+            monkeypatch,
+            {
+                "broad": {"ddg": [SearchResult("a", "https://a.example")], "brave": []},
+                "narrow": {"ddg": [], "brave": []},
+            },
+        )
+        monkeypatch.setattr(
+            rerank_client,
+            "rerank",
+            lambda q, d, model=None: (_ for _ in ()).throw(rerank_client.RerankUnavailable("no")),
+        )
+        outcome = asyncio.run(pipeline.run_search(["broad", "narrow"], max_results=10))
+        assert outcome.degraded == ["brave"]
+        assert outcome.degraded_reasons["brave"]
+
+    def test_the_model_is_shown_source_names_not_fusion_keys(self, monkeypatch):
+        """Rankings are keyed by (source, query) so two queries do not overwrite each
+        other. A key repeated once per query would read to the model as corroboration."""
+        self._stub_per_query(
+            monkeypatch,
+            {
+                "one": {"ddg": [SearchResult("a", "https://a.example")]},
+                "two": {"ddg": [SearchResult("a", "https://a.example")]},
+            },
+        )
+        monkeypatch.setattr(
+            rerank_client,
+            "rerank",
+            lambda q, d, model=None: (_ for _ in ()).throw(rerank_client.RerankUnavailable("no")),
+        )
+        outcome = asyncio.run(pipeline.run_search(["one", "two"], max_results=10))
+        assert outcome.ranked[0].result.engines == ["ddg"]
 
 
 class TestPayloadSplit:

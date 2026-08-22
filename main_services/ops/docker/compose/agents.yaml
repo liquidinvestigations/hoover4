@@ -111,9 +111,18 @@ services:
       - HOST=0.0.0.0
       - PORT=8086
       - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
-      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-ddg,brave,yahoo,ddg_api,ddg_news,wikipedia}
+      # Leave this UNSET to use every registered source. Naming them here is how a newly
+      # registered source silently never runs — the server's own default is derived from
+      # the registry, and a list written out by hand cannot be.
+      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-}
       - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
+      # GDELT answers in ten to twelve seconds even when it answers 429, so it carries its
+      # own deadline. It must stay under the overall one, which bounds the fan-out anyway.
+      - METASEARCH_GDELT_TIMEOUT=${METASEARCH_GDELT_TIMEOUT:-15}
       - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
+      # Queries one web_search call may fan out over. Each is a full fan-out across every
+      # source plus its share of one cross-encoder pass.
+      - METASEARCH_MAX_QUERIES=${METASEARCH_MAX_QUERIES:-5}
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
       # The result policy: 15 results, always reranked. The floor is per kind and must stay well
@@ -144,7 +153,14 @@ services:
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
+      # The one key-gated source. A path to a mounted file, never a value: without a
+      # non-empty file the fact-check source is not registered at all, so it is absent
+      # from the source list the model is shown rather than present and failing.
+      - FACTCHECK_API_KEY_FILE=/run/secrets/factcheck_api_key
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      # /dev/null when unset: readable and empty, which is what "no key" means here.
+      - ${FACTCHECK_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/factcheck_api_key:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8086/health', timeout=5)\""]

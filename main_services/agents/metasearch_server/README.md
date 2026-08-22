@@ -5,8 +5,8 @@
 
 One tool searches the open web, and there must never be a second. A small model faced with
 several near-identical "search the web" descriptions picks badly and inconsistently, so
-every source — the scrapers, DuckDuckGo text and news, Wikipedia — is a `sources` entry
-here rather than a tool of its own.
+every source — the scrapers, DuckDuckGo text and news, world news, the encyclopaedias, DOI
+metadata and the archives — is a `sources` entry here rather than a tool of its own.
 
 Modelled on [`MikeLuu99/metasearch-rust`](https://github.com/MikeLuu99/metasearch-rust) —
 the design worth taking is: query several sources in parallel, deduplicate on a normalised
@@ -16,21 +16,67 @@ URL, and merge with RRF so agreement between sources beats any one source's conf
 
 | Tool | Returns |
 |---|---|
-| `web_search(query, sources=None, max_results=15, timelimit=None)` | the fused, reranked, floored result list plus the timing table and a `search_detail` artifact id |
+| `web_search(queries=[…], sources=None, max_results=15, timelimit=None)` | the fused, reranked, floored result list plus the timing table and a `search_detail` artifact id |
 | `list_search_sources()` | every source with its kind, and which are configured |
 
-`timelimit` is `d`/`w`/`m`/`y` and only affects `ddg_news` and `ddg_api` — the HTML
-endpoints take no time filter. A bad value is **refused**, not ignored: a model that thinks
-it filtered to the last day and did not will present stale results as fresh.
+`timelimit` is `d`/`w`/`m`/`y` and only affects `ddg_news`, `ddg_api` and `gdelt` — the HTML
+endpoints take no time filter and the reference sources have no publication date. A bad
+value is **refused**, not ignored: a model that thinks it filtered to the last day and did
+not will present stale results as fresh.
+
+### One call, several angles
+
+`queries` is a list. Every query is run across every source, all of those rankings fuse into
+**one** pool, and that pool is reranked **once**; each result carries `matched_queries`, the
+queries that found it. `query` is still accepted and folds into `queries`, so a batch of one
+is not a special case.
+
+**Reranking per query and then merging the orderings is the wrong shape**, and it looks
+correct from the outside. It ranks each query's results against each other rather than
+against the question, so the best answer to the sharpest angle arrives interleaved with the
+best answer to the vaguest one at the same rank.
+
+`METASEARCH_MAX_QUERIES` caps the batch, and the surplus is **named** in `note` rather than
+trimmed silently. `note` also reports de-duplicated repeats. A list arrives coerced through
+`agent_common.batching.as_list`, so a bare string and a JSON-encoded list both work.
 
 ## Sources
 
-| name | kind | what it is |
-|---|---|---|
-| `ddg`, `brave`, `yahoo` | `web` | the HTML scrapers in `engines.py` |
-| `ddg_api` | `web` | the `ddgs` library's `text()`, inherited from `hoover4-mcp-ddg` |
-| `ddg_news` | `news` | the `ddgs` library's `news()`, same origin |
-| `wikipedia` | `reference` | MediaWiki `list=search`, inherited from `hoover4-mcp-wikipedia` |
+| name | kind | key | what it is |
+|---|---|---|---|
+| `ddg`, `brave`, `yahoo` | `web` | none | the HTML scrapers in `engines.py` |
+| `ddg_api` | `web` | none | the `ddgs` library's `text()`, inherited from `hoover4-mcp-ddg` |
+| `ddg_news` | `news` | none | the `ddgs` library's `news()`, same origin |
+| `gdelt` | `news` | none | GDELT DOC 2.0 — world news across languages and back years |
+| `wikipedia` | `reference` | none | MediaWiki `list=search`, inherited from `hoover4-mcp-wikipedia` |
+| `wikidata` | `reference` | none | structured entities: a company, a person, an identifier, by Q-number |
+| `crossref` | `reference` | none | DOI metadata, resolving to `doi.org` |
+| `factcheck` | `reference` | free key | published fact-checks; **absent unless a key file is mounted** |
+| `wayback` | `archive` | none | Wayback Machine snapshots of a host named in the query |
+| `archive_today` | `archive` | none | the second archive; no API, so the flakiest source here |
+
+**A key-gated source with no key is not registered at all** — absent from
+`list_search_sources`, from the default set and from dispatch, rather than present and
+failing. Telling a model about a capability the deployment does not have costs a round trip
+to discover that. The key is a path to a chmod-600 file outside the repository,
+bind-mounted read-only, and is never a value in a file, a default or a log.
+
+**The archives answer about a URL, not about a phrase.** Neither has a full-text index, so a
+query naming no host is a question they cannot be asked and they say so in
+`degraded_reasons` rather than returning nothing. `archive_today` has no API at all: it
+parses the HTML of a page behind a bot wall, and it is expected to be the first name on the
+`degraded` list. That is what it is here for — a second archive that answers sometimes beats
+no second archive, as long as its failure is visible.
+
+**`wikidata` searches twice on a miss.** `wbsearchentities` matches an item's label by
+prefix, so it is exact for `Enron` and returns nothing at all for `Arthur Andersen
+accounting firm` — which is the shape of query a model actually sends. The full-text
+`list=search` answers those, and one `wbgetentities` call turns its Q-numbers into labels.
+
+**`gdelt` carries its own deadline.** It takes ten to twelve seconds to answer at all,
+including when it answers `429`, so the common eight-second deadline turned every call into
+a timeout. It also rate-limits per address, so a batch of queries will degrade it partway
+through.
 
 `ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
 independently — a selector change breaks one, a library bump breaks the other — and the
@@ -107,8 +153,9 @@ replacing.
 
 ## What the model gets, and what it does not
 
-Per result: `title`, `url`, `display_url`, `snippet`, `sources[]`, `kind`, `rrf_rank`,
-`rrf_score`, `rerank_rank`, `rerank_score`, `published`. Top level: `sources_used`,
+Per result: `title`, `url`, `display_url`, `snippet`, `sources[]`, `matched_queries[]`,
+`kind`, `rrf_rank`, `rrf_score`, `rerank_rank`, `rerank_score`, `published`. Top level:
+`query`, `queries`, `note`, `sources_used`,
 `degraded`, `degraded_reasons`, `unknown_sources`, `total_before_dedupe`,
 `total_after_dedupe`, `rerank_applied`, `rerank_ms`, per-source `source_latency_ms` and
 `source_counts`.
@@ -140,8 +187,10 @@ makes it fragile: assume at least one selector breaks within months. In the run 
 had already stopped matching — the search still worked, and said so. Two things keep that
 visible:
 
-* **The `degraded` field** on every response names the sources that returned nothing, and
-  `degraded_reasons` says why each one did. Those are different questions: "brave returned
+* **The `degraded` field** on every response names the sources that returned nothing for
+  **every** query in the call, and `degraded_reasons` says why each one did. One empty
+  query out of five is a query with no results, not a broken source; counting it as one
+  would degrade every source on any batch carrying a narrow angle. Those are different questions: "brave returned
   nothing" reads identically for a rotted selector, an `HTTP 429` and an unreachable host,
   and the three want three different fixes. Never swallow a zero-result source.
 * **`METASEARCH_SOURCES`** turns a broken one off without a rebuild. Unknown names are
@@ -156,9 +205,12 @@ selector edit fails a test rather than production.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `METASEARCH_SOURCES` | all six | the set to query; `METASEARCH_ENGINES` is still honoured for the scrapers |
+| `METASEARCH_SOURCES` | every registered source | the set to query; empty means the default, not "none". `METASEARCH_ENGINES` is still honoured for the scrapers |
+| `METASEARCH_MAX_QUERIES` | `5` | queries one call may fan out over; the surplus is named, not trimmed |
 | `METASEARCH_SOURCE_TIMEOUT` | `8` | per source, seconds; a slow source degrades rather than delays |
+| `METASEARCH_GDELT_TIMEOUT` | `15` | GDELT's own deadline; must stay under the overall one |
 | `METASEARCH_OVERALL_TIMEOUT` | `20` | whole fan-out deadline |
+| `FACTCHECK_API_KEY_FILE` | mounted path | a **path**, never a value; empty file means the fact-check source is not registered |
 | `METASEARCH_PER_SOURCE_RESULTS` | `15` | asked of each source; larger than `max_results` so fusion and reranking have candidates |
 | `METASEARCH_RRF_K` | `60` | the RRF constant; larger flattens rank differences |
 | `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` | the floor and ceiling per kind |

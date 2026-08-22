@@ -547,6 +547,11 @@ def render_main_env(cfg):
         env["HOOVER4_TESTDATA_DIR"] = cfg.get(m, "testdata_dir")
     if cfg.get(m, "mcp_shared_secret_file"):
         env["MCP_SHARED_SECRET_FILE_HOST"] = cfg.get(m, "mcp_shared_secret_file")
+    # Metasearch's one key-gated source. Rendered only when set: the compose file mounts
+    # /dev/null otherwise, and an empty file is what tells the server the source has no
+    # key and must not be registered.
+    if cfg.get(m, "factcheck_api_key_file"):
+        env["FACTCHECK_API_KEY_FILE_HOST"] = cfg.get(m, "factcheck_api_key_file")
     # Rendered only when set: the website reads its own default when the variable is
     # absent, and an empty value would parse as "0" on some paths and as garbage on
     # others.
