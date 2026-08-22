@@ -922,7 +922,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "operations"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "operations", "chat"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all.
 
@@ -961,6 +961,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "operations":
             from tasks.run_worker import run_operations_worker
             asyncio.run(run_operations_worker())
+        elif worker_type == "chat":
+            from tasks.run_worker import run_chat_worker
+            asyncio.run(run_chat_worker())
         else:
             raise click.ClickException(f"Unknown worker type: {worker_type}")
         return
@@ -1002,7 +1005,10 @@ def worker(worker_type: str | None = None):
     from tasks.run_worker import common_worker_processes
     common_count = common_worker_processes()
     log.info("Spawning %d common workers", common_count)
-    for wt in ["tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * common_count:
+    # `chat` is one process and is listed first on purpose: it is the only queue with a
+    # person waiting on the other end, so it must exist before anything competes for the
+    # host's memory. It polls its own queue and never touches the ingestion one.
+    for wt in ["chat", "tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * common_count:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

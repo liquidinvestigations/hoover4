@@ -46,10 +46,12 @@ AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
 
 @dataclass
 class ResearchTaskParams:
-    """Input for one research run.
+    """Input for one durable agent turn -- an ordinary chat turn or a research run.
 
     `username` and `session_id` identify where the answer is written back to, and
-    `allowed_collections` is the ACL the agent is bounded by.
+    `allowed_collections` is the ACL the agent is bounded by. One dataclass serves both
+    workflows because the two turns differ in which agent they reach and how long they
+    are allowed to take, not in what they are told.
     """
 
     username: str
@@ -62,6 +64,16 @@ class ResearchTaskParams:
     #: The conversation's own switch, forwarded from the website. Defaults to true so a
     #: task submitted by an older caller behaves as it did.
     internet_tools: bool = True
+    #: The resolved, allowlist-checked model id. The website resolves it -- a forged id
+    #: must be refused where the user is known, not here. Empty falls back to the server
+    #: setting, which is what a research task submitted by an older caller does.
+    llm_model: str = ""
+    #: The uuid every row of this turn carries, transcript and stream alike. Passed in
+    #: rather than derived: the website writes the user row with it before the workflow
+    #: exists, so the two processes must agree, and passing it is how they agree without
+    #: a format that both sides have to keep reimplementing. Empty derives the research
+    #: form from `(session_id, start_seq)`, which is what older callers rely on.
+    turn_uuid: str = ""
 
 
 @activity.defn

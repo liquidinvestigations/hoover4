@@ -145,7 +145,13 @@ class ResearchStreamWriter:
 
     def __init__(self, params):
         self.params = params
-        self.turn_uuid = f"research-{params.session_id}-{params.start_seq}"
+        # The website writes the user row with this uuid before the workflow exists, so
+        # it is passed in rather than agreed by two copies of one format string. The
+        # derived form stays for the research path, whose caller does not send one.
+        self.turn_uuid = (
+            getattr(params, "turn_uuid", "")
+            or f"research-{params.session_id}-{params.start_seq}"
+        )
         self.answer = ""
         self.reasoning = ""
         self.tool_count = 0
@@ -264,7 +270,10 @@ class ResearchStreamWriter:
         )
         self._keepalive_thread.start()
 
-        llm_model = _chat_model()
+        # The website resolved and allowlist-checked this against the caller's identity,
+        # which cannot be done here. Only fall back to the server default when nothing
+        # was sent, which is the research path's older callers.
+        llm_model = getattr(self.params, "llm_model", "") or _chat_model()
         from .activities import agent_url_for
 
         agent_url = agent_url_for(getattr(self.params, "internet_tools", True))

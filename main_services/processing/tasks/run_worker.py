@@ -583,6 +583,41 @@ OPERATIONS_QUEUE_SLOTS = {
 }
 
 
+async def run_chat_worker():
+  """Serve `chat-queue`: every ordinary chat turn.
+
+  Its own process and its own queue, which is the whole point. A chat turn is a person
+  waiting at a screen, and an ingestion backlog on the shared queue would put them behind
+  however many thousand documents are being processed -- a delay no amount of worker
+  concurrency fixes, because the queue is FIFO and the backlog is ahead of them.
+
+  Concurrency is the number of chat turns that may be in flight at once across the whole
+  deployment. Each one holds a thread that is almost entirely waiting on the agent, so
+  the number is about how many conversations may be live, not about this host's CPU.
+  """
+  from .P_agent.activities import run_research_agent, write_chat_message
+  from .P_agent.workflows import CHAT_TASK_QUEUE, ChatTurn
+  from .visibility import ensure_search_attributes
+  log.info("Starting Chat worker...")
+  client = await Client.connect("temporal:7233")
+  attach_temporal_client(client)
+  await ensure_search_attributes(client)
+  CONCURRENCY = worker_concurrency("chat", 8)
+  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+    worker = Worker(
+      client,
+      interceptors=[TaskTimingInterceptor()],
+      workflow_runner=sandboxed_runner(),
+      task_queue=CHAT_TASK_QUEUE,
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflows=[ChatTurn],
+      activities=[run_research_agent, write_chat_message],
+      activity_executor=activity_executor,
+      max_concurrent_activities=CONCURRENCY,
+    )
+    await run_until_signalled(worker)
+
+
 async def run_operations_worker():
   """Serve all four operations queues from one process.
 
