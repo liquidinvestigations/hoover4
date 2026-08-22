@@ -114,6 +114,15 @@ def _response(todo: dict, error: str | None = None) -> TodoResponse:
     )
 
 
+# `items` and `marks` are annotated `Any`, not `list[TodoItem]`, and the shape lives in
+# each tool's description instead. A declared list rejects the string an XML-style
+# tool-call parser produces for every list parameter before any of this module runs, and
+# the model then retries the identical call until its turn budget is gone -- the failure
+# `agent_common.batching` exists to prevent. `Any` moves the refusal to the store, which
+# answers in words the model can act on. The four separate tools are what carry the
+# typing that matters here: no `mode` argument to get wrong.
+
+
 def _refused(caller: Caller | None, message: str) -> TodoResponse:
     """A refusal carrying the plan as it still stands.
 

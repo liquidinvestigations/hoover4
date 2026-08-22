@@ -2,17 +2,18 @@
 # Run each MCP server image's unit tests, inside that image.
 #
 # The pipeline's suite (pytest-unit.sh) runs in hoover4-worker and never reaches these:
-# the agents live in their own images, and `agent_common/` is vendored into all four of
+# the agents live in their own images, and `agent_common/` is vendored into every one of
 # them rather than installed from an index. Its tests are copied to `tests/shared/` in each
 # image so this one target reaches both the server's tests and the shared package's --
-# a shared-package regression otherwise lands silently in four images at once.
+# a shared-package regression otherwise lands silently in every image at once.
 #
 # Optional argument narrows the target within each container, e.g. `tests/shared`.
 set -uo pipefail
 target="${1:-tests}"
 failed=0
 
-for container in hoover4-mcp-browser hoover4-mcp-collections hoover4-mcp-metasearch hoover4-mcp-whois; do
+for container in hoover4-mcp-browser hoover4-mcp-collections hoover4-mcp-metasearch \
+                 hoover4-mcp-whois hoover4-mcp-todo; do
     if ! docker ps --format '{{.Names}}' | grep -qx "${container}"; then
         echo "SKIP ${container}: not running"
         continue

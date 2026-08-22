@@ -19,12 +19,30 @@ from agent_todo_server import server
 from agent_todo_server.identity import CallerUnknown, parse_caller
 from database import chat_todos
 
-HEADERS = {"X-Hoover4-User": "ann", "X-Hoover4-Chat-Session": "s1"}
+SECRET = "test-secret"
+HEADERS = {
+    "Authorization": f"Bearer {SECRET}",
+    "X-Hoover4-User": "ann",
+    "X-Hoover4-Chat-Session": "s1",
+}
 
 
 def call(tool, **kwargs):
     """Invoke a registered tool's body. FastMCP rebinds the name to a Tool object."""
     return getattr(tool, "fn", tool)(**kwargs)
+
+
+@pytest.fixture(autouse=True)
+def secret(monkeypatch):
+    """Pin the bearer token the suite authenticates with.
+
+    Without this the suite's result depends on the deployment: the secret is a
+    bind-mounted file, so the same tests pass in a bare image (no file, no check) and
+    fail inside the composed container (file mounted, every call unauthenticated). A
+    test that answers differently in the two places is not testing the server.
+    """
+    monkeypatch.setenv("MCP_SHARED_SECRET", SECRET)
+    monkeypatch.delenv("MCP_SHARED_SECRET_FILE", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -65,18 +83,48 @@ class TestIdentity:
         assert (caller.username, caller.session_id) == ("ann", "s1")
 
     def test_header_casing_does_not_matter(self):
-        caller = parse_caller({"x-hoover4-user": "bob", "x-hoover4-chat-session": "s2"})
+        caller = parse_caller(
+            {
+                "authorization": f"Bearer {SECRET}",
+                "x-hoover4-user": "bob",
+                "x-hoover4-chat-session": "s2",
+            }
+        )
         assert (caller.username, caller.session_id) == ("bob", "s2")
 
     def test_a_call_naming_no_conversation_is_refused(self):
         with pytest.raises(CallerUnknown):
-            parse_caller({"X-Hoover4-User": "ann"})
+            parse_caller({"Authorization": f"Bearer {SECRET}", "X-Hoover4-User": "ann"})
+
+    def test_a_wrong_bearer_token_is_refused(self):
+        with pytest.raises(CallerUnknown):
+            parse_caller({**HEADERS, "Authorization": "Bearer wrong"})
+
+    def test_no_bearer_token_at_all_is_refused(self):
+        with pytest.raises(CallerUnknown):
+            parse_caller({k: v for k, v in HEADERS.items() if k != "Authorization"})
+
+    def test_with_no_secret_configured_the_check_is_skipped(self, monkeypatch):
+        # A prototype on a loopback-bound port runs open rather than refusing to start,
+        # and identity.py logs a warning saying so.
+        monkeypatch.delenv("MCP_SHARED_SECRET")
+        assert parse_caller({"X-Hoover4-Chat-Session": "s1"}).username == "unknown"
 
     def test_the_tools_refuse_it_in_words_rather_than_raising(self, monkeypatch):
-        monkeypatch.setattr(server, "get_http_headers", lambda: {})
+        authenticated_but_sessionless = {"Authorization": f"Bearer {SECRET}"}
+        monkeypatch.setattr(
+            server, "get_http_headers", lambda: authenticated_but_sessionless
+        )
         result = call(server.read_todo)
         assert result.success is False
         assert "chat-session" in result.error
+        assert result.items == []
+
+    def test_an_unauthenticated_call_is_answered_with_no_ones_plan(self, monkeypatch):
+        monkeypatch.setattr(server, "get_http_headers", lambda: {})
+        result = call(server.read_todo)
+        assert result.success is False
+        assert "bearer" in result.error
         assert result.items == []
 
 
