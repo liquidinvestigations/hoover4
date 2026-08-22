@@ -83,5 +83,19 @@ else
     no "rules: $rules found, $unpathed without a paths: glob"
 fi
 
+# 7. The tag checker decides correctly on a known-bad and a known-good document. Its own
+#    exit status is what a person relies on, so prove it rather than that the file exists.
+tagdir=$(mktemp -d)
+mkdir -p "$tagdir/plans/probe"
+printf '# probe\n\nThe cut described in X3 is reopened here.\n' > "$tagdir/plans/probe/bad.md"
+printf '# probe\n\n## Key\n\n| tag | what | where |\n|---|---|---|\n| X3 | the cut | elsewhere |\n\nThe cut described in X3 is reopened here.\n' > "$tagdir/plans/probe/good.md"
+if ! "$REPO_ROOT/.agents/check-doc-ids.py" "$tagdir/plans/probe/bad.md" >/dev/null 2>&1 \
+   && "$REPO_ROOT/.agents/check-doc-ids.py" "$tagdir/plans/probe/good.md" >/dev/null 2>&1; then
+    ok "tag checker denies an undeclared tag and allows one with a Key entry"
+else
+    no "tag checker does not decide correctly on its own probe documents"
+fi
+rm -rf "$tagdir"
+
 echo "---- $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ]

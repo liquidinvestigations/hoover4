@@ -8,6 +8,11 @@ itself, badly.
 
 You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact path>`.**
 
+## Key
+<every short tag this prompt uses: the tag, what it is, and a link to where it is defined>
+<plus the tags the reader will meet on the other side of any link this prompt makes>
+<omit the section only if the prompt uses no tags at all>
+
 ## 1. Read before you start
 <paths, in reading order, each with one line saying why>
 <the settled decisions, marked binding and not to be re-opened>

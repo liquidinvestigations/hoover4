@@ -39,6 +39,37 @@ Numbered so the reading order is the order they were written.
 Prompt and report are **paired and adjacent**: a prompt with no report beside it is a pass
 that did not finish, and that is visible at a glance from the directory listing.
 
+## Short tags, and the `## Key` table
+
+A scope table and a results table only line up if the items have short names, so
+letter-and-number tags — `M3`, `S13`, `X7`, `Q1` — are the right tool **inside one plan
+folder** and nowhere else. Measured across this repository's plans, a quarter of tag
+citations could not be resolved in the document that made them, and more than half the tags
+meant two different things in two different files. That is what the rules below prevent.
+
+- **A tag never leaves the folder that defined it.** Referring to another pass's item means
+  **naming it and linking to it**. The same three characters are a scope item in one folder
+  and a defect in another, and nothing in a bare citation says which.
+- **A document that uses tags opens with a `## Key` table** — every tag it mentions, what it
+  is, and a link to where it is defined — and expands each at its **first mention** in the
+  body. After that the bare tag is fine, exactly as an acronym works.
+- **If the document links into an earlier pass**, the Key table also decodes the tags a
+  reader will meet on the other side of that link. A decoder that is not exhaustive for what
+  the document links to is worse than none.
+- **Worded references are tags.** "Phase 1", "Chapter 3", "Workstream A" index a structure
+  the reader cannot see just as much as `X3` does. Same rule.
+- **Never in a tracked file**, which includes `docs/`, `.agents/`, a `Readme.md` beside code,
+  and **a source comment**. `plans/` is gitignored, so a tag cited from shipped code is
+  unresolvable forever for anyone who clones the repository. State the fact instead — in
+  practice the sentence beside the tag already says it.
+
+```
+.agents/check-doc-ids.py [path ...]     # names every unresolvable tag
+```
+
+Run it over the folder before calling a document finished. It is not wired into a hook: the
+archived folders under `plans/old/` predate the rule and would fail it forever.
+
 ## Fanning out artefacts
 
 Complex work produces more than prose — screenshots, extracted datasets, scratch scripts,

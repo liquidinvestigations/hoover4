@@ -50,6 +50,11 @@ A comment is documentation that happens to live in a source file.
    combined, because these comments are load-bearing enough that a false one is a confident
    lie rather than noise.
 5. **No target ratio.** Comment density is not a quality metric and is not measured here.
+6. **No tag from a plan folder** — `D22`, `S13`, `R2`. `plans/` is gitignored, so the
+   reference is unresolvable forever for anyone who clones this repository, and it was
+   carrying nothing: in every case found here the sentence beside it already stated the fact.
+   Write "the turn that killed chat with `agent stream broke`", not "the `D22` turn".
+   `.agents/check-doc-ids.py` finds them.
 
 `.agents/skills/reviewing-changes/scripts/check-diff-comments.sh` reports these shapes over a
 diff in a fraction of a second. It informs; it never gates, and it cannot see the biggest

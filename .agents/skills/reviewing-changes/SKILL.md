@@ -83,7 +83,9 @@ the same patch — `writing-project-docs`.
 - **No private infrastructure detail** anywhere in the diff — no hostname, address, port
   identifying a real host, credential, or description of an authentication boundary. Those
   live only in the gitignored `INFRASTRUCTURE_INVENTORY.md`.
-- **No scratch-folder reference, no date, no history of the work** in any added prose.
+- **No scratch-folder reference, no date, no history of the work** in any added prose. That
+  includes a bare tag coined in a plan folder — `D22`, `S13` — in a comment or a `Readme.md`;
+  `.agents/check-doc-ids.py` names them, and the fix is to state the fact instead.
 - **A new configuration key has a consumer in the same change**, or is written down as
   not-yet-implemented. A key that is rendered and read by nothing is a lie.
 - **The commit message is one lowercase line** under about fifty characters, and nothing

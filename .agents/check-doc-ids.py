@@ -173,7 +173,12 @@ def check_source(path, rel):
         return [], 0
     count = 0
     for i, line in enumerate(lines, 1):
-        m = re.search(re.escape(mark), line)
+        # Blank string literals before looking for the comment marker: a `#` inside
+        # `printf '# probe'` is not a comment, and neither is the `//` in a URL. Without
+        # this the marker search reports fixture text and query strings as comments.
+        masked = re.sub(r"'[^']*'|\"[^\"]*\"",
+                        lambda x: " " * len(x.group(0)), line)
+        m = re.search(re.escape(mark), masked)
         if not m:
             continue
         text = re.sub(r"`[^`]*`", lambda x: " " * len(x.group(0)), line[m.end():])
