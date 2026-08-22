@@ -13,7 +13,12 @@ from whois_server import server as whois_srv
 
 
 def _call(**kwargs):
-    return asyncio.run(whois_srv.whois_lookup.fn(**kwargs))
+    # This server is on the low-level SDK's FastMCP, whose `@tool` returns the plain
+    # function rather than wrapping it — unlike the other three servers, where the tool is
+    # an object carrying the callable as `.fn`. Accept either, so the day this server is
+    # moved onto the same library the suite does not silently stop calling anything.
+    tool = getattr(whois_srv.whois_lookup, "fn", whois_srv.whois_lookup)
+    return asyncio.run(tool(**kwargs))
 
 
 @pytest.fixture(autouse=True)

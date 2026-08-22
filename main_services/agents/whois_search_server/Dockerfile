@@ -63,7 +63,9 @@ COPY ./whois_search_server/tests/ ./tests/
 # ship in the image and run in nothing, so a regression in `agent_common` lands silently.
 COPY ./agent_common/tests/ ./tests/shared/
 
-RUN pip install --no-cache-dir pytest pytest-asyncio
+# Into the venv by absolute path. This image's interpreter is the venv's, not the system
+# one, so pytest installed anywhere else is invisible to the tests' imports.
+RUN $VENV_PATH/bin/pip install --no-cache-dir pytest pytest-asyncio
 
 # Expose the port
 EXPOSE 8083
