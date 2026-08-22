@@ -635,11 +635,10 @@ pub async fn poll_chat(
 
 /// The stop button: cancel this session's in-flight turn.
 ///
-/// A Temporal cancellation, not a flag some other task in this process polls. That is
-/// what makes the stop button mean the same thing after a website restart as before one,
-/// and it is why a stopped turn cannot be orphaned: `ChatTurn` catches the cancellation
-/// and writes an ending into the transcript, so the page stops following a turn that
-/// will never speak again.
+/// A Temporal cancellation, which is what makes the stop button mean the same thing
+/// after a website restart as before one. A stopped turn cannot be orphaned either:
+/// `ChatTurn` catches the cancellation and writes an ending into the transcript, so the
+/// page stops following a turn that will never speak again.
 ///
 /// The turn is addressed by the seq it reserved, which is derived from the transcript
 /// rather than remembered — the last user row with no answer after it is the running
