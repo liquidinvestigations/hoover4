@@ -88,6 +88,18 @@ pub struct ChatMessageRow {
     /// that collision detectable instead of silently keeping one message.
     #[serde(default)]
     pub message_uuid: String,
+    /// Prompt tokens of the first model call of this turn — the conversation as the
+    /// model received it. 0 means nothing counted it, never "no tokens".
+    #[serde(default)]
+    pub context_tokens: u32,
+    /// Largest prompt plus completion any single model call in this turn was billed for,
+    /// across every round a nag loop added. 0 means unknown.
+    #[serde(default)]
+    pub peak_context_tokens: u32,
+    /// The model's context window as the catalog knew it at the time of the turn. 0
+    /// means the provider never stated one and the percentage must not be shown.
+    #[serde(default)]
+    pub context_window: u32,
 }
 
 /// One version of an in-flight row in `chat_message_stream`.
@@ -118,7 +130,8 @@ const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, colle
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
-     retry_errors, model, reasoning, message_uuid FROM chat_messages FINAL";
+     retry_errors, model, reasoning, message_uuid, context_tokens, peak_context_tokens, \
+     context_window FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -267,6 +280,9 @@ pub async fn list_messages(
             agent_duration_ms: r.agent_duration_ms,
             retry_errors: r.retry_errors,
             reasoning: r.reasoning,
+            context_tokens: r.context_tokens,
+            peak_context_tokens: r.peak_context_tokens,
+            context_window: r.context_window,
             streaming: false,
         })
         .collect())
@@ -305,6 +321,9 @@ pub async fn list_messages_after(
             agent_duration_ms: r.agent_duration_ms,
             retry_errors: r.retry_errors,
             reasoning: r.reasoning,
+            context_tokens: r.context_tokens,
+            peak_context_tokens: r.peak_context_tokens,
+            context_window: r.context_window,
             streaming: false,
         })
         .collect())
@@ -414,6 +433,12 @@ pub struct AppendMessageExtras {
     pub reasoning: String,
     /// Per-turn uuid — see `ChatMessageRow::message_uuid`.
     pub message_uuid: String,
+    /// Token accounting for an assistant row — see `ChatMessageRow`. Left at 0 by every
+    /// writer that is not the one the model answered through, which readers show as
+    /// unknown.
+    pub context_tokens: u32,
+    pub peak_context_tokens: u32,
+    pub context_window: u32,
 }
 
 pub async fn append_message(
@@ -443,6 +468,9 @@ pub async fn append_message(
         model: extras.model,
         reasoning: extras.reasoning,
         message_uuid: extras.message_uuid,
+        context_tokens: extras.context_tokens,
+        peak_context_tokens: extras.peak_context_tokens,
+        context_window: extras.context_window,
     };
     insert_row("chat_messages", &row).await
 }

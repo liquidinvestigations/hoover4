@@ -544,15 +544,26 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
         anyhow::bail!("provider returned {}", resp.status());
     }
     let body: serde_json::Value = resp.json().await?;
-    let models: Vec<String> = body
+    let entries: Vec<&serde_json::Value> = body
         .get("data")
         .and_then(|d| d.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(str::to_string))
-                .collect()
-        })
+        .map(|arr| arr.iter().collect())
         .unwrap_or_default();
+    let models: Vec<String> = entries
+        .iter()
+        .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(str::to_string))
+        .collect();
+    // The window the listing stated, for the models that stated one. A model missing
+    // from this map is one the provider said nothing about, and the stored value is
+    // carried forward rather than blanked or guessed.
+    let windows: std::collections::HashMap<String, u32> = entries
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("id").and_then(|i| i.as_str())?;
+            let window = context_window_from_entry(m)?;
+            Some((id.to_string(), window))
+        })
+        .collect();
     if models.is_empty() {
         anyhow::bail!("provider returned zero models");
     }
@@ -604,7 +615,14 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
                 provider: provider.clone(),
                 model_id: model_id.clone(),
                 display_name: display,
-                context_window: prior.map(|p| p.context_window).unwrap_or(0),
+                // What the provider just said, else what was stored, else 0 for
+                // unknown. Never a default: a percentage of an invented window reads
+                // as a measurement, and the compaction trigger believes it.
+                context_window: windows
+                    .get(model_id.as_str())
+                    .copied()
+                    .or_else(|| prior.map(|p| p.context_window))
+                    .unwrap_or(0),
                 price_in_milli: prior.map(|p| p.price_in_milli).unwrap_or(0),
                 price_out_milli: prior.map(|p| p.price_out_milli).unwrap_or(0),
                 supports_tools: prior.map(|p| p.supports_tools).unwrap_or(0),
@@ -779,6 +797,40 @@ fn provider_name_from_url(base: &str) -> String {
     }
 }
 
+/// Where a provider states a model's context length, in the order to try.
+///
+/// `max_model_len` is vLLM's; `context_length` is what most OpenAI-compatible gateways
+/// use; `context_window` is the name the table itself uses and some providers echo it.
+///
+/// Mirrors `_CONTEXT_WINDOW_KEYS` in `main_services/processing/tasks/llm_catalog.py` —
+/// the two writers of `llm_models` must read the same keys or a refresh from one blanks
+/// what the other discovered.
+const CONTEXT_WINDOW_KEYS: [&str; 3] = ["max_model_len", "context_length", "context_window"];
+
+/// The context window one `/models` entry states, or `None` when it states none.
+///
+/// There is deliberately no fallback guess. A wrong denominator is worse than an absent
+/// one, because everything computed from it looks calculated.
+fn context_window_from_entry(entry: &serde_json::Value) -> Option<u32> {
+    for key in CONTEXT_WINDOW_KEYS {
+        let raw = match entry.get(key) {
+            Some(v) => v,
+            None => continue,
+        };
+        // A gateway that renders the number as a string is common enough to cost an
+        // afternoon when it silently parses as nothing.
+        let value = raw
+            .as_u64()
+            .or_else(|| raw.as_str().and_then(|s| s.trim().parse::<u64>().ok()));
+        if let Some(value) = value {
+            if value > 0 {
+                return Some(value.min(u32::MAX as u64) as u32);
+            }
+        }
+    }
+    None
+}
+
 fn read_llm_api_key() -> String {
     if let Ok(key) = std::env::var("LLM_API_KEY") {
         if !key.trim().is_empty() {
@@ -893,6 +945,32 @@ mod tests {
             ("http://localhost:8000/v1", "localhost"),
         ] {
             assert_eq!(provider_name_from_url(base), expected, "{base}");
+        }
+    }
+
+    /// The catalog is the only denominator anything has for "% of context used", so a
+    /// listing that states a window must be believed and one that states nothing must
+    /// stay absent. A guess here is worse than a gap: the compaction trigger downstream
+    /// fires on a percentage, and a plausible wrong window makes it fire wrongly.
+    #[test]
+    fn a_stated_context_window_is_read_and_an_unstated_one_stays_absent() {
+        let cases: [(serde_json::Value, Option<u32>); 7] = [
+            (serde_json::json!({"max_model_len": 262144}), Some(262144)),
+            (serde_json::json!({"context_length": 128000}), Some(128000)),
+            (serde_json::json!({"context_window": 8192}), Some(8192)),
+            // Gateways that render the number as a string are common enough that
+            // silently parsing one as nothing costs an afternoon.
+            (serde_json::json!({"max_model_len": "262144"}), Some(262144)),
+            // vLLM's key wins over a gateway's when both are present.
+            (
+                serde_json::json!({"max_model_len": 262144, "context_length": 4096}),
+                Some(262144),
+            ),
+            (serde_json::json!({"id": "no-window-here"}), None),
+            (serde_json::json!({"max_model_len": 0}), None),
+        ];
+        for (entry, expected) in cases {
+            assert_eq!(context_window_from_entry(&entry), expected, "{entry}");
         }
     }
 

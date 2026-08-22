@@ -166,6 +166,10 @@ fn MessageEntry(
         },
         ChatRole::Assistant => {
             let retries = message.parsed_retry_errors();
+            // Absent for a turn nothing counted, and for every streaming partial: the
+            // counts arrive with the finished row, and a footer that appears mid-answer
+            // showing zeros would read as a measurement of nothing.
+            let context_footer = message.context_footer();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -187,6 +191,16 @@ fn MessageEntry(
                             ),
                             errors: retries,
                             tone_color: "#B45309",
+                        }
+                    }
+                    if let Some(footer) = context_footer {
+                        div {
+                            style: "margin-top: 6px; font-size: 0.78em; color: #6B7280; \
+                                    font-variant-numeric: tabular-nums;",
+                            title: "Tokens the conversation carries, the largest single \
+                                    context this turn was billed for, and how much of \
+                                    the model's window that used",
+                            "{footer}"
                         }
                     }
                 }

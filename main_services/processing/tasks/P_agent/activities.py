@@ -186,6 +186,15 @@ class WriteResultParams:
     #: reasoning model narrates its plan on the same channel as its answer, and this is
     #: the column that stops the scratchpad reaching the transcript.
     reasoning: str = ""
+    #: Prompt tokens of the first model call of the turn -- the conversation as the model
+    #: received it, and what the next turn starts from. 0 when unknown.
+    context_tokens: int = 0
+    #: Largest prompt plus completion of any single model call in the turn. This is the
+    #: number a compaction trigger fires on. 0 when unknown.
+    peak_context_tokens: int = 0
+    #: The model's context window as the catalog knew it at the time of the turn. 0 means
+    #: the provider never stated one, and readers must show unknown rather than divide.
+    context_window: int = 0
 
 
 @activity.defn
@@ -216,6 +225,9 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.agent_duration_ms,
                 params.model,
                 params.reasoning,
+                params.context_tokens,
+                params.peak_context_tokens,
+                params.context_window,
             ]],
             column_names=[
                 "session_id",
@@ -230,13 +242,55 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "agent_duration_ms",
                 "model",
                 "reasoning",
+                "context_tokens",
+                "peak_context_tokens",
+                "context_window",
             ],
         )
+    if params.peak_context_tokens:
+        _raise_session_peak(params.username, params.session_id, params.peak_context_tokens)
     log.info(
         "[P_agent] wrote %s message seq=%d to session %s",
         params.role, params.seq, params.session_id,
     )
     return params.seq
+
+
+def _raise_session_peak(username: str, session_id: str, peak: int) -> None:
+    """Carry the conversation's running peak up to `peak` if this turn beat it.
+
+    A maximum rather than a sum, and idempotent for that reason: this activity is
+    retried, and re-applying the same turn's peak leaves the row where it already was.
+
+    Read-modify-write, like `_set_session_title` and for the same reason: the table is a
+    ReplacingMergeTree keyed on `(username, session_id)`, so a partial row would silently
+    reset the conversation's collections and both agent switches to their defaults.
+    """
+    from database.clickhouse import get_global_client
+
+    columns = [
+        "session_id", "username", "title", "collections", "summary",
+        "use_internet_tools", "deep_research", "options_locked",
+        "created_at", "updated_at", "is_deleted", "peak_context_tokens",
+    ]
+    try:
+        with get_global_client() as client:
+            rows = client.query(
+                f"SELECT {', '.join(columns)} FROM chat_sessions FINAL "
+                "WHERE username = {u:String} AND session_id = {s:String}",
+                parameters={"u": username, "s": session_id},
+            ).result_rows
+            if not rows:
+                return
+            row = list(rows[0])
+            if int(row[columns.index("peak_context_tokens")]) >= peak:
+                return
+            row[columns.index("peak_context_tokens")] = peak
+            row[columns.index("updated_at")] = datetime.now(timezone.utc).replace(tzinfo=None)
+            client.insert("chat_sessions", [row], column_names=columns)
+    except Exception:  # noqa: BLE001 - an accounting number is never worth a turn
+        log.warning("[P_agent] could not raise the context peak for session %s",
+                    session_id, exc_info=True)
 
 
 @dataclass

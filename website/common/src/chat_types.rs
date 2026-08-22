@@ -240,6 +240,22 @@ pub struct ChatMessageItem {
     /// disclosure, never in the answer body.
     #[serde(default)]
     pub reasoning: String,
+    /// Prompt tokens of the first model call of this turn: the system prompt, the tool
+    /// schemas, the history and the question. The standing cost of the conversation, and
+    /// what the next turn starts from. **0 means nothing counted it**, never "no tokens".
+    #[serde(default)]
+    pub context_tokens: u32,
+    /// Largest prompt plus completion any single model call in this turn was billed for,
+    /// across every round the nag loop added. An order of magnitude above
+    /// `context_tokens` in a tool-using turn, because every tool result stays in the
+    /// model-visible list while the turn runs. 0 means unknown.
+    #[serde(default)]
+    pub peak_context_tokens: u32,
+    /// The model's context window as the catalog knew it when the turn ran, copied onto
+    /// the row rather than joined at read time so a refreshed catalog cannot restate the
+    /// past. **0 means the provider never said**: render unknown, never a percentage.
+    #[serde(default)]
+    pub context_window: u32,
     /// Transient, never stored: true on entries synthesised from the in-flight stream
     /// (`chat_message_stream`) rather than read from `chat_messages`. The transcript
     /// renders these with a pending/running treatment instead of the finished one.
@@ -247,7 +263,52 @@ pub struct ChatMessageItem {
     pub streaming: bool,
 }
 
+/// A token count at a glance: `857`, `1.2k`, `23k`, `1.3M`.
+///
+/// One decimal only where it carries information. `1.2k` and `1k` are different answers
+/// to "how big is this conversation"; `23.4k` and `23k` are the same answer with extra
+/// digits, and the second is faster to read next to three other numbers.
+pub fn compact_tokens(n: u32) -> String {
+    match n {
+        0..=999 => n.to_string(),
+        1_000..=9_999 => format!("{:.1}k", n as f64 / 1000.0),
+        10_000..=999_999 => format!("{}k", n / 1000),
+        _ => format!("{:.1}M", n as f64 / 1_000_000.0),
+    }
+}
+
 impl ChatMessageItem {
+    /// The one-line token footer for an answer, or `None` when nothing counted the turn.
+    ///
+    /// Both numbers, always. They answer different questions and differ by an order of
+    /// magnitude: the peak is what a compaction trigger fires on, and the standing size
+    /// is what a reader's intuition is about. Either one alone is confusing, whichever
+    /// is chosen — a conversation that reads as 1.2k while its turns cost 23k looks
+    /// free, and one that reads as 23k looks like it is about to fall over.
+    ///
+    /// The percentage appears only when the provider stated a window. **A model whose
+    /// window is unknown says so**: a plausible denominator would make every percentage
+    /// computed from it look measured, and the number that reads as measured is the one
+    /// nobody checks.
+    pub fn context_footer(&self) -> Option<String> {
+        if self.context_tokens == 0 && self.peak_context_tokens == 0 {
+            return None;
+        }
+        let now = compact_tokens(self.context_tokens);
+        let peak = compact_tokens(self.peak_context_tokens);
+        if self.context_window == 0 {
+            return Some(format!(
+                "now {now} · peak this turn {peak} · context window unknown"
+            ));
+        }
+        let window = compact_tokens(self.context_window);
+        let percent =
+            (self.peak_context_tokens as u64 * 100 / self.context_window.max(1) as u64).min(999);
+        Some(format!(
+            "now {now} · peak this turn {peak} / {window} · {percent}%"
+        ))
+    }
+
     /// Parsed [`ChatDocRef`] list, or empty when the column is blank / invalid.
     pub fn parsed_doc_refs(&self) -> Vec<ChatDocRef> {
         if self.doc_refs.is_empty() {
@@ -859,6 +920,68 @@ fn collect_document_shaped(v: &serde_json::Value, out: &mut Vec<ChatDocRef>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn counted(context: u32, peak: u32, window: u32) -> ChatMessageItem {
+        ChatMessageItem {
+            seq: 1,
+            role: ChatRole::Assistant,
+            content: String::new(),
+            tool_name: String::new(),
+            tool_input: String::new(),
+            tool_output: String::new(),
+            doc_refs: String::new(),
+            created_at: String::new(),
+            created_ms: String::new(),
+            agent_duration_ms: 0,
+            retry_errors: String::new(),
+            reasoning: String::new(),
+            context_tokens: context,
+            peak_context_tokens: peak,
+            context_window: window,
+            streaming: false,
+        }
+    }
+
+    #[test]
+    fn the_footer_shows_both_numbers_against_the_window() {
+        assert_eq!(
+            counted(1_200, 23_000, 262_144).context_footer().unwrap(),
+            "now 1.2k · peak this turn 23k / 262k · 8%"
+        );
+    }
+
+    /// A model whose provider never stated a window renders as unknown, not as zero and
+    /// not as a guess. The compaction trigger downstream divides by this number, and a
+    /// plausible wrong one is believed exactly as a right one is.
+    #[test]
+    fn an_unknown_window_says_unknown_rather_than_showing_a_percentage() {
+        let footer = counted(1_200, 23_000, 0).context_footer().unwrap();
+        assert_eq!(footer, "now 1.2k · peak this turn 23k · context window unknown");
+        assert!(!footer.contains('%'));
+        assert!(!footer.contains("/ 0"));
+    }
+
+    /// A turn nothing counted has no footer at all. Rendering "now 0" would say the
+    /// conversation is empty, which is a different claim from "nobody counted".
+    #[test]
+    fn an_uncounted_turn_has_no_footer() {
+        assert!(counted(0, 0, 262_144).context_footer().is_none());
+    }
+
+    #[test]
+    fn a_token_count_reads_at_a_glance() {
+        for (n, expected) in [
+            (0u32, "0"),
+            (857, "857"),
+            (1_200, "1.2k"),
+            (9_999, "10.0k"),
+            (23_000, "23k"),
+            (262_144, "262k"),
+            (1_300_000, "1.3M"),
+        ] {
+            assert_eq!(compact_tokens(n), expected, "{n}");
+        }
+    }
 
     #[test]
     fn roles_round_trip_through_their_wire_value() {

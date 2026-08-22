@@ -475,6 +475,24 @@ class MCPGatewayAgent:
         is_response = False
         call_timer: Optional[llm_events.CallTimer] = None
 
+        # Token accounting for the whole run, summed over its model calls.
+        #
+        # Two numbers rather than one, because they answer different questions and differ
+        # by an order of magnitude. `context_tokens` is what the provider counted for the
+        # FIRST call: the system prompt, the tool schemas, the history and the question —
+        # the standing cost of the conversation, and what the next turn starts from.
+        # `peak_context_tokens` is the largest single call in the run, which is the last
+        # one in a tool-using turn because every result stays in the model-visible list.
+        # A compaction trigger fires on the peak; a user's intuition is about the other.
+        #
+        # Both stay 0 when the provider reports no usage at all. 0 means unknown here and
+        # everywhere downstream — never "free".
+        context_tokens = 0
+        peak_context_tokens = 0
+        prompt_tokens_total = 0
+        completion_tokens_total = 0
+        model_calls = 0
+
         all_content = ""
 
         async for event in graph.astream_events(inputs, version="v2", config=config):
@@ -542,6 +560,23 @@ class MCPGatewayAgent:
                     message = event["data"].get("output")
                     latency_ms = call_timer.elapsed_ms() if call_timer else 0
                     call_timer = None
+                    stats = llm_events.stats_from_message(
+                        message,
+                        model_id=model_id,
+                        provider=provider,
+                        latency_ms=latency_ms,
+                        kind="chat",
+                    )
+                    if stats.prompt_tokens:
+                        model_calls += 1
+                        if not context_tokens:
+                            context_tokens = stats.prompt_tokens
+                        peak_context_tokens = max(
+                            peak_context_tokens,
+                            stats.prompt_tokens + stats.completion_tokens,
+                        )
+                    prompt_tokens_total += stats.prompt_tokens
+                    completion_tokens_total += stats.completion_tokens
                     try:
                         # `to_thread`, because this is two synchronous POSTs to ClickHouse
                         # inside the stream loop. On the event loop they stall every other
@@ -551,13 +586,7 @@ class MCPGatewayAgent:
                         # is describing.
                         await asyncio.to_thread(
                             llm_events.record_llm_call,
-                            llm_events.stats_from_message(
-                                message,
-                                model_id=model_id,
-                                provider=provider,
-                                latency_ms=latency_ms,
-                                kind="chat",
-                            ),
+                            stats,
                             username=username or user_id,
                             session_id=session_id,
                         )
@@ -626,6 +655,16 @@ class MCPGatewayAgent:
             "type": "end",
             "content": all_content,
             "model": model_id,
+            # The only place these counts exist. Every consumer's alternative is to
+            # re-tokenise the transcript with a tokeniser that is not the model's, which
+            # is a guess wearing a number's clothes.
+            "usage": {
+                "context_tokens": context_tokens,
+                "peak_context_tokens": peak_context_tokens,
+                "prompt_tokens": prompt_tokens_total,
+                "completion_tokens": completion_tokens_total,
+                "model_calls": model_calls,
+            },
         }
 
 
@@ -667,6 +706,9 @@ class MCPGatewayAgent:
         reasoning_parts: List[str] = []
         tool_calls: List[Dict[str, Any]] = []
         resolved_model = self._resolve_model(llm_model)
+        # Filled from the `end` event. Empty when the run produced no model call at all,
+        # which a caller must read as unknown rather than as zero tokens spent.
+        usage: Dict[str, int] = {}
         # True until the first tool call that is not part of the plan-first opening.
         in_plan_first_opening = True
 
@@ -699,8 +741,11 @@ class MCPGatewayAgent:
                 tool_calls.append({"phase": "end", "content": chunk.get("content")})
             elif kind == "error":
                 raise RuntimeError(chunk.get("content"))
-            elif kind == "end" and chunk.get("model"):
-                resolved_model = chunk["model"]
+            elif kind == "end":
+                if chunk.get("model"):
+                    resolved_model = chunk["model"]
+                if isinstance(chunk.get("usage"), dict):
+                    usage = dict(chunk["usage"])
 
         answer = "\n\n".join(
             part for part in ("".join(plan_parts).strip(), "".join(answer_parts).strip())
@@ -728,6 +773,9 @@ class MCPGatewayAgent:
             # the Temporal research path reach different agents, and a per-message model
             # is only meaningful if it names what really ran.
             "model": resolved_model,
+            # Token counts as the provider billed them, for the transcript row and the
+            # session's running peak. Empty when no model call reported any.
+            "usage": usage,
         }
 
 

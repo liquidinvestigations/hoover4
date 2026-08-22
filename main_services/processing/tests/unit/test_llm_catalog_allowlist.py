@@ -65,7 +65,7 @@ def _column(client, name):
 
 
 def test_a_disallowed_model_stays_disallowed(fake):
-    client = fake([("nvidia/keep-off", 0), ("nvidia/fine", 1)])
+    client = fake([("nvidia/keep-off", 0, 0), ("nvidia/fine", 1, 0)])
     written = store_models(
         RefreshResult(provider="nvidia", ok=True,
                       models=["nvidia/keep-off", "nvidia/fine"]),
@@ -96,18 +96,57 @@ def test_the_previous_state_is_read_for_this_provider_only(fake):
 
 
 def test_nothing_is_written_when_the_provider_failed(fake):
-    client = fake([("nvidia/keep-off", 0)])
+    client = fake([("nvidia/keep-off", 0, 0)])
     assert store_models(RefreshResult(provider="nvidia", ok=False, models=[]), "u") == 0
     assert client.inserted is None
 
 
 def test_the_column_is_typed_uint8_like_the_table(fake):
-    client = fake([("nvidia/keep-off", 0)])
+    client = fake([("nvidia/keep-off", 0, 0)])
     store_models(
         RefreshResult(provider="nvidia", ok=True, models=["nvidia/keep-off"]),
         "http://provider/v1",
     )
     assert client.inserted[1].schema.field("is_allowed").type == pa.uint8()
+
+
+def test_a_stated_context_window_is_written(fake):
+    client = fake([])
+    store_models(
+        RefreshResult(provider="selfhosted", ok=True, models=["local/x"],
+                      context_windows={"local/x": 262144}),
+        "http://provider/v1",
+    )
+    assert _column(client, "context_window") == [262144]
+
+
+def test_a_window_the_provider_stopped_stating_is_not_blanked(fake):
+    """The denominator survives a refresh that says nothing about it.
+
+    A provider that listed `max_model_len` once and omits it on the next round would
+    otherwise erase the only number a context percentage can be computed against, and
+    the footer would go from a percentage to "unknown" with nothing having changed.
+    """
+    client = fake([("local/x", 1, 262144)])
+    store_models(
+        RefreshResult(provider="selfhosted", ok=True, models=["local/x"]),
+        "http://provider/v1",
+    )
+    assert _column(client, "context_window") == [262144]
+
+
+def test_an_unknown_window_stays_zero_rather_than_being_guessed(fake):
+    """0 is the representation of "the provider did not say".
+
+    Every reader must render that as unknown. A plausible default here is worse than an
+    absent number, because the compaction trigger downstream would believe it.
+    """
+    client = fake([])
+    store_models(
+        RefreshResult(provider="selfhosted", ok=True, models=["local/mystery"]),
+        "http://provider/v1",
+    )
+    assert _column(client, "context_window") == [0]
 
 
 @pytest.mark.parametrize(

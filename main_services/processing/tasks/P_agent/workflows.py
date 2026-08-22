@@ -86,10 +86,10 @@ async def _write_row(params, seq: int, role: str, content: str, **extra) -> None
 
 
 async def _write_payload(
-    params, payload: dict, empty_answer: str, start_seq: int
-) -> tuple[str, int]:
-    """Write a finished agent payload into the transcript; return the answer and the
-    next free `seq`.
+    params, payload: dict, empty_answer: str, start_seq: int, peak_floor: int = 0
+) -> tuple[str, int, int]:
+    """Write a finished agent payload into the transcript; return the answer, the next
+    free `seq`, and the turn's peak context so far.
 
     Shared by both workflows because a research transcript and a chat transcript are the
     same rows -- keeping one writer is what stops them drifting into rendering
@@ -97,6 +97,11 @@ async def _write_payload(
 
     The starting position is passed rather than read off `params` because a nagged chat
     turn writes several payloads into one turn, and each has to land after the last.
+
+    `peak_floor` is there for the same reason: one user turn is several agent runs once
+    the nag loop is involved, and "peak this turn" is the maximum over all of them. Each
+    round's row carries the running maximum, so the row a reader sees last is the row
+    that tells the truth about the turn.
     """
     seq = start_seq
 
@@ -112,6 +117,10 @@ async def _write_payload(
         )
         seq += 1
 
+    # Token counts as the provider billed them. A missing key is 0, which every reader
+    # renders as unknown -- an agent that reported no usage must not look free.
+    usage = payload.get("usage") or {}
+    peak = max(peak_floor, int(usage.get("peak_context_tokens") or 0))
     answer = payload.get("answer") or empty_answer
     await _write_row(
         params, seq, "assistant", answer,
@@ -119,8 +128,11 @@ async def _write_payload(
         # through as `reasoning` is what keeps the disclosure working.
         reasoning=payload.get("reasoning") or "",
         model=payload.get("model") or "",
+        context_tokens=int(usage.get("context_tokens") or 0),
+        peak_context_tokens=peak,
+        context_window=int(usage.get("context_window") or 0),
     )
-    return answer, seq + 1
+    return answer, seq + 1, peak
 
 
 def _was_cancelled(exc: BaseException) -> bool:
@@ -227,6 +239,10 @@ class ChatTurn:
         #: model from farming resets and nagging itself forever.
         nags_without_progress = 0
         nags_this_turn = 0
+        #: The largest context any round of this turn was billed for. One user turn is
+        #: several agent runs once the nag loop is involved, so the peak is a maximum
+        #: over the rounds and not whatever the last one happened to cost.
+        turn_peak = 0
         #: The snapshot taken when the last nag was written, to compare against.
         todo_before_nag: dict | None = None
         round_params = params
@@ -259,8 +275,9 @@ class ChatTurn:
                     await _write_ending(params, seq, f"The assistant could not answer: {e}")
                 raise
 
-            answer, seq = await _write_payload(
-                params, json.loads(raw), "(the assistant returned an empty answer)", seq
+            answer, seq, turn_peak = await _write_payload(
+                params, json.loads(raw), "(the assistant returned an empty answer)", seq,
+                peak_floor=turn_peak,
             )
 
             todo = await self._read_todo(params)
@@ -339,7 +356,7 @@ class ResearchTask:
             )
             raise
 
-        answer, _ = await _write_payload(
+        answer, _, _ = await _write_payload(
             params, json.loads(raw), "(the research agent returned an empty answer)", seq
         )
         return answer

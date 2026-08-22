@@ -85,6 +85,36 @@ def _chat_model() -> str:
         return ""
 
 
+def context_window_for(model_id: str) -> int:
+    """The catalog's context window for one model id, or 0 when nothing knows it.
+
+    Copied onto the transcript row at write time rather than joined at read time: the
+    catalog is refreshed on a schedule, and a model re-listed with a different window
+    would otherwise silently restate every past turn's percentage.
+
+    **0 is the representation of "the provider never said."** It is not a fallback and
+    nothing may substitute a plausible number for it -- a compaction trigger downstream
+    divides by this, and a wrong denominator is believed exactly as a right one is.
+    """
+    if not model_id:
+        return 0
+    try:
+        from database.clickhouse import get_global_client
+
+        with get_global_client() as client:
+            rows = client.query(
+                "SELECT argMax(context_window, updated_at) FROM llm_models "
+                "WHERE model_id = {m:String} GROUP BY provider, model_id "
+                "ORDER BY 1 DESC LIMIT 1",
+                parameters={"m": model_id},
+            ).result_rows
+    except Exception:  # noqa: BLE001 - a missing denominator is not worth a turn
+        log.warning("[P_agent] could not read the context window for %s", model_id,
+                    exc_info=True)
+        return 0
+    return int(rows[0][0]) if rows else 0
+
+
 #: How many prior turns of the conversation the agent is given.
 #:
 #: A durable research turn sent an EMPTY history answers a follow-up question in an open
@@ -176,6 +206,10 @@ class ResearchStreamWriter:
         #: True until the first tool call that is not part of the plan-first opening.
         self.in_plan_first_opening = True
         self.tool_events: list[dict[str, Any]] = []
+        #: Token counts from the agent's `end` frame. Empty until it arrives, and empty
+        #: for good if the provider reported no usage -- which the workflow records as 0
+        #: and every reader shows as unknown.
+        self.usage: dict[str, Any] = {}
         self._last_write = 0.0
         self._closed = threading.Event()
         self._keepalive_thread: threading.Thread | None = None
@@ -328,6 +362,10 @@ class ResearchStreamWriter:
             kind = chunk.get("type")
             if kind == "error":
                 raise RuntimeError(chunk.get("content") or "unknown agent error")
+            # Token counts ride on the `end` frame beside `content`, not inside it, so
+            # they are taken here rather than in `_handle`.
+            if kind == "end" and isinstance(chunk.get("usage"), dict):
+                self.usage = dict(chunk["usage"])
             self._handle(kind, chunk.get("content"))
 
         # Final stream state: the assistant row is complete, every row goes final. The
@@ -348,6 +386,9 @@ class ResearchStreamWriter:
             "reasoning": reasoning,
             "tool_calls": self.tool_events,
             "model": llm_model,
+            # Empty when the provider reported no usage at all. The workflow writes 0 in
+            # that case and every reader renders 0 as unknown, never as free.
+            "usage": {**self.usage, "context_window": context_window_for(llm_model)},
         }
 
     def _handle(self, kind: str | None, content: Any) -> None:
