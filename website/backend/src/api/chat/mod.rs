@@ -633,7 +633,7 @@ pub async fn poll_chat(
     }
 }
 
-/// The stop button: cancel this session's in-flight turn.
+/// The stop button: cancel the conversation's in-flight turn.
 ///
 /// A Temporal cancellation, which is what makes the stop button mean the same thing
 /// after a website restart as before one. A stopped turn cannot be orphaned either:
