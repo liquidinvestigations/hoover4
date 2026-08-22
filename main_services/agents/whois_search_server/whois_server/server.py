@@ -135,11 +135,18 @@ def format_whois_data(domain_data) -> WhoisData:
             return date_val.isoformat()
         return str(date_val)
     
-    # Clean up list fields
+    # Clean up list fields.
+    #
+    # A registry that holds one value returns a bare STRING here, not a one-element list —
+    # `example.org` and `enron.com` both do for `admin_email`. Returning it unchanged makes
+    # pydantic reject the whole `WhoisData`, so a domain with exactly one abuse contact
+    # fails its lookup entirely with a validation error in place of its registration.
     def clean_list(value):
-        if isinstance(value, list):
-            return [str(item) for item in value if item]
-        return value
+        if value is None:
+            return None
+        if not isinstance(value, (list, tuple, set)):
+            value = [value]
+        return [str(item) for item in value if item]
     
     # Extract common fields
     return WhoisData(

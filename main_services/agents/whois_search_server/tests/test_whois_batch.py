@@ -87,3 +87,23 @@ class TestCorrectiveNotes:
 
     def test_an_ordinary_call_carries_no_note(self):
         assert _call(domains=["a.example"]).note is None
+
+
+class TestFormatting:
+    """`python-whois` returns a bare value where a registry holds only one."""
+
+    def test_a_single_contact_is_still_a_list(self):
+        """Left as a bare string this fails `WhoisData` validation, and a domain with one
+        abuse contact answers with a validation error instead of its registration."""
+        data = whois_srv.format_whois_data(
+            {"emails": "abuse@example.com", "name_servers": "ns1.example.com"}
+        )
+        assert data.admin_email == ["abuse@example.com"]
+        assert data.name_servers == ["ns1.example.com"]
+
+    def test_a_list_is_left_as_a_list(self):
+        data = whois_srv.format_whois_data({"emails": ["a@example.com", "b@example.com"]})
+        assert data.admin_email == ["a@example.com", "b@example.com"]
+
+    def test_an_absent_field_stays_absent(self):
+        assert whois_srv.format_whois_data({}).admin_email is None
