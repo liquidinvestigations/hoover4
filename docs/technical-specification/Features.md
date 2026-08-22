@@ -84,7 +84,7 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-chat-01` | Ask a question about the corpus and get a streamed answer | `backend/src/api/chat/` |
+| `F-chat-01` | Ask a question about the corpus and get a streamed answer | `backend/src/api/chat/`, `chat_message_stream` |
 | `F-chat-02` | Choose, at the first turn, whether the answer may use the open web and whether it is a deep research turn — then hold both for the conversation | `db_chat::lock_session_options` |
 | `F-chat-03` | Search the corpus from several query angles in one call, every hit naming the queries that found it | `search_collections`, `matched_queries` |
 | `F-chat-03a` | Read several documents in one call, sharing one character budget and naming what did not fit | `read_documents` |
@@ -98,9 +98,10 @@ languages.
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically | `chat_sessions`, `chat_messages` |
-| `F-chat-10` | Stop a turn in flight, and show an interrupted turn as interrupted rather than as a spinner | `live_runs`, the stream table |
-| `F-chat-11` | Retry a failed turn automatically, and show the failed attempts behind a disclosure | `website/backend/src/api/chat/agent_client.rs` |
-| `F-chat-12` | Run a deep research turn durably, outside the request | `main_services/processing/tasks/P_agent/` |
+| `F-chat-10` | Stop a turn in flight, and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
+| `F-chat-11` | Retry a failed turn automatically, on whichever worker picks it up | `ChatTurn`, its activity retry policy |
+| `F-chat-12` | Run every turn durably, outside the request, so a website restart or a closed tab does not lose it | `main_services/processing/tasks/P_agent/` |
+| `F-chat-13` | List every agent turn running anywhere, and cancel one | `chat::admin_list_live_runs`, Temporal visibility |
 
 ## Administration
 
@@ -114,7 +115,7 @@ languages.
 | `F-admin-06` | Manage users and groups, and grant a group read access to a collection | `website/backend/src/api/admin/users.rs`, `groups.rs` |
 | `F-admin-07` | Configure language-model providers, and the model each agent profile uses | `website/backend/src/api/admin/llm.rs` |
 | `F-admin-08` | See the accelerated tier's status and what it has loaded | `website/backend/src/api/admin/ai_status.rs` |
-| `F-admin-09` | See usage and API metrics, and the agent runs open right now, with a kill control | `website/backend/src/api/admin/metrics.rs`, `live_runs` |
+| `F-admin-09` | See usage and API metrics, and the agent turns running right now, with a kill control | `website/backend/src/api/admin/metrics.rs`, `F-chat-13` |
 | `F-admin-10` | Change server settings that take effect without a redeploy | `website/backend/src/api/admin/settings.rs` |
 | `F-admin-11` | Record every long operation permanently — what was asked for, by whom, its progress, and how it ended — outliving both the process that asked and the workflow history | the `operations` table, `main_services/processing/database/operations.py` |
 | `F-admin-12` | Run long operations in a container of their own, with its own memory and CPU budget and the datastore volumes mounted read-only, so they cannot take capacity from ingestion | `hoover4-ops`, `tasks/run_worker.py:run_operations_worker` |
