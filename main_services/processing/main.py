@@ -227,8 +227,10 @@ def operations():
 
 
 @operations.command(name="list")
+# `default=None`, not `default=""`: click validates a non-None default against the
+# choice list, so an empty-string default makes the option impossible to omit.
 @click.option("--state", type=click.Choice(["pending", "running", "finished",
-                                            "errored", "cancelled"]), default="")
+                                            "errored", "cancelled"]), default=None)
 @click.option("--collection", "collectionname", type=str, default="")
 @click.option("--kind", type=str, default="")
 @click.option("--limit", type=int, default=25, show_default=True)
@@ -237,7 +239,7 @@ def operations_list(state: str, collectionname: str, kind: str, limit: int):
     from database.operations import list_operations
     from tasks.P_ops.cli import format_row
 
-    rows = list_operations(state=state, collectionname=collectionname, kind=kind,
+    rows = list_operations(state=state or "", collectionname=collectionname, kind=kind,
                            limit=limit)
     if not rows:
         click.echo("No operations match.")

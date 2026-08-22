@@ -111,6 +111,11 @@ languages.
 | `F-admin-08` | See the accelerated tier's status and what it has loaded | `website/backend/src/api/admin/ai_status.rs` |
 | `F-admin-09` | See usage and API metrics, and the agent runs open right now, with a kill control | `website/backend/src/api/admin/metrics.rs`, `live_runs` |
 | `F-admin-10` | Change server settings that take effect without a redeploy | `website/backend/src/api/admin/settings.rs` |
+| `F-admin-11` | Record every long operation permanently — what was asked for, by whom, its progress, and how it ended — outliving both the process that asked and the workflow history | the `operations` table, `main_services/processing/database/operations.py` |
+| `F-admin-12` | Run long operations in a container of their own, with its own memory and CPU budget and the datastore volumes mounted read-only, so they cannot take capacity from ingestion | `hoover4-ops`, `tasks/run_worker.py:run_operations_worker` |
+| `F-admin-13` | Refuse a second dispatch of the same kind of operation against the same target while one is still running, naming what is in the way | `database/operations.py:assert_lock_free` |
+| `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `tasks/P_ops/cli.py` |
+| `F-admin-15` | List, inspect, re-run and cancel operations from the command line | `main.py operations list\|show\|rerun\|cancel` |
 
 ## Identity and access
 

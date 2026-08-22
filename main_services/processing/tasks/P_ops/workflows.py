@@ -101,12 +101,17 @@ class Operation:
         The child carries this operation's id, so a second dispatch cannot collide with
         this run's children, and the ingest is visible in Temporal under a name that
         leads straight back to the row.
-        """
-        with workflow.unsafe.imports_passed_through():
-            from ..P0_scan_disk.workflows import IngestAndProcessDataset
 
+        THE CHILD IS ADDRESSED BY NAME, not by importing its class, and that is not a
+        style choice. Importing it drags the whole pipeline module graph — the scan
+        activities, the object-store client, its crypto bindings — through the workflow
+        sandbox's importer, and a C extension re-imported that way fails with a bare
+        `SystemError` from inside CPython that names nothing in this repository. The
+        operations container has no business loading the pipeline's dependencies
+        either: it schedules that work, it does not run it.
+        """
         child = asyncio.ensure_future(workflow.execute_child_workflow(
-            IngestAndProcessDataset.run,
+            "IngestAndProcessDataset",
             {
                 "collectionname": params.collectionname,
                 "collection_dataset": params.collection_dataset,

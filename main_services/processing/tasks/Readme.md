@@ -79,6 +79,16 @@ runs `CollectEtaSamples` — the self-scheduling singleton that writes
 bytes/s combined pessimistically, 20x-cost throttle, finished collections skipped).
 Runs on `processing-common-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
 
+### P_ops - Long operations a person can start
+
+Not a pipeline stage. One `Operation` workflow per dispatched long operation, whose
+workflow id **is** the `op_id` of its row in the global `operations` table — so a caller
+that was killed, or that deliberately detached, can always find its work again, and the
+row outlives Temporal's history, which is retained for a day. The workflow owns the row's
+lifecycle and its terminal write is what releases the operations lock. Runs on
+`operations-queue` and the three store queues, in the `hoover4-ops` container rather than
+in this fleet. See [P_ops/Readme.md](P_ops/Readme.md).
+
 ### P_agent - Long-running AI research
 
 `ResearchTask` runs the full research agent for one question and writes the answer back
