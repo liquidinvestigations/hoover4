@@ -631,17 +631,21 @@ async def run_operations_worker():
   interpreters, and one process means one place for the container's memory budget to
   apply. The queues stay separate so a store's work cannot starve another store's.
 
-  The three store queues carry no activities yet. They are declared because the queue
-  name is what a workflow addresses, and a workflow that names a queue nothing is
-  polling waits for ever with no error anywhere -- declaring them now means the first
-  store activity registered here is reachable the moment it exists. Each carries the
-  row writer, because the SDK refuses a worker with neither a workflow nor an
-  activity, and because it is the one activity every store path needs anyway.
+  Each store queue carries that store's own export work and nothing else, which is what
+  the split is for: a long object copy cannot take the single ClickHouse slot, and the
+  ClickHouse slot stays single because concurrent backups are refused by the server
+  anyway. Every queue also carries the row writer, because the SDK refuses a worker with
+  neither a workflow nor an activity, and because it is the one activity every store path
+  needs.
   """
   from .P_ops.activities import (
       begin_failed_file_retry, count_dataset_rows_activity, finish_failed_file_retry,
       record_operation_state, reindex_collection_activity, sample_dataset_progress,
       tombstone_dataset_row,
+  )
+  from .P_ops.backup import (
+      begin_export, export_clickhouse, export_manticore, export_object_store,
+      finish_export,
   )
   from .P_ops.workflows import Operation
   from .visibility import ensure_search_attributes
@@ -663,10 +667,15 @@ async def run_operations_worker():
       activities=[record_operation_state, sample_dataset_progress,
                   reindex_collection_activity, count_dataset_rows_activity,
                   begin_failed_file_retry, finish_failed_file_retry,
-                  tombstone_dataset_row],
+                  tombstone_dataset_row, begin_export, finish_export],
       activity_executor=executor,
       max_concurrent_activities=orchestration,
     )]
+    store_activities = {
+      "operations-clickhouse-queue": [export_clickhouse],
+      "operations-manticore-queue": [export_manticore],
+      "operations-garage-queue": [export_object_store],
+    }
     for queue, slots in OPERATIONS_QUEUE_SLOTS.items():
       if queue == "operations-queue":
         continue
@@ -677,7 +686,7 @@ async def run_operations_worker():
         task_queue=queue,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
         workflows=[],
-        activities=[record_operation_state],
+        activities=[record_operation_state, *store_activities[queue]],
         activity_executor=executor,
         max_concurrent_activities=slots,
       ))

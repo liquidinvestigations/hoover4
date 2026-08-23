@@ -45,6 +45,11 @@ cancelled workflow cannot schedule further activities, so a cleanup write attemp
 it would be cancelled with it and the row would stay non-terminal for ever, holding the lock
 that cancelling was meant to release.
 
+**A row that has already landed terminal is never moved again.** A cancellation lands the
+row from outside while the workflow is still unwinding, and the workflow's own failure path
+arrives a moment later; without that rule the late write relabels the cancellation as an
+error, and the row then reports the opposite of what happened.
+
 ## What each kind drives
 
 `add_dataset` and `rescan_dataset` drive the ingest chain, and `compute_plans` and
@@ -52,7 +57,7 @@ that cancelling was meant to release.
 shard tables from its finished plans; `ensure_collection` and `drop_collection_database`
 provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
 `change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
-chain of them. `delete_dataset` is a purge with the registry row tombstoned first, so an
+chain of them; `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
 interrupted deletion leaves rows nothing routes to rather than a live dataset missing half
 its data — and the log distinguishes a dataset that was retired from one whose data was
 cleaned out from under it. Every child
@@ -106,9 +111,70 @@ ClickHouse gets exactly one because concurrent backups and restores are disabled
 server config anyway: a second slot would only queue inside ClickHouse, where nothing here
 can see it.
 
-The three store queues currently carry only the row writer. They are declared ahead of the
-activities that will use them because a workflow that addresses a queue nothing is polling
-waits for ever, with no error anywhere to say why.
+Each store queue carries that store's own export work and nothing else, so a long object
+copy cannot take the single ClickHouse slot.
+
+## The backup format
+
+`export_collection` writes one directory per backup under the configured root. A caller
+names a **subdirectory**, never a path, so a directory that is not mounted into this
+container cannot be asked for.
+
+```
+<root>/<destination>/
+  manifest.json                      what is here, how big it is, and what it checks against
+  garage/vol-000.tar ...             the collection's objects, uncompressed
+  garage/objects.json.gz             key -> (volume, offset, size, etag)
+  clickhouse/clickhouse-<op_id>.tar  BACKUP DATABASE, uncompressed
+  manticore/<table>.tar.zst          one artifact per shard table, zstd
+```
+
+Every choice in it is measured. The ClickHouse artifact is an **uncompressed tar** because
+the only compressed single-file shape ClickHouse offers is a deflate zip, its part files are
+already compressed internally, and deflating them again bought 1.38x for twenty percent more
+time. The object payload is **not compressed** because the blobs are already-compressed
+documents behind a write path that tops out around 27 MB/s, so re-compressing spends
+processor time on the wrong side of the bottleneck — its key manifest is compressed, and a
+million entries costs 8.3 MB and under a second. Manticore artifacts are compressed because
+a text index compresses well, though a collection dominated by vector tables compresses far
+less than a text-only one.
+
+**ClickHouse writes its own artifact straight into the backup directory**, because the
+backup root is mounted onto its `backups/` path as well as onto this container's. Nothing is
+copied afterwards, which matters: this container holds the store volumes read-only and could
+neither delete an original nor hard-link one — **a cross-mount hard link is refused even
+inside one filesystem, so a backup copies bytes.**
+
+Manticore is taken with `FREEZE`, which flushes the table's RAM chunk, holds it read-only
+and answers with the exact file list. Copying a live table's directory without it captures
+an unflushed chunk mid-write. Every freeze is released on the way out, including out of a
+failure: a table left frozen accepts no more writes.
+
+**Order is object store, then ClickHouse, then Manticore.** No two stores can be snapshotted
+together, so the order decides what a backup taken during ingestion leaves behind: an
+orphaned blob rather than a row pointing at a blob that was never copied.
+
+**A failed or cancelled export blocks nothing.** Everything is written into
+`<destination>.partial-<op_id>/` and renamed onto `<destination>/` only when the manifest is
+complete, so an incomplete run leaves a directory that says so in its name and a later
+attempt at the same name succeeds. The ClickHouse `.lock` a failed `BACKUP` leaves behind is
+inside that directory and carries the operation id, so it can never block a re-run either.
+
+Progress is **bytes, one named phase per store**, and every denominator comes from the store
+itself: the object listing, ClickHouse's own byte counter polled out of `system.backups`, and
+the sizes of the frozen Manticore files. No store knows another's total, so a single
+denominator across all three would only exist once the backup was over; the phase is named
+in `detail` and the per-store sizes accumulate there as each one lands.
+
+The manifest carries the collection's own rows — the collection, its group permissions, its
+datasets and their settings, the server settings and the schema versions — because they are
+small and they are what makes a restored collection *configured* rather than merely present.
+Artifacts this container writes carry a sha256 taken as they are written; the ClickHouse
+archive carries ClickHouse's own per-file checksums inside it instead, so an outer digest
+would cost a second full read of the largest artifact and guarantee nothing the inner ones
+do not.
+
+**Original source data is not in a backup.** It is held outside this system.
 
 ## Navigation
 

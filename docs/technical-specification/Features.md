@@ -154,6 +154,8 @@ languages.
 | `F-admin-20` | Show the failure rate of each task type against a configured threshold, calling out the types above it as candidate tooling limitations | `admin_list_operations`, `error_rate_alert_percent` |
 | `F-admin-21` | Delete or purge a dataset, change its OCR languages or retry its failed files from the interface, each as an operation: one lock, one row, and progress that counts rows deleted or plans re-run rather than stages returned | `admin_delete_dataset`, `admin_apply_ocr_languages`, `admin_retry_failed_task`, `tasks/P_ops/workflows.py` |
 | `F-admin-22` | Show the newest operation touching a dataset on that dataset's own page, from the same log the operations page reads, so the two cannot describe one run differently | `DatasetOperationStrip`, `dataset_ocr.rs:latest_operation` |
+| `F-admin-23` | Back a collection up into one directory under a configured root — its objects, its database and its search tables, in that order — with a manifest naming every artifact, its size, its checksum and the collection's own configuration rows | `main.py export-collection`, the `export_collection` operation, `tasks/P_ops/backup.py` |
+| `F-admin-24` | Report a backup's progress from the stores' own byte counts, one named phase per store, and leave a failed or cancelled run in a directory that blocks no later attempt | `tasks/P_ops/backup.py`, the row's `detail` |
 
 ## Identity and access
 

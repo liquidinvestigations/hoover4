@@ -25,8 +25,12 @@ with workflow.unsafe.imports_passed_through():
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
+    from .backup import (
+        begin_export, export_clickhouse, export_manticore, export_object_store,
+        finish_export,
+    )
     from .params import (
-        DatasetProgressParams, DatasetRegistryParams, FinishRetryParams,
+        DatasetProgressParams, DatasetRegistryParams, ExportParams, FinishRetryParams,
         OperationParams, OperationStateParams, RetryFailedFilesParams,
     )
     from ..heartbeat import HEARTBEAT_TIMEOUT
@@ -45,6 +49,14 @@ PROGRESS_INTERVAL_SECONDS = 15
 #: returns is not the answer. Bounded rather than a wait for zero: a row that survives is
 #: something a person has to see, not something to hang on.
 PURGE_SETTLE_SAMPLES = 8
+
+#: How long one store's export may take before it is treated as hung.
+#:
+#: Generous because it is a whole-store budget, not a per-file one: at the measured rates
+#: a terabyte-scale collection is hours per store, and the liveness question is answered
+#: by the heartbeat deadline instead — which is what actually catches an activity that
+#: has stopped doing anything.
+EXPORT_STORE_TIMEOUT = timedelta(hours=24)
 
 #: The row writes are small, idempotent and on the critical path of the lock being
 #: released, so they retry patiently rather than giving up and stranding the lock.
@@ -77,7 +89,7 @@ class Operation:
             await workflow.execute_activity(
                 record_operation_state,
                 OperationStateParams(op_id=params.op_id, state="errored",
-                                     error=f"{type(exc).__name__}: {exc}"),
+                                     error=_failure_message(exc)),
                 task_queue="operations-queue",
                 start_to_close_timeout=timedelta(minutes=2),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -111,6 +123,8 @@ class Operation:
             return await self._retry_failed_files(params)
         if params.kind in ("ensure_collection", "drop_collection_database"):
             return await self._collection_database(params)
+        if params.kind == "export_collection":
+            return await self._export_collection(params)
         if params.kind == "reindex_collection":
             queued = await workflow.execute_activity(
                 reindex_collection_activity,
@@ -371,6 +385,51 @@ class Operation:
             task_queue="processing-common-queue",
         )
 
+    async def _export_collection(self, params: OperationParams) -> str:
+        """Write one collection's backup: object store, then ClickHouse, then Manticore.
+
+        **The order is the only cross-store consistency there is.** No store can be
+        snapshotted together with another, so an export taken while the pipeline runs is
+        going to have a seam somewhere; taking the objects first puts the seam where a
+        restore survives it — an orphaned blob rather than a row pointing at a blob that
+        was never copied.
+
+        Each store runs on its own queue, so a slow object copy cannot hold the single
+        ClickHouse slot, and the store activities do not retry. A backup that failed part
+        way through leaves a staging directory naming the operation that wrote it, and
+        re-running it from a clean directory is both cheaper and easier to trust than
+        resuming into a tree whose half-written artifacts nothing has checked.
+        """
+        destination = str(params.detail.get("destination", "")) or params.op_id
+        export = ExportParams(op_id=params.op_id,
+                              collectionname=params.collectionname,
+                              destination=destination)
+        export.directory = await workflow.execute_activity(
+            begin_export, export,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=5),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+        for step, queue in ((export_object_store, "operations-garage-queue"),
+                            (export_clickhouse, "operations-clickhouse-queue"),
+                            (export_manticore, "operations-manticore-queue")):
+            await workflow.execute_activity(
+                step, export,
+                task_queue=queue,
+                start_to_close_timeout=EXPORT_STORE_TIMEOUT,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+        directory = await workflow.execute_activity(
+            finish_export, export,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+        return f"exported {params.collectionname} to {directory}"
+
     async def _retry_failed_files(self, params: OperationParams) -> str:
         """Re-run one failed stage for the documents `processing_errors` names.
 
@@ -459,6 +518,26 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
+
+
+def _failure_message(exc: Exception) -> str:
+    """The failure, down to the exception that actually caused it.
+
+    An activity failure arrives at the workflow wrapped: the outer exception says only
+    "Activity task failed", and the sentence naming the missing column, the refused path
+    or the store that answered an error is the innermost cause. The row is the one place
+    a person reads afterwards, so it carries the whole chain rather than the wrapper.
+    """
+    parts, seen = [], 0
+    current: BaseException | None = exc
+    while current is not None and seen < 5:
+        text = str(current).strip()
+        label = f"{type(current).__name__}: {text}" if text else type(current).__name__
+        if label not in parts:
+            parts.append(label)
+        current = current.__cause__
+        seen += 1
+    return " <- ".join(parts)
 
 
 def ApplicationErrorDetail(kind: str, missing: str) -> Exception:

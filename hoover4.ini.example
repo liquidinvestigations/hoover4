@@ -183,6 +183,10 @@ ops_mem_limit  = 4000M
 ops_cpus       = 4
 ; Host directory for backups, mounted read-write. Empty uses a managed volume.
 ops_backup_dir =
+; Read bytes per second a ClickHouse backup may spend. 0 leaves it unthrottled. The
+; only throttle that does anything: `backup_threads` is an obsolete setting that is
+; accepted and ignored.
+ops_backup_bandwidth_bytes = 0
 ; Base URL of the admin UI, used only to tell a detached CLI where to watch its
 ; operation. Empty prints the operation id and the command that shows it, with no URL.
 admin_base_url =

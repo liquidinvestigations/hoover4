@@ -56,6 +56,13 @@ services:
       - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_NATIVE_PORT}:9000'
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      # The backup root, the same one the operations container holds. `BACKUP ... TO
+      # File(...)` resolves under `/var/lib/clickhouse/backups` and refuses an absolute
+      # path outside it, so mounting the shared root there is what lets ClickHouse write
+      # its archive straight into the backup directory. The alternative — writing inside
+      # this volume and copying the archive out — costs the space twice and strands the
+      # original, because the operations container holds this volume read-only.
+      - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/var/lib/clickhouse/backups
       # - ./data:/var/lib/clickhouse/user_files
       - ./clickhouse-server-config-override.xml:/etc/clickhouse-server/config.d/clickhouse-server-config-override.xml
     healthcheck:
@@ -516,17 +523,17 @@ services:
       # substituted INTO this file and does not reach the container by itself.
       - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
       - "HOOVER4_OPERATIONS_CONCURRENCY=${HOOVER4_OPERATIONS_CONCURRENCY:-}"
-      # Read by nothing yet: the object-store queue is declared and has no activities
-      # registered on it. They are the first consumers of these, and the values are the
-      # same names and defaults the worker and the website use.
+      # The object-store export reads these, and they are the same names and defaults
+      # the worker and the website use.
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
-      # Also read by nothing yet, for the same reason: the backup paths are unbuilt.
-      # The mount above is real and writable; this is the name they will find it under.
+      # Where the export writes. The same volume ClickHouse holds at its own backup
+      # root, so its archive lands in the backup directory without being copied.
       - "HOOVER4_BACKUP_ROOT=/backups"
+      - "HOOVER4_BACKUP_BANDWIDTH_BYTES=${HOOVER4_BACKUP_BANDWIDTH_BYTES:-0}"
 
   hoover4-website:
     # image: hoover4-website

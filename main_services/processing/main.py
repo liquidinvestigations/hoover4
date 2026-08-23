@@ -349,6 +349,48 @@ async def _open_index_workflows(collectionname: str) -> list[str]:
     return open_ids
 
 
+@cli.command(name="export-collection")
+@click.argument("collectionname", type=str)
+@click.option("--destination", default="", metavar="NAME",
+              help="Subdirectory of the backup root to write into. Defaults to the "
+                   "operation id, which is unique per run.")
+@click.option("--wait/--no-wait", default=True, show_default=True,
+              help="--no-wait prints the operation id and returns immediately.")
+def export_collection(collectionname: str, destination: str, wait: bool):
+    """Back a collection up into one directory under the configured backup root.
+
+    Writes the collection's objects, its ClickHouse database and its Manticore tables,
+    in that order, with a manifest naming every artifact and its size. Original source
+    data is not included: it is held outside this system.
+
+    DESTINATION names a subdirectory and never a path, so a directory that is not
+    mounted into the operations container cannot be asked for. A run that fails leaves a
+    `.partial-<op_id>` directory that blocks no later attempt.
+    """
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    try:
+        op_id = submit_operation("export_collection", collectionname=collectionname,
+                                 detail={"destination": destination} if destination
+                                 else {})
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    if not wait:
+        click.echo(where_to_look(op_id))
+        return
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
+
+
 @cli.command(name="reindex-collection")
 @click.argument("collectionname", type=str)
 def reindex_collection(collectionname: str):

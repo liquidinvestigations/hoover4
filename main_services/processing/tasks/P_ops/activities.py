@@ -31,9 +31,23 @@ def record_operation_state(params: OperationStateParams) -> str:
     Separate from the workflow's own progress because a workflow cannot touch a
     database: the row is the only thing outside Temporal that knows this run exists,
     and it has to be written by something that can fail and be retried.
-    """
-    from database.operations import finish_operation, update_operation, TERMINAL_STATES
 
+    **A row that has already landed terminal is never moved again.** Cancelling an
+    operation lands its row from the outside, because a cancelled workflow cannot
+    schedule the activity that would land it from the inside; the workflow then unwinds
+    and its own failure path arrives here a moment later. Without this guard that late
+    write relabels every cancellation as an error, which is the row reporting the
+    opposite of what happened.
+    """
+    from database.operations import (
+        finish_operation, get_operation, update_operation, TERMINAL_STATES,
+    )
+
+    current = get_operation(params.op_id)
+    if current and current["state"] in TERMINAL_STATES:
+        log.info("operation %s is already %s; leaving the row alone",
+                 params.op_id, current["state"])
+        return current["state"]
     if params.state in TERMINAL_STATES:
         finish_operation(params.op_id, params.state, params.error)
         return params.state

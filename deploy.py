@@ -138,6 +138,9 @@ DEFAULTS = {
         # Where backups are written. Empty uses a managed volume; a host path here is
         # bind-mounted instead, and must exist.
         "ops_backup_dir": "",
+        # How much read bandwidth a ClickHouse backup may take. 0 is unthrottled, and is
+        # right until a backup has to run beside ingestion on the same box.
+        "ops_backup_bandwidth_bytes": "0",
         # Base URL of the admin UI, used only to tell a detached CLI where to look.
         # Empty prints the operation id and the command that shows it, with no URL --
         # which is correct for a deployment whose address this file does not know.
@@ -624,6 +627,7 @@ def render_main_env(cfg):
     # A host path bind-mounts; the empty default names a managed volume instead, so the
     # container comes up on a box where no backup directory has been created yet.
     env["HOOVER4_OPS_BACKUP_DIR"] = cfg.get(m, "ops_backup_dir") or "ops_backups"
+    env["HOOVER4_BACKUP_BANDWIDTH_BYTES"] = cfg.get(m, "ops_backup_bandwidth_bytes")
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")

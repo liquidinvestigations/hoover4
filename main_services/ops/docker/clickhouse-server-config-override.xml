@@ -28,6 +28,19 @@
 
     </default></profiles>
 
+    <!-- One backup and one restore at a time, server-side. The operations layer already
+         gives its ClickHouse queue a single slot; this is the second check, on the side
+         that a backup started from anywhere else also passes through. -->
+    <backups>
+        <!-- Restated rather than inherited: a `BACKUP ... TO File()` destination is
+             resolved under this root and an absolute path outside it is refused, so the
+             one setting that decides whether backups work at all is written where the
+             mount that serves it is configured. -->
+        <allowed_path>backups</allowed_path>
+        <allow_concurrent_backups>false</allow_concurrent_backups>
+        <allow_concurrent_restores>false</allow_concurrent_restores>
+    </backups>
+
     <asynchronous_metric_log remove="1"/>
     <metric_log remove="1"/>
     <query_thread_log remove="1" />  

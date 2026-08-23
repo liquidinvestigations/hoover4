@@ -92,6 +92,37 @@ class RetryPlanResult:
 
 
 @dataclass
+class ExportParams:
+    """Which collection is being exported, and where its artifacts are being written.
+
+    `destination` names a **subdirectory** of the backup root and never a path: a caller
+    cannot ask for a directory that is not mounted. `directory` is the staging directory
+    the first activity created, carried to the rest so that every store writes into the
+    same run's tree rather than deriving a path of its own.
+    """
+
+    op_id: str
+    collectionname: str
+    destination: str = ""
+    directory: str = ""
+
+
+@dataclass
+class ExportStoreResult:
+    """What one store contributed to a backup.
+
+    `detail` is per store and goes into the manifest as it is — the artifact names, their
+    sizes and their checksums — because what a restore needs to know differs by store and
+    flattening it here would lose the parts only one of them has.
+    """
+
+    store: str = ""
+    bytes_written: int = 0
+    seconds: float = 0.0
+    detail: dict = field(default_factory=dict)
+
+
+@dataclass
 class FinishRetryParams:
     """The verification pass that decides which error rows a retry may delete."""
 
