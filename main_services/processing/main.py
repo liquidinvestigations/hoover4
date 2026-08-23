@@ -391,6 +391,57 @@ def export_collection(collectionname: str, destination: str, wait: bool):
         raise click.ClickException(f"{op_id} failed.")
 
 
+@cli.command(name="import-collection")
+@click.argument("collectionname", type=str)
+@click.option("--source", required=True, metavar="NAME",
+              help="Subdirectory of the backup root holding the backup to restore.")
+@click.option("--confirm", default="", metavar="COLLECTIONNAME",
+              help="The collection name again. Asked for interactively if omitted.")
+@click.option("--wait/--no-wait", default=True, show_default=True,
+              help="--no-wait prints the operation id and returns immediately.")
+def import_collection(collectionname: str, source: str, confirm: str, wait: bool):
+    """Restore a collection from a backup directory under the configured backup root.
+
+    Restores the collection's objects, its ClickHouse database and its Manticore tables,
+    in that order, then its configuration rows, from the manifest the export wrote.
+
+    The target must be an empty collection of the SAME name: a collection is restored
+    under its own name because the name is part of the database name, of every dataset
+    id, of every search table and of every object key. A target that still holds data is
+    refused naming what is in the way — delete the collection first, or do not import.
+    """
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    # A destructive kind is confirmed by typing its target, here as in the interface: an
+    # import replaces a collection, and the one thing worth being sure of is which.
+    typed = confirm or click.prompt(
+        f"This replaces the collection {collectionname} from the backup in {source}. "
+        f"Type the collection name to continue", default="", show_default=False)
+    if typed != collectionname:
+        raise click.ClickException(
+            f"{typed!r} is not {collectionname!r}; nothing was imported.")
+
+    try:
+        op_id = submit_operation("import_collection", collectionname=collectionname,
+                                 detail={"source": source})
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    if not wait:
+        click.echo(where_to_look(op_id))
+        return
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
+
+
 @cli.command(name="reindex-collection")
 @click.argument("collectionname", type=str)
 def reindex_collection(collectionname: str):

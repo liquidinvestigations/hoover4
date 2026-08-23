@@ -108,6 +108,24 @@ class ExportParams:
 
 
 @dataclass
+class ImportParams:
+    """Which backup is being restored, and into which collection.
+
+    `source` names a **subdirectory** of the backup root, the same way `destination`
+    does on the way out. `collectionname` is carried rather than read out of the
+    manifest so that the row, the lock and the typed confirmation all name the same
+    collection before anything is opened; the first activity then refuses a manifest
+    that names a different one, because a restore under another name is a cross-store
+    rewrite and not a restore.
+    """
+
+    op_id: str
+    collectionname: str
+    source: str = ""
+    directory: str = ""
+
+
+@dataclass
 class ExportStoreResult:
     """What one store contributed to a backup.
 

@@ -62,6 +62,7 @@ const DRIVEN_KINDS: &[&str] = &[
     "ensure_collection",
     "drop_collection_database",
     "export_collection",
+    "import_collection",
 ];
 
 fn kind_entry(kind: &str) -> Option<&'static (&'static str, &'static str, bool)> {

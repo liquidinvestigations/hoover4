@@ -631,10 +631,13 @@ async def run_operations_worker():
   interpreters, and one process means one place for the container's memory budget to
   apply. The queues stay separate so a store's work cannot starve another store's.
 
-  Each store queue carries that store's own export work and nothing else, which is what
-  the split is for: a long object copy cannot take the single ClickHouse slot, and the
-  ClickHouse slot stays single because concurrent backups are refused by the server
-  anyway. Every queue also carries the row writer, because the SDK refuses a worker with
+  Each store queue carries that store's own backup and restore work and nothing else,
+  which is what the split is for: a long object copy cannot take the single ClickHouse
+  slot. That slot stays single because the server refuses concurrent backups and
+  concurrent restores anyway, so a second slot would only queue inside ClickHouse where
+  nothing here can see it.
+
+  Every queue also carries the row writer, because the SDK refuses a worker with
   neither a workflow nor an activity, and because it is the one activity every store path
   needs.
   """
@@ -646,6 +649,10 @@ async def run_operations_worker():
   from .P_ops.backup import (
       begin_export, export_clickhouse, export_manticore, export_object_store,
       finish_export,
+  )
+  from .P_ops.restore import (
+      begin_import, finish_import, import_clickhouse, import_manticore,
+      import_object_store,
   )
   from .P_ops.workflows import Operation
   from .visibility import ensure_search_attributes
@@ -667,14 +674,15 @@ async def run_operations_worker():
       activities=[record_operation_state, sample_dataset_progress,
                   reindex_collection_activity, count_dataset_rows_activity,
                   begin_failed_file_retry, finish_failed_file_retry,
-                  tombstone_dataset_row, begin_export, finish_export],
+                  tombstone_dataset_row, begin_export, finish_export,
+                  begin_import, finish_import],
       activity_executor=executor,
       max_concurrent_activities=orchestration,
     )]
     store_activities = {
-      "operations-clickhouse-queue": [export_clickhouse],
-      "operations-manticore-queue": [export_manticore],
-      "operations-garage-queue": [export_object_store],
+      "operations-clickhouse-queue": [export_clickhouse, import_clickhouse],
+      "operations-manticore-queue": [export_manticore, import_manticore],
+      "operations-garage-queue": [export_object_store, import_object_store],
     }
     for queue, slots in OPERATIONS_QUEUE_SLOTS.items():
       if queue == "operations-queue":

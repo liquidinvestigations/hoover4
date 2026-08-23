@@ -182,6 +182,52 @@ do not.
 
 **Original source data is not in a backup.** It is held outside this system.
 
+## Restoring one
+
+`import_collection` reads a backup directory's manifest and puts each store back through
+that store's own protocol, in the export's order — object store, then ClickHouse, then
+Manticore — so an interrupted restore leaves blobs nothing points at rather than searchable
+rows pointing at blobs that were never written. `main.py import-collection <collection>
+--source <directory>` submits it, and it demands the collection name typed back before it
+dispatches.
+
+**Clean target only, and the same name only.** The collection must be absent or empty in all
+three stores, and every store is checked before a byte moves; a target that still holds
+anything is refused in one sentence naming every store that is occupied. Writing into
+populated tables would leave two copies of every row in version-less `ReplacingMergeTree`
+tables with no way to tell which is real, which is why ClickHouse's `allow_non_empty_tables`
+is never set. The name is part of the database name, of every `collection_dataset`, of every
+Manticore table and of every object key, so restoring under a different name is a cross-store
+rewrite and not a restore.
+
+**Every object volume is read, and there can be many.** A volume rolls at a fixed size, so a
+corpus larger than that is several tars whose members continue from one into the next. The
+key manifest's offsets are for pulling one blob out of a backup without reading it all; a
+whole-collection restore streams the volumes instead, which also checks each one's recorded
+sha256 against the bytes actually read.
+
+**ClickHouse is restored from the archive and then migrated.** `RESTORE DATABASE` puts the
+parts back as they were written, which is the same reason `BACKUP` is the mechanism on the
+way out: for a `ReplacingMergeTree` without a version column, which row survives a duplicate
+key is decided by part order, and a row-level dump loses that. The restored database carries
+its own `schema_versions`, so running the collection migrations afterwards brings an older
+backup forward and does nothing to a current one. A backup taken at a *later* global schema
+version than this deployment is refused before anything is touched.
+
+**Manticore is restored one table at a time, against the live daemon.** Its own restore tool
+takes configuration and data together into an empty instance and refuses one that is already
+serving. Each artifact is decompressed here — the Manticore image has no zstd — into a
+`.restore-<op_id>` staging directory on the data volume, and handed to `IMPORT TABLE`. The
+staging directory is on that volume because `IMPORT TABLE` **moves** the files and a move
+across filesystems is not a rename; it is not the destination, because the destination must
+not exist, which is also why the directory `DROP TABLE` leaves behind is removed first.
+
+**The configuration rows are written last**, because they are what offers the collection to
+the rest of the system: until they land, an unfinished restore is a collection nobody is
+shown rather than one that is shown and half empty. `server_settings` is deliberately not
+among them — those belong to the deployment, not to the collection, and restoring one
+deployment's into another would reconfigure everything else running there.
+
 ## Navigation
 
 - [Go Back](../Readme.md)

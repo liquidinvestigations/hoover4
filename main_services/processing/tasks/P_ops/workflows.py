@@ -31,7 +31,11 @@ with workflow.unsafe.imports_passed_through():
     )
     from .params import (
         DatasetProgressParams, DatasetRegistryParams, ExportParams, FinishRetryParams,
-        OperationParams, OperationStateParams, RetryFailedFilesParams,
+        ImportParams, OperationParams, OperationStateParams, RetryFailedFilesParams,
+    )
+    from .restore import (
+        begin_import, finish_import, import_clickhouse, import_manticore,
+        import_object_store,
     )
     from ..heartbeat import HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
@@ -132,6 +136,8 @@ class Operation:
             return await self._collection_database(params)
         if params.kind == "export_collection":
             return await self._export_collection(params)
+        if params.kind == "import_collection":
+            return await self._import_collection(params)
         if params.kind == "reindex_collection":
             queued = await workflow.execute_activity(
                 reindex_collection_activity,
@@ -436,6 +442,53 @@ class Operation:
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
         return f"exported {params.collectionname} to {directory}"
+
+    async def _import_collection(self, params: OperationParams) -> str:
+        """Restore one collection from a backup directory, in the export's own order.
+
+        **Object store, then ClickHouse, then Manticore, and the order is the guarantee.**
+        Reversing it would put searchable rows in front of the blobs they point at, so
+        an interrupted restore would offer documents that cannot be opened; this way it
+        leaves blobs nothing points at, which is invisible rather than broken.
+
+        The configuration rows come last, in `finish_import`, because they are what
+        offers the collection to the rest of the system: until they are written a
+        half-finished restore is a collection nobody is shown.
+
+        Nothing retries, for the same reason the export does not: every phase writes into
+        a store, and re-running a phase over a target it has already half filled is the
+        one thing the clean-target rule exists to prevent.
+        """
+        source = str(params.detail.get("source", ""))
+        if not source:
+            raise ApplicationErrorDetail(params.kind, "source")
+        restore = ImportParams(op_id=params.op_id,
+                               collectionname=params.collectionname,
+                               source=source)
+        restore.directory = await workflow.execute_activity(
+            begin_import, restore,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+        for step, queue in ((import_object_store, "operations-garage-queue"),
+                            (import_clickhouse, "operations-clickhouse-queue"),
+                            (import_manticore, "operations-manticore-queue")):
+            await workflow.execute_activity(
+                step, restore,
+                task_queue=queue,
+                start_to_close_timeout=EXPORT_STORE_TIMEOUT,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+        return await workflow.execute_activity(
+            finish_import, restore,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
 
     async def _retry_failed_files(self, params: OperationParams) -> str:
         """Re-run one failed stage for the documents `processing_errors` names.

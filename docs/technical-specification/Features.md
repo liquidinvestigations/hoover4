@@ -156,6 +156,7 @@ languages.
 | `F-admin-22` | Show the newest operation touching a dataset on that dataset's own page, from the same log the operations page reads, so the two cannot describe one run differently | `DatasetOperationStrip`, `dataset_ocr.rs:latest_operation` |
 | `F-admin-23` | Back a collection up into one directory under a configured root — its objects, its database and its search tables, in that order — with a manifest naming every artifact, its size, its checksum and the collection's own configuration rows | `main.py export-collection`, the `export_collection` operation, `tasks/P_ops/backup.py` |
 | `F-admin-24` | Report a backup's progress from the stores' own byte counts, one named phase per store, and leave a failed or cancelled run in a directory that blocks no later attempt | `tasks/P_ops/backup.py`, the row's `detail` |
+| `F-admin-25` | Restore a collection from one of those directories — its objects, its database, its search tables and its configuration rows — into an empty collection of the same name, refusing a target that still holds data by naming what is in the way | `main.py import-collection`, the `import_collection` operation, `tasks/P_ops/restore.py` |
 
 ## Identity and access
 

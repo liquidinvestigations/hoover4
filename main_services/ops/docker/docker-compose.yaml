@@ -511,6 +511,12 @@ services:
       - manticore_data_v14:/stores/manticore:ro
       - garage_data:/stores/garage/data:ro
       - garage_meta:/stores/garage/meta:ro
+      # The same Manticore volume once more, writable, for one thing: staging a table's
+      # files where `IMPORT TABLE` can take them. The daemon MOVES them into its data
+      # directory, and a move across filesystems is not a rename, so the staging area has
+      # to be on this volume rather than beside the backups. The restore writes only its
+      # own `.restore-<op_id>` directory here and removes it on the way out.
+      - manticore_data_v14:/stores/manticore-restore
     depends_on:
       temporal:
         condition: service_healthy
