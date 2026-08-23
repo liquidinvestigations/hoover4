@@ -1109,8 +1109,8 @@ async fn reopen_plans_for_hashes(
 /// Dispatched as a `retry_failed_files` operation, so the retry takes the dataset's lock,
 /// leaves a row saying what was retried and how it ended, and re-runs only the stage that
 /// recorded the failures rather than the whole pipeline. The error rows survive until the
-/// documents they describe are demonstrably fixed: clearing them up front, which this did
-/// before, loses the record of every retry that fails the same way.
+/// documents they describe are demonstrably fixed: clearing them up front would lose the
+/// record of every retry that fails the same way.
 pub async fn admin_retry_failed_task(
     user: &CurrentUser,
     collectionname: String,
