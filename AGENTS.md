@@ -73,6 +73,10 @@ own output or an upstream error. A value a test compares against, until the test
   one act everywhere. Synonym variety makes a reader count events that never happened.
 - **Write less.** No restatement of what the section just said, and no closing line that exists
   to land.
+- **Do not narrate compliance with a rule.** Follow it. A sentence that tells the reader you
+  have met a requirement is overhead, and it is usually written instead of meeting it. This
+  covers "as instructed", "per your request", "as the rule requires", and naming a count of
+  questions before writing them out.
 - **This instruction decays.** Re-read this section before writing prose after a compaction.
 
 Some vocabulary stays legal because it is the accurate technical term here. `harness` for the
