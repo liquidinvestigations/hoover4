@@ -86,9 +86,16 @@ class Operation:
             # be stranded non-terminal, holding the lock for ever.
             raise
         except Exception as exc:
+            # A cancellation reaches this branch wrapped, as an activity failure whose
+            # cause is a cancellation, so it is not caught above. It is still a
+            # cancellation and the row must say so: writing `errored` here races the
+            # `cancelled` the canceller writes from outside, and whichever lands second
+            # decides the state. Deciding it from the failure chain instead means both
+            # writers agree and there is nothing left to race.
+            state = "cancelled" if _is_cancellation(exc) else "errored"
             await workflow.execute_activity(
                 record_operation_state,
-                OperationStateParams(op_id=params.op_id, state="errored",
+                OperationStateParams(op_id=params.op_id, state=state,
                                      error=_failure_message(exc)),
                 task_queue="operations-queue",
                 start_to_close_timeout=timedelta(minutes=2),
@@ -538,6 +545,25 @@ def _failure_message(exc: Exception) -> str:
         current = current.__cause__
         seen += 1
     return " <- ".join(parts)
+
+
+def _is_cancellation(exc: BaseException) -> bool:
+    """Whether a failure chain is really a cancellation wearing an error's clothes.
+
+    Matched on the exception's *name* rather than on an imported class, because three
+    different cancellations arrive here — `asyncio.CancelledError`, the SDK's own
+    `CancelledError` and the `ActivityError` that wraps either — and importing the SDK's
+    exception module into a workflow file only to compare against it drags more through
+    the sandbox importer than the comparison is worth.
+    """
+    seen = 0
+    current: BaseException | None = exc
+    while current is not None and seen < 5:
+        if type(current).__name__ == "CancelledError":
+            return True
+        current = current.__cause__
+        seen += 1
+    return False
 
 
 def ApplicationErrorDetail(kind: str, missing: str) -> Exception:

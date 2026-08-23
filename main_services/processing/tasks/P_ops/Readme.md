@@ -50,6 +50,12 @@ row from outside while the workflow is still unwinding, and the workflow's own f
 arrives a moment later; without that rule the late write relabels the cancellation as an
 error, and the row then reports the opposite of what happened.
 
+**And the workflow's own late write says `cancelled` too.** A cancellation reaches the
+failure path wrapped as an activity failure, so the guard above is not enough on its own:
+the two writes can land in the same second and whichever is second decides the state. The
+state is therefore read off the failure chain — a chain containing a cancellation is a
+cancellation — so both writers agree and the order between them stops mattering.
+
 ## What each kind drives
 
 `add_dataset` and `rescan_dataset` drive the ingest chain, and `compute_plans` and
