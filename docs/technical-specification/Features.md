@@ -116,6 +116,11 @@ languages.
 | `F-chat-17d` | When dropping the older tool results is not enough, replace the older messages with one structured handoff document — what was replaced, the citations that stand, and the work, the verbatim facts and what remains — written by a model that can be a cheaper one than the conversation's | `compaction.summarise_messages`, `agent_compaction_model` |
 | `F-chat-17e` | Never summarise the user's own messages, the todo, or any message that issued or used a citation handle — they are selected in code and copied through unchanged, so a summariser cannot lose them whatever it is asked to do | `compaction.protected_indexes` |
 | `F-chat-17f` | Tell the reader when an answer was written from a summary rather than from what the agent read, and only then — a turn that merely stopped sending old tool results to the model says nothing, because every one of them is still in the transcript | `research_agent/agent.py` |
+| `F-chat-18` | Split a question into several briefings — an objective, what is already known, what to bring back — and research them at once in fresh contexts that cannot see each other, each returning a written report and the citation handles it allocated | `run_subagent`, `research_agent/subagents.py` |
+| `F-chat-18a` | Delegate exactly one level deep, because a worker's tool list is built without the delegation tool rather than because its instructions ask it not to recurse | `subagents.worker_tools`, `subagents.WORKER_DENIED_TOOLS` |
+| `F-chat-18b` | Enforce every delegation cap as a number rather than a request — tasks per call, workers at once, tool turns each, and a total for the whole user turn that a nudge round continues instead of resetting — refusing the surplus by name so the model can act on it | `subagents.MAX_TASKS_PER_CALL`, `subagents.start_turn` |
+| `F-chat-18c` | Give a worker page reading and not the tools that drive a page, and the plan to read and not to write, so a delegating turn costs the browser server what a plain turn costs it and no worker rewrites the conversation's plan | `subagents.WORKER_DENIED_TOOLS` |
+| `F-chat-18d` | Make a worker's citations resolve in the conversation that delegated to it, by running it on the lead's own tool connections and therefore its citation session | `subagents.make_delegation_tool`, `citations.HandleTable` |
 
 ## Administration
 

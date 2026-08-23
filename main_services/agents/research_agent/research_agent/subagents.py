@@ -56,22 +56,36 @@ DELEGATION_TOOL = "run_subagent"
 #: `run_subagent` and no prompt can put it back.
 DELEGATING_PROFILES = frozenset({"full_research"})
 
+def _cap(name: str, default: int) -> int:
+    """A cap from the environment, falling back to its default.
+
+    Tolerant of an unset variable AND of one set to the empty string, because compose
+    renders every optional setting as `NAME=${NAME:-}` and an empty value there means "use
+    the default". Read at import: a cap that changed mid-process would apply to some
+    conversations and not others.
+    """
+    try:
+        return max(1, int(os.getenv(name) or default))
+    except ValueError:
+        return default
+
+
 #: Tasks one `run_subagent` call may carry. The published upper end of "3-5 per wave";
 #: beyond it a model is fanning out instead of decomposing.
-MAX_TASKS_PER_CALL = int(os.getenv("AGENT_SUBAGENT_MAX_TASKS", "5"))
+MAX_TASKS_PER_CALL = _cap("AGENT_SUBAGENT_MAX_TASKS", 5)
 
 #: Workers running at once. Sized to what the serving configuration can actually keep
 #: busy — more in flight buys queueing, not answers.
-MAX_CONCURRENCY = int(os.getenv("AGENT_SUBAGENT_CONCURRENCY", "3"))
+MAX_CONCURRENCY = _cap("AGENT_SUBAGENT_CONCURRENCY", 3)
 
 #: Tool turns one worker may take before it is made to write its report. The failure mode
 #: this bounds is one worker that never stops, which a lead cannot detect from outside.
-WORKER_TOOL_TURNS = int(os.getenv("AGENT_SUBAGENT_TOOL_TURNS", "6"))
+WORKER_TOOL_TURNS = _cap("AGENT_SUBAGENT_TOOL_TURNS", 6)
 
 #: Workers one user turn may spend in total, across every `run_subagent` call it makes.
 #: Per-call is not enough: a nagged turn runs the agent again and the second run can
 #: delegate again, so the ceiling that matters is the turn's, not the wave's.
-MAX_WORKERS_PER_TURN = int(os.getenv("AGENT_SUBAGENT_MAX_PER_TURN", "10"))
+MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 10)
 
 #: Tools a worker does not get, by name.
 #:
@@ -130,7 +144,7 @@ _WORKERS_SPENT: ContextVar[Optional[List[int]]] = ContextVar(
 #: Live turn budgets, by chat session. Bounded, least-recently-used, for the reason every
 #: per-session map in this process is: one process serves every conversation on the site.
 _TURN_BUDGETS: "OrderedDict[str, List[int]]" = OrderedDict()
-MAX_TRACKED_TURNS = int(os.getenv("AGENT_SUBAGENT_TRACKED_TURNS", "512"))
+MAX_TRACKED_TURNS = _cap("AGENT_SUBAGENT_TRACKED_TURNS", 512)
 
 
 def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> List[int]:

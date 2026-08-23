@@ -2,9 +2,11 @@
 
 A FastAPI-based research agent with MCP (Model Context Protocol) tool integration, providing streaming chat capabilities for research assistance.
 
-## The two agent profiles
+## The agent profiles
 
-One image, two containers, different tool sets — and the difference is deliberate.
+One image, two containers, different tool sets — and the difference is deliberate. A third
+profile, `research_subagent`, has no container of its own: it is the profile the
+full-research agent's workers run in-process. See "Delegation" below.
 
 | | `hoover4-internal-search-agent` (21936) | `hoover4-full-research-agent` (21937) |
 |---|---|---|
@@ -49,6 +51,50 @@ a query it had already run until the request died with no answer. Detail belongs
 descriptions, which the model reads in context at the moment it picks a tool. The Manticore
 MATCH syntax deliberately lives in the collection MCP server's `instructions` instead, where
 every agent reads it at tool-discovery time and there is only one copy to maintain.
+
+## Delegation
+
+The full-research agent binds `run_subagent`, which splits a question into two to five
+briefings and runs them at once, each in a fresh context, with no peer coordination. See
+`research_agent/subagents.py`.
+
+**One level, enforced by what is bound.** A worker's tool list is built before the
+delegation tool is appended to the lead's, and `run_subagent` is in `WORKER_DENIED_TOOLS`
+as well — two independent reasons a worker cannot delegate, and neither is a sentence in a
+prompt. A prompt asking a model not to recurse eventually meets a model that does. Every
+other cap is an environment-overridable number; the depth is not, because it is not a
+number.
+
+| cap | default | why |
+|---|---|---|
+| `AGENT_SUBAGENT_MAX_TASKS` | 5 | tasks one call may carry; beyond it a model is fanning out rather than decomposing |
+| `AGENT_SUBAGENT_CONCURRENCY` | 3 | workers at once; more in flight buys queueing, not answers |
+| `AGENT_SUBAGENT_TOOL_TURNS` | 6 | tool turns per worker, then it is made to write its report |
+| `AGENT_SUBAGENT_MAX_PER_TURN` | 10 | workers per **user turn**, across every call it makes |
+| delegation depth | 1 | not bindable, so not exceedable |
+
+The per-turn cap is not the per-call cap because a nagged turn runs the agent again on the
+same user message and can delegate again. A budget reset per run would multiply the ceiling
+by the nag count. The signal for "this is a nag round" is the non-zero `extra_tool_turns`
+the chat workflow sends, and the budget is keyed by chat session.
+
+**Workers get `read_page` and not the interactive browser tools, and `read_todo` and not
+the writers.** Reading a page is the overwhelmingly common browser action and needs no
+persistent context; driving one does, and the browser server holds eight contexts in total.
+A worker has one objective and a few tool turns, so it has nothing to plan — and it is
+never nagged, for the same reason.
+
+**Workers run on the lead's MCP connections, and that is the citation contract.** Citation
+handles are allocated per chat session by the collection-search server, keyed by the
+session header those connections carry. A worker citing a document under a session of its
+own would hand back a `[D1]` the lead cannot resolve, and an answer citing a document
+nobody can open is a correctness bug rather than a cosmetic one. Sharing the connections
+has a second benefit: a delegating turn costs the browser server one context, the same as
+a plain turn.
+
+A worker returns its written report, the handles it allocated, and the document behind each
+one. Reports that come back empty are named in the response's `note`: noticing a thin report
+and re-delegating is the lead's job, not the worker's.
 
 ## Per-chat browser sessions
 

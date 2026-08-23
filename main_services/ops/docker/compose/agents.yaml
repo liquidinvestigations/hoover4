@@ -395,6 +395,10 @@ services:
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
+      # Also the one profile that binds `run_subagent`: this agent may delegate parts of
+      # a question to several workers at once, each running the `research_subagent`
+      # profile in-process on these same MCP connections. The workers' own profile does
+      # not bind the delegation tool, which is the whole of the one-level depth limit.
       - AGENT_PROFILE=full_research
       # As above: empty means "use the canonical prompt from the agent package". The
       # collection MCP server contributes the MATCH syntax through its own instructions,
@@ -411,6 +415,14 @@ services:
       - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
       - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
       - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
+      # Delegation caps. Every one of them is enforced in code, not asked for in the
+      # prompt — see research_agent/subagents.py, which also explains why the per-turn
+      # total is a separate cap from the per-call one. Unset means the shipped default.
+      # There is no knob for the depth: a worker simply does not have the tool.
+      - AGENT_SUBAGENT_MAX_TASKS=${AGENT_SUBAGENT_MAX_TASKS:-}
+      - AGENT_SUBAGENT_CONCURRENCY=${AGENT_SUBAGENT_CONCURRENCY:-}
+      - AGENT_SUBAGENT_TOOL_TURNS=${AGENT_SUBAGENT_TOOL_TURNS:-}
+      - AGENT_SUBAGENT_MAX_PER_TURN=${AGENT_SUBAGENT_MAX_PER_TURN:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
