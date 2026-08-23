@@ -131,7 +131,7 @@ file, and nothing depends on the rule firing automatically.
 
 ## Hooks
 
-Four, and deliberately no more. Each is stated in the core as well, so the agent knows the
+Five, and deliberately no more. Each is stated in the core as well, so the agent knows the
 rule instead of only hitting the wall.
 
 | hook | event | what it denies |
@@ -140,6 +140,7 @@ rule instead of only hitting the wall.
 | long commit message | `PreToolUse(Bash)` | `git commit -m` with a multi-line or over-length message |
 | register | `PreToolUse(Edit\|Write\|MultiEdit)` | text that ADDS a phrase from the list in `AGENTS.md`, "How to write", or an em dash, to a `.md`, `.rs`, `.py`, `.sh`, `.sql`, `.toml` or `.yaml` file. The documents that define the rule are exempt by path, because they have to quote what they ban |
 | orientation | `SessionStart`, including `compact` | denies nothing; injects the invariants and the routing table, and re-injects them after a compaction |
+| tool-call budget | `PostToolUse(*)` | denies nothing; names the calls used and the calls left at 80% and 95% of the budget the counter was armed with |
 
 Three things are deliberately *not* hooked: reads of `website/target`, `node_modules` and
 generated output, because debugging regularly needs exactly that source; heredocs, because
@@ -217,11 +218,22 @@ turn taken at 600,000 tokens of carried context costs about seven times the same
 100,000. The reason for the second is the long-context literature, which puts accuracy loss
 between 32,000 and 100,000 tokens.
 
-**The cap is written into a work package as a tool-call count, not as a token count**, because an
-agent can count its own tool calls and cannot see its own context. Where a harness supplies a
-live token warning it fires against the window, not against a budget a plan chose. Two mechanisms
-carry the budget when attention does not: `maxTurns` in the agent definition, which the harness
-enforces, and a `PostToolUse` hook that puts the number back in front of the pass at 80% of it.
+**The cap is written into a work package as a tool-call count rather than as a token count**,
+because a pass cannot see its own context at all. Where a harness supplies a live token warning
+it fires against the window, not against a budget a plan chose. Two mechanisms carry the budget
+when attention does not: `maxTurns` in the agent definition, which the harness enforces, and a
+`PostToolUse` hook that puts the number back in front of the pass at 80% and 95% of it.
+
+**A pass cannot count its own tool calls either.** One measured pass reported 79 calls and had
+made 103, an undercount of 23%, so the hook's count is the evidence and the pass's own tally is
+not. Tell a pass to trust the hook.
+
+**Arm the counter before every launch**, with `.agents/arm-tool-budget.sh <budget>`, and make no
+tool call of your own while the pass is live. The harness gives a sub-agent the same session id,
+transcript path and environment as the session that launched it, so the hook cannot tell one
+from the other and counts them together. Arming resets the count and records the budget, which
+is what makes the warning measure one pass. Without it the organizer's calls are added to the
+pass's: one pass was stopped at 26 calls of 96 that way.
 
 Which model fills which role, and how one qualifies, is in
 [`Choosing_A_Model.md`](Choosing_A_Model.md).
