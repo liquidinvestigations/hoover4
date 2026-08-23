@@ -11,6 +11,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/mod.rs` | The card **registry**: dispatches on tool name, plus the shared card chrome, the elapsed-seconds counter, and the JSON/link helpers every card uses. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
+| `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet — see below. |
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
@@ -52,6 +53,17 @@ that adds a tool tomorrow still renders, just plainly.
 
 `browser_*` is matched on the **prefix**, not by listing thirty names, so a
 playwright-mcp upgrade that adds a tool does not silently drop it into the generic card.
+
+### Only a validated value gets a link out of the transcript
+
+The entities card links a value to its explainer card in the document viewer, and the
+explainer is fetched with the rule that accepted the value — so a name a model found has
+nothing to explain and is rendered as text with a line saying why. The link also needs a
+dataset, which that tool does not return: `transcript.rs` collects `file_hash` to
+`collection_dataset` from every tool result in the conversation and hands the map down. A
+document nothing named a dataset for keeps its values as text under the reason. Both cases
+are visible rather than silent, because a link that works for some values and does nothing
+for others is worse than no link.
 
 ### The generic card still has three levels
 

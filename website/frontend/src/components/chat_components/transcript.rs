@@ -1,5 +1,7 @@
 //! Transcript of a chat session: user bubbles, assistant markdown, tools, doc cards.
 
+use std::collections::HashMap;
+
 use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations};
 use dioxus::prelude::*;
 
@@ -42,6 +44,10 @@ pub fn ChatTranscript(
         }
     });
     let active_msg = matches.get(*match_index.read()).copied();
+    // Gathered once for the whole transcript rather than per card: the tool that lists a
+    // document's entities names it by collection and hash, and the dataset that makes it
+    // addressable was named earlier in the same conversation by whatever found it.
+    let datasets = dataset_by_hash(&messages);
 
     rsx! {
         div {
@@ -70,6 +76,7 @@ pub fn ChatTranscript(
                             message: m,
                             highlight,
                             sources,
+                            datasets: datasets.clone(),
                         }
                     }
                 }
@@ -93,6 +100,7 @@ pub fn ChatTranscript(
                             content_summary: tool.summary.clone(),
                             running: !tool.done,
                             elapsed_ms: tool.elapsed_ms,
+                            datasets: datasets.clone(),
                         }
                     }
                 }
@@ -115,6 +123,69 @@ pub fn ChatTranscript(
                 }
             }
         }
+    }
+}
+
+/// Every document hash this conversation has named a dataset for.
+///
+/// The first naming wins. A hash is the same document in every dataset that holds it, so
+/// a later row naming a second dataset describes the same bytes and would only move a
+/// link from one copy to another.
+fn dataset_by_hash(messages: &[ChatMessageItem]) -> HashMap<String, String> {
+    let mut datasets: HashMap<String, String> = HashMap::new();
+    for message in messages {
+        for doc in message.parsed_doc_refs() {
+            if !doc.file_hash.is_empty() && !doc.collection_dataset.is_empty() {
+                datasets.entry(doc.file_hash).or_insert(doc.collection_dataset);
+            }
+        }
+        if message.tool_output.is_empty() {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&message.tool_output) {
+            collect_datasets(&value, &mut datasets, 0);
+        }
+    }
+    datasets
+}
+
+/// Walk a tool result for objects carrying both a hash and a dataset.
+///
+/// Shape-agnostic on purpose: a search hit, a cited document and a read document all
+/// carry the pair, at three different depths, and a walker keyed on the tool's name would
+/// need a branch per tool and would miss the next one.
+fn collect_datasets(
+    value: &serde_json::Value,
+    datasets: &mut HashMap<String, String>,
+    depth: usize,
+) {
+    // Deep enough for every envelope the agent tier wraps a result in, and a bound rather
+    // than none because the payload is not this build's to trust.
+    if depth > 8 {
+        return;
+    }
+    match value {
+        serde_json::Value::Object(fields) => {
+            let hash = fields.get("file_hash").and_then(|v| v.as_str()).unwrap_or_default();
+            let dataset = fields
+                .get("collection_dataset")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if !hash.is_empty() && !dataset.is_empty() {
+                datasets
+                    .entry(hash.to_string())
+                    .or_insert_with(|| dataset.to_string());
+            }
+            for nested in fields.values() {
+                collect_datasets(nested, datasets, depth + 1);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_datasets(item, datasets, depth + 1);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -148,6 +219,9 @@ fn MessageEntry(
     /// but the assistant's.
     #[props(default)]
     sources: Vec<ChatDocRef>,
+    /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
+    #[props(default)]
+    datasets: HashMap<String, String>,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -215,6 +289,7 @@ fn MessageEntry(
                         tool_input: message.tool_input.clone(),
                         tool_output: message.tool_output.clone(),
                         content_summary: message.content.clone(),
+                        datasets: datasets.clone(),
                     }
                     if !refs.is_empty() {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }

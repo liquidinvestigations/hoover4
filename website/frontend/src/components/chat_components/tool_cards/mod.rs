@@ -13,7 +13,10 @@
 //! a URL becomes a link only after [`http_link`] has confirmed it is `http`/`https`.
 
 pub mod browser_card;
+pub mod entities_card;
 pub mod web_search_card;
+
+use std::collections::HashMap;
 
 use dioxus::prelude::*;
 
@@ -33,9 +36,22 @@ pub fn ToolCard(
     /// How long a still-running call has been going, from the server. See
     /// [`ElapsedCounter`].
     elapsed_ms: Option<u32>,
+    /// `file_hash` to `collection_dataset`, gathered from the rest of the conversation.
+    /// Only the entities card uses it, and only to address a document the tool named by
+    /// collection and hash alone.
+    #[props(default)]
+    datasets: HashMap<String, String>,
 ) -> Element {
     let running = running.unwrap_or(false);
     match tool_name.as_str() {
+        "list_document_entities" => rsx! {
+            entities_card::EntitiesCard {
+                tool_input: tool_input.clone(),
+                tool_output: tool_output.clone(),
+                running,
+                datasets: datasets.clone(),
+            }
+        },
         "web_search" => rsx! {
             web_search_card::WebSearchCard {
                 tool_input: tool_input.clone(),

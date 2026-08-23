@@ -5,7 +5,9 @@ use common::vfs::PathDescriptor;
 use dioxus::prelude::*;
 
 use crate::components::navbar::Navbar;
-use crate::data_definitions::doc_viewer_state::{DocViewerState, ViewerRightTabState};
+use crate::data_definitions::doc_viewer_state::{
+    DocViewerState, ViewerRightTabSelection, ViewerRightTabState,
+};
 use common::search_query::SearchQuery;
 
 use crate::data_definitions::url_param::UrlParam;
@@ -171,6 +173,22 @@ impl Route {
             path: UrlParam::from(path),
             selected_result_hash: UrlParam::from(selected),
             doc_viewer_state: UrlParam::from(None),
+        }
+    }
+
+    /// Open one entity's explainer card, in the document the value was found in.
+    ///
+    /// The card itself lives in the viewer's entities panel and is not duplicated
+    /// anywhere else, so reaching it from outside the viewer means opening the viewer at
+    /// that entity. The value is the normalised one the panel lists, not the surface
+    /// text the document wrote.
+    pub fn entity_card(document_identifier: DocumentIdentifier, value: String) -> Self {
+        Self::ViewDocumentPage {
+            document_identifier: UrlParam::from(document_identifier),
+            doc_viewer_state: UrlParam::from(Some(DocViewerState::for_entity(value))),
+            viewer_right_tab_state: UrlParam::from(ViewerRightTabState {
+                selected_tab: ViewerRightTabSelection::Entities,
+            }),
         }
     }
 

@@ -65,7 +65,7 @@ languages.
 | `F-doc-03` | Render a PDF and highlight in-document search hits at their real positions | `api/search_document_pdf`, the viewer sidecar |
 | `F-doc-04` | Show an email's headers, body and attachments, and say so explicitly when no body text was extracted | `api/documents/` |
 | `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging | `website/backend/src/api/documents/table_browse.rs` |
-| `F-doc-06` | Show a document's extracted entities, filterable, with a detail card explaining a scanner value | `api/documents/`, `main_services/regex_entity_scanner/` |
+| `F-doc-06` | Show a document's extracted entities, filterable, with a detail card explaining a scanner value; a link may name one entity, which opens that card alone and says so when the document no longer carries the value | `api/documents/`, `main_services/regex_entity_scanner/` |
 | `F-doc-07` | Show a document's dates with the provenance of each | `document_dates` |
 | `F-doc-08` | Show raw metadata, and download the original file or its searchable PDF | `website/backend/src/api/documents/download_document.rs` |
 | `F-doc-09` | Step to the previous or next result without returning to the list | `frontend/src/components/search_components/` |
@@ -97,6 +97,7 @@ languages.
 | `F-chat-06` | Look up the registration of several domains in one call | `whois_lookup` |
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
+| `F-chat-08a` | Open a listed entity's explainer card from inside the transcript, in the address so the open card is a link — offered only for a value a rule validated, since a model-found name has no card, and only for a document the conversation named a dataset for | `chat_components/tool_cards/entities_card.rs`, `DocViewerState::selected_entity` |
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically | `chat_sessions`, `chat_messages` |
 | `F-chat-10` | Stop a turn in flight, keeping its partial answer out of the conversation rather than saving an unmarked fragment, and saying so on the control; and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
 | `F-chat-11` | Retry a failed turn automatically, on whichever worker picks it up | `ChatTurn`, its activity retry policy |

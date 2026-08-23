@@ -52,6 +52,14 @@ pub struct DocViewerState {
     /// `DocumentEmailSourceItem::has_body`.
     #[serde(default)]
     pub table_state: Option<DocTableState>,
+    /// The one entity whose explainer card the entities panel opens on arrival.
+    ///
+    /// The normalised value, compared exactly against what the panel lists. It is in the
+    /// URL because an entity card someone found is worth sending, which is how every
+    /// other piece of viewer state here already works. A link written before the field
+    /// existed takes `None` and opens the panel the way it always did.
+    #[serde(default)]
+    pub selected_entity: Option<String>,
 }
 
 impl DocViewerState {
@@ -61,6 +69,15 @@ impl DocViewerState {
             selected_source: None,
             selected_source_page: None,
             table_state: None,
+            selected_entity: None,
+        }
+    }
+
+    /// The viewer state that opens one entity's card, with nothing else selected.
+    pub fn for_entity(value: String) -> Self {
+        Self {
+            selected_entity: Some(value),
+            ..Self::default()
         }
     }
 
@@ -77,6 +94,7 @@ impl Default for DocViewerState {
             selected_source: None,
             selected_source_page: None,
             table_state: None,
+            selected_entity: None,
         }
     }
 }
@@ -186,12 +204,26 @@ mod tests {
                 }],
                 page: 3,
             }),
+            selected_entity: None,
         };
         let encoded = UrlParam(state.clone()).to_string();
         let parsed = UrlParam::<DocViewerState>::from_str(&encoded)
             .expect("a URL this build wrote must parse")
             .0;
         assert_eq!(parsed, state);
+    }
+
+    /// The whole point of putting the open card in the address: a card reached from a
+    /// conversation is a link, and the link opens the same card.
+    #[test]
+    fn a_selected_entity_survives_the_url() {
+        let state = DocViewerState::for_entity("AD1200012030200359100100".to_string());
+        let encoded = UrlParam(state.clone()).to_string();
+        let parsed = UrlParam::<DocViewerState>::from_str(&encoded)
+            .expect("a URL this build wrote must parse")
+            .0;
+        assert_eq!(parsed, state);
+        assert_eq!(parsed.selected_entity.as_deref(), Some("AD1200012030200359100100"));
     }
 
     #[test]

@@ -13,6 +13,12 @@
 //! fetched from the scanner that produced the value, because the scanner is the only
 //! thing that knows which rule accepted it, what that rule's validator checked, and what
 //! acceptance does not prove.
+//!
+//! **A URL may name one entity**, and then the panel shows that card alone with the rest
+//! of the list a click away. That is what makes a card reachable from outside the viewer —
+//! from a conversation, from a message — as a link rather than as a sequence of clicks to
+//! describe. A named value the document does not carry says so, because a panel that
+//! silently listed nothing would look like a document with no entities in it.
 
 use std::collections::BTreeMap;
 
@@ -39,6 +45,7 @@ use crate::components::{
     document_view_components::doc_viewer_full_page::ViewerPageControls,
     error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
+use crate::data_definitions::doc_viewer_state::DocViewerStateControl;
 
 /// Rows on one page of a section, and the most pages a section will offer.
 ///
@@ -79,6 +86,16 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
         async move { get_document_entities(document_identifier_value).await }
     }));
 
+    // Read from the URL, not from a signal seeded once: the router reuses this component
+    // between two viewer URLs, so a link followed from a second entity has to change what
+    // is open without a remount. Absent outside the full viewer, where nothing provides
+    // the control.
+    let viewer_control = try_consume_context::<DocViewerStateControl>();
+    let selected_entity = viewer_control
+        .and_then(|c| c.doc_viewer_state.read().clone())
+        .and_then(|s| s.selected_entity)
+        .filter(|v| !v.is_empty());
+
     let items: Vec<DocumentEntityItem> = match entities_res.read().clone() {
         Some(Ok(r)) => r.items,
         Some(Err(e)) => {
@@ -88,6 +105,14 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
             return rsx! { LoadingIndicator {} };
         }
     };
+
+    // A link that named an entity narrows the panel to that one value, so the card it
+    // was sent for is what the reader lands on rather than something to hunt for.
+    let items: Vec<DocumentEntityItem> = match selected_entity.as_deref() {
+        Some(value) => items.into_iter().filter(|i| i.value == value).collect(),
+        None => items,
+    };
+    let missing_entity = selected_entity.is_some() && items.is_empty();
 
     let filter = filter_value.read().trim().to_lowercase();
     let items = if filter.is_empty() {
@@ -138,6 +163,9 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
             ",
             div {
                 style: "padding: 10px 12px; flex-shrink: 0;",
+                if let Some(value) = selected_entity.clone() {
+                    SelectedEntityBanner { value, missing: missing_entity }
+                }
                 input {
                     r#type: "text",
                     placeholder: "Filter Entities ...",
@@ -183,8 +211,58 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                         entity_type,
                         items: items.clone(),
                         show_provider: multi_provider,
+                        // A link asked for one card, so the section holding it opens
+                        // already expanded — the card is the destination, not a chip to
+                        // find and click a second time.
+                        force_expanded: selected_entity.is_some(),
                     }
                 }
+            }
+        }
+    }
+}
+
+/// What the panel says when a link opened it on one entity.
+///
+/// Two states, and the second is the reason this exists: a value the document does not
+/// carry — a link from a re-ingest, a rule set that stopped producing it — must say so.
+/// A panel that silently listed nothing would be indistinguishable from a document with
+/// no entities in it.
+#[component]
+fn SelectedEntityBanner(value: String, missing: bool) -> Element {
+    let control = try_consume_context::<DocViewerStateControl>();
+    let clear = move |_| {
+        if let Some(control) = control {
+            let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
+            state.selected_entity = None;
+            control.set_doc_viewer_state.call(state);
+        }
+    };
+    let (background, border, ink) = if missing {
+        ("#FEF2F2", "#FECACA", "#991B1B")
+    } else {
+        ("#EEF2FF", "#C7D2FE", "#3730A3")
+    };
+
+    rsx! {
+        div {
+            style: "margin-bottom: 8px; padding: 7px 10px; background: {background}; \
+                    border: 1px solid {border}; border-radius: 8px; color: {ink}; \
+                    font-size: 12px; display: flex; align-items: baseline; gap: 8px;",
+            div {
+                style: "flex: 1; min-width: 0; word-break: break-all;",
+                if missing {
+                    "This document has no entity \"{value}\". It may have been re-ingested since the link was made."
+                } else {
+                    "Opened on one entity: {value}"
+                }
+            }
+            button {
+                style: "flex-shrink: 0; background: none; border: none; padding: 0; \
+                        color: {ink}; cursor: pointer; font-size: 12px; \
+                        text-decoration: underline;",
+                onclick: clear,
+                "Show all entities"
             }
         }
     }
@@ -236,6 +314,11 @@ fn EntityGroup(
     entity_type: DocumentEntityType,
     items: Vec<DocumentEntityItem>,
     show_provider: bool,
+    /// Opened by a link that named one entity: the group renders expanded and drops its
+    /// toggle, because a toggle that cannot collapse the one card asked for is a dead
+    /// control.
+    #[props(default)]
+    force_expanded: bool,
 ) -> Element {
     let mut expanded = use_signal(|| false);
     let mut page = use_signal(|| 0_usize);
@@ -262,7 +345,7 @@ fn EntityGroup(
     // own lands — CVEs, IMEIs, MAC addresses, autonomous-system numbers — each of them a
     // validated value the scanner can explain in full.
     let has_details = group_items.iter().any(|item| !item.rule_id.is_empty());
-    let is_expanded = expanded() && has_details;
+    let is_expanded = (expanded() || force_expanded) && has_details;
 
     rsx! {
         div {
@@ -282,7 +365,7 @@ fn EntityGroup(
                     "{entity_type.label()}"
                 }
                 div { style: "font-size: 12px; color: rgba(0,0,0,0.5);", "{total}" }
-                if has_details {
+                if has_details && !force_expanded {
                     button {
                         style: "
                             border: 1px solid rgba(0,0,0,0.25); background: white;
