@@ -12,7 +12,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent import compaction, llm_events
+from research_agent import compaction, llm_events, prompts, subagents
 from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
 from pydantic import TypeAdapter
 import json
@@ -168,12 +168,24 @@ def _read_secret(env_var: str) -> str:
 class MCPGatewayAgent:
     """An agent that gateways to other agents via MCP."""
 
-    def __init__(self, mcp_servers: List[str], name: str, system_prompt: str, llm_model: str = None):
+    def __init__(
+        self,
+        mcp_servers: List[str],
+        name: str,
+        system_prompt: str,
+        llm_model: str = None,
+        profile: Optional[str] = None,
+    ):
         """Initialize the MCP Gateway Agent with MCP servers."""
         self.name = name
         self.mcp_servers = mcp_servers
         self.system_prompt = system_prompt
         self.llm_model = llm_model
+        # The profile decides more than the wording: it decides whether the delegation
+        # tool is bound at all. Carried as an attribute rather than read from the
+        # environment inside `_create_graph` so a test can build a delegating agent
+        # without setting a process-wide variable.
+        self.profile = (profile or prompts.active_profile()).strip().lower()
         self.tools_type_adapter = TypeAdapter(Dict[str, Any])
         self.graph = None
         # Graphs are cached per ACL *and chat session*, not shared: the MCP connection
@@ -317,6 +329,7 @@ class MCPGatewayAgent:
         # `disable_streaming=True`, `astream` degenerates to a single `invoke` and the
         # node emits a whole `AIMessage` with its `tool_calls` intact.
         streaming = llm_streaming_enabled()
+        recursion_limit = int(os.getenv("AGENT_RECURSION_LIMIT", "40"))
         llm_kwargs = {
             "api_key": llm_api_key,
             "model": llm_model_env,
@@ -338,6 +351,46 @@ class MCPGatewayAgent:
         #    buys anything, so it gets AGENT_THINKING.
         log.info("LLM thinking configuration: %s", describe_thinking())
         log.info("%s", compaction.describe())
+
+        # Delegation, and the one line that is the whole depth limit.
+        #
+        # The worker's tool list is built from the MCP tools BEFORE `run_subagent` is
+        # appended, so the delegation tool is not in it and no prompt can put it back —
+        # see research_agent/subagents.py. Workers reuse these tool objects, which means
+        # they reuse this graph's MCP connections and therefore the lead's chat session:
+        # that is what makes a worker's citation handles resolve in the lead's session,
+        # and what keeps a delegating turn to one browser context rather than four.
+        if subagents.delegates(self.profile):
+            worker_pool = subagents.worker_tools(tools)
+            worker_graph = subagents.build_worker_graph(
+                ThinkingChatOpenAI(
+                    **llm_kwargs, extra_body=tool_turn_kwargs()
+                ).bind_tools(worker_pool),
+                ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs()),
+                prompts.RESEARCH_SUBAGENT,
+                worker_pool,
+                AgentState,
+            )
+
+            async def run_worker(text: str) -> Sequence[BaseMessage]:
+                state = await worker_graph.ainvoke(
+                    {"messages": [HumanMessage(content=text)]},
+                    config={"recursion_limit": recursion_limit},
+                )
+                return state["messages"]
+
+            tools = list(tools) + [subagents.make_delegation_tool(run_worker)]
+            log.info(
+                "delegation bound for profile %s: %d worker tools, at most %d tasks a "
+                "call, %d at once, %d tool turns each, %d workers a turn",
+                self.profile,
+                len(worker_pool),
+                subagents.MAX_TASKS_PER_CALL,
+                subagents.MAX_CONCURRENCY,
+                subagents.WORKER_TOOL_TURNS,
+                subagents.MAX_WORKERS_PER_TURN,
+            )
+
         llm = ThinkingChatOpenAI(
             **llm_kwargs, extra_body=tool_turn_kwargs()
         ).bind_tools(tools)
@@ -525,6 +578,11 @@ class MCPGatewayAgent:
         # with every other request, append to a list belonging to this request only.
         pending_compactions: List[compaction.CompactionReport] = []
         _PENDING_COMPACTIONS.set(pending_compactions)
+        # This turn's sub-agent budget, installed for the same reason and in the same
+        # place. It bounds the whole user turn rather than one `run_subagent` call,
+        # because a nagged turn runs the agent again and the second run can delegate
+        # again — a per-wave cap alone would let the total grow with the nags.
+        subagents.start_turn(session_id, continuing=bool(extra_tool_turns))
         # Whether layer two ran at all in this turn. A separate flag because
         # `pending_compactions` is drained as each compaction's token count arrives, and
         # by the end of the run it says nothing about what happened.
@@ -889,20 +947,28 @@ class MCPGatewayAgent:
         }
 
 
-async def build_agent(mcp_servers: List[str], name: str, system_prompt: str, llm_model: str = None) -> MCPGatewayAgent:
+async def build_agent(
+    mcp_servers: List[str],
+    name: str,
+    system_prompt: str,
+    llm_model: str = None,
+    profile: Optional[str] = None,
+) -> MCPGatewayAgent:
     """
     Builder function that creates a langgraph agent with MCP tools.
-    
+
     Args:
         mcp_servers: List of MCP server URLs to connect to
         name: Name of the agent
         system_prompt: System prompt for the agent
         llm_model: Optional LLM model override
-        
+        profile: Agent profile, which decides whether delegation is bound. Defaults to
+            the container's `AGENT_PROFILE`.
+
     Returns:
         MCPGatewayAgent: Configured agent instance
     """
     # Create the agent and initialize it
-    agent = MCPGatewayAgent(mcp_servers, name, system_prompt, llm_model)
+    agent = MCPGatewayAgent(mcp_servers, name, system_prompt, llm_model, profile)
     await agent.initialize()
     return agent

@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from enum import Enum
 from research_agent.agent import build_agent
-from research_agent.prompts import system_prompt
+from research_agent.prompts import active_profile, system_prompt
 
 
 class MessageType(str, Enum):
@@ -130,6 +130,10 @@ async def lifespan(app: FastAPI):
         # SYSTEM_PROMPT overrides; otherwise the canonical prompt for this container's
         # AGENT_PROFILE. See research_agent/prompts.py for why the text is not in compose.
         "system_prompt": system_prompt(),
+        # The profile by name, separately from its prompt: it also decides whether this
+        # container binds the delegation tool. A `SYSTEM_PROMPT` override changes the
+        # words and deliberately not that.
+        "profile": active_profile(),
         "llm_model": os.getenv("LLM_MODEL")
     }
     app.state.agent = None
@@ -148,7 +152,8 @@ async def lifespan(app: FastAPI):
             mcp_servers=app.state.config["mcp_servers"],
             name=app.state.config["agent_name"],
             system_prompt=app.state.config["system_prompt"],
-            llm_model=app.state.config.get("llm_model")
+            llm_model=app.state.config.get("llm_model"),
+            profile=app.state.config.get("profile"),
         )
         print(" Agent initialized successfully")
     except Exception as e:

@@ -112,20 +112,74 @@ were reachable and the picture may be incomplete.
 
 """ + PLAN_FIRST
 
+#: The worker profile, run by every sub-agent the full-research agent delegates to.
+#:
+#: **No plan-first block, deliberately.** A worker has one objective and a budget of a few
+#: tool turns; a plan is pure overhead, and it could not write one anyway — the todo
+#: writers are not in its tool list (`subagents.WORKER_DENIED_TOOLS`). It is not nagged
+#: either, for the same reason.
+#:
+#: It cites, and that matters more here than in the other two profiles: the handles it
+#: allocates are the lead's handles, because it runs on the lead's chat session, and they
+#: are how the lead's answer points at what the worker actually read.
+#:
+#: Nothing in this text limits delegation. A worker cannot delegate because
+#: `run_subagent` is not bound on this profile, and that is the only mechanism that
+#: would survive a model that ignores its instructions.
+RESEARCH_SUBAGENT = """\
+You are one of several researchers working in parallel on separate parts of one question.
+You cannot see the others and you do not need to: answer the objective you were given and
+nothing else.
+
+Your tools:
+
+* `search_collections` / `read_documents` — the user's own documents. Both take lists:
+  send several query angles at once and read several hits at once.
+* `web_search` — several engines at once, merged. Each result names the engines that
+  found it.
+* `read_page` — open promising results in a real browser and read them in full. Pass
+  several URLs at once and say what you are looking for in `goal`.
+* `read_todo` — the conversation's plan, if you want the context your objective came from.
+
+You have a small budget of tool calls, so search once or twice from the angles that
+matter and then write up. Your report is read by the lead researcher, not by the user:
+give the findings, the evidence and what you could not establish, in that order, and say
+plainly where each fact came from — the user's documents or the open web.
+
+Before you finish, call `cite_documents` once with the internal documents you actually
+relied on, each with a quote copied exactly from the document and one line saying what it
+supports. Put the handles it gives you into your report at the point each claim is made;
+the lead researcher can resolve them.\
+"""
+
 PROFILES = {
     "internal_search": INTERNAL_SEARCH,
     "full_research": FULL_RESEARCH,
+    "research_subagent": RESEARCH_SUBAGENT,
 }
 
 __all__ = [
     "PLAN_FIRST",
     "INTERNAL_SEARCH",
     "FULL_RESEARCH",
+    "RESEARCH_SUBAGENT",
     "PROFILES",
+    "active_profile",
     "system_prompt",
 ]
 
 DEFAULT_PROFILE = "internal_search"
+
+
+def active_profile() -> str:
+    """The profile this container runs, normalised.
+
+    Read separately from `system_prompt` because the profile decides more than the words:
+    it decides whether the delegation tool is bound (`subagents.delegates`). An unknown
+    name is returned as it stands so the tool-binding decision sees the same string a
+    reader of the compose file does, and falls through to the narrow behaviour.
+    """
+    return (os.getenv("AGENT_PROFILE") or DEFAULT_PROFILE).strip().lower()
 
 
 def system_prompt() -> str:
@@ -140,7 +194,6 @@ def system_prompt() -> str:
     if override:
         return override
 
-    name = (os.getenv("AGENT_PROFILE") or DEFAULT_PROFILE).strip().lower()
-    return PROFILES.get(name, INTERNAL_SEARCH)
+    return PROFILES.get(active_profile(), INTERNAL_SEARCH)
 
 
