@@ -40,11 +40,12 @@ exactly one source of truth in Python.
 - CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
   <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
   <collectionname> [--dataset X] [--task T] [--apply]`
-- Website: `api/admin/temporal_trigger.rs` kinds `ensure_collection` /
-  `drop_collection_database`. `PurgeDataset` and `ChangeOcrLanguages` are reached as
-  children of the `purge_dataset` and `change_ocr_languages` operations instead, so each
-  run gets the operation's timestamped id: reusing an id makes a second click a no-op, and
-  two language changes are two different runs with two different before/after states.
+- Website: every workflow here is reached as the child of an operation —
+  `EnsureCollectionDatabase` and `DropCollectionDatabase` under the collection-lifecycle
+  kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
+  under `change_ocr_languages`. Each run therefore carries the operation's timestamped id,
+  which is what makes a second click run again: a reused id makes it a no-op, and two
+  language changes are two different runs with two different before/after states.
 
 ## One run per dataset
 

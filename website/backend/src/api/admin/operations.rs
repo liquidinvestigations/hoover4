@@ -52,10 +52,15 @@ const KINDS: &[(&str, &str, bool)] = &[
 const DRIVEN_KINDS: &[&str] = &[
     "add_dataset",
     "rescan_dataset",
+    "compute_plans",
+    "execute_plans",
     "reindex_collection",
     "purge_dataset",
+    "delete_dataset",
     "change_ocr_languages",
     "retry_failed_files",
+    "ensure_collection",
+    "drop_collection_database",
 ];
 
 fn kind_entry(kind: &str) -> Option<&'static (&'static str, &'static str, bool)> {

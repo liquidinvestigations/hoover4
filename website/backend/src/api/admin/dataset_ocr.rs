@@ -24,7 +24,7 @@ use common::admin_types::{
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::{operations, temporal_trigger};
+use crate::api::admin::operations;
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
@@ -605,10 +605,19 @@ pub async fn admin_create_dataset(
     write_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES, &tesseract).await?;
     write_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES, &easyocr).await?;
 
-    // Not `rescan`: that only walks the disk and leaves the dataset scanned but
-    // unprocessed, which reads as finished and is not. `ingest_and_process` sequences the
-    // three stages server-side.
-    temporal_trigger::trigger_workflow(&collection_dataset, "ingest_and_process").await?;
+    // Not a rescan: that only walks the disk and leaves the dataset scanned but
+    // unprocessed, which reads as finished and is not. `add_dataset` sequences the three
+    // stages server-side, and dispatching it as an operation is what gives the new
+    // dataset a row on the collection's processing page from its first second.
+    operations::dispatch_operation(
+        "add_dataset",
+        &collectionname,
+        &collection_dataset,
+        &user.username,
+        "",
+        "",
+    )
+    .await?;
     Ok(collection_dataset)
 }
 

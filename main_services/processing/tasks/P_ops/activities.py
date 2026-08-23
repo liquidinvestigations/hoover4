@@ -16,8 +16,8 @@ from temporalio import activity
 
 from ..heartbeat import with_heartbeat
 from .params import (
-    DatasetProgressParams, FinishRetryParams, OperationStateParams,
-    RetryFailedFilesParams, RetryPlanResult,
+    DatasetProgressParams, DatasetRegistryParams, FinishRetryParams,
+    OperationStateParams, RetryFailedFilesParams, RetryPlanResult,
 )
 
 log = logging.getLogger(__name__)
@@ -140,6 +140,48 @@ def count_dataset_rows_activity(params: DatasetProgressParams) -> int:
     return (sum(counts["manticore"].values())
             + sum(n for table, n in counts["clickhouse"].items()
                   if table not in SELF_WRITTEN_TABLES))
+
+
+@activity.defn
+@with_heartbeat
+def tombstone_dataset_row(params: DatasetRegistryParams) -> str:
+    """Soft-delete a dataset's row in the global registry, if it is still live.
+
+    What separates `delete_dataset` from `purge_dataset`: the purge empties the stores,
+    and this is what makes the dataset stop existing for every surface that lists one.
+    The tombstone is a fresh row rather than a mutation, because `dataset` is a
+    `ReplacingMergeTree(date_modified, is_deleted)` and the newest row wins.
+
+    Idempotent, and it says which case it met: a dataset whose row is already
+    tombstoned is a finished step, not a failure. The admin UI writes the tombstone
+    itself before dispatching, so this is usually the second writer and finds nothing
+    to do -- the operation must still be able to do it, because a dispatch from the
+    command line has no first writer.
+    """
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT count() FROM dataset FINAL "
+            "WHERE collection_dataset = {cd:String} AND is_deleted = 0",
+            parameters={"cd": params.collection_dataset},
+        ).result_rows
+        # An aggregate over an empty match returns one row holding zero, never no rows.
+        if not (rows and int(rows[0][0])):
+            return "registry row already tombstoned"
+        # The whole row is re-inserted with the tombstone set: a ReplacingMergeTree
+        # update is an insert, and a column left out of it would be reset to its
+        # default rather than carried over.
+        client.command(
+            "INSERT INTO dataset SELECT collection_dataset, collectionname, "
+            "dataset_name, dataset_display_name, dataset_type, dataset_path, "
+            "dataset_access_json, user_id, date_created, now(), 1 "
+            "FROM dataset FINAL WHERE collection_dataset = {cd:String} "
+            "AND is_deleted = 0",
+            parameters={"cd": params.collection_dataset},
+        )
+    log.info("[P_ops] tombstoned registry row of %s", params.collection_dataset)
+    return "registry row tombstoned"
 
 
 @activity.defn

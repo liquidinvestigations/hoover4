@@ -47,9 +47,15 @@ that cancelling was meant to release.
 
 ## What each kind drives
 
-`add_dataset` and `rescan_dataset` drive the ingest chain; `reindex_collection` rebuilds a
-collection's shard tables from its finished plans; `purge_dataset`, `change_ocr_languages`
-and `retry_failed_files` each drive their own child workflow or chain of them. Every child
+`add_dataset` and `rescan_dataset` drive the ingest chain, and `compute_plans` and
+`execute_plans` drive one of its stages alone; `reindex_collection` rebuilds a collection's
+shard tables from its finished plans; `ensure_collection` and `drop_collection_database`
+provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
+`change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
+chain of them. `delete_dataset` is a purge with the registry row tombstoned first, so an
+interrupted deletion leaves rows nothing routes to rather than a live dataset missing half
+its data — and the log distinguishes a dataset that was retired from one whose data was
+cleaned out from under it. Every child
 is addressed **by name**, never by importing its class: importing drags the pipeline's
 module graph through the workflow sandbox's importer, where a re-imported C extension fails
 with a bare `SystemError` naming nothing in this repository — and the operations container
@@ -62,12 +68,18 @@ surface performs.
 
 ## Progress and estimates
 
-Progress is whatever that kind can honestly count, and the unit differs by kind: an ingest
-and an OCR-language change count **plans**, a retry counts the plans it re-runs, and a purge
-counts **rows still in the stores**, so its bar moves with the deletion rather than with the
-number of activities that have returned. A purge excludes the two task-telemetry tables it
-writes to while it runs — an operation counting its own telemetry as work left to do could
-never reach its total.
+Progress is whatever that kind can honestly count, and the unit differs by kind: an ingest,
+an OCR-language change and a plan execution count **plans**, a retry counts the plans it
+re-runs, and a purge or a delete counts **rows still in the stores**, so its bar moves with
+the deletion rather than with the number of activities that have returned. A purge excludes
+the two task-telemetry tables it writes to while it runs — an operation counting its own
+telemetry as work left to do could never reach its total.
+
+**Three kinds have no progress fraction at all, deliberately.** `compute_plans` writes
+every plan in one statement, and `ensure_collection` and `drop_collection_database` are one
+activity each, so none of them has a unit that finishes repeatedly and none has an honest
+denominator. Their counters stay at zero and their result string says what happened. A bar
+invented for them would sit empty and then be full, which reports less than no bar.
 
 A plan is the unit the pipeline finishes, and the only one whose total is known before the
 work is done, which is why so many kinds count it. The estimate is derived from this

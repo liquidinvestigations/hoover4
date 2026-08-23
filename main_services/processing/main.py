@@ -435,17 +435,16 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
     changes nothing. The shard ledger is recomputed afterwards from the surviving
     `index_state` rows, so the shards the deleted dataset contributed to shrink; shards
     are never compacted or renumbered.
+
+    The dry run is a local read-only report. `--apply` dispatches a `purge_dataset`
+    operation and follows it, so the deletion takes the dataset's lock, leaves a row in
+    the operations log, and outlives this terminal: Ctrl-C detaches from the watching
+    and stops nothing.
     """
     from database.clickhouse import get_global_client, validate_collectionname
-    from tasks.P_admin.activities import (
-        CollectionDatabaseParams,
-        PurgeDatasetParams,
-        count_dataset_rows,
-        purge_dataset_from_clickhouse,
-        purge_dataset_from_manticore,
-        recompute_shard_ledger_activity,
-        sweep_orphan_table_cells,
-    )
+    from database.operations import OperationLocked
+    from tasks.P_admin.activities import count_dataset_rows
+    from tasks.P_ops.cli import submit_operation, tail_operation
 
     try:
         validate_collectionname(collectionname)
@@ -486,33 +485,15 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
         print("dry run; pass --apply to delete these rows")
         return
 
-    purge_dataset_from_manticore(PurgeDatasetParams(
-        collectionname=collectionname, collection_dataset=collection_dataset))
-    purge_dataset_from_clickhouse(PurgeDatasetParams(
-        collectionname=collectionname, collection_dataset=collection_dataset))
-    sweep_orphan_table_cells(CollectionDatabaseParams(collectionname=collectionname))
-    recompute_shard_ledger_activity(CollectionDatabaseParams(collectionname=collectionname))
-
-    # ClickHouse lightweight deletes are asynchronous, so the after-count is polled
-    # rather than read once. Manticore deletes are synchronous and must be zero on the
-    # first look; a non-zero count there is a failure, not a race.
-    import time
-    deadline = time.monotonic() + 120
-    while True:
-        after = count_dataset_rows(collectionname, collection_dataset)
-        left = sum(after["manticore"].values()) + sum(after["clickhouse"].values())
-        if not left or time.monotonic() > deadline:
-            break
-        time.sleep(2)
-    if left:
-        for store in ("manticore", "clickhouse"):
-            for table, count in sorted(after[store].items()):
-                if count:
-                    print(f"  LEFT {store:10s} {table:32s} {count}")
-        raise click.ClickException(
-            f"purge of {collection_dataset} left {left} row(s) behind after 120s"
-        )
-    print(f"purge-dataset {collection_dataset}: {total} row(s) deleted, 0 left")
+    try:
+        op_id = submit_operation("purge_dataset", collectionname=collectionname,
+                                 collection_dataset=collection_dataset)
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="retry-failed-files")
@@ -545,14 +526,16 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
     the one this run wrote, replacing the one it started from. The count is what the file
     browser and the admin processing page show, so appending instead would double the
     failures a visitor sees, and again on every further retry.
+
+    The dry run is a local read-only report. `--apply` dispatches a `retry_failed_files`
+    operation and follows it, so the retry takes the dataset's lock, leaves a row saying
+    what was retried and how it ended, and outlives this terminal: Ctrl-C detaches from
+    the watching and stops nothing.
     """
-    from database.clickhouse import get_collection_client, validate_collectionname
-    from tasks.P_admin.failed_file_retry import (
-        RETRY_EMBED, RETRY_INDEX, RETRY_NLP, RETRY_PLAN,
-        clear_error_rows, clear_nlp_state, drop_superseded_error_rows, failed_hashes,
-        hashes_without_entities, list_failures, partition_retry_result, plans_for_hashes,
-        refreshed_hashes, reopen_plans, retry_kind_for_task,
-    )
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P_admin.failed_file_retry import list_failures
+    from tasks.P_ops.cli import submit_operation, tail_operation
 
     try:
         validate_collectionname(collectionname)
@@ -589,128 +572,20 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
             f"({', '.join(datasets)})"
         )
     collection_dataset = datasets[0]
-    kind = retry_kind_for_task(task_name)
 
-    hashes = failed_hashes(collectionname, collection_dataset, task_name)
-    if not hashes:
-        raise click.ClickException(
-            f"{task_name} has only dataset-level error rows (no file hash) in "
-            f"{collection_dataset}; there is nothing per-file to retry"
-        )
-    plans = plans_for_hashes(collectionname, collection_dataset, hashes)
-    if not plans:
-        raise click.ClickException(
-            f"none of the {len(hashes)} failed hashes are in a plan of {collection_dataset}"
-        )
-    print(f"retrying {task_name} ({kind}) for {len(hashes)} document(s) in {len(plans)} plan(s)")
-
-    # The server's clock, not this process's: the "did it fail again" check below compares
-    # against `processing_errors.timestamp`, which is written by ClickHouse's neighbours
-    # on another host.
-    with get_collection_client(collectionname) as client:
-        started_at = client.query("SELECT now()").result_rows[0][0]
-
-    if kind == RETRY_NLP:
-        watermarks, hits = clear_nlp_state(collectionname, collection_dataset, hashes)
-        print(f"cleared {watermarks} watermark(s) and {hits} entity row(s)")
-    elif kind == RETRY_PLAN:
-        reopen_plans(collectionname, collection_dataset, plans)
-        print(f"reopened {len(plans)} plan(s) — their other documents will be reprocessed too")
-
-    async def _run():
-        from temporalio.client import Client as TemporalClient
-        import temporalio.common
-        from tasks.P2_execute_plan.workflows import ExecutePlans, ExecutePlansParams
-        from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan
-        from tasks.P4_extract_entities.params import ExtractEntitiesForPlanParams
-        from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan
-        from tasks.P5_chunk_embed.params import ChunkEmbedForPlanParams
-        from tasks.P6_index_data.workflows import IndexDatasetPlan
-        from tasks.P6_index_data.params import IndexDatasetPlanParams
-        from tasks.visibility import dataset_search_attributes
-
-        client = await TemporalClient.connect("temporal:7233")
-
-        async def _await_workflow(workflow, params, wf_id):
-            handle = await client.start_workflow(
-                workflow, params,
-                id=wf_id,
-                task_queue="processing-common-queue",
-                # Every invocation must actually re-run: reuse the id of a completed
-                # run, and dedupe only against one that is still going.
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            await handle.result()
-
-        if kind == RETRY_PLAN:
-            # One ExecutePlans run picks up every reopened plan of the dataset.
-            await _await_workflow(
-                ExecutePlans.run,
-                ExecutePlansParams(collectionname=collectionname,
-                                   collection_dataset=collection_dataset,
-                                   base_temp_dir="/tmp/hoover4"),
-                f"retry-execute-plans-{collection_dataset}",
-            )
-            return
-
-        for i, plan_hash in enumerate(plans, 1):
-            if kind == RETRY_NLP:
-                # P4 then P6, in that order: the Manticore `ner` attributes and term
-                # dictionary are built from the entity rows P4 writes.
-                await _await_workflow(
-                    ExtractEntitiesForPlan.run,
-                    ExtractEntitiesForPlanParams(collectionname=collectionname,
-                                                 collection_dataset=collection_dataset,
-                                                 plan_hash=plan_hash),
-                    f"retry-ner-{collection_dataset}-{plan_hash}",
-                )
-            elif kind == RETRY_EMBED:
-                await _await_workflow(
-                    ChunkEmbedForPlan.run,
-                    ChunkEmbedForPlanParams(collectionname=collectionname,
-                                            collection_dataset=collection_dataset,
-                                            plan_hash=plan_hash),
-                    f"retry-embed-{collection_dataset}-{plan_hash}",
-                )
-            await _await_workflow(
-                IndexDatasetPlan.run,
-                IndexDatasetPlanParams(collectionname=collectionname,
-                                       collection_dataset=collection_dataset,
-                                       plan_hash=plan_hash),
-                f"retry-index-{collection_dataset}-{plan_hash}",
-            )
-            log.info("retry %d/%d done: plan %s", i, len(plans), plan_hash[:8])
-
-    asyncio.run(_run())
-
-    # Clear only what is demonstrably fixed. For an NER retry that is "the document has
-    # a watermark for its text again"; for the other kinds the workflow completing IS
-    # the result, since they record their own errors on failure. A document that recorded
-    # a fresh error row is never counted as fixed, whatever the verification says.
-    refreshed = refreshed_hashes(collectionname, collection_dataset, task_name, started_at)
-    still_broken = (
-        hashes_without_entities(collectionname, collection_dataset, hashes)
-        if kind == RETRY_NLP else []
-    )
-    outcome = partition_retry_result(hashes, refreshed, still_broken)
-
-    if outcome.recovered:
-        clear_error_rows(collectionname, collection_dataset, task_name, outcome.recovered)
-    if outcome.superseded:
-        # The re-run wrote its own row for these. Drop the ones it replaces, or the count
-        # the file browser and the admin processing page show doubles on every retry.
-        drop_superseded_error_rows(collectionname, collection_dataset, task_name,
-                                   outcome.superseded, started_at)
-    still_failing = sorted(outcome.superseded + outcome.unchanged)
-    print(f"retry-failed-files {collection_dataset} {task_name}: "
-          f"{len(outcome.recovered)} document(s) recovered, {len(still_failing)} still failing")
-    if still_failing:
-        raise click.ClickException(
-            f"{len(still_failing)} document(s) still failing; one processing_errors "
-            f"row each was kept. First few: {still_failing[:5]}"
-        )
+    # Which documents to retry, what to clear before the re-run and which error rows may
+    # be cleared after it are all decided inside the operation, against the corpus as it
+    # is when the retry starts rather than as it was when this command was typed.
+    try:
+        op_id = submit_operation("retry_failed_files", collectionname=collectionname,
+                                 collection_dataset=collection_dataset,
+                                 detail={"task_name": task_name})
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="purge-unattributed-entities")

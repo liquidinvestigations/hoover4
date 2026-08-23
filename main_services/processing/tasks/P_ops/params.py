@@ -45,6 +45,20 @@ class DatasetProgressParams:
 
 
 @dataclass
+class DatasetRegistryParams:
+    """Which dataset's registry row to tombstone.
+
+    Separate from the purge: the registry row lives in the global database and is what
+    every other surface reads to decide the dataset exists, while the purge only ever
+    touches the collection's own stores.
+    """
+
+    op_id: str
+    collectionname: str
+    collection_dataset: str
+
+
+@dataclass
 class RetryFailedFilesParams:
     """Which dataset's failures to retry, and which stage recorded them.
 

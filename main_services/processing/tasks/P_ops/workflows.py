@@ -23,10 +23,11 @@ with workflow.unsafe.imports_passed_through():
         begin_failed_file_retry, count_dataset_rows_activity,
         finish_failed_file_retry, record_operation_state,
         reindex_collection_activity, sample_dataset_progress,
+        tombstone_dataset_row,
     )
     from .params import (
-        DatasetProgressParams, FinishRetryParams, OperationParams,
-        OperationStateParams, RetryFailedFilesParams,
+        DatasetProgressParams, DatasetRegistryParams, FinishRetryParams,
+        OperationParams, OperationStateParams, RetryFailedFilesParams,
     )
     from ..heartbeat import HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
@@ -96,12 +97,20 @@ class Operation:
     async def _dispatch(self, params: OperationParams) -> str:
         if params.kind in ("add_dataset", "rescan_dataset"):
             return await self._ingest_dataset(params)
+        if params.kind == "compute_plans":
+            return await self._compute_plans(params)
+        if params.kind == "execute_plans":
+            return await self._execute_plans(params)
         if params.kind == "purge_dataset":
             return await self._purge_dataset(params)
+        if params.kind == "delete_dataset":
+            return await self._delete_dataset(params)
         if params.kind == "change_ocr_languages":
             return await self._change_ocr_languages(params)
         if params.kind == "retry_failed_files":
             return await self._retry_failed_files(params)
+        if params.kind in ("ensure_collection", "drop_collection_database"):
+            return await self._collection_database(params)
         if params.kind == "reindex_collection":
             queued = await workflow.execute_activity(
                 reindex_collection_activity,
@@ -139,6 +148,16 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
+        await self._sample_plans_until_done(child, params)
+        await child
+        return f"ingested and processed {params.collection_dataset}"
+
+    async def _sample_plans_until_done(self, child, params: OperationParams) -> None:
+        """Refresh the row's plan counters until the child workflow finishes.
+
+        Plans are the only unit whose total is known before the work is done, so every
+        kind that drives the pipeline over a dataset counts the same thing here.
+        """
         progress = DatasetProgressParams(
             op_id=params.op_id,
             collectionname=params.collectionname,
@@ -162,8 +181,49 @@ class Operation:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=ROW_RETRY,
             )
-        await child
-        return f"ingested and processed {params.collection_dataset}"
+
+    async def _compute_plans(self, params: OperationParams) -> str:
+        """Turn the blobs a scan recorded into the dataset's processing plans.
+
+        **This kind has no progress fraction, and that is deliberate.** Planning is one
+        activity that writes every plan in a single statement, behind one that counts
+        the new blobs, so nothing finishes repeatedly and there is no honest
+        denominator. The row's counters stay at zero and the result says how many items
+        were planned. A bar invented here would sit empty and then be full, which
+        reports less than no bar at all.
+        """
+        return await workflow.execute_child_workflow(
+            "ComputePlans",
+            {
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+            },
+            id=f"compute-plans-{params.op_id}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        )
+
+    async def _execute_plans(self, params: OperationParams) -> str:
+        """Run the dataset's unfinished plans, sampling plans finished against plans held.
+
+        Progress means something here, and it is the counter the ingest driver already
+        uses. The denominator can grow while the operation runs — a plan that opens an
+        archive computes plans for what was inside it — and that is the corpus being
+        discovered, not the counter lying: the number moves in both parts.
+        """
+        child = asyncio.ensure_future(workflow.execute_child_workflow(
+            "ExecutePlans",
+            {
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+                "base_temp_dir": "/tmp/hoover4",
+            },
+            id=f"execute-plans-{params.op_id}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        ))
+        await self._sample_plans_until_done(child, params)
+        return await child
 
     async def _record(self, op_id: str, done: int, total: int) -> None:
         """Write progress counters onto the row, without changing its state."""
@@ -232,6 +292,30 @@ class Operation:
         await self._record(params.op_id, max(0, total - remaining), total)
         return f"purged {total - remaining} row(s) of {params.collection_dataset}"
 
+    async def _delete_dataset(self, params: OperationParams) -> str:
+        """Retire a dataset: tombstone its registry row, then purge what it holds.
+
+        The order is what makes an interrupted deletion safe. Once the registry row is
+        tombstoned the dataset is offered nowhere, so a purge that stops half way
+        leaves rows nothing routes to rather than a live dataset missing half its data.
+        The tombstone is idempotent, so a re-run of this row finishes the purge instead
+        of failing on a dataset that is already gone from the registry.
+
+        Progress is the purge's, because the purge is all of the work: rows still in
+        the stores against rows the dataset held when it started.
+        """
+        await workflow.execute_activity(
+            tombstone_dataset_row,
+            DatasetRegistryParams(op_id=params.op_id,
+                                  collectionname=params.collectionname,
+                                  collection_dataset=params.collection_dataset),
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=5),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=ROW_RETRY,
+        )
+        return await self._purge_dataset(params)
+
     async def _change_ocr_languages(self, params: OperationParams) -> str:
         """Apply a dataset's new OCR languages: settings, re-run, purge, in that order.
 
@@ -261,25 +345,31 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        progress = DatasetProgressParams(
-            op_id=params.op_id,
-            collectionname=params.collectionname,
-            collection_dataset=params.collection_dataset,
-        )
-        while not child.done():
-            try:
-                await workflow.wait_condition(
-                    child.done, timeout=timedelta(seconds=PROGRESS_INTERVAL_SECONDS))
-            except asyncio.TimeoutError:
-                pass
-            await workflow.execute_activity(
-                sample_dataset_progress, progress,
-                task_queue="operations-queue",
-                start_to_close_timeout=timedelta(minutes=2),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=ROW_RETRY,
-            )
+        await self._sample_plans_until_done(child, params)
         return await child
+
+    async def _collection_database(self, params: OperationParams) -> str:
+        """Provision a collection's database, or drop it and its Manticore tables.
+
+        **Neither kind has a progress fraction, and that is deliberate.** Each is a
+        single activity that either has run or has not, and those two states are
+        exactly what the row's `state` column already says. The only thing a bar could
+        report here is the state, twice.
+
+        The child's id carries the operation id rather than the collection name, so a
+        repeated create or delete of the same collection is its own execution with a
+        history of its own — the same rule every other kind follows.
+        """
+        workflow_type = {
+            "ensure_collection": "EnsureCollectionDatabase",
+            "drop_collection_database": "DropCollectionDatabase",
+        }[params.kind]
+        return await workflow.execute_child_workflow(
+            workflow_type,
+            {"collectionname": params.collectionname},
+            id=f"{params.kind}-{params.op_id}",
+            task_queue="processing-common-queue",
+        )
 
     async def _retry_failed_files(self, params: OperationParams) -> str:
         """Re-run one failed stage for the documents `processing_errors` names.

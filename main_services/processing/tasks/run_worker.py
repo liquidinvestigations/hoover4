@@ -641,6 +641,7 @@ async def run_operations_worker():
   from .P_ops.activities import (
       begin_failed_file_retry, count_dataset_rows_activity, finish_failed_file_retry,
       record_operation_state, reindex_collection_activity, sample_dataset_progress,
+      tombstone_dataset_row,
   )
   from .P_ops.workflows import Operation
   from .visibility import ensure_search_attributes
@@ -661,7 +662,8 @@ async def run_operations_worker():
       workflows=[Operation],
       activities=[record_operation_state, sample_dataset_progress,
                   reindex_collection_activity, count_dataset_rows_activity,
-                  begin_failed_file_retry, finish_failed_file_retry],
+                  begin_failed_file_retry, finish_failed_file_retry,
+                  tombstone_dataset_row],
       activity_executor=executor,
       max_concurrent_activities=orchestration,
     )]

@@ -4,7 +4,7 @@ use common::admin_types::{AdminCollectionDetail, AdminCollectionItem, AdminDatas
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::temporal_trigger;
+use crate::api::admin::operations;
 use crate::auth::guard;
 use crate::db_auth::collections::{self, CollectionRow};
 
@@ -156,13 +156,20 @@ pub async fn admin_create_collection(
     .await?;
 
     // Provision the collection's ClickHouse database. The schema lives in Python, so we
-    // start the workflow and do not wait for it: the collection page shows a
-    // "provisioning" state until `collection_db_ready` returns true.
+    // dispatch the operation and do not wait for it: the collection page shows a
+    // "provisioning" state until `collection_db_ready` returns true. It is an operation
+    // rather than a bare workflow so that provisioning has a row saying whether it
+    // ever finished — a collection stuck in "provisioning" was previously a state with
+    // no record behind it at all.
     //
-    // If the workflow cannot even be started, undo the row. Leaving it would strand the
-    // collection: it can never be provisioned (there is no re-provision action) and it
-    // can never be re-created either, because the existence check above would reject it.
-    if let Err(e) = temporal_trigger::trigger_workflow(&collectionname, "ensure_collection").await {
+    // If the operation cannot even be dispatched, undo the row. Leaving it would strand
+    // the collection: it can never be provisioned (there is no re-provision action) and
+    // it can never be re-created either, because the existence check above would reject
+    // it.
+    if let Err(e) =
+        operations::dispatch_operation("ensure_collection", &collectionname, "", &user.username, "", "")
+            .await
+    {
         collections::soft_delete_collection(&collectionname).await.ok();
         anyhow::bail!("database provisioning failed to start, collection not created: {e}");
     }
@@ -199,7 +206,17 @@ pub async fn admin_delete_collection(
 
     // Destructive: drops Hoover4_Collection_<name> entirely. Gated above on the
     // collection having no datasets, and in the UI on typing the collection name.
-    temporal_trigger::trigger_workflow(&collectionname, "drop_collection_database").await?;
+    // Dispatched as an operation, so a drop that fails half way is a row that can be
+    // re-run rather than a database nobody knows is still there.
+    operations::dispatch_operation(
+        "drop_collection_database",
+        &collectionname,
+        "",
+        &user.username,
+        "",
+        "",
+    )
+    .await?;
     Ok(())
 }
 

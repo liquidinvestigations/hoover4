@@ -4,7 +4,7 @@ use common::admin_types::{AdminDatasetDetail, AdminDatasetItem, AdminDatasetStat
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::{operations, temporal_trigger};
+use crate::api::admin::operations;
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::{collection_db_name, get_collection_client, get_global_client};
 
@@ -144,12 +144,16 @@ pub async fn admin_delete_dataset(
     let mut insert = client.insert::<DatasetRow>("dataset").await?;
     insert.write(&row).await?;
     insert.end().await?;
-    // Purge the dataset's rows from the collection database and its Manticore shards,
-    // then recompute the shard ledger. Dispatched as an operation, so the deletion has a
-    // row in the same log as everything else and a purge that fails half way can be
-    // re-run from it rather than by deleting an already-deleted dataset again.
+    // Dispatched as a `delete_dataset` operation, which tombstones the registry row
+    // again — idempotently, and it has to, because a dispatch from the command line has
+    // no first writer — and then purges the dataset's rows from the collection database
+    // and its Manticore shards and recomputes the shard ledger. The row is written here
+    // as well so the dataset stops being listed the moment the request returns, rather
+    // than when the operation's first activity runs. The kind is `delete_dataset` and
+    // not `purge_dataset` so the log distinguishes a dataset that was retired from one
+    // whose data was cleaned out from under it.
     operations::dispatch_operation(
-        "purge_dataset",
+        "delete_dataset",
         &row.collectionname,
         &collection_dataset,
         &user.username,
@@ -162,16 +166,14 @@ pub async fn admin_delete_dataset(
 
 /// Start one of the per-dataset pipeline runs from the admin UI.
 ///
-/// The two ingest kinds are dispatched as **operations** rather than as bare workflows,
-/// so a run started from a button is one row in the same log as a run started from a
+/// Every kind is dispatched as an **operation** rather than as a bare workflow, so a
+/// run started from a button is one row in the same log as a run started from a
 /// terminal, takes the same lock, and gets a workflow id unique to its dispatch. Before
 /// that they started `ingest-and-process-<dataset>`, a fixed id, which meant a second
 /// click resolved to the first click's execution instead of running again.
 ///
-/// The remaining kinds have no driver in the operations workflow yet and still start
-/// their workflow directly. They therefore leave no row in the operations log, which is
-/// why the collection page says so rather than showing an empty list as if nothing had
-/// been run.
+/// The button's name and the operation kind differ because the buttons predate the
+/// operations log: this is the one place the two vocabularies are mapped.
 pub async fn admin_trigger_workflow(
     user: &CurrentUser,
     collection_dataset: String,
@@ -179,23 +181,22 @@ pub async fn admin_trigger_workflow(
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
     let operation_kind = match kind.as_str() {
-        "ingest_and_process" => Some("add_dataset"),
-        "rescan" => Some("rescan_dataset"),
-        _ => None,
+        "ingest_and_process" => "add_dataset",
+        "rescan" => "rescan_dataset",
+        "compute_plans" => "compute_plans",
+        "execute_plans" => "execute_plans",
+        other => anyhow::bail!("unknown workflow kind: {other}"),
     };
-    if let Some(operation_kind) = operation_kind {
-        let Some(row) = get_dataset_row(&collection_dataset).await? else {
-            anyhow::bail!("dataset not found");
-        };
-        return operations::dispatch_operation(
-            operation_kind,
-            &row.collectionname,
-            &collection_dataset,
-            &user.username,
-            "",
-            "",
-        )
-        .await;
-    }
-    temporal_trigger::trigger_workflow(&collection_dataset, &kind).await
+    let Some(row) = get_dataset_row(&collection_dataset).await? else {
+        anyhow::bail!("dataset not found");
+    };
+    operations::dispatch_operation(
+        operation_kind,
+        &row.collectionname,
+        &collection_dataset,
+        &user.username,
+        "",
+        "",
+    )
+    .await
 }

@@ -131,10 +131,10 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-admin-01` | Create, edit and delete collections, with display names and visibility | `website/backend/src/api/admin/collections.rs` |
+| `F-admin-01` | Create, edit and delete collections, with display names and visibility, where provisioning and dropping the collection's database are operations with rows of their own | `website/backend/src/api/admin/collections.rs`, the `ensure_collection` and `drop_collection_database` operations |
 | `F-admin-02` | Add a dataset to a collection and start its ingestion | `website/backend/src/api/admin/datasets.rs` |
 | `F-admin-03` | Watch processing progress per stage, with estimates | `website/backend/src/api/admin/processing.rs`, `processing_eta_samples` |
-| `F-admin-04` | Rescan or re-index a dataset from the interface, dispatched as an operation so a run started from a button is one row in the same log as a run started from a terminal | `website/backend/src/api/admin/datasets.rs:admin_trigger_workflow`, `operations.rs:dispatch_operation` |
+| `F-admin-04` | Start any per-dataset pipeline run from the interface — ingest, rescan, compute plans, execute plans — each dispatched as an operation, so a run started from a button is one row in the same log as a run started from a terminal | `website/backend/src/api/admin/datasets.rs:admin_trigger_workflow`, `operations.rs:dispatch_operation` |
 | `F-admin-05` | Change a dataset's OCR languages and apply it, as an operation whose row carries the stage it is in and the variants it added and removed | `website/backend/src/api/admin/dataset_ocr.rs`, the `change_ocr_languages` operation |
 | `F-admin-06` | Manage users and groups, and grant a group read access to a collection | `website/backend/src/api/admin/users.rs`, `groups.rs` |
 | `F-admin-07` | Configure language-model providers, and the model each agent profile uses | `website/backend/src/api/admin/llm.rs` |
@@ -145,14 +145,14 @@ languages.
 | `F-admin-11` | Record every long operation permanently — what was asked for, by whom, its progress, and how it ended — outliving both the process that asked and the workflow history | the `operations` table, `main_services/processing/database/operations.py` |
 | `F-admin-12` | Run long operations in a container of their own, with its own memory and CPU budget and the datastore volumes mounted read-only, so they cannot take capacity from ingestion | `hoover4-ops`, `tasks/run_worker.py:run_operations_worker` |
 | `F-admin-13` | Refuse a second dispatch of the same kind of operation against the same target while one is still running, naming what is in the way | `database/operations.py:assert_lock_free` |
-| `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `tasks/P_ops/cli.py` |
+| `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `main.py purge-dataset --apply`, `main.py retry-failed-files --apply`, `tasks/P_ops/cli.py` |
 | `F-admin-15` | List, inspect, re-run and cancel operations from the command line | `main.py operations list\|show\|rerun\|cancel` |
 | `F-admin-16` | Browse the operations log in the interface — newest first, paginated, filtered by state and by collection — with progress, estimate, outcome and the error against each row | `/admin/operations`, `website/backend/src/api/admin/operations.rs` |
 | `F-admin-17` | Re-run or cancel an operation from the interface, where a destructive kind is refused until the target is typed out | `admin_rerun_operation`, `admin_cancel_operation` |
 | `F-admin-18` | See the same operations log scoped to one collection, on that collection's page | `CollectionOperationsPanel`, `website/frontend/src/pages/admin/collection_detail.rs` |
 | `F-admin-19` | Show how many documents an operation failed on, so a run that finished over failed documents does not read as a clean one | `tasks/P_ops/activities.py:sample_dataset_progress`, the row's `detail` |
 | `F-admin-20` | Show the failure rate of each task type against a configured threshold, calling out the types above it as candidate tooling limitations | `admin_list_operations`, `error_rate_alert_percent` |
-| `F-admin-21` | Purge a dataset, change its OCR languages or retry its failed files from the interface, each as an operation: one lock, one row, and progress that counts rows deleted or plans re-run rather than stages returned | `admin_delete_dataset`, `admin_apply_ocr_languages`, `admin_retry_failed_task`, `tasks/P_ops/workflows.py` |
+| `F-admin-21` | Delete or purge a dataset, change its OCR languages or retry its failed files from the interface, each as an operation: one lock, one row, and progress that counts rows deleted or plans re-run rather than stages returned | `admin_delete_dataset`, `admin_apply_ocr_languages`, `admin_retry_failed_task`, `tasks/P_ops/workflows.py` |
 | `F-admin-22` | Show the newest operation touching a dataset on that dataset's own page, from the same log the operations page reads, so the two cannot describe one run differently | `DatasetOperationStrip`, `dataset_ocr.rs:latest_operation` |
 
 ## Identity and access

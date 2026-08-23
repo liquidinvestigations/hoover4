@@ -10,5 +10,4 @@ pub mod metrics;
 pub mod operations;
 pub mod processing;
 pub mod settings;
-pub mod temporal_trigger;
 pub mod users;

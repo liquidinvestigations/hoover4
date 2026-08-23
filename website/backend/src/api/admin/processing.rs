@@ -19,7 +19,7 @@ use common::current_user::CurrentUser;
 use common::processing_types::*;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::{operations, temporal_trigger};
+use crate::api::admin::operations;
 use crate::auth::guard;
 use crate::db_auth::collections;
 use crate::db_utils::clickhouse_utils::{get_collection_client, get_global_client};
@@ -751,13 +751,14 @@ fn short_status(raw: &str) -> String {
 
 /// Build the visibility query for a collection's workflows.
 ///
-/// Pipeline workflow ids are `<kind>-<collection_dataset>` (see `temporal_trigger`), so
-/// each dataset contributes the exact top-level ids the trigger module can produce,
-/// OR-ed together. Child workflows (`HandleFolders-<hash>`, per-plan runs) carry no
-/// dataset in their id — they are matched through the `CollectionDataset` search
-/// attribute that the workers register at startup and set on every workflow start
-/// (see `tasks/visibility.py`). The id clause stays as a fallback `OR` so workflows
-/// started before the attribute existed still show up.
+/// A workflow belongs to a dataset through the `CollectionDataset` search attribute,
+/// which the workers register at startup and set on every start (see
+/// `tasks/visibility.py`). That is the clause that matters: it is the only one that
+/// finds a child workflow, whose id (`HandleFolders-<hash>`, the per-plan runs) names
+/// no dataset, and the only one that finds a run dispatched under an operation id.
+///
+/// The `<kind>-<collection_dataset>` ids are OR-ed in beside it as a fallback, for a
+/// run started under a fixed id and carrying no attribute.
 pub fn collection_visibility_query(
     collection_datasets: &[String],
     filter: WorkflowFilter,
@@ -1135,9 +1136,14 @@ pub async fn admin_retry_failed_task(
 
 /// Retry the processing of a single document.
 ///
-/// Reopens the plan that document belongs to, clears its error rows, and restarts
-/// `ExecutePlans`. The plan is the pipeline's unit of work, so its other documents are
-/// reprocessed too, which is not yet decided.
+/// Reopens the plan that document belongs to, clears its error rows, and dispatches an
+/// `execute_plans` operation. The plan is the pipeline's unit of work, so its other
+/// documents are reprocessed too, which is not yet decided.
+///
+/// The error rows are cleared before the re-run here, unlike the per-task retry, which
+/// keeps them until the documents are demonstrably fixed. One document is a small
+/// enough claim that the file browser showing it clean and then failing again is
+/// tolerable; a whole task's worth is not.
 pub async fn admin_retry_document(
     user: &CurrentUser,
     collectionname: String,
@@ -1160,8 +1166,16 @@ pub async fn admin_retry_document(
         .execute()
         .await?;
 
-    let run_id = temporal_trigger::trigger_workflow(&collection_dataset, "execute_plans").await?;
-    Ok(format!("{run_id} ({reopened} plan(s) reopened)"))
+    let op_id = operations::dispatch_operation(
+        "execute_plans",
+        &collectionname,
+        &collection_dataset,
+        &user.username,
+        "",
+        "",
+    )
+    .await?;
+    Ok(format!("{op_id} ({reopened} plan(s) reopened)"))
 }
 
 #[cfg(test)]

@@ -19,17 +19,14 @@ the actual gate.
   change per dataset, refused by the operations lock rather than by a disabled button; and
   the creation form takes a folder *name* validated against the listing of
   `DATASETS_MOUNT_PATH`, never a path.
-- `temporal_trigger.rs` — starts pipeline workflows over the Temporal HTTP API,
-  tagging dataset-scoped starts with the `CollectionDataset` search attribute. The ids
-  here are reused deliberately, so a second click is a no-op. Anything that must actually
-  run again on a second click is dispatched as an operation instead, which is what gives a
-  button-started run its own timestamped id and its own row: the two ingest kinds, the
-  purge, the OCR-language change and the failed-file retry all go that way.
 - `operations.rs` — the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.
   Its `KINDS` table mirrors the processing side's registry, including which kinds are
-  destructive; a kind added on one side must be added on the other.
+  destructive; a kind added on one side must be added on the other. **Every long thing a
+  button starts goes through here**, so each click gets its own timestamped workflow id
+  and its own row — a fixed workflow id would make the second click resolve to the first
+  click's execution and quietly do nothing.
 - `metrics.rs` — aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
 - `llm.rs` — the model catalog, the defaults and the allowlist. See below.
 
