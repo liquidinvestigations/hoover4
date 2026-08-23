@@ -14,6 +14,9 @@ holds the pipeline, the MCP servers, the scanner service and the CPU model twins
 and the `.env` files are generated from it, so never hand-edit those. `docs/` is public, so
 keep every hostname, port, address and auth boundary out of it, and out of these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
+`CONTEXT.md` at the repository root records the words this tree uses in more than one sense,
+and the words that compete for one sense. Read it before you write a term that already has an
+entry there.
 
 ## How work happens here
 
