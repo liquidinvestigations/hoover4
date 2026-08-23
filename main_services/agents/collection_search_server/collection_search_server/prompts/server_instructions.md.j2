@@ -9,6 +9,7 @@ Search the user's own document collections in Hoover4.
 Call {{ tool('list_collections') }} first so you use real collection names, then {{ tool('search_collections') }}
 to find passages, then {{ tool('read_documents') }} to read them in full.
 {% if has('cite_documents') %}
+
 When you have the answer, call {{ tool('cite_documents') }} with the documents you relied on: it
 returns a short handle for each, which you write into your prose where the claim is made.
 {% endif %}
