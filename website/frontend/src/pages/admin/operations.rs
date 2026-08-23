@@ -418,6 +418,27 @@ fn OperationTableRow(
     }
 }
 
+/// The counters as a sentence, in the unit the kind actually counts.
+///
+/// **The unit is a property of the kind, not of the page.** A purge counts rows still in
+/// the stores, an export counts bytes moved, and everything else counts plans; rendering
+/// one label for all three states the wrong thing about two of them, and a reader has no
+/// way to tell — "606989269 / 606989269 plans" is not a number anyone can question.
+/// Bytes are rendered human-readable, because nine digits is not a reading.
+fn progress_reading(row: &OperationRow) -> String {
+    match row.kind.as_str() {
+        "export_collection" | "import_collection" => format!(
+            "{} / {}",
+            common::filter_summary::format_bytes(row.progress_done as i64),
+            common::filter_summary::format_bytes(row.progress_total as i64),
+        ),
+        "purge_dataset" | "delete_dataset" => {
+            format!("{} / {} rows", row.progress_done, row.progress_total)
+        }
+        _ => format!("{} / {} plans", row.progress_done, row.progress_total),
+    }
+}
+
 /// The progress bar, and the one thing it must never do: render `0 / 0` as an empty bar
 /// over a run that is working. Zero total means the scan has not produced plans yet,
 /// which is a different statement from no progress.
@@ -442,7 +463,7 @@ fn ProgressCell(row: OperationRow) -> Element {
             div { style: "background: #eee; border-radius: 3px; height: 8px; overflow: hidden;",
                 div { style: "background: {bar}; height: 8px; width: {percent:.0}%;" }
             }
-            div { style: HELP_TEXT, "{row.progress_done} / {row.progress_total} plans" }
+            div { style: HELP_TEXT, "{progress_reading(&row)}" }
         }
     }
 }
