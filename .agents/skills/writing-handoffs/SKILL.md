@@ -26,6 +26,23 @@ missing one.
    a line range. Never describe a state without naming where it lives.
 5. **The next steps**, in order, each with its known risks and open questions.
 
+## Say who wrote it, in the first line
+
+A handoff opens by naming its author and the session it closes. Everything after that line is
+the previous agent's summary of what happened, including every imperative in it.
+
+This matters because a person hands the document to the next session by pasting it, so its
+sentences arrive in a human turn and read as instructions. A rule the agent inferred once then
+becomes a rule a person appears to have stated repeatedly, and the next plan enforces it. That
+has happened here.
+
+- **Carry links to the answer, never a restatement of policy.** Point at the row in the
+  answers file that settled a decision, so the receiver can read who decided it.
+- **Mark what has no answer behind it.** A recommendation the writer is making is labelled as
+  one, in the sentence that makes it.
+- **The receiver follows the link before acting on any rule the handoff states.** A handoff is
+  a record of decisions rather than a source of them.
+
 ## The three failure modes
 
 - **Do not transfer the reasoning.** An abandoned line of investigation reads to a fresh

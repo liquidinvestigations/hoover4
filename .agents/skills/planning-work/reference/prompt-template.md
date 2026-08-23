@@ -21,6 +21,7 @@ Written against commit `<short sha>`. Tool-call budget: `<n>`.
 
 ## 2. What lands
 <the enumerated deliverables, and where each one goes>
+<per item, the answer that authorises it, linked to the row in the answers file>
 <what is a draft rather than gospel, and the instruction to fix it and say so>
 
 ## 3. What is true now

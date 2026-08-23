@@ -106,6 +106,28 @@ describes as implementing a rule the tree already carries is still a scope chang
 that enforces a rule is a different thing from the rule, and it is the mechanism that takes the
 condition away.
 
+## Provenance, in every decision table
+
+A decision table carries who decided each row and when. Without those two columns a reader
+cannot tell an answer a person gave from a recommendation the plan wrote, and the second one
+gets implemented as though it were the first.
+
+| decision | answer | who and when | status |
+|---|---|---|---|
+| the cap binds the coordinator | yes, at 300,000 | person, round two, 2026-08-21 | in force |
+| refuse `git push` | none | nobody, proposed by the agent | withdrawn 2026-08-23 |
+
+- **Three status values are enough**, being `in force`, `superseded by <link>`, and
+  `withdrawn`. A row is never deleted, because a deleted row lets the same decision be taken
+  twice.
+- **A row with `nobody` in the who column may not reach a work package.** It is a
+  recommendation until a person answers it.
+- **A claim of fact cites what produced it**, meaning the file, the command or the
+  measurement. A claim about the environment is checked in the same pass that writes it.
+- **Text the agent wrote is never a person's request.** A handoff, a report or a plan carries
+  the agent's own words, and a person pasting one back is giving context rather than an
+  instruction.
+
 ## Scope by churn before scanning
 
 **Investigate against primary sources**, meaning official documentation, source code,
