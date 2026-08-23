@@ -64,7 +64,11 @@ MANTICORE_RESTORE_ROOT = "/stores/manticore-restore"
 #: on the data directory's filesystem and must not be the destination — `IMPORT TABLE`
 #: refuses a destination that already exists, and moves out of the staging directory it
 #: is given.
-MANTICORE_STAGING_PREFIX = ".restore-"
+#:
+#: **No leading dot.** `IMPORT TABLE` does not take the absolute path it is handed
+#: verbatim when the path contains a dot-prefixed component: it rebuilds one under the
+#: table's own directory, and the error then names a file nothing ever wrote.
+MANTICORE_STAGING_PREFIX = "restore-"
 
 
 class _VerifyingReader:
@@ -125,12 +129,34 @@ def read_manifest(directory: str) -> dict:
     return manifest
 
 
-def _occupancy(collectionname: str) -> list[str]:
+#: How many of a store's occupied tables the refusal names one by one.
+#:
+#: A collection database has forty-odd tables and naming every populated one produces a
+#: paragraph nobody reads and no interface can show. The count and the biggest few say
+#: the same thing — the target is not empty, and here is the shape of what is in it.
+OCCUPANCY_EXAMPLES = 3
+
+
+def _largest(occupied: list[tuple[str, int]]) -> str:
+    """The few fullest tables of a store, as one clause naming the rest by count."""
+    ranked = sorted(occupied, key=lambda pair: pair[1], reverse=True)
+    shown = ", ".join(f"{table} {rows}" for table, rows in ranked[:OCCUPANCY_EXAMPLES])
+    rest = len(ranked) - OCCUPANCY_EXAMPLES
+    return f"largest {shown}" + (f" and {rest} more" if rest > 0 else "")
+
+
+def _occupancy(collectionname: str, backed_up_datasets: set[str]) -> list[str]:
     """What a restore into this collection would land on top of, store by store.
 
     Every store is asked, and all of the answers are collected rather than the first one
     returned, because the useful sentence is the whole of what is in the way rather than
     whichever store happened to be checked first.
+
+    **A registered dataset is only in the way when the backup does not contain it.** A
+    collection whose stores have been emptied still has its datasets registered — that is
+    what dropping a collection database leaves behind, and restoring over it is the case
+    this whole operation exists for. A dataset the backup has never heard of is different:
+    restoring would leave it registered, offered, and pointing at nothing.
     """
     from database.clickhouse import (
         collection_db_name, get_dedicated_collection_client, get_global_client,
@@ -146,20 +172,28 @@ def _occupancy(collectionname: str) -> list[str]:
             parameters={"db": database},
         ).result_rows[0][0]
     if exists:
+        occupied: list[tuple[str, int]] = []
         with get_dedicated_collection_client(collectionname) as client:
             for (table,) in client.query("SHOW TABLES").result_rows:
-                rows = client.query(f"SELECT count() FROM `{table}`").result_rows[0][0]
-                if int(rows):
-                    blockers.append(
-                        f"ClickHouse table {database}.{table} holds {rows} row(s)")
+                rows = int(client.query(f"SELECT count() FROM `{table}`").result_rows[0][0])
+                if rows:
+                    occupied.append((table, rows))
+        if occupied:
+            blockers.append(f"ClickHouse database {database} holds "
+                            f"{sum(r for _, r in occupied)} row(s) across "
+                            f"{len(occupied)} table(s), " + _largest(occupied))
 
+    occupied = []
     for table in list_collection_tables(collectionname):
         with get_manticore_client() as cnx:
             cursor = cnx.cursor()
             cursor.execute(f"SELECT count(*) FROM {table}")
             row = cursor.fetchone()
         if row and int(row[0]):
-            blockers.append(f"Manticore table {table} holds {row[0]} row(s)")
+            occupied.append((table, int(row[0])))
+    if occupied:
+        blockers.append(f"Manticore holds {sum(r for _, r in occupied)} row(s) across "
+                        f"{len(occupied)} table(s), " + _largest(occupied))
 
     bucket = collection_bucket(collectionname)
     client = get_s3_client()
@@ -169,12 +203,16 @@ def _occupancy(collectionname: str) -> list[str]:
             blockers.append(f"object bucket {bucket} holds {objects} object(s)")
 
     with get_global_client() as client:
-        datasets = client.query(
-            "SELECT count() FROM dataset FINAL WHERE collectionname = {name:String} "
-            "AND is_deleted = 0", parameters={"name": collectionname},
-        ).result_rows[0][0]
-    if datasets:
-        blockers.append(f"the collection has {datasets} registered dataset(s)")
+        registered = [row[0] for row in client.query(
+            "SELECT collection_dataset FROM dataset FINAL WHERE "
+            "collectionname = {name:String} AND is_deleted = 0",
+            parameters={"name": collectionname},
+        ).result_rows]
+    unknown = sorted(set(registered) - backed_up_datasets)
+    if unknown:
+        blockers.append(f"{len(unknown)} registered dataset(s) are not in this backup: "
+                        + ", ".join(unknown[:OCCUPANCY_EXAMPLES])
+                        + (" and more" if len(unknown) > OCCUPANCY_EXAMPLES else ""))
     return blockers
 
 
@@ -221,7 +259,10 @@ def begin_import(params: ImportParams) -> str:
             f"backup taken from a later one."
         )
 
-    blockers = _occupancy(params.collectionname)
+    configuration = manifest.get("configuration") or {}
+    backed_up_datasets = {str(row.get("collection_dataset"))
+                          for row in (configuration.get("dataset") or [])}
+    blockers = _occupancy(params.collectionname, backed_up_datasets)
     if blockers:
         raise ValueError(
             f"{params.collectionname} is not an empty target: "
