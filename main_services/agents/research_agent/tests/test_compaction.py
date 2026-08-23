@@ -1,9 +1,16 @@
-"""Context compaction, layer one.
+"""Context compaction, both layers.
 
 The assertions here are about what the model is sent, never about what is stored: the
 transformation is applied to a copy on its way to the provider, and the two tests that
 check the input list is unchanged are the ones that keep it that way.
+
+The layer-two tests pass their own summariser. A test that reached a real model would be
+testing the model, and the property that matters -- that the never-summarised set survives
+whatever the summariser does -- is only demonstrable with a summariser that does its
+worst.
 """
+
+import json
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -12,11 +19,15 @@ from research_agent.compaction import (
     DEFAULT_COMPACTION_FRACTION,
     EVICTION_PLACEHOLDER,
     MIN_EVICTABLE_CHARS,
+    citation_index,
     compact_messages,
     compaction_fraction,
     evict_tool_results,
+    issued_citations,
     keep_recent,
     last_billed_tokens,
+    protected_indexes,
+    summarise_messages,
     threshold_tokens,
 )
 
@@ -25,6 +36,11 @@ from research_agent.compaction import (
 def _clean_env(monkeypatch):
     monkeypatch.delenv("AGENT_COMPACTION_FRACTION", raising=False)
     monkeypatch.delenv("AGENT_COMPACTION_KEEP_RECENT", raising=False)
+    monkeypatch.delenv("AGENT_COMPACTION_KEEP_RECENT_MESSAGES", raising=False)
+    # No LLM either: layer two must never reach a real model from a unit test, and every
+    # test that exercises it passes its own summariser.
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL_COMPACTION", raising=False)
     # No ClickHouse: the catalog lookup must be unreachable in a unit test, and every
     # test that needs a window passes one explicitly.
     monkeypatch.delenv("CLICKHOUSE_URL", raising=False)
@@ -225,11 +241,225 @@ def test_a_result_shorter_than_the_placeholder_is_left_alone():
     assert [m.content for m in tiny] == ["ok", "also ok"]
 
 
-def test_over_the_threshold_with_nothing_evictable_changes_nothing():
-    # Layer two is what answers this case, and it is not built. Reporting a compaction
+def test_over_the_threshold_with_neither_layer_able_to_help_changes_nothing():
+    # Nothing to evict, and a summariser that gives nothing back. Reporting a compaction
     # that freed nothing would put a row in the trail describing an event that did not
     # happen.
     messages = _conversation(2, tokens=(200_000, 100))
-    out, report = compact_messages(messages, model_id="m", window=262144)
+    out, report = compact_messages(
+        messages, model_id="m", window=262144, summariser=lambda _: ""
+    )
     assert report is None
     assert [m.content for m in out] == [m.content for m in messages]
+
+
+# ------------------------------------------------- layer two: what is never summarised
+
+
+def _cite_result(pairs):
+    """A `cite_documents` result allocating one handle per (collection, hash) pair."""
+    return json.dumps(
+        {
+            "success": True,
+            "citations": [
+                {
+                    "handle": f"[D{i + 1}]",
+                    "collectionname": collection,
+                    "file_hash": file_hash,
+                    "path": f"/{collection}/doc{i + 1}.txt",
+                    "quote": "a quoted sentence",
+                    "quote_verified": True,
+                }
+                for i, (collection, file_hash) in enumerate(pairs)
+            ],
+        }
+    )
+
+
+def _cited_conversation():
+    """A turn that has searched, read, cited, and written prose carrying the handles."""
+    messages = [SystemMessage(content="sys"), HumanMessage(content="the question")]
+    for i in range(6):
+        messages += _call(f"search_{i}", {"q": i}, f"long result {i} " * 200)
+    messages += _call("write_todo", {"items": ["read", "cite"]}, "todo saved: read, cite")
+    messages += _call(
+        "cite_documents", {}, _cite_result([("testdata", "aa11"), ("testdata", "bb22")])
+    )
+    messages.append(AIMessage(content="The answer draws on [D1] and on [D2]."))
+    for i in range(3):
+        messages += _call(f"after_{i}", {"q": i}, f"later result {i} " * 200)
+    return messages
+
+
+def _summariser_that_does_its_worst(_prompt):
+    """A summariser that would destroy every citation if it were trusted to keep them."""
+    return (
+        "## Work completed so far\nI forgot all of it.\n"
+        "## Facts established, quoted verbatim\nnone\n"
+        "## What remains\nunknown\n"
+    )
+
+
+def test_the_user_the_todo_and_every_citation_are_protected_in_code():
+    messages = _cited_conversation()
+    protected = protected_indexes(messages, keep_recent_messages=0)
+    kept = [messages[i] for i in protected]
+
+    assert any(isinstance(m, HumanMessage) and m.content == "the question" for m in kept)
+    assert any(isinstance(m, ToolMessage) and m.name == "write_todo" for m in kept)
+    assert any(isinstance(m, ToolMessage) and m.name == "cite_documents" for m in kept)
+    assert any("[D1]" in str(m.content) for m in kept)
+    # And nothing else got swept in with them: the searches are summarisable.
+    assert not any(
+        isinstance(m, ToolMessage) and m.name.startswith("search_") for m in kept
+    )
+
+
+def test_a_protected_result_keeps_the_call_that_asked_for_it():
+    # An assistant message whose tool_calls have no matching result is rejected by the
+    # provider outright, so protection has to travel in whole call-and-result groups.
+    messages = _cited_conversation()
+    protected = protected_indexes(messages, keep_recent_messages=0)
+    cite_index = next(
+        i for i, m in enumerate(messages)
+        if isinstance(m, ToolMessage) and m.name == "cite_documents"
+    )
+    assert cite_index in protected
+    assert cite_index - 1 in protected
+
+
+def test_every_citation_survives_a_summariser_that_drops_all_of_them():
+    # The rule the whole layer exists to keep. The summariser above writes a handoff with
+    # no handle in it at all, and every handle still resolves afterwards because the
+    # messages carrying them were never handed to it.
+    messages = _cited_conversation()
+    before = issued_citations(messages)
+    assert before == ["[D1]", "[D2]"]
+
+    out, report = summarise_messages(
+        messages,
+        model_id="m",
+        keep_messages=0,
+        summariser=_summariser_that_does_its_worst,
+    )
+
+    assert report.summarised_count > 0
+    assert issued_citations(out) == before
+    assert report.handles == before
+    # Both halves of the mapping: the result that says what [D1] is, and the prose using it.
+    cite = next(m for m in out if isinstance(m, ToolMessage) and m.name == "cite_documents")
+    assert "aa11" in cite.content and "bb22" in cite.content
+    assert any(isinstance(m, AIMessage) and "[D1]" in str(m.content) for m in out)
+
+
+def test_the_handoff_names_the_documents_without_asking_the_model_for_them():
+    messages = _cited_conversation()
+    out, report = summarise_messages(
+        messages,
+        model_id="m",
+        keep_messages=0,
+        summariser=_summariser_that_does_its_worst,
+    )
+    handoff = next(m for m in out if isinstance(m, SystemMessage) and "handoff" in m.content)
+    assert "[D1] testdata/aa11" in handoff.content
+    assert "[D2] testdata/bb22" in handoff.content
+    assert "## What was replaced" in handoff.content
+    assert "## Work completed so far" in handoff.content
+    assert "## What remains" in handoff.content
+    assert report.summary == handoff.content
+
+
+def test_the_citation_index_is_read_from_the_tool_result():
+    assert citation_index(_cited_conversation()) == [
+        "[D1] testdata/aa11  /testdata/doc1.txt",
+        "[D2] testdata/bb22  /testdata/doc2.txt",
+    ]
+
+
+def test_summarisation_never_edits_or_mutates_the_input_list():
+    messages = _cited_conversation()
+    snapshot = [(type(m), str(m.content)) for m in messages]
+    summarise_messages(
+        messages, model_id="m", keep_messages=0,
+        summariser=_summariser_that_does_its_worst,
+    )
+    assert [(type(m), str(m.content)) for m in messages] == snapshot
+
+
+def test_a_summariser_that_says_nothing_leaves_the_list_alone():
+    # No summary means no summarisation. Compaction exists to save a turn and must never
+    # be the thing that ends one.
+    messages = _cited_conversation()
+    out, report = summarise_messages(
+        messages, model_id="m", keep_messages=0, summariser=lambda _: ""
+    )
+    assert report.summarised_count == 0
+    assert out == messages
+
+
+def test_a_handoff_bigger_than_what_it_replaces_is_refused():
+    # Layer one shipped a defect of exactly this shape: it replaced a 91-character result
+    # with a 127-character placeholder and grew the context it was shrinking.
+    messages = _cited_conversation()
+    out, report = summarise_messages(
+        messages, model_id="m", keep_messages=0, summariser=lambda _: "x" * 500_000
+    )
+    assert report.summarised_count == 0
+    assert out == messages
+
+
+def test_the_summarised_list_still_pairs_every_call_with_its_result():
+    messages = _cited_conversation()
+    out, _ = summarise_messages(
+        messages, model_id="m", keep_messages=0,
+        summariser=_summariser_that_does_its_worst,
+    )
+    answered = {m.tool_call_id for m in out if isinstance(m, ToolMessage)}
+    asked = {
+        c["id"]
+        for m in out
+        if isinstance(m, AIMessage)
+        for c in (m.tool_calls or [])
+    }
+    assert asked == answered
+
+
+def test_the_cite_documents_result_is_not_evictable_either():
+    # Both layers honour the same never-compacted set. Evicting the handle table while
+    # the model's own prose still says [D1] is the same correctness bug by another route.
+    messages = _cited_conversation()
+    out, report = evict_tool_results(messages, keep=0)
+    assert "cite_documents" not in report.evicted
+    assert "write_todo" not in report.evicted
+    cite = next(m for m in out if isinstance(m, ToolMessage) and m.name == "cite_documents")
+    assert "aa11" in cite.content
+
+
+def test_eviction_runs_first_and_summarisation_only_on_what_it_leaves(monkeypatch):
+    # The two layers in order: eviction is most of the benefit for no model call, so it
+    # goes first and layer two only sees what it could not reclaim. Keeping eight recent
+    # results is what leaves it not enough here -- on the shipped setting of three, this
+    # turn is comfortably under after layer one and layer two never runs.
+    monkeypatch.setenv("AGENT_COMPACTION_KEEP_RECENT", "8")
+    seen = {}
+
+    def summariser(prompt):
+        seen["prompt"] = prompt
+        return _summariser_that_does_its_worst(prompt)
+
+    messages = _cited_conversation()
+    messages[-2].usage_metadata = {
+        "input_tokens": 250_000, "output_tokens": 0, "total_tokens": 250_000
+    }
+    out, report = compact_messages(
+        messages, model_id="m", window=262144, summariser=summariser
+    )
+
+    assert report.layer == "summarisation"
+    assert report.evicted_count > 0
+    assert report.summarised_count > 0
+    # What layer two was handed had already been evicted, so the summariser never saw the
+    # kilobytes eviction had taken out.
+    assert EVICTION_PLACEHOLDER in seen["prompt"]
+    assert issued_citations(out) == ["[D1]", "[D2]"]
+    assert report.chars_after < report.chars_before

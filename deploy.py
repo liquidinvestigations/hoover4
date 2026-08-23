@@ -570,6 +570,12 @@ def render_main_env(cfg):
         env["AGENT_COMPACTION_FRACTION"] = cfg.get(m, "agent_compaction_fraction")
     if cfg.get(m, "agent_compaction_keep_recent"):
         env["AGENT_COMPACTION_KEEP_RECENT"] = cfg.get(m, "agent_compaction_keep_recent")
+    if cfg.get(m, "agent_compaction_keep_recent_messages"):
+        env["AGENT_COMPACTION_KEEP_RECENT_MESSAGES"] = cfg.get(
+            m, "agent_compaction_keep_recent_messages"
+        )
+    if cfg.get(m, "agent_compaction_model"):
+        env["LLM_MODEL_COMPACTION"] = cfg.get(m, "agent_compaction_model")
 
     # Pipeline switches, rendered unconditionally so the worker can pick up a new one
     # without a deploy.py change.

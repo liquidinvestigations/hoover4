@@ -90,7 +90,7 @@ def keeps_preamble(in_plan_first_opening: bool, content: Any) -> bool:
 #: across concurrent requests while a compaction belongs to exactly one of them. Each
 #: `stream()` call installs its own list, and the graph nodes it drives inherit that
 #: context; another chat running at the same time appends to its own.
-_PENDING_COMPACTIONS: ContextVar[Optional[List[compaction.EvictionReport]]] = ContextVar(
+_PENDING_COMPACTIONS: ContextVar[Optional[List[compaction.CompactionReport]]] = ContextVar(
     "hoover4_pending_compactions", default=None
 )
 
@@ -523,8 +523,12 @@ class MCPGatewayAgent:
 
         # This run's compaction trail. Installed here so the graph nodes, which are shared
         # with every other request, append to a list belonging to this request only.
-        pending_compactions: List[compaction.EvictionReport] = []
+        pending_compactions: List[compaction.CompactionReport] = []
         _PENDING_COMPACTIONS.set(pending_compactions)
+        # Whether layer two ran at all in this turn. A separate flag because
+        # `pending_compactions` is drained as each compaction's token count arrives, and
+        # by the end of the run it says nothing about what happened.
+        summarised_this_run = False
 
         # Token accounting for the whole run, summed over its model calls.
         #
@@ -646,6 +650,9 @@ class MCPGatewayAgent:
                         while pending_compactions:
                             report = pending_compactions.pop(0)
                             report.tokens_after = stats.prompt_tokens
+                            summarised_this_run = (
+                                summarised_this_run or report.layer == "summarisation"
+                            )
                             try:
                                 await asyncio.to_thread(
                                     compaction.record_compaction,
@@ -728,6 +735,31 @@ class MCPGatewayAgent:
                         "content": end_data,
                     }
         
+        # A summarised turn says so; an evicted one does not.
+        #
+        # The difference is what the user can still check. Eviction takes tool results
+        # away from the model and leaves every one of them in the transcript, so a reader
+        # who wants the evidence has it. Summarisation replaces the model's own working
+        # prose with a machine summary, and the answer above was written from that
+        # summary rather than from what the agent actually read. That is a fact about how
+        # much to trust the answer, so it is told plainly, once, attached to the turn it
+        # is about -- not left in an administrator's table.
+        if summarised_this_run or any(
+            r.layer == "summarisation" for r in pending_compactions
+        ):
+            notice = (
+                "\n\n---\n\n*This turn grew past the model's context window, so its "
+                "earlier steps were summarised before the answer was written. Every "
+                "step is unchanged above, and every citation still points at the "
+                "document it was made from.*"
+            )
+            yield {
+                "is_task_complete": False,
+                "type": "response",
+                "content": notice,
+            }
+            all_content += notice
+
         yield {
             "is_task_complete": True,
             "type": "end",

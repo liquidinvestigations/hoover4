@@ -218,6 +218,16 @@ agent_compaction_fraction   = 0.6
 ; How many of the most recent tool results survive intact. The model is usually still
 ; working with what it just read.
 agent_compaction_keep_recent = 3
+; When eviction is not enough, the older messages are replaced by one structured handoff
+; document. The user's own messages, the todo and every message carrying a citation
+; handle are never summarised -- they are selected in code and copied through unchanged,
+; so no summariser can lose them. This is how many trailing messages are kept on top of
+; those.
+agent_compaction_keep_recent_messages = 6
+; Model that writes the handoff document. Summarising a transcript is not the task the
+; conversation model was chosen for, so it can be a cheaper or faster one. Blank means
+; the model that is answering.
+agent_compaction_model =
 
 # ---- dev tooling ----------------------------------------------------------------
 ; Serena MCP server for the host-side coding agent. Dev tool only, never

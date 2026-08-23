@@ -331,8 +331,15 @@ services:
       # older tool results stop being sent to the model, while the calls that made them
       # stay. Unset means the agent's own default, which is the shipped trigger. It does
       # not fire on the traffic this stack produces today — see research_agent/compaction.py.
+      #
+      # When eviction is not enough, layer two replaces the older messages with one
+      # handoff document written by LLM_MODEL_COMPACTION, or by the answering model when
+      # that is unset. KEEP_RECENT_MESSAGES is how many trailing messages it leaves alone
+      # on top of the ones it may never touch.
       - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
       - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
+      - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
+      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -398,9 +405,12 @@ services:
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       # See the internal search agent: the compaction trigger, as a fraction of the
-      # model's stated context window. Unset means the agent's shipped default.
+      # model's stated context window, and the summarisation that follows when eviction
+      # is not enough. Unset means the agent's shipped default.
       - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
       - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
+      - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
+      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
