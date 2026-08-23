@@ -158,9 +158,9 @@ pub async fn admin_create_collection(
     // Provision the collection's ClickHouse database. The schema lives in Python, so we
     // dispatch the operation and do not wait for it: the collection page shows a
     // "provisioning" state until `collection_db_ready` returns true. It is an operation
-    // rather than a bare workflow so that provisioning has a row saying whether it
-    // ever finished — a collection stuck in "provisioning" was previously a state with
-    // no record behind it at all.
+    // rather than a bare workflow so that provisioning has a row saying whether it ever
+    // finished: without one, a collection stuck in "provisioning" is a state with no
+    // record behind it to explain why.
     //
     // If the operation cannot even be dispatched, undo the row. Leaving it would strand
     // the collection: it can never be provisioned (there is no re-provision action) and
