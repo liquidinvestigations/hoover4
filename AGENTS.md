@@ -156,6 +156,7 @@ skill yourself. Rules in `.agents/rules/` load on their own when you open a file
 |---|---|
 | find a symbol, a caller, a config key, or a section of a long Readme | `finding-code` |
 | change code, rename something, apply one edit across files | `editing-code` |
+| write a test, fix a bug, or find out what a change endangers | `writing-tests` |
 | say it works, is fixed, or passes (build, test, check, browser pass) | `verifying-before-claiming` |
 | start or archive an epic, write a prompt/report pair, fan out artefacts | `planning-work` |
 | hand work to a sub-agent | `running-consecutive-subagents` |
