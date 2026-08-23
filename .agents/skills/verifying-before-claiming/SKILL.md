@@ -33,6 +33,9 @@ session pays for.
 | the Python unit tests pass | pytest summary, 0 failed | `scripts/pytest-unit.sh` |
 | migrations are well-formed | the parity test passes | `scripts/pytest-unit.sh tests/unit/test_migrations_parity.py` |
 | the research agent's own tests pass | pytest summary, 0 failed | `scripts/pytest-research-agent.sh`, its image carries neither pytest nor the tests, so nothing else reaches them |
+| the MCP servers' own tests pass | pytest summary per container, 0 failed | `scripts/pytest-agents.sh`, loops over the five server images and their vendored copy of `agent_common`'s tests |
+| the OCR-PDF service's own tests pass | pytest summary, 0 failed | `scripts/pytest-ocr-pdf.sh` |
+| every test directory this repository owns has a runner | `scripts/test-reachability.sh` exit 0 | it fails and names the directory when one has none |
 | the pipeline still ingests end to end | `main_services/verify-stack.sh` reaching its final assertion | `reference/verification-runs.md` |
 | a container is healthy | `docker ps --format '{{.Names}}\t{{.Status}}'` plus its own logs | `scripts/stack-status.sh` |
 | the deploy succeeded | full `./deploy` output read, not the last 50 lines | `deploying-the-stack` |
@@ -49,8 +52,11 @@ directory, the `--offline` flag, the output filter.
 .agents/skills/verifying-before-claiming/scripts/cargo-check.sh   # ~10 s warm, ~90 s cold
 .agents/skills/verifying-before-claiming/scripts/dx-check.sh
 .agents/skills/verifying-before-claiming/scripts/pytest-unit.sh [path]
+.agents/skills/verifying-before-claiming/scripts/pytest-agents.sh [path]
 .agents/skills/verifying-before-claiming/scripts/pytest-research-agent.sh [path]
+.agents/skills/verifying-before-claiming/scripts/pytest-ocr-pdf.sh [path]
 .agents/skills/verifying-before-claiming/scripts/stack-status.sh
+.agents/skills/verifying-before-claiming/scripts/test-reachability.sh
 ```
 
 The repo-relative path is written first because only one harness substitutes

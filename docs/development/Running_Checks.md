@@ -12,6 +12,7 @@ evidence for something it never examined.
 - [Python unit tests](#python-unit-tests)
 - [Stack tests](#stack-tests)
 - [Whole-stack verification](#whole-stack-verification)
+- [Test reachability](#test-reachability)
 - [Screenshots](#screenshots)
 - [Waiting without disturbing](#waiting-without-disturbing)
 
@@ -33,6 +34,7 @@ are easy to get wrong.
 | "it is deployed" | the container is up *and* answering, checked from inside the network |
 | "the bug is fixed" | the failing case reproduced before, and not reproducible after |
 | "the prose obeys the register" | `.agents/check-prose-style.py` over the changed paths, exit 0 |
+| "every test directory has a runner" | `scripts/test-reachability.sh`, exit 0 |
 
 Nothing on the left may be claimed on the strength of reading code.
 
@@ -115,6 +117,17 @@ Two things it prints that are not failures. The re-drive after the restart can f
 `WorkflowAlreadyStartedError`: that is durable execution working. The workflows survived and
 the client that died was only sequencing them. And `INGEST_ROOT_RESTART` selects the fixture,
 defaulting to the same testdata root the normal run uses.
+
+## Test reachability
+
+`scripts/test-reachability.sh` enumerates every test directory this repository owns and
+confirms each is reached by a runner, meaning a script that actually executes it. It fails
+and names the directory when none reaches it, rather than passing silently on a suite that
+ships inside an image and runs nowhere.
+
+**It does not run the tests themselves.** It checks that a runner exists and still names the
+directory it was built for; the runner's own exit code is a separate claim, settled by
+running that script.
 
 ## Screenshots
 

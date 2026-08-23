@@ -78,4 +78,5 @@ order is a defect even though the PDF still opens.
 * `/health` reports which engines are **configured**, not which are reachable: an
   unreachable tier changes between two health checks, and reporting it here would make
   this service's health flap with someone else's.
-* Run the tests with `docker exec hoover4-ocr-pdf python -m pytest tests/ -q`.
+* Run the tests with `.agents/skills/verifying-before-claiming/scripts/pytest-ocr-pdf.sh`, which
+  runs `docker exec hoover4-ocr-pdf python -m pytest tests/ -q`.
