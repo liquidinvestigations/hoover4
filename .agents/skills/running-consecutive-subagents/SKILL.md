@@ -25,7 +25,10 @@ whose failures are indistinguishable from each other in the logs.
   how long it took. An agent's sense of its own elapsed time is a feeling, and wall clock has
   to come from outside it.
 - **One item per pass**, and two only when they are one item in a dependency chain that a
-  single check closes. A brief listing five items has been measured to deliver one.
+  single check closes. A brief listing five different items has been measured to deliver one.
+  **Items of the same shape are one item.** One rule applied across a tree is one pass however
+  many directories it touches, and a pass here has been measured changing 515 files inside one
+  context without compacting.
 
 ## Resume rather than replace
 
@@ -40,6 +43,12 @@ revisit.
 - **A hand-written work package.** This is a file, written before launch, and never a
   paragraph typed into the call. See `planning-work`'s prompt template.
 - **A report file** beside the prompt, so the pair is visible in the directory listing.
+
+**A pass with context left is given the next item rather than replaced.** One agent here took
+four work packages into one context. The first cost 62 minutes because it read the corpus. The
+second, third and fourth cost 25.6, 12.5 and 12.3 minutes, because they did not have to read it
+again. A fresh pass pays that reading back every time, and it pays it out of the same budget the
+work needs.
 
 ## When a sub-agent is the wrong tool
 
@@ -66,6 +75,20 @@ Every pass needs all of this, because it starts with none of your context:
 
 Construct exactly what it needs. It does not inherit your session, and a package that assumes
 it does is a package with a hole in it.
+
+## Sizing the pass against its context
+
+A pass runs out of context long after it runs out of items. Across 96 recorded passes here the
+median peak prompt was 190,402 tokens and the p90 was 293,276, against a window of 1,000,000.
+Four of the 96 compacted, all under an earlier and smaller window. The largest recorded pass
+reached 689,268 tokens over four work packages and 357 tool calls, and never compacted.
+
+Budget 60% of the window for one pass. At the measured p90 growth rate of 2,603 tokens per tool
+call that is about 230 tool calls, and a typical implementation pass here spends 156. **If two
+passes fit inside one context and one check settles both, they are one pass.**
+
+These figures are pinned in `.agents/skills/planning-work/reference/estimating.md`. Plan against
+them as they stand, and leave re-deriving them to a person who asks for it.
 
 ## Reviewing a pass
 

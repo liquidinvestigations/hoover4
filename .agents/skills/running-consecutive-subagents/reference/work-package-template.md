@@ -45,6 +45,13 @@ present a clean summary instead.
 
 ## Timebox
 
-State it. Around thirty minutes of work, with the instruction to stop and report rather than
-continue. A pass that runs long is a pass whose scope was wrong, and the report is where that
-becomes visible.
+State it as a budget of effort and attention, and never as a clock. A pass cannot measure its
+own elapsed time and always overestimates it.
+
+Say what the pass owns, and instruct it to stop and report what it did not reach rather than
+narrowing the work to fit a feeling about time. A pass that stops with items unreached has told
+you the scope was wrong. A pass that runs long while still making progress has not.
+
+Where the item is one rule applied across many files, say so, and tell the pass to build the
+instrument first. Deriving the rule once and applying it with a script is what makes a large
+homogeneous item fit inside one pass at all.

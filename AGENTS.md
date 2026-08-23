@@ -126,7 +126,10 @@ edit that adds one.
   measured in developer days, and no estimate in that unit has ever been checked against an
   outcome. Every plan that schedules work carries an estimate table, and the final report
   restates it with an actuals column. That column stops the next estimate being copied from
-  the last guess. `planning-work` carries the method.
+  the last guess. **The pass count is the number to get right.** An estimate that costs ten
+  passes correctly and needed one is wrong by ten. Items that share one procedure, one check
+  and one context are one pass, and a plan with more than three passes states in one line what
+  forced each split. `planning-work` carries the method.
 - **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
   letter-and-number tags for a scope item, a decision, a question or a cut are free and
   useful, because they let a scope table and a result table line up. Outside that folder

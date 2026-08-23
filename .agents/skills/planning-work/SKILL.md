@@ -99,6 +99,13 @@ delivered one, a brief listing six delivered one, and the only brief delivered w
 items in a strict dependency chain that one check closed. A brief with a list in it estimates one item
 and reports the shortfall. It does not estimate the list.
 
+**The rule is about different items and not about volume.** A brief listing five different
+things with five different checks delivers one of them. A brief listing one rule applied across
+ten directories is one item, and splitting it into ten passes has been measured to cost six
+times the wall clock of doing it once. Before writing a plan with more than three passes, put
+the items through the merge test in `reference/estimating.md` and write one line per split
+saying what forced it. A split with no reason written beside it is a pass that should not exist.
+
 ## Estimating it
 
 **Cost work in passes, never in developer days.** A pass is one sub-agent invocation, and its
@@ -106,18 +113,24 @@ cost comes from a measured reference class rather than from judgement about the 
 41 minutes for a pass that writes, 10 for one that only reads, 73 for one that deploys. A
 developer day is a unit nothing here has ever been measured in.
 
+**Get the pass count right before refining the per-pass cost.** An estimate that costs ten
+passes accurately and needed one is wrong by ten, and every percentile in it is still correct.
+The estimate block therefore carries the pass count, the reason for each split, and the forecast
+peak context of the largest pass.
+
 Every plan that schedules work carries an `## Estimate` table: one row per item with its
 bucket, its verification cost, and `T50`/`T90` in minutes; then passes, agent wall clock, and
-session wall clock at twice that for the organizer. **The final report restates the same table
-with an actuals column.**
+session wall clock, which is about twice the agent time for a plan of different items and less
+when the items were merged. **The final report restates the same table with an actuals column.**
 
 That last column is what makes the next estimate better. Twenty-one plan headings in this repository's archive
 carried a parenthetical day-cost and not one was ever checked, because every report that
 followed was written in a different unit, so the estimates could not improve, and each new
 plan was written from the last plan's estimates rather than its outcomes.
 
-`reference/estimating.md` carries the method, the table and the adders;
-`reference/mine-wall-clock.py` regenerates the table from the harness's own transcripts.
+`reference/estimating.md` carries the method, the two pinned tables and the adders. Those
+numbers are a recorded measurement from one harness, and a plan uses them as they stand.
+Re-deriving them is a separate request from a person, and never a step inside a plan.
 
 ## What a prompt file must contain
 
@@ -154,6 +167,7 @@ Before a stage is called finished:
 - `reference/prompt-template.md`, the skeleton of a work package, with the sections above.
 - `reference/estimating.md`, the reference class, the verification adders, and the estimate
   block every plan carries.
-- `reference/mine-wall-clock.py`, regenerates the reference class from recorded transcripts.
+- `reference/mine-wall-clock.py` and `reference/mine-context.py`, which print the duration and
+  the context distributions when a person asks for them. Neither runs as part of planning.
 - `reference/archiving.md`, closing a folder, and what gets lifted into the tree before the
   scratch is wiped.
