@@ -116,10 +116,17 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     return [done, total]
 
 
+#: Tables the purge deletes from and then writes to again, because they record the purge
+#: itself. They are excluded from the progress count for exactly that reason: an
+#: operation that counts its own telemetry as work left to do can never reach its total,
+#: and a bar that stops short of the end reads as a purge that did not finish.
+SELF_WRITTEN_TABLES = ("processing_task_runs", "processing_task_inflight")
+
+
 @activity.defn
 @with_heartbeat
 def count_dataset_rows_activity(params: DatasetProgressParams) -> int:
-    """How many rows of the dataset are still in the two stores.
+    """How many rows of the dataset's corpus are still in the two stores.
 
     What the purge driver counts progress with: the total taken before the purge starts
     is the denominator, and the same count taken again while it runs is what is left, so
@@ -130,7 +137,9 @@ def count_dataset_rows_activity(params: DatasetProgressParams) -> int:
     from tasks.P_admin.activities import count_dataset_rows
 
     counts = count_dataset_rows(params.collectionname, params.collection_dataset)
-    return sum(counts["manticore"].values()) + sum(counts["clickhouse"].values())
+    return (sum(counts["manticore"].values())
+            + sum(n for table, n in counts["clickhouse"].items()
+                  if table not in SELF_WRITTEN_TABLES))
 
 
 @activity.defn

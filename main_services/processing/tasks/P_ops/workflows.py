@@ -38,6 +38,13 @@ with workflow.unsafe.imports_passed_through():
 #: which is the same server the ingest is writing to.
 PROGRESS_INTERVAL_SECONDS = 15
 
+#: How many more times a finished purge re-counts before it reports what is left.
+#:
+#: Deletes land asynchronously in ClickHouse, so the count taken the moment the purge
+#: returns is not the answer. Bounded rather than a wait for zero: a row that survives is
+#: something a person has to see, not something to hang on.
+PURGE_SETTLE_SAMPLES = 8
+
 #: The row writes are small, idempotent and on the critical path of the lock being
 #: released, so they retry patiently rather than giving up and stranding the lock.
 ROW_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(seconds=1))
@@ -212,7 +219,16 @@ class Operation:
             remaining = await self._count_rows(params)
             await self._record(params.op_id, max(0, total - remaining), total)
         await child
+        # ClickHouse lightweight deletes are asynchronous, so the last count is polled
+        # rather than read once: a purge that has done everything asked of it still
+        # shows rows for a while, and reporting that as work left undone is wrong.
         remaining = await self._count_rows(params)
+        for _ in range(PURGE_SETTLE_SAMPLES):
+            if not remaining:
+                break
+            await workflow.sleep(timedelta(seconds=PROGRESS_INTERVAL_SECONDS))
+            remaining = await self._count_rows(params)
+            await self._record(params.op_id, max(0, total - remaining), total)
         await self._record(params.op_id, max(0, total - remaining), total)
         return f"purged {total - remaining} row(s) of {params.collection_dataset}"
 

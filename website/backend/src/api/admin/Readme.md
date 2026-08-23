@@ -13,18 +13,18 @@ the actual gate.
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
   `main_services/processing/tasks/P_admin/` — the website never computes ETAs in a
   request path).
-- `dataset_ocr.rs` — per-dataset OCR languages, the `change_ocr_languages` apply job and
-  its `dataset_jobs` row, the collection-level defaults new datasets inherit, and dataset
-  **creation** (which was CLI-only). Two rules live here: one job per dataset, refused
-  server-side rather than by a disabled button; and the creation form takes a folder
-  *name* validated against the listing of `DATASETS_MOUNT_PATH`, never a path.
+- `dataset_ocr.rs` — per-dataset OCR languages, the `change_ocr_languages` operation and
+  the newest operation row a dataset page shows, the collection-level defaults new datasets
+  inherit, and dataset **creation** (which was CLI-only). Two rules live here: one language
+  change per dataset, refused by the operations lock rather than by a disabled button; and
+  the creation form takes a folder *name* validated against the listing of
+  `DATASETS_MOUNT_PATH`, never a path.
 - `temporal_trigger.rs` — starts pipeline workflows over the Temporal HTTP API,
-  tagging dataset-scoped starts with the `CollectionDataset` search attribute.
-  `start_ocr_language_job` is the one kind here with a **timestamped** workflow id: the
-  rest reuse theirs so a second click is a no-op, but two OCR-language changes are two
-  different jobs with two different before/after states. The two ingest kinds no longer
-  come through here at all — `admin_trigger_workflow` dispatches them as operations,
-  which is what gives a button-started run its own id and its own row.
+  tagging dataset-scoped starts with the `CollectionDataset` search attribute. The ids
+  here are reused deliberately, so a second click is a no-op. Anything that must actually
+  run again on a second click is dispatched as an operation instead, which is what gives a
+  button-started run its own timestamped id and its own row: the two ingest kinds, the
+  purge, the OCR-language change and the failed-file retry all go that way.
 - `operations.rs` — the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.

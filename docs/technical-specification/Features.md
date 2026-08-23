@@ -33,9 +33,9 @@ languages.
 | `F-ingest-09` | Chunk and embed every text variant into a durable vector store | `P5_chunk_embed/` |
 | `F-ingest-10` | Index everything into shard tables sized by a planner | `P6_index_data/` |
 | `F-ingest-11` | Rescan a dataset incrementally: changed files reprocess, unchanged files are untouched, removed paths are marked and de-indexed by reachability | `P0_scan_disk/`, `vfs_files` |
-| `F-ingest-12` | Re-run one stage for the documents it failed on, without re-ingesting | `main.py retry-failed-files` |
+| `F-ingest-12` | Re-run one stage for the documents it failed on, without re-ingesting, keeping each failure at one recorded row however many times it is retried | `main.py retry-failed-files`, the `retry_failed_files` operation |
 | `F-ingest-13` | Re-index a collection from parsed content, without re-parsing | `main.py reindex-collection` |
-| `F-ingest-14` | Purge an abandoned dataset's rows from every table and the index | `main.py purge-dataset` |
+| `F-ingest-14` | Purge an abandoned dataset's rows from every table and the index | `main.py purge-dataset`, the `purge_dataset` operation |
 | `F-ingest-15` | Survive a worker restart mid-ingest: in-flight activities are drained rather than killed, batch stages give their work back at an item boundary, and the dataset finishes with every document's chunks, vectors and index rows | `tasks/run_worker.py`, `tasks/heartbeat.py`, `main_services/verify-stack.sh --restart-resilience` |
 
 ## Search
@@ -135,7 +135,7 @@ languages.
 | `F-admin-02` | Add a dataset to a collection and start its ingestion | `website/backend/src/api/admin/datasets.rs` |
 | `F-admin-03` | Watch processing progress per stage, with estimates | `website/backend/src/api/admin/processing.rs`, `processing_eta_samples` |
 | `F-admin-04` | Rescan or re-index a dataset from the interface, dispatched as an operation so a run started from a button is one row in the same log as a run started from a terminal | `website/backend/src/api/admin/datasets.rs:admin_trigger_workflow`, `operations.rs:dispatch_operation` |
-| `F-admin-05` | Change a dataset's OCR languages and apply it | `website/backend/src/api/admin/dataset_ocr.rs` |
+| `F-admin-05` | Change a dataset's OCR languages and apply it, as an operation whose row carries the stage it is in and the variants it added and removed | `website/backend/src/api/admin/dataset_ocr.rs`, the `change_ocr_languages` operation |
 | `F-admin-06` | Manage users and groups, and grant a group read access to a collection | `website/backend/src/api/admin/users.rs`, `groups.rs` |
 | `F-admin-07` | Configure language-model providers, and the model each agent profile uses | `website/backend/src/api/admin/llm.rs` |
 | `F-admin-07a` | Discover each model's context window from the provider's own listing and keep it against the model, leaving it absent rather than guessed where the provider states none | `website/backend/src/api/admin/llm.rs`, `tasks/llm_catalog.py`, `llm_models.context_window` |
@@ -152,6 +152,8 @@ languages.
 | `F-admin-18` | See the same operations log scoped to one collection, on that collection's page | `CollectionOperationsPanel`, `website/frontend/src/pages/admin/collection_detail.rs` |
 | `F-admin-19` | Show how many documents an operation failed on, so a run that finished over failed documents does not read as a clean one | `tasks/P_ops/activities.py:sample_dataset_progress`, the row's `detail` |
 | `F-admin-20` | Show the failure rate of each task type against a configured threshold, calling out the types above it as candidate tooling limitations | `admin_list_operations`, `error_rate_alert_percent` |
+| `F-admin-21` | Purge a dataset, change its OCR languages or retry its failed files from the interface, each as an operation: one lock, one row, and progress that counts rows deleted or plans re-run rather than stages returned | `admin_delete_dataset`, `admin_apply_ocr_languages`, `admin_retry_failed_task`, `tasks/P_ops/workflows.py` |
+| `F-admin-22` | Show the newest operation touching a dataset on that dataset's own page, from the same log the operations page reads, so the two cannot describe one run differently | `DatasetOperationStrip`, `dataset_ocr.rs:latest_operation` |
 
 ## Identity and access
 

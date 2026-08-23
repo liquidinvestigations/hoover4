@@ -1,7 +1,7 @@
 # P_admin - Collection administration
 
 Administrative workflows: per-collection ClickHouse database lifecycle, dataset purges,
-the `change_ocr_languages` apply job, and the rolling ETA sampler for the admin processing
+the `change_ocr_languages` apply run, and the rolling ETA sampler for the admin processing
 page. Not a pipeline stage: these run on demand (admin UI or CLI) or as a self-scheduling
 singleton, rather than as part of ingestion.
 
@@ -31,8 +31,8 @@ exactly one source of truth in Python.
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
-- OCR language job: `ocr_languages.py` (the variant diff, the purge, and the
-  `dataset_jobs` row the admin form polls)
+- OCR languages: `ocr_languages.py` (the variant diff, the purge, and the stage reports
+  it merges into the operation row the admin form polls)
 - ETA logic: `eta_collector.py` (SQL, rates, throttle — documented in its module docstring)
 - File-level retry: `failed_file_retry.py` (which re-run recovers which task, and the
   ClickHouse reads and deletes it needs)
@@ -41,18 +41,18 @@ exactly one source of truth in Python.
   <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
   <collectionname> [--dataset X] [--task T] [--apply]`
 - Website: `api/admin/temporal_trigger.rs` kinds `ensure_collection` /
-  `drop_collection_database` / `purge_dataset`, plus `start_ocr_language_job` — which,
-  unlike those three, uses a **timestamped** workflow id: reusing an id makes a second
-  click a no-op, and two language changes are two different jobs with two different
-  before/after states.
+  `drop_collection_database`. `PurgeDataset` and `ChangeOcrLanguages` are reached as
+  children of the `purge_dataset` and `change_ocr_languages` operations instead, so each
+  run gets the operation's timestamped id: reusing an id makes a second click a no-op, and
+  two language changes are two different runs with two different before/after states.
 
-## One job per dataset
+## One run per dataset
 
-`api/admin/dataset_ocr.rs::assert_no_running_job` refuses a dispatch while a non-terminal
-`dataset_jobs` row exists for the dataset. That row is also what the admin form polls, so
-what stops the second admin is exactly what the first one can see. A stale row is *not*
-treated as free: a job that has stopped reporting may still have activities in flight, and
-two workflows reopening the same plans would purge each other's variants.
+The operations lock refuses a dispatch while a non-terminal `operations` row holds the same
+kind and target. That row is also what the admin form polls, so what stops the second admin
+is exactly what the first one can see. A stale row is *not* treated as free: a run that has
+stopped reporting may still have activities in flight, and two workflows reopening the same
+plans would purge each other's variants. Cancelling is what releases the lock early.
 
 ## The ETA estimate, in words
 

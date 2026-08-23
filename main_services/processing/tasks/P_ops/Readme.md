@@ -45,10 +45,32 @@ cancelled workflow cannot schedule further activities, so a cleanup write attemp
 it would be cancelled with it and the row would stay non-terminal for ever, holding the lock
 that cancelling was meant to release.
 
+## What each kind drives
+
+`add_dataset` and `rescan_dataset` drive the ingest chain; `reindex_collection` rebuilds a
+collection's shard tables from its finished plans; `purge_dataset`, `change_ocr_languages`
+and `retry_failed_files` each drive their own child workflow or chain of them. Every child
+is addressed **by name**, never by importing its class: importing drags the pipeline's
+module graph through the workflow sandbox's importer, where a re-imported C extension fails
+with a bare `SystemError` naming nothing in this repository — and the operations container
+has no business loading the pipeline's dependencies anyway, since it schedules that work
+rather than running it.
+
+A kind the workflow cannot drive fails honestly: the row errors naming the kind. The table
+accepts more kinds than the workflow drives, on purpose, so a row can exist for work another
+surface performs.
+
 ## Progress and estimates
 
-For an ingest, progress is counted in **plans**: the unit the pipeline finishes, and the
-only one whose total is known before the work is done. The estimate is derived from this
+Progress is whatever that kind can honestly count, and the unit differs by kind: an ingest
+and an OCR-language change count **plans**, a retry counts the plans it re-runs, and a purge
+counts **rows still in the stores**, so its bar moves with the deletion rather than with the
+number of activities that have returned. A purge excludes the two task-telemetry tables it
+writes to while it runs — an operation counting its own telemetry as work left to do could
+never reach its total.
+
+A plan is the unit the pipeline finishes, and the only one whose total is known before the
+work is done, which is why so many kinds count it. The estimate is derived from this
 operation's own elapsed time rather than from the global ETA sampler, so it is right for
 this run's data even when nothing comparable has been ingested before. `progress_total = 0`
 means "not yet known", which is a different statement from "no work".
