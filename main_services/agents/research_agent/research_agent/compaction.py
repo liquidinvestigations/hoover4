@@ -122,9 +122,19 @@ HANDOFF_HEADER = (
 )
 
 #: How long the summariser model is given. A compaction that hangs costs the turn it was
-#: meant to save, so this is short and a timeout means no summarisation rather than no
+#: meant to save, so this is bounded and a timeout means no summarisation rather than no
 #: answer.
-_SUMMARISER_TIMEOUT = (5.0, 120.0)
+_SUMMARISER_TIMEOUT = (5.0, 180.0)
+
+#: How much unprotected material has to be there before a summariser call is worth making.
+#: Below this the handoff document would be about as long as what it replaces -- the
+#: refusal below catches that, but only after paying for a model call to find out.
+MIN_SUMMARISABLE_CHARS = 6000
+
+#: Ceiling on the handoff document's length, in tokens. A handoff longer than this is not
+#: a summary, and the refusal below already rejects one that is not smaller than what it
+#: replaces -- this stops the model spending the time to produce one first.
+SUMMARY_TOKEN_CEILING = 1200
 
 #: How long a context window read from the catalog is trusted before it is read again.
 #: The catalog is refreshed on a schedule and a model's window does not change between
@@ -614,6 +624,17 @@ def summarise_with_model(prompt: str, *, model_id: str) -> str:
                     "model": model,
                     "temperature": 0,
                     "messages": [{"role": "user", "content": prompt}],
+                    # Thinking off, and a hard ceiling on the completion.
+                    #
+                    # Summarising is not a reasoning task, and a thinking model given a
+                    # transcript reasons about the *content* -- it starts answering the
+                    # research question instead of compressing it. Measured here: with
+                    # thinking left to the template's default the call did not return
+                    # inside two minutes, and a compaction that outlives its own timeout
+                    # is a compaction that never happens. See research_agent/thinking.py
+                    # for why the default is not a small budget but no thinking at all.
+                    "max_tokens": SUMMARY_TOKEN_CEILING,
+                    "chat_template_kwargs": {"enable_thinking": False},
                 },
             )
             if response.status_code >= 300:
@@ -704,6 +725,13 @@ def summarise_messages(
     if not droppable:
         return messages, report
     dropped = [messages[i] for i in droppable]
+    if sum(_content_length(m) for m in dropped) < MIN_SUMMARISABLE_CHARS:
+        log.info(
+            "not enough unprotected material to summarise (%d messages), "
+            "the list is sent as layer one left it",
+            len(dropped),
+        )
+        return messages, report
     prompt = SUMMARISER_PROMPT.format(transcript=_transcript_for_summariser(dropped))
     call = summariser or (lambda text: summarise_with_model(text, model_id=model_id))
     body = (call(prompt) or "").strip()
@@ -942,7 +970,9 @@ def describe() -> str:
         return "context compaction: off"
     summariser = (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or "the answering model"
     return (
-        f"context compaction: eviction at {fraction:.0%} of the model's stated context "
+        # `:g` rather than `:.0%`: a demonstration lowers this to a small fraction, and a
+        # startup line that rounds 0.002 to "0%" says compaction is off when it is on.
+        f"context compaction: eviction at {fraction * 100:g}% of the model's stated context "
         f"window, keeping the {keep_recent()} most recent tool results, then "
         f"summarisation by {summariser} keeping the {keep_recent_messages()} most "
         "recent messages"
