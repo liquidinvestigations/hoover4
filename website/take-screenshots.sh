@@ -73,7 +73,13 @@ docker exec "$BROWSER_CONTAINER" touch "$REMOTE_DIR/.running"
 
 echo "== capturing from $SITE_URL =="
 set +e
-docker exec "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
+# Forwarded only when set: this is the override a page's `requires_dataset` is checked
+# against instead of the site's own storage tree, which is how a run simulates an absent
+# corpus without deleting or un-ingesting anything.
+PRESENT_DATASETS_ENV=()
+[ -n "${HOOVER4_SCREENSHOT_PRESENT_DATASETS+x}" ] &&
+    PRESENT_DATASETS_ENV=(-e "HOOVER4_SCREENSHOT_PRESENT_DATASETS=$HOOVER4_SCREENSHOT_PRESENT_DATASETS")
+docker exec "${PRESENT_DATASETS_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
     --ini "$REMOTE_DIR/screenshots.ini" \
     --out "$REMOTE_DIR/out" \
     --base-url "$SITE_URL" \

@@ -44,10 +44,13 @@ The explanations live in `docs/`, because they outlive any one change here:
 | whole stack | `main_services/verify-stack.sh` |
 | screenshots | `./take-screenshots.sh` |
 
-**Both fixture-driven suites are welded to the corpus `main_services/verify-stack.sh`
-ingests**: `screenshots.ini`'s routes and `stack_integration.rs`'s fixtures. On any other
-corpus they fail by naming a dataset that does not exist, which reads as a broken page and is
-neither. Run the stack verification first, or read their failures as a missing precondition.
+**Both fixture-driven suites separate their corpus-dependent cases from their
+corpus-independent ones.** A case that names a dataset, a document or a count only
+`main_services/verify-stack.sh`'s corpus produces skips, naming the missing dataset,
+when that corpus is absent, instead of failing in a way that reads as a broken page.
+`screenshots.ini` marks such a page with `requires_dataset`; `stack_integration.rs` checks
+with `skip_unless_dataset!` and its two corpus-wide forms. Run the stack verification first
+to exercise the corpus-dependent half too.
 
 ## Development notes
 

@@ -66,6 +66,84 @@ fn admin_user() -> CurrentUser {
     }
 }
 
+/// The four datasets `main_services/verify-stack.sh` ingests, and the presence check that
+/// lets a corpus-dependent test skip instead of failing when they are not this run's
+/// corpus. `TESTFILES`, `SHAPES` and `EMAILS` are also used, unmodified, by the
+/// assertions below.
+const TESTFILES: &str = "testdata_testfiles";
+const ZIPS: &str = "testdata_zips";
+const SHAPES: &str = "testdata_shapes";
+const EMAILS: &str = "other_emails";
+const CORPUS_DATASETS: [&str; 4] = [TESTFILES, ZIPS, SHAPES, EMAILS];
+
+/// Whether `dataset` is in the corpus this run can see.
+///
+/// Reads `HOOVER4_STACK_TEST_PRESENT_DATASETS` (comma-separated dataset names) when it is
+/// set, and answers from that list alone -- this is how a run simulates an absent corpus
+/// without deleting or un-ingesting anything. Unset, it asks the live stack.
+async fn dataset_present(dataset: &str) -> bool {
+    if let Ok(list) = std::env::var("HOOVER4_STACK_TEST_PRESENT_DATASETS") {
+        return list.split(',').map(str::trim).any(|d| d == dataset);
+    }
+    resolve_collection(dataset).await.is_ok()
+}
+
+/// Whether any of the four corpus datasets is in this run's corpus. For a test that needs
+/// the corpus in general rather than one dataset it names.
+async fn corpus_present() -> bool {
+    for dataset in CORPUS_DATASETS {
+        if dataset_present(dataset).await {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether every one of the four corpus datasets is in this run's corpus. For a test whose
+/// arithmetic spans all of them.
+async fn full_corpus_present() -> bool {
+    for dataset in CORPUS_DATASETS {
+        if !dataset_present(dataset).await {
+            return false;
+        }
+    }
+    true
+}
+
+/// Skips the calling test, with a named reason, when `dataset` is not in the corpus this
+/// run can see. A corpus-dependent case checks this first, so a run away from
+/// `main_services/verify-stack.sh`'s corpus reads as a skip instead of a failure that
+/// reads as a broken site.
+macro_rules! skip_unless_dataset {
+    ($dataset:expr) => {
+        if !dataset_present($dataset).await {
+            eprintln!("[stack] skip: {} is not in this run's corpus", $dataset);
+            return;
+        }
+    };
+}
+
+/// Same, gated on [`corpus_present`]: any one of the four corpus datasets is enough.
+macro_rules! skip_unless_corpus {
+    () => {
+        if !corpus_present().await {
+            eprintln!("[stack] skip: no corpus dataset is in this run's corpus");
+            return;
+        }
+    };
+}
+
+/// Same, gated on [`full_corpus_present`]: every one of the four corpus datasets must be
+/// present.
+macro_rules! skip_unless_full_corpus {
+    () => {
+        if !full_corpus_present().await {
+            eprintln!("[stack] skip: not every corpus dataset is in this run's corpus");
+            return;
+        }
+    };
+}
+
 /// Serialises the tests that assert the global partial flag: the missing-shard
 /// test deliberately makes every search partial for its duration, which would
 /// flunk the healthy-stack assertions of tests running concurrently.
@@ -91,6 +169,8 @@ async fn wait_for_shard_cache(collection: &str, shard: &str, present: bool) {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn resolve_collection_for_known_dataset() {
+    skip_unless_dataset!(TESTFILES);
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("resolve_collection_for_known_dataset");
     assert_eq!(
         resolve_collection("testdata_testfiles").await.unwrap(),
@@ -102,6 +182,7 @@ async fn resolve_collection_for_known_dataset() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn client_for_dataset_reads_collection_tables() {
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("client_for_dataset_reads_collection_tables");
     let client = get_client_for_dataset("testdata_testfiles").await.unwrap();
     let count: u64 = client
@@ -115,6 +196,7 @@ async fn client_for_dataset_reads_collection_tables() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn shard_ledger_lists_shards_with_generation() {
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("shard_ledger_lists_shards_with_generation");
     let shards = list_shards("testdata").await.unwrap();
     assert!(!shards.is_empty(), "testdata must have at least one shard");
@@ -127,6 +209,7 @@ async fn shard_ledger_lists_shards_with_generation() {
 #[ignore = "needs live stack"]
 async fn search_round_trip_returns_hits_from_fixture_collections() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_corpus!();
     let _budget = Budget::start("search_round_trip_returns_hits_from_fixture_collections");
     let query = SearchQuery {
         collection_datasets: vec![],
@@ -169,6 +252,8 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn dataset_facet_selection_prunes_collections() {
+    skip_unless_dataset!(EMAILS);
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("dataset_facet_selection_prunes_collections");
     use common::search_result::FacetOriginalValue;
     let mut query = SearchQuery {
@@ -238,6 +323,7 @@ async fn pagination_pages_are_disjoint_and_complete() {
     use std::collections::BTreeSet;
 
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_corpus!();
     let _budget = Budget::start("pagination_pages_are_disjoint_and_complete");
     // The EMPTY query, not "the". Only 16 documents in the minimal verify-stack roots
     // contain "the", which is under PAGE_SIZE, so a term query here silently stops
@@ -293,6 +379,7 @@ async fn pagination_pages_are_disjoint_and_complete() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn slow_missing_shard_degrades_to_partial_results() {
+    skip_unless_dataset!(EMAILS);
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
     let client = backend::db_utils::clickhouse_utils::get_collection_client("other");
     // Start from a converged clean cache (a previous run may have poisoned it).
@@ -406,6 +493,7 @@ async fn permissions_restrict_search_to_granted_collections() {
     use backend::db_auth::{collections as db_collections, groups};
 
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("permissions_restrict_search_to_granted_collections");
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -491,10 +579,6 @@ async fn permissions_restrict_search_to_granted_collections() {
 
 use common::search_query::{RangeFilter, SortKey, SortSpec};
 
-const TESTFILES: &str = "testdata_testfiles";
-const SHAPES: &str = "testdata_shapes";
-const EMAILS: &str = "other_emails";
-
 fn dated_query(min: Option<i64>, max: Option<i64>, include_unknown: bool) -> SearchQuery {
     let mut query = SearchQuery::default();
     query
@@ -525,6 +609,7 @@ async fn hits(query: SearchQuery) -> u64 {
 #[ignore = "needs live stack"]
 async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_full_corpus!();
     let _budget = Budget::start("range_filter_covers_the_corpus_and_straddlers_are_in_both_halves");
 
     let all = hits(SearchQuery::default()).await;
@@ -581,6 +666,7 @@ async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
 #[ignore = "needs live stack"]
 async fn unknown_dates_only() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_corpus!();
     let _budget = Budget::start("unknown_dates_only");
 
     let all = hits(SearchQuery::default()).await;
@@ -609,6 +695,7 @@ async fn unknown_dates_only() {
 #[ignore = "needs live stack"]
 async fn sort_by_size_is_monotonic_across_shards() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_corpus!();
     let _budget = Budget::start("sort_by_size_is_monotonic_across_shards");
 
     for desc in [true, false] {
@@ -648,6 +735,7 @@ async fn sort_by_size_is_monotonic_across_shards() {
 #[ignore = "needs live stack"]
 async fn filename_only_match() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("filename_only_match");
 
     let query = SearchQuery { query_string: "easychair".to_string(), ..SearchQuery::default() };
@@ -704,6 +792,7 @@ async fn filename_only_match() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn in_folder_search_is_scoped() {
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("in_folder_search_is_scoped");
     use common::vfs::make_node_key;
 
@@ -752,6 +841,8 @@ async fn in_folder_search_is_scoped() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn vfs_endpoints_respect_permissions() {
+    skip_unless_dataset!(EMAILS);
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("vfs_endpoints_respect_permissions");
     use backend::db_auth::{collections as db_collections, groups};
     use common::vfs::dataset_root_key;
@@ -846,6 +937,7 @@ async fn vfs_endpoints_respect_permissions() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn structure_queries_are_not_cached() {
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("structure_queries_are_not_cached");
     use common::vfs::dataset_root_key;
 
@@ -885,6 +977,7 @@ async fn structure_queries_are_not_cached() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn vfs_tree_path_to_walks_the_whole_chain() {
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("vfs_tree_path_to_walks_the_whole_chain");
     use common::vfs::make_node_key;
 
@@ -917,6 +1010,7 @@ async fn vfs_tree_path_to_walks_the_whole_chain() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn vfs_tree_path_to_crosses_a_container() {
+    skip_unless_dataset!(ZIPS);
     let _budget = Budget::start("vfs_tree_path_to_crosses_a_container");
     use common::vfs::{VfsNodeKind, make_node_key};
 
@@ -990,6 +1084,7 @@ async fn vfs_tree_path_to_crosses_a_container() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn folders_only_counts_and_returns_only_what_the_tree_draws() {
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("folders_only_counts_and_returns_only_what_the_tree_draws");
     use common::vfs::{VfsNodeKind, VfsTreeChildren, dataset_root_key};
 
@@ -1046,6 +1141,7 @@ async fn folders_only_counts_and_returns_only_what_the_tree_draws() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn paging_a_wide_level_tiles_it_exactly_once() {
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("paging_a_wide_level_tiles_it_exactly_once");
     use common::vfs::make_node_key;
     use std::collections::BTreeSet;
@@ -1092,6 +1188,7 @@ async fn paging_a_wide_level_tiles_it_exactly_once() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn file_locations_lists_every_path_of_a_hash() {
+    skip_unless_dataset!(ZIPS);
     let _budget = Budget::start("file_locations_lists_every_path_of_a_hash");
     use common::search_result::DocumentIdentifier;
     use common::vfs::{VfsNodeKind, make_node_key};
@@ -1143,6 +1240,7 @@ async fn file_locations_lists_every_path_of_a_hash() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn the_shapes_fixture_is_deep_and_wide() {
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("the_shapes_fixture_is_deep_and_wide");
     use common::vfs::make_node_key;
 
@@ -1171,6 +1269,7 @@ async fn the_shapes_fixture_is_deep_and_wide() {
 #[ignore = "needs live stack"]
 async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_corpus!();
     let _budget = Budget::start("date_histogram_bins_the_corpus_and_honours_the_cutoffs");
 
     let unfiltered = backend::api::search::search_date_histogram(&admin_user(), SearchQuery::default())
@@ -1226,6 +1325,7 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn email_source_names_a_page_that_holds_the_body() {
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("email_source_names_a_page_that_holds_the_body");
     use common::document_sources::{DocumentSourceItem, EMAIL_TEXT_EXTRACTOR};
     use common::search_result::DocumentIdentifier;
@@ -1296,6 +1396,7 @@ async fn email_source_names_a_page_that_holds_the_body() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("an_email_with_no_parsed_body_is_not_offered_as_one");
     use common::document_sources::{DocumentSourceItem, EMAIL_TEXT_EXTRACTOR};
     use common::search_result::DocumentIdentifier;
@@ -1410,6 +1511,7 @@ async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn in_pdf_search_returns_hits_through_the_sidecar() {
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("in_pdf_search_returns_hits_through_the_sidecar");
     use common::search_result::DocumentIdentifier;
 
@@ -1473,6 +1575,7 @@ fn pdf_search_endpoint_defaults_to_loopback() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn downloading_an_unknown_hash_is_not_found() {
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("downloading_an_unknown_hash_is_not_found");
     use axum::extract::{Extension, Path};
 
@@ -1557,6 +1660,7 @@ async fn ai_status_reports_the_hardware_that_actually_serves_ner() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn a_document_that_is_not_an_image_is_not_an_error() {
+    skip_unless_dataset!(EMAILS);
     let _budget = Budget::start("a_document_that_is_not_an_image_is_not_an_error");
     use common::document_sources::EMAIL_TEXT_EXTRACTOR;
     use common::search_result::DocumentIdentifier;
@@ -1615,6 +1719,7 @@ async fn a_document_that_is_not_an_image_is_not_an_error() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn the_entities_facet_offers_no_extraction_debris() {
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("the_entities_facet_offers_no_extraction_debris");
     use common::entity_stoplist::{ENTITY_TERM_FIELD, is_stopped_entity};
 
@@ -1662,6 +1767,7 @@ async fn the_entities_facet_offers_no_extraction_debris() {
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn the_collections_facet_offers_exactly_the_registered_datasets() {
+    skip_unless_corpus!();
     let _budget = Budget::start("the_collections_facet_offers_exactly_the_registered_datasets");
     let registered: std::collections::BTreeSet<String> =
         backend::api::list_datasets::list_dataset_ids()
@@ -2132,6 +2238,8 @@ async fn insert_graph_cluster(dataset: &str, hash: &str, size: u32) {
 #[ignore]
 async fn the_same_message_in_two_datasets_is_one_cluster_from_either_centre() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_dataset!(TESTFILES);
+    skip_unless_dataset!(SHAPES);
     let _budget = Budget::start("email_graph_identity_across_datasets");
     clear_graph_fixture().await;
     // The same `.eml` in two datasets: one custodian's copy and another's, which is the
@@ -2192,6 +2300,7 @@ async fn the_same_message_in_two_datasets_is_one_cluster_from_either_centre() {
 #[ignore]
 async fn a_cycle_in_the_edge_table_terminates_the_walk() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("email_graph_cycle_terminates");
     clear_graph_fixture().await;
     // `eml-7-recursive` is an email that contains itself, so a self edge and a two-cycle
@@ -2231,6 +2340,7 @@ async fn a_cycle_in_the_edge_table_terminates_the_walk() {
 #[ignore]
 async fn the_node_budget_is_clamped_server_side() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_dataset!(TESTFILES);
     let _budget = Budget::start("email_graph_budget_clamped");
     clear_graph_fixture().await;
     insert_graph_message(TESTFILES, GRAPH_A, "budget fixture", 1_600_000_000).await;

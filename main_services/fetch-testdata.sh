@@ -19,7 +19,7 @@ set -euo pipefail
 TESTDATA_REPO="${TESTDATA_REPO:-https://github.com/liquidinvestigations/hoover-testdata}"
 # The revision every fixture path in verify-stack.sh and backend/tests/stack_integration.rs
 # was written against. Bump it together with those paths, never on its own.
-TESTDATA_COMMIT="${TESTDATA_COMMIT:-73baf54211a31ef3c8af5610134b541565f0ed99}"
+TESTDATA_COMMIT="${TESTDATA_COMMIT:-57a8300e73c6b524e3eed10c13a051c134de6998}"
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"

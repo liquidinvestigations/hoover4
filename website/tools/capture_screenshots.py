@@ -40,6 +40,14 @@ A page fails, and the run exits non-zero, when any of these hold:
 Per-page exemptions live in the ini: ``allow_error_markers``, ``allow_http_errors``,
 ``allow_console`` (a substring, one per line). Run-wide console exceptions live in
 ``console_whitelist.txt``; whitelisted matches still print, as warnings.
+
+A page tied to a fixture dataset -- one that names a document or a count only
+``main_services/verify-stack.sh``'s corpus produces -- names it in ``requires_dataset``.
+Away from that corpus such a page is skipped, with the missing dataset in the report,
+rather than failed for a reason that reads as a broken site. ``requires_dataset`` is
+checked against the site's own storage tree; ``HOOVER4_SCREENSHOT_PRESENT_DATASETS``
+(comma-separated dataset names) overrides that check, which is how a run simulates an
+absent corpus without deleting or un-ingesting anything.
 """
 
 from __future__ import annotations
@@ -64,6 +72,10 @@ DEFAULT_VIEWPORT = (1280, 900)
 # the first navigation is given room rather than the browser start.
 PAGE_TIMEOUT_S = 30.0
 
+# The four datasets `main_services/verify-stack.sh` always ingests. A page's
+# `requires_dataset = any` is satisfied by any one of these.
+CORPUS_DATASETS = ("testdata_testfiles", "testdata_zips", "testdata_shapes", "other_emails")
+
 
 # ---------------------------------------------------------------------------------
 # The ini
@@ -82,6 +94,10 @@ class Page:
     allow_error_markers: bool = False
     allow_http_errors: bool = False
     allow_console: list[str] = field(default_factory=list)
+    # Datasets this page's route or assertions are tied to. Several means all of them are
+    # needed; the literal "any" means one of CORPUS_DATASETS, unnamed. Empty means the page
+    # renders without the fixture corpus.
+    requires_dataset: list[str] = field(default_factory=list)
 
 
 def parse_pages(ini_path: Path) -> list[Page]:
@@ -110,9 +126,27 @@ def parse_pages(ini_path: Path) -> list[Page]:
                     for line in section.get("allow_console", "").splitlines()
                     if line.strip()
                 ],
+                requires_dataset=[
+                    d.strip()
+                    for d in section.get("requires_dataset", "").split(",")
+                    if d.strip()
+                ],
             )
         )
     return pages
+
+
+def missing_datasets(page: Page, present: set[str]) -> list[str]:
+    """The datasets `page` needs that are not in `present`, or `[]` if it can run.
+
+    `any` is satisfied by one of CORPUS_DATASETS; anything else is a literal dataset name
+    and every one named must be present.
+    """
+    if not page.requires_dataset:
+        return []
+    if page.requires_dataset == ["any"]:
+        return [] if present & set(CORPUS_DATASETS) else ["any of " + ", ".join(CORPUS_DATASETS)]
+    return [d for d in page.requires_dataset if d not in present]
 
 
 def parse_actions(raw: str) -> list[tuple[str, str]]:
@@ -592,6 +626,33 @@ return {rebuilding: showing && (text.includes('being rebuilt') || text.includes(
     raise RuntimeError(f"dx serve was still rebuilding after {DEV_REBUILD_TIMEOUT_S:g}s")
 
 
+async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set[str]:
+    """Which of `needed` are registered on the running site.
+
+    `HOOVER4_SCREENSHOT_PRESENT_DATASETS` (comma-separated dataset names), when set,
+    answers on its own -- this is how a run simulates an absent corpus without deleting or
+    un-ingesting anything, and is what proves the skip below actually skips. Unset, this
+    asks the site: the unified storage tree at `/file_browser` carries one row per
+    registered dataset, `#x-tree-d-<dataset>`, so a dataset absent from it is not ingested.
+    """
+    override = os.environ.get("HOOVER4_SCREENSHOT_PRESENT_DATASETS")
+    if override is not None:
+        return {d.strip() for d in override.split(",") if d.strip()}
+    if not needed:
+        return set()
+    await tab.get(base_url + "/file_browser")
+    await wait_css(tab, "body *")
+    await asyncio.sleep(1500 / 1000.0)
+    present: set[str] = set()
+    for dataset in needed:
+        found = await js(
+            tab, "return {ok: !!document.querySelector(%s)};" % json.dumps(f"#x-tree-d-{dataset}")
+        )
+        if found.get("ok"):
+            present.add(dataset)
+    return present
+
+
 async def capture_all(
     pages: list[Page],
     base_url: str,
@@ -615,6 +676,7 @@ async def capture_all(
     )
     failed_pages: list[str] = []
     warned_pages: list[str] = []
+    skipped_pages: list[str] = []
     report: list[str] = [
         "# Screenshot run",
         "",
@@ -626,8 +688,21 @@ async def capture_all(
         network = await watch_network(tab)
         await tab.send(page_cdp.add_script_to_evaluate_on_new_document(CONSOLE_HOOK_JS))
         await wait_for_dev_rebuild(tab)
+
+        needed_datasets: set[str] = set(CORPUS_DATASETS)
+        for page in pages:
+            needed_datasets.update(d for d in page.requires_dataset if d != "any")
+        present_datasets = await discover_present_datasets(tab, base_url, needed_datasets)
+
         for index, page in enumerate(pages):
             stem = f"{index:02d}-{page.name}"
+            missing = missing_datasets(page, present_datasets)
+            if missing:
+                reason = f"dataset(s) not on this site: {', '.join(missing)}"
+                print(f"[{index + 1}/{len(pages)}] {stem}: skip ({reason})", flush=True)
+                skipped_pages.append(stem)
+                report.append(f"- `{stem}` (`{page.url}`): skip ({reason})")
+                continue
             print(f"[{index + 1}/{len(pages)}] {stem}", flush=True)
             try:
                 async def capture() -> tuple[dict, dict, list]:
@@ -717,15 +792,21 @@ async def capture_all(
         except Exception:  # noqa: BLE001
             pass
 
+    captured = len(pages) - len(skipped_pages)
     report.append("")
     report.append(
-        f"{len(pages) - len(failed_pages)}/{len(pages)} pages passed; "
-        f"{len(failed_pages)} failed, {len(warned_pages)} passed with warnings."
+        f"{captured - len(failed_pages)}/{captured} captured pages passed; "
+        f"{len(failed_pages)} failed, {len(warned_pages)} passed with warnings, "
+        f"{len(skipped_pages)} skipped for a missing dataset."
     )
     if failed_pages:
         report.append("")
         report.append("## failed pages")
         report.extend(f"- `{stem}`" for stem in failed_pages)
+    if skipped_pages:
+        report.append("")
+        report.append("## skipped pages")
+        report.extend(f"- `{stem}`" for stem in skipped_pages)
     (out_dir / "report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     return len(failed_pages)
 
