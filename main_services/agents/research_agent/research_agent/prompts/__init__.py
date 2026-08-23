@@ -140,9 +140,16 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
         ("cite_documents",),
         "turn the documents you relied on into handles you can write into your prose.",
     ),
+    # Two groups, not one, because a worker binds the reader and none of the writers: a
+    # single group would describe writing a plan to a profile that cannot write one, which
+    # is the exact class of claim these templates exist to make impossible.
     ToolGroup(
-        ("read_todo", "write_todo", "edit_todo", "mark_todo"),
-        "this conversation's plan: read it, write it, change it, and mark items done.",
+        ("read_todo",),
+        "this conversation's plan, and the context an objective came out of.",
+    ),
+    ToolGroup(
+        ("write_todo", "edit_todo", "mark_todo"),
+        "write the plan, change it, and mark its steps done.",
     ),
     ToolGroup(
         ("run_subagent",),
