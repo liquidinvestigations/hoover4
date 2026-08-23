@@ -134,7 +134,7 @@ def probe_embeddings_cmd():
     """Probe the embeddings endpoint and record what it ACTUALLY serves.
 
     Writes ``embeddings_serving_model`` and ``embeddings_serving_dim`` to
-    ``server_settings``. The index builder reads those — never the ini — because
+    ``server_settings``. The index builder reads those (never the ini), because
     the ini is the request and this probe is the truth, and a Manticore ``_vectors``
     table's ``knn_dims`` cannot be altered after creation.
 
@@ -408,7 +408,7 @@ def import_collection(collectionname: str, source: str, confirm: str, wait: bool
     The target must be an empty collection of the SAME name: a collection is restored
     under its own name because the name is part of the database name, of every dataset
     id, of every search table and of every object key. A target that still holds data is
-    refused naming what is in the way — delete the collection first, or do not import.
+    refused naming what is in the way. Delete the collection first, or do not import.
     """
     from database.clickhouse import validate_collectionname
     from database.operations import OperationLocked
@@ -514,7 +514,7 @@ def reindex_collection(collectionname: str):
 def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, allow_registered: bool):
     """Delete one dataset's rows from a collection's Manticore tables and ClickHouse.
 
-    The recovery path for a dataset that was abandoned rather than deleted — a failed
+    The recovery path for a dataset that was abandoned rather than deleted. A failed
     ingest, or a re-ingest under a new name, which leaves the old name's rows in the
     index for ever. Those rows are what makes the Collections filter offer a dataset
     that no longer exists, and what makes every document of a twice-ingested dataset
@@ -602,7 +602,7 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
     """Re-run one failed stage for the file hashes recorded in `processing_errors`.
 
     A plan is marked finished when its stages have RUN, not when every document
-    succeeded — a stage that records per-document errors without failing the plan (P4
+    succeeded, a stage that records per-document errors without failing the plan (P4
     entity extraction is the common case) still lets the plan finish. `execute-plans` is
     therefore a no-op for exactly those failures, and this is the way back: the failed
     hashes are re-run through the stage that failed them, with no re-ingest and no new
@@ -615,8 +615,8 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
     re-processes its other documents too.
 
     The `processing_errors` rows are cleared only after the re-run has finished and the
-    documents have a watermark again. A document that fails again keeps exactly one row —
-    the one this run wrote, replacing the one it started from. The count is what the file
+    documents have a watermark again. A document that fails again keeps exactly one row.
+    The one this run wrote, replacing the one it started from. The count is what the file
     browser and the admin processing page show, so appending instead would double the
     failures a visitor sees, and again on every further retry.
 
@@ -689,7 +689,7 @@ def purge_unattributed_entities(collectionname: str, apply: bool):
     """Clear `entity_hit` rows with an empty `nlp_model`, re-running NER for their pages.
 
     These are rows written before `nlp_model` existed. `nlp_model` is part of the table's
-    ORDER BY — deliberately, so two NER providers can coexist — which means a later run
+    ORDER BY (deliberately, so two NER providers can coexist), which means a later run
     under a real provider name **adds** rows rather than replacing them: the unattributed
     set is immortal, and the admin UI renders it as a phantom third provider whose entities
     nothing can be filtered by.
@@ -697,7 +697,7 @@ def purge_unattributed_entities(collectionname: str, apply: bool):
     Deleting them alone is not safe in general, and the live stack proved it: one
     collection's entire entity set was unattributed, so a bare DELETE would have removed
     every entity it had. So this also clears the `nlp_processed` watermark for the affected
-    pages, which is what makes P4 extract them again — the watermark is the only reason it
+    pages, which is what makes P4 extract them again. The watermark is the only reason it
     would skip a page it has already seen.
 
     Order matters: watermarks first, then the rows, then the re-run. A crash between the
@@ -944,7 +944,7 @@ def worker(worker_type: str | None = None):
     workers = []  # [{ 'type': str, 'cmd': List[str], 'proc': Popen|None, 'restart_at': float|None }]
     shutting_down = False
 
-    # THE TRAP THIS EXISTS FOR: a container runtime signals PID 1 only. This process is
+    # WHY THIS EXISTS: a container runtime signals PID 1 only. This process is
     # the supervisor, and every Temporal worker is a CHILD of it -- so without forwarding
     # here, no worker ever sees SIGTERM, none of them drains, and the graceful shutdown
     # period each one is configured with is unreachable. The setting looks right in

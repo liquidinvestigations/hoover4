@@ -2,11 +2,11 @@
 //!
 //! Three levels, because the three audiences are different:
 //!
-//! 1. **Collapsed** — the tool's type as a chip plus a one-line human summary
+//! 1. **Collapsed**: the tool's type as a chip plus a one-line human summary
 //!    ("searched collections · water levels"). This is what someone reading the
 //!    conversation wants; it should never be raw JSON.
-//! 2. **Expand** — the arguments and results rendered as labelled key/value rows.
-//! 3. **Raw JSON** — a second toggle inside the expansion, for debugging.
+//! 2. **Expand**: the arguments and results rendered as labelled key/value rows.
+//! 3. **Raw JSON**: a second toggle inside the expansion, for debugging.
 //!
 //! The previous version put level 3 where level 2 belongs, so a card either showed a
 //! wall of JSON or, when the writer had not populated the payload columns, nothing.
@@ -49,8 +49,8 @@ pub fn ToolCallDisclosure(
     let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
 
     // Older rows (and any writer that has not been taught the payload columns) have
-    // empty input/output. Fall back to the summary so the expansion is never blank —
-    // an empty disclosure looks like a bug even when the data simply predates it.
+    // empty input/output. Fall back to the summary so the expansion is never blank.
+    // An empty disclosure looks like a bug even when the data simply predates it.
     let input_view = readable_fields(&tool_input);
     let output_view = readable_fields(&tool_output);
     let has_payload = !tool_input.is_empty() || !tool_output.is_empty();
@@ -226,7 +226,7 @@ fn RawJson(heading: &'static str, body: String) -> Element {
     }
 }
 
-/// Re-indent JSON for the raw view. Non-JSON is shown exactly as stored — a payload we
+/// Re-indent JSON for the raw view. Non-JSON is shown exactly as stored, a payload we
 /// cannot parse is the case where seeing the literal bytes matters most.
 fn pretty_json(raw: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(raw) {
@@ -339,7 +339,7 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
         }
         "list_document_entities" => "listed entities".to_string(),
         "show_document" => "showed document".to_string(),
-        // The open-web tools all take a query or a url; showing it is the whole point.
+        // The open-web tools all take a query or a url, and showing it is what the label is for.
         "web_search" | "search" | "news_search" | "wikipedia_search" => {
             match json_str_field(tool_input, "query") {
                 Some(q) => format!("searched the web \u{b7} {q}"),
@@ -377,7 +377,7 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
 /// Argument names that carry the point of a call, tried in this order.
 ///
 /// Needed because `serde_json` keys are ordered alphabetically, not by position in the
-/// call, so "the first argument" is meaningless — for `{"text": …, "lang": …}` it would
+/// call, so "the first argument" is meaningless, for `{"text": …, "lang": …}` it would
 /// pick the language code and label the card with "en".
 const LABEL_KEYS: [&str; 8] = ["query", "q", "url", "text", "path", "domain", "name", "term"];
 

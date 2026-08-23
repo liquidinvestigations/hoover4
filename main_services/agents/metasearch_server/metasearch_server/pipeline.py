@@ -23,15 +23,15 @@ obvious Wikipedia answer returns twenty blogs about it. Minimum
 
 **A floor is a guarantee of representation, not of relevance.** A floor of ten reference
 results on a query with one encyclopaedia answer padded the reply with whatever Wikipedia
-ranked next — "Yanam district" and "Aasta Hansteen spar" for a query about the Eiffel
-Tower — and the model has no way to tell a reserved slot from an earned one. So the
+ranked next ("Yanam district" and "Aasta Hansteen spar" for a query about the Eiffel
+Tower), and the model has no way to tell a reserved slot from an earned one. So the
 reservation pass only fires for results the cross-encoder scored at or above
 :data:`RESERVE_MIN_SCORE`; below that a kind simply goes unrepresented, which is the honest
 answer when it has nothing to say. Results with no rerank score at all (the GPU is down)
-are always reservable — no score is not a low score.
+are always reservable, no score is not a low score.
 
 A rerank failure is **reported, not hidden**: `rerank_applied` goes false, the RRF order
-stands, and the reason lands in `rerank_error`. The tool still answers — a GPU outage
+stands, and the reason lands in `rerank_error`. The tool still answers, a GPU outage
 must degrade search quality, not remove search.
 """
 
@@ -91,7 +91,7 @@ class Ranked:
 
 @dataclass
 class SearchOutcome:
-    """Everything one search produced — the model gets a subset, the artifact gets all."""
+    """Everything one search produced. The model gets a subset, the artifact gets all."""
 
     #: The queries joined for display, and kept because the stored transcript rows and
     #: both renderers read a single `query` field.
@@ -104,7 +104,7 @@ class SearchOutcome:
     sources_used: list[str] = field(default_factory=list)
     unknown_sources: list[str] = field(default_factory=list)
     degraded: list[str] = field(default_factory=list)
-    #: Why each degraded source came back empty — HTTP status, timeout, selector rot.
+    #: Why each degraded source came back empty, HTTP status, timeout, selector rot.
     degraded_reasons: dict[str, str] = field(default_factory=dict)
     source_latency_ms: dict[str, float] = field(default_factory=dict)
     source_counts: dict[str, int] = field(default_factory=dict)
@@ -118,7 +118,7 @@ class SearchOutcome:
 
 
 def display_url(url: str, max_chars: int = 60) -> str:
-    """Host plus a truncated path — what a result row shows instead of a 300-char URL."""
+    """Host plus a truncated path. What a result row shows instead of a 300-char URL."""
     from urllib.parse import urlparse
 
     try:
@@ -150,7 +150,7 @@ def apply_per_kind_floor(
 ) -> list[Ranked]:
     """Guarantee each kind a share of the answer, then fill the rest by score.
 
-    The implementation is `agent_common.fusion.per_kind_floor` — collection search
+    The implementation is `agent_common.fusion.per_kind_floor`. Collection search
     applies the same rule to its keyword/vector kinds, and a second copy would drift.
     Two passes: each kind first reserves its own best `min_per_kind` results whatever
     the overall cap says (without this, four web scrapers agreeing always outscores one
@@ -158,7 +158,7 @@ def apply_per_kind_floor(
     per kind and `max_results` overall, never evicting a reserved slot.
 
     A result the cross-encoder scored below `reserve_min_score` cannot take a reserved
-    slot — see the module docstring. It can still be *filled* in on merit if the budget
+    slot. See the module docstring. It can still be *filled* in on merit if the budget
     reaches it.
 
     The returned list keeps the input's order, so the reranked ordering the model sees is
@@ -193,7 +193,7 @@ async def run_search(
     """Fan out per query, fuse into one pool, rerank once, floor.
 
     Never raises for a source or rerank failure. `queries` is already de-duplicated and
-    capped by the caller — this function fans out over exactly what it is given.
+    capped by the caller. This function fans out over exactly what it is given.
     """
     started = time.monotonic()
     names, unknown = sources_mod.resolve_sources(requested_sources)
@@ -202,7 +202,7 @@ async def run_search(
     # Step 1: one fan-out per query. Sequential over queries and parallel within one,
     # because `fetch_all` already saturates every source at once and running the queries
     # concurrently too would multiply the load a single call puts on each host by the
-    # batch size — which is how a scraper starts answering 429.
+    # batch size, which is how a scraper starts answering 429.
     fetch_started = time.monotonic()
     rankings: dict[str, list[SearchResult]] = {}
     latency: dict[str, float] = {name: 0.0 for name in names}
@@ -251,7 +251,7 @@ async def run_search(
         fetch_ms=round(fetch_ms, 1),
     )
 
-    # Step 2: fuse every (source, query) ranking into ONE pool. This is also the dedupe —
+    # Step 2: fuse every (source, query) ranking into ONE pool. This is also the dedupe,
     # one SearchResult per normalised URL, carrying every source that returned it.
     fused = reciprocal_rank_fusion(rankings, max_results=RERANK_CANDIDATES)
     for result in fused:
@@ -272,7 +272,7 @@ async def run_search(
         outcome.total_ms = round((time.monotonic() - started) * 1000.0, 1)
         return outcome
 
-    # Step 3: rerank the whole candidate pool — before the floor, never after, and once
+    # Step 3: rerank the whole candidate pool, before the floor, never after, and once
     # for the batch rather than once per query. See the module docstring for why both
     # reversals read identically and are wrong.
     ordered = list(outcome.fused)
@@ -295,7 +295,7 @@ async def run_search(
             # applied, a truncated body) must not *delete* the rest: they were real
             # results with a real RRF position, and dropping them turns a partial rerank
             # into a partial search. They keep their fused order, behind everything the
-            # cross-encoder did score, with no rerank rank — which is exactly true.
+            # cross-encoder did score, with no rerank rank, which is exactly true.
             ordered += [item for i, item in enumerate(outcome.fused) if i not in seen]
             outcome.rerank_applied = True
     except rerank_client.RerankUnavailable as exc:
@@ -340,8 +340,8 @@ def detail_document(outcome: SearchOutcome) -> dict:
     """The search-detail artifact: both orderings in full, plus the timing table.
 
     This is what `TOOL_PAYLOAD_CHARS` cannot carry. The pre-rerank ordering is search
-    bookkeeping rather than evidence — sending it to the model would roughly double the
-    tool's token cost for nothing — so it lives here and the card fetches it lazily.
+    bookkeeping rather than evidence. Sending it to the model would roughly double the
+    tool's token cost for nothing, so it lives here and the card fetches it lazily.
     """
     def row(item: Ranked) -> dict:
         r = item.result

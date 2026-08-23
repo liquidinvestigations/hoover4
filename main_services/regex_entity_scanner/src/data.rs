@@ -1,7 +1,7 @@
 //! Loading of the vendored reference data the validators consult.
 //!
 //! Everything here is read once at startup and then shared immutably across scanning threads.
-//! `RES_VENDORED_DIR` points at the vendored tree — the bind mount in development, a directory
+//! `RES_VENDORED_DIR` points at the vendored tree, the bind mount in development, a directory
 //! baked into the release image otherwise.
 
 use std::collections::{HashMap, HashSet};
@@ -13,7 +13,7 @@ use serde::Deserialize;
 /// What the IBAN registry says about one country's account numbers.
 ///
 /// ISO 7064 mod-97-10 accepts roughly one malformed candidate in ninety-seven on its own. The
-/// length and the positional structure are what close that gap, and they are per country — which
+/// length and the positional structure are what close that gap, and they are per country, which
 /// is why this is vendored data rather than a constant.
 #[derive(Debug, Deserialize)]
 pub struct IbanCountry {
@@ -34,7 +34,7 @@ pub struct IbanCountry {
 ///
 /// The exponent is the whole reason this is data rather than a constant. A sum of money is stored
 /// as a scaled integer, and the scale is three for the Bahraini dinar, zero for the Japanese yen
-/// and two for most of the rest — so `1.5` is 1500, 1 or 150 depending only on the code beside it.
+/// and two for most of the rest, so `1.5` is 1500, 1 or 150 depending only on the code beside it.
 #[derive(Debug, Deserialize)]
 pub struct Currency {
     /// ISO 4217 minor units: the number of decimal places the amount is scaled by.
@@ -64,7 +64,7 @@ pub struct VendoredData {
 
 /// The smallest number of entries each table has to hold to be the file it was transformed from.
 /// The numbers are an order of magnitude below what the current sources carry, because their job is
-/// to catch a file that is empty, half-written or a placeholder — not to pin an upstream's size.
+/// to catch a file that is empty, half-written or a placeholder, not to pin an upstream's size.
 const MINIMUM_ENTRIES: &[(&str, usize)] = &[
     ("TLD list", 1_000),
     ("territory names", 200),
@@ -180,7 +180,7 @@ impl VendoredData {
 
     /// The tables that hold too little to be the file they were transformed from. A rule whose
     /// table is empty does not fail: it matches nothing, for every request, for as long as the
-    /// process runs — a whole facet switched off behind a green health check. That is why the
+    /// process runs, which is a whole facet switched off behind a green health check. That is why the
     /// counts are checked at startup and reported at `/health` rather than trusted.
     pub fn incomplete_tables(&self) -> Vec<&'static str> {
         MINIMUM_ENTRIES
@@ -203,7 +203,7 @@ impl VendoredData {
     }
 
     /// Whether `label` is a registered top-level domain. This one membership test removes the bulk
-    /// of what an email pattern otherwise matches — file names, version strings, `foo@2x.png`.
+    /// of what an email pattern otherwise matches: file names, version strings, `foo@2x.png`.
     pub fn is_known_tld(&self, label: &str) -> bool {
         self.tlds.contains(&label.to_uppercase())
     }
@@ -240,7 +240,7 @@ impl VendoredData {
         self.maritime_ids.get(mid).map(String::as_str)
     }
 
-    /// The IBAN registry entry for a country code, or `None` for a country that issues no IBANs —
+    /// The IBAN registry entry for a country code, or `None` for a country that issues no IBANs,
     /// which is itself a rejection, and a decisive one.
     /// The minor units and name for an ISO 4217 code in current use. A code this returns `None`
     /// for is either historical or not a currency, and both are reasons to reject the candidate.

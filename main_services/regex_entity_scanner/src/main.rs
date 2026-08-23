@@ -26,7 +26,7 @@ const DEFAULT_QUEUE_DEPTH: usize = 32;
 fn main() -> Result<()> {
     // `--health-check` probes the port this process would bind and exits non-zero if the answer is
     // not a healthy one. It lives in the binary because the release image carries no shell tooling
-    // — no curl, no Python — and a health check that needs a package installed to run is a health
+    // (no curl, no Python), and a health check that needs a package installed to run is a health
     // check that stops being run.
     if std::env::args().any(|arg| arg == "--health-check") {
         return health_check();
@@ -87,7 +87,7 @@ fn max_body_bytes() -> Result<usize> {
 
 /// Every numeric knob reads the same way, for the same reason: a value the operator meant and the
 /// process could not parse must stop the process, not be quietly replaced by a default that then
-/// looks like the operator's choice. Zero is refused too — a bound of zero is a service that
+/// looks like the operator's choice. Zero is refused too. A bound of zero is a service that
 /// accepts nothing and reports itself healthy.
 fn usize_from_env(name: &str, default: usize) -> Result<usize> {
     let Ok(raw) = std::env::var(name) else {

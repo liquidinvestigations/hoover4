@@ -2,7 +2,7 @@
 #
 # These belong to the MAIN stack, not ai_services: they read ClickHouse and
 # Manticore directly and serve the website's chat.
-# ai_services never calls into main_services — that one-way dependency is what makes
+# ai_services never calls into main_services. That one-way dependency is what makes
 # the GPU tier optional.
 services:
   # ------------------------------------------------------- MCP: Hoover4 collections
@@ -91,14 +91,14 @@ services:
   # ---------------------------------------------------------------- MCP: todo
   # The agent's plan for one conversation: a goal and a list of steps, read and written
   # through four tools. The rules live in processing/database/chat_todos.py, which the
-  # chat workflow reads directly — this container is a wrapper over that module, which
+  # chat workflow reads directly. This container is a wrapper over that module, which
   # is why its build context is main_services rather than main_services/agents.
   #
   # No ClickHouse environment: the store uses the pipeline's own client, which addresses
   # `clickhouse` on this network. Being on the network is the whole configuration.
   hoover4-mcp-todo:
     build:
-      # Wider than every other server's on purpose — see the Dockerfile. The context is
+      # Wider than every other server's on purpose, see the Dockerfile. The context is
       # narrowed by main_services/.dockerignore.
       context: ${HOOVER4_REPO_ROOT}/main_services
       dockerfile: agents/agent_todo_server/Dockerfile
@@ -129,10 +129,10 @@ services:
   # Metasearch: THE web search server. One `web_search` tool covering four HTML scrapers,
   # the ddgs library (text and news) and Wikipedia, merged with reciprocal rank fusion and
   # then reordered by the GPU tier's cross-encoder. Every open-web source lives behind
-  # this one tool and must stay there — several overlapping "search the web" tools is a
+  # this one tool and must stay there. Several overlapping "search the web" tools is a
   # choice a small model makes badly.
   #
-  # The scrapers have no API keys, so expect one to rot — METASEARCH_SOURCES turns a
+  # The scrapers have no API keys, so expect one to rot. METASEARCH_SOURCES turns a
   # broken one off without a rebuild, and the response's `degraded` list is how you notice.
   #
   # RERANK_URL is the GPU tier's /v1 base (deploy.py renders it from the same setting as
@@ -152,7 +152,7 @@ services:
       - PORT=8086
       - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
       # Leave this UNSET to use every registered source. Naming them here is how a newly
-      # registered source silently never runs — the server's own default is derived from
+      # registered source silently never runs. The server's own default is derived from
       # the registry, and a list written out by hand cannot be.
       - METASEARCH_SOURCES=${METASEARCH_SOURCES:-}
       - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
@@ -166,7 +166,7 @@ services:
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
       # The result policy: 15 results, always reranked. The floor is per kind and must stay well
-      # under the cap — 10 across three kinds reserves 30 and overrides the cap entirely.
+      # under the cap, 10 across three kinds reserves 30 and overrides the cap entirely.
       - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
       - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
       # Rerank logit below which a result no longer earns a reserved floor slot. 0 is the
@@ -215,14 +215,14 @@ services:
   # The image is ~1.5 GB (Chromium, fonts, Node, two extensions) and that is expected.
   #
   # Memory is the reason BROWSER_MAX_CONTEXTS is 8 and not 32: this is a whole browser
-  # per conversation, not a browser context. It has to be a whole browser — playwright-mcp
+  # per conversation, not a browser context. It has to be a whole browser. Playwright-mcp
   # attached with --cdp-endpoint shares one context across every client on that endpoint,
   # measured, so the isolation boundary has to sit one level lower.
   #
   # SECURITY: this server is driven by an LLM and sits on the same network as
   # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL-shaped
   # argument of every forwarded tool is checked against browser_use_server/urlcheck.py
-  # first — public http/https only, and the host must resolve exclusively to public
+  # first. Public http/https only, and the host must resolve exclusively to public
   # addresses. The sidecar's own --blocked-origins is the second line, not the first.
   # Do not weaken either.
   hoover4-mcp-browser:
@@ -267,7 +267,7 @@ services:
     shm_size: 2gb
     # A real init as PID 1, because Chromium is a process TREE. PID 1 here is the Python
     # server, which never calls wait() on grandchildren, so every renderer and crashpad
-    # handler a closed browser leaves behind stays a zombie forever — 104 of them were
+    # handler a closed browser leaves behind stays a zombie forever, 104 of them were
     # counted on a stack that had been up for hours. Zombies hold a PID each and the
     # container's PID space is not large; the failure mode at the end of that road is
     # "cannot fork", which surfaces as an unrelated browser launch failing. `init: true`
@@ -287,7 +287,7 @@ services:
 
   # ------------------------------------------------------------------- Agents
   # Internal search agent: collection RAG only. This is what the website's AI Chat page
-  # talks to, and the reason its tool set is narrow — a chat about the user's documents
+  # talks to, and the reason its tool set is narrow. A chat about the user's documents
   # should not quietly turn into a web search.
   hoover4-internal-search-agent:
     build:
@@ -309,7 +309,7 @@ services:
       # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
       # arrive without `arguments` and never accumulate, so the agent silently makes zero
       # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
-      # regresses — the symptom is an agent that answers from nothing with no tool calls.
+      # regresses. The symptom is an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
@@ -331,7 +331,7 @@ services:
       # Context compaction: at this fraction of the model's stated context window the
       # older tool results stop being sent to the model, while the calls that made them
       # stay. Unset means the agent's own default, which is the shipped trigger. It does
-      # not fire on the traffic this stack produces today — see research_agent/compaction.py.
+      # not fire on the traffic this stack produces today. See research_agent/compaction.py.
       #
       # When eviction is not enough, layer two replaces the older messages with one
       # handoff document written by LLM_MODEL_COMPACTION, or by the answering model when
@@ -371,7 +371,7 @@ services:
   # Full research agent: collections plus the open-web tools. Two callers: the chat
   # page when "Internet tools" is ticked (HOOVER4_FULL_AGENT_URL on the website
   # service), and the Temporal long-running research task (RESEARCH_AGENT_URL on the
-  # worker). Both address it by container name over the shared `hoover4` network — the
+  # worker). Both address it by container name over the shared `hoover4` network, the
   # published loopback port below is for host-side debugging only.
   hoover4-full-research-agent:
     build:
@@ -391,7 +391,7 @@ services:
       # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
       # arrive without `arguments` and never accumulate, so the agent silently makes zero
       # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
-      # regresses — the symptom is an agent that answers from nothing with no tool calls.
+      # regresses. The symptom is an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
@@ -417,9 +417,9 @@ services:
       - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
       - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
       # Delegation caps. Every one of them is enforced in code, not asked for in the
-      # prompt — see research_agent/subagents.py, which also explains why the per-turn
+      # prompt. See research_agent/subagents.py, which also explains why the per-turn
       # total is a separate cap from the per-call one. Unset means the shipped default.
-      # There is no knob for the depth: a worker simply does not have the tool.
+      # There is no setting for the depth: a worker simply does not have the tool.
       - AGENT_SUBAGENT_MAX_TASKS=${AGENT_SUBAGENT_MAX_TASKS:-}
       - AGENT_SUBAGENT_CONCURRENCY=${AGENT_SUBAGENT_CONCURRENCY:-}
       - AGENT_SUBAGENT_TOOL_TURNS=${AGENT_SUBAGENT_TOOL_TURNS:-}

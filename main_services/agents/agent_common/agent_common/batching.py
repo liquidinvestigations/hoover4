@@ -1,7 +1,7 @@
 """The three mechanics every batched tool needs, written once.
 
-A batched tool — one that takes a *list* of queries, urls, documents or domains instead
-of one — repeats the same three problems in every server, and three copies of each is
+A batched tool (one that takes a *list* of queries, urls, documents or domains instead
+of one) repeats the same three problems in every server, and three copies of each is
 three chances to fix a bug in two of them.
 
 **List coercion.** XML-style tool-call parsers hand every parameter across as a string,
@@ -16,7 +16,7 @@ one level up.
 **The divided budget.** A batched tool has one character budget for the whole call, not
 one per item. Splitting it evenly and telling the model what was cut beats returning
 twenty stubs that each say nothing: an item the model can read is worth more than five it
-cannot. The budget never divides below `MIN_ITEM_CHARS` — past that the items are dropped
+cannot. The budget never divides below `MIN_ITEM_CHARS`. Past that the items are dropped
 and reported as dropped, rather than all of them being made useless together.
 
 **The corrective note.** The tool compares what it was asked for with what was sensible to
@@ -62,7 +62,7 @@ def as_list(value: Any, *, separator: str = ",") -> list[str]:
         if isinstance(parsed, list):
             return [str(v).strip() for v in parsed if str(v).strip()]
         # A truncated or malformed JSON list still has the items in it, and splitting the
-        # raw string leaves `["a"` and `"b"` — junk that reaches a URL fetcher or a search
+        # raw string leaves `["a"` and `"b"`. Junk that reaches a URL fetcher or a search
         # backend as a query. Strip the syntax rather than passing it on.
         return [part for part in (_debracket(p) for p in text.split(separator)) if part]
     if separator and separator in text:
@@ -77,8 +77,8 @@ def _debracket(part: str) -> str:
 def as_objects(value: Any) -> list[dict]:
     """The same coercion as [`as_list`], for a list of *objects* rather than strings.
 
-    A batched tool whose items are records — `{id, text, status}` rather than a bare
-    query — meets the same stringifying parser, so `'[{"id": "a"}]'` arrives where a
+    A batched tool whose items are records (`{id, text, status}` rather than a bare
+    query) meets the same stringifying parser, so `'[{"id": "a"}]'` arrives where a
     list was declared. A single object is accepted as a one-element list for the same
     reason a bare string is: models send it.
 
@@ -128,7 +128,7 @@ def divide_budget(total_chars: int, count: int) -> tuple[int, int]:
 
     When the even split falls under `MIN_ITEM_CHARS` the number of items is reduced until
     it does not. The caller keeps the first `items_that_fit` and reports the rest as
-    dropped — see the module docstring for why that beats truncating everything.
+    dropped. See the module docstring for why that beats truncating everything.
     """
     if count <= 0 or total_chars <= 0:
         return (0, 0)
@@ -138,7 +138,7 @@ def divide_budget(total_chars: int, count: int) -> tuple[int, int]:
 
 #: How far back `truncate` will look for a word boundary. An absolute distance, not a
 #: fraction of the limit: a fraction is meaningless at a 400-character floor and wasteful
-#: at a 10000-character budget, and either way what matters is "is there a space close by".
+#: at a 10000-character budget, and either way the question is "is there a space close by".
 WORD_BOUNDARY_SLACK = 60
 
 

@@ -1,4 +1,4 @@
-"""Access-control plumbing for the collection search MCP server.
+"""Access control for the collection search MCP server.
 
 The agent that calls this server acts *on behalf of a user*, so every tool call has to
 be bounded by that user's permitted collections. Two things carry that:
@@ -52,7 +52,7 @@ class CallerAcl:
         """Resolve the collections a tool should actually touch.
 
         ``None``/empty means "everything I am allowed to see". Anything explicitly
-        requested must be inside the ACL — a request for a collection the user cannot
+        requested must be inside the ACL. A request for a collection the user cannot
         read is an error, not a silently-dropped filter, so the model gets told it asked
         for something it may not have rather than quietly receiving fewer results.
         """

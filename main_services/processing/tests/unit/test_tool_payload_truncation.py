@@ -3,7 +3,7 @@
 The Python half of a rule the Rust side states too (`truncate_tool_payload` in
 `website/common/src/chat_types.rs`): a tool result is a JSON document, and you truncate a
 document *inside* it. Cutting the serialised text leaves a `{` with no `}`, and every
-reader downstream then treats a recorded result as an absent one — the card printed "the
+reader downstream then treats a recorded result as an absent one. The card printed "the
 result payload was not recorded" about a row it had just read.
 
 A research transcript must read identically to an inline one, so the two implementations
@@ -42,7 +42,7 @@ def test_a_truncated_payload_is_still_parseable_json():
     assert len(raw) > 4_000
     out = truncate_json(raw, 4_000)
     assert len(out) <= 4_000
-    parsed = json.loads(out)  # the whole point
+    parsed = json.loads(out)  # the truncated payload must still parse
     assert parsed["output"]["content"]["query"] == "danube water level"
 
 

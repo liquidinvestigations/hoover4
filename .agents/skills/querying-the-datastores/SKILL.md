@@ -24,7 +24,7 @@ hand-typed spellings were in circulation before this script existed; that is wha
 ## Naming
 
 - **ClickHouse**: one database per collection, plus a global database for everything that is
-  not collection-scoped. `ch.sh "SHOW DATABASES"` lists what actually exists — do not
+  not collection-scoped. `ch.sh "SHOW DATABASES"` lists what actually exists. Do not
   construct the name from a collection name you were told.
 - **Manticore**: one denormalised page table per shard, plus a per-collection entities table
   and a per-collection tree table. There is no join; the page table carries what a result
@@ -57,17 +57,17 @@ column named `ts` that is no longer the column you filtered on, and every later 
 resolves to the alias.
 
 **An aggregate returns a row over an empty match.** `SELECT count() FROM t WHERE <nothing
-matches>` returns one row containing zero. "There is a row" is not "there is data" — read
+matches>` returns one row containing zero. "There is a row" is not "there is data". Read
 the value, and for existence questions ask for the rows themselves.
 
 ## The one query family that must not be cached
 
 The collection's folder tree changes while ingestion runs, so it is read through the uncached
 primitive deliberately. A stale tree is worse than a slow one. Ordinary search keeps using
-the caching primitive — that cache is what keeps repeated facet fan-outs off the search
+the caching primitive. That cache is what keeps repeated facet fan-outs off the search
 engine.
 
 ## References
 
-- `reference/queries.md` — the recurring diagnostics with their exact shape, tracing one
+- `reference/queries.md`, the recurring diagnostics with their exact shape, tracing one
   document end to end, and reading the stage timing samples.

@@ -1,6 +1,6 @@
 """S3 access for the MCP servers.
 
-Mirrors `main_services/processing/database/s3.py` — same server, same environment
+Mirrors `main_services/processing/database/s3.py`, same server, same environment
 variables. Endpoint and credentials come from the environment on both sides, which is
 what lets these containers also be run from the host during development, where a literal
 container hostname is unreachable.
@@ -10,7 +10,8 @@ to a session and not to any collection, and putting it outside every collection'
 is what makes "`P0_scan_disk` must never walk derived material" a structural property
 instead of a prefix check somebody has to remember. An artifact the ingest walker can see
 becomes a `vfs_files` row, gets ingested, gets captured again, and produces another
-artifact — forever. `verify-stack.sh` asserts no `blobs` row references the prefix.
+artifact, and that loop does not end. `verify-stack.sh` asserts no `blobs` row references
+the prefix.
 """
 
 from __future__ import annotations
@@ -87,7 +88,7 @@ def _safe(component: str) -> str:
     """Keep a path component to characters that cannot escape the prefix.
 
     The session id comes from an HTTP header and the artifact id from a UUID we
-    generate, but only one of those is trustworthy — a header carrying `../../blobs`
+    generate, but only one of those is trustworthy. A header carrying `../../blobs`
     would otherwise write outside the derived prefix, which is exactly the boundary this
     module exists to hold.
     """

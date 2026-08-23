@@ -1,4 +1,4 @@
-//! `/ai_chat/c/:session_id/...` — conversation transcript + document preview (60/40).
+//! `/ai_chat/c/:session_id/...`, conversation transcript + document preview (60/40).
 
 use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions};
 use common::search_query::SearchQuery;
@@ -24,7 +24,7 @@ use crate::routes::Route;
 /// What of an in-flight turn is still worth rendering.
 ///
 /// While the turn is live, everything. Once it reads as interrupted, only a partial the
-/// model actually produced — an empty stream turn renders as "The assistant is
+/// model actually produced. An empty stream turn renders as "The assistant is
 /// working…", which is the one thing an interrupted turn must not claim.
 fn keep_stream(
     stream: Option<common::chat_types::StreamTurn>,
@@ -60,7 +60,7 @@ fn AiChatSessionRoot(
 ) -> Element {
     // NOTE: nothing below may capture a `String` copy of the session id.
     //
-    // The router **reuses this component** when it navigates between two chat URLs — the
+    // The router **reuses this component** when it navigates between two chat URLs. The
     // props change, the component does not remount. Every handler here used to close over
     // a `String` cloned on first render, so after a back/forward between two
     // conversations the page fetched, polled, sent, stopped and dismissed against the
@@ -142,7 +142,7 @@ fn AiChatSessionRoot(
         .cloned()
         .unwrap_or_default();
     let show_models = is_guest == Some(false) && !choices.is_empty();
-    // In an effect, not in the render body — a signal written during render schedules a
+    // In an effect, not in the render body. A signal written during render schedules a
     // render from inside one. It also has to re-run per conversation: the switch below
     // clears `selected_model`, and this is what re-seeds it.
     use_effect(move || {
@@ -223,8 +223,8 @@ fn AiChatSessionRoot(
                             messages.set(current);
                         }
                         interrupted.set(result.interrupted);
-                        // An interrupted turn keeps whatever partial text it produced —
-                        // under the banner, which is its marker — but never the
+                        // An interrupted turn keeps whatever partial text it produced
+                        // (under the banner, which is its marker), but never the
                         // "working…" placeholder: the banner already says it stopped,
                         // and a spinner beside it says the opposite.
                         stream_turn.set(keep_stream(result.stream, result.interrupted));
@@ -239,7 +239,7 @@ fn AiChatSessionRoot(
                         }
                     }
                     Err(e) => {
-                        // A rate limit is not lost contact — it is the server answering,
+                        // A rate limit is not lost contact. It is the server answering,
                         // promptly, to say "slower". Counting it toward `failures` made
                         // three tabs on one conversation declare the chat lost while the
                         // turn was still running. Wait exactly as long as it asked and
@@ -392,7 +392,7 @@ fn AiChatSessionRoot(
             //
             // A failure here was swallowed, so a stop that did not happen was
             // indistinguishable from one that did: the button reacted, the answer kept
-            // arriving, and there was nothing to read. `Ok(false)` is not a failure — it
+            // arriving, and there was nothing to read. `Ok(false)` is not a failure. It
             // means the turn had already finished, which is the outcome the user wanted.
             if let Err(e) = chat_stop(id).await {
                 error.set(Some(format!(
@@ -426,7 +426,7 @@ fn AiChatSessionRoot(
         div {
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
-            // Left — transcript (≈60%)
+            // Left, transcript (≈60%)
             div {
                 style: "height: 100%; width: 60%; min-width: 360px; display: flex; \
                         flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
@@ -456,8 +456,8 @@ fn AiChatSessionRoot(
                         "{detail.session.title}"
                     }
                 }
-                // The frozen switches live here once the conversation has started —
-                // out of the composer, where they would look editable.
+                // The frozen switches live here once the conversation has started.
+                // Out of the composer, where they would look editable.
                 if options.read().locked {
                     LockedOptionsBar { options: *options.read() }
                 }
@@ -538,7 +538,7 @@ fn AiChatSessionRoot(
                     }
                 }
             }
-            // Right — document pane (≈40%)
+            // Right, document pane (≈40%)
             div {
                 style: "height: 100%; width: 40%; min-width: 300px;",
                 SuspendWrapper {

@@ -2,8 +2,8 @@
 //!
 //! The subset is chosen for the two things this rule claims: that a number in international form
 //! reaches the same E.164 value however it is punctuated, and that the shapes libphonenumber's own
-//! text matcher refuses — page ranges, timestamps, plus-addressed mailboxes, digit runs that
-//! continue past the match — are refused here too. Numbers in national form are not in the subset
+//! text matcher refuses (page ranges, timestamps, plus-addressed mailboxes, digit runs that
+//! continue past the match) are refused here too. Numbers in national form are not in the subset
 //! as positives, because the rule deliberately cannot read them.
 
 mod support;

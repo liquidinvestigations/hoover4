@@ -20,7 +20,7 @@ use crate::components::admin_components::{
     MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
-// Shadows the prelude's element table so `svg_title` exists — see its module docs. An
+// Shadows the prelude's element table so `svg_title` exists. See its module docs. An
 // HTML `<title>` inside an `<svg>` is a foreign element and never becomes a tooltip.
 use crate::components::svg_title::dioxus_elements;
 use crate::routes::Route;
@@ -29,12 +29,12 @@ use crate::routes::Route;
 /// not an export.
 const LIST_LIMIT: u32 = 50;
 
-/// What one panel's data is actually in — including *failed*, which this page used to
+/// What one panel's data is actually in, including *failed*, which this page used to
 /// throw away.
 ///
 /// Every panel here read its resource as `…and_then(|r| r.as_ref().ok()).cloned()`, which
 /// maps a server fn that returned an error onto the same `None` as a request still in
-/// flight. So a 500 rendered as "Loading…" — forever, with no error anywhere on the page.
+/// flight. So a 500 rendered as "Loading…" without end, and with no error anywhere on the page.
 /// Both failure lists 500'd on every collection that actually had failures and the page
 /// said nothing at all about it; that is the bug this type exists to make unrepresentable.
 #[derive(Clone, PartialEq)]
@@ -117,7 +117,7 @@ fn ProcessingContent(collection_id: String) -> Element {
     let error_msg = use_signal(|| None::<String>);
 
     // One "refresh everything" closure, so a retry updates the progress bars and the
-    // workflow list too — the two things an admin looks at right after clicking Retry.
+    // workflow list too, which are the two things an admin looks at right after clicking Retry.
     // `Resource` is `Copy`, so each call re-copies the handles; that keeps the closure
     // `Fn` and lets it be handed to more than one `EventHandler`.
     let refresh_all = move || {
@@ -279,7 +279,7 @@ fn StageBar(stage: StageProgress) -> Element {
             }
             // A stage that lost documents must not read as finished. The pipeline
             // records per-document failures and carries on by design, so `done / total`
-            // alone hides them — this is the column that says so, next to the bar the
+            // alone hides them. This is the column that says so, next to the bar the
             // failure happened at rather than only in the panels further down.
             div { style: "width: 110px; font-size: 12px; flex-shrink: 0;",
                 if stage.failed_documents > 0 {
@@ -395,7 +395,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
 
     // Three ticks over a real range; one when there is no range. Every remaining time
     // being zero is a finished pipeline, and three gridlines all reading `0s` describe an
-    // axis that does not exist — the baseline alone is the whole truth there.
+    // axis that does not exist. The baseline alone is the whole truth there.
     let ticks: Vec<(f64, String)> = if max_eta == 0 {
         vec![(baseline, humanize_seconds(0))]
     } else {
@@ -529,7 +529,7 @@ fn ShareBar(percent: f64, color: String) -> Element {
 
 /// Per-task-type time breakdown, sorted so the top row is where to optimise.
 ///
-/// Reads `processing_task_runs`, one row per activity execution — failures included, at
+/// Reads `processing_task_runs`, one row per activity execution, failures included at
 /// their real cost. This is the after-the-fact view; the live panel above it is the
 /// during-the-run one.
 #[component]
@@ -639,7 +639,7 @@ fn Metric(label: String, value: String, note: String) -> Element {
 /// recompute every five seconds.
 ///
 /// The poll is a `tick` signal read inside `use_resource` (the pattern
-/// `LiveChatsPanel` already uses), NOT `use_effect { clear(); restart(); }` — that
+/// `LiveChatsPanel` already uses), NOT `use_effect { clear(); restart(); }`. That
 /// pairing fires on mount and doubles every request. `collection_id` goes through
 /// `use_reactive!` because a prop is not reactive on its own.
 #[component]
@@ -1007,8 +1007,8 @@ mod tests {
     fn seconds_keep_their_magnitude_and_gain_a_unit_when_large() {
         assert_eq!(format_seconds(0.0), "0.0 s");
         assert_eq!(format_seconds(12.34), "12.3 s");
-        // Past a minute the raw seconds are still there — they are what the rows are
-        // compared on — with a readable unit beside them.
+        // Past a minute the raw seconds are still there (they are what the rows are
+        // compared on) with a readable unit beside them.
         assert_eq!(format_seconds(3661.0), "3661 s (1h 1m)");
     }
 

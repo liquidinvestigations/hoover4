@@ -11,13 +11,13 @@ PLAN_POLL_INTERVAL_S = 5
 def ner_service_reachable() -> bool:
     """Whether the remote NER service answers on its real endpoint.
 
-    Probes ``{NER_URL}/extract-entities`` with a one-text request — the same
+    Probes ``{NER_URL}/extract-entities`` with a one-text request. The same
     endpoint the P4 stage posts to (NOT ``/docs``: a healthy service that does
     not serve docs would otherwise be reported unreachable, silently downgrading
     every test that branches on this probe).
 
     When it does not answer, P4 records its failures in ``processing_errors`` and
-    the pipeline continues with empty entity MVAs — but ``nlp_processed`` stays
+    the pipeline continues with empty entity MVAs, but ``nlp_processed`` stays
     empty, so tests asserting on it must branch on this probe.
     """
     ner_url = os.environ.get("NER_URL", "")
@@ -70,7 +70,7 @@ def wait_for_plans_finished(collectionname: str, timeout_s: int = 1800) -> None:
 def ingest_dataset(collectionname: str, dataset_name: str, path: str) -> str:
     """Register a disk dataset and submit its plans (same calls as
     ``main.py add-disk-dataset``). Returns the ``collection_dataset`` id.
-    Does NOT wait for the plans to finish — see :func:`wait_for_plans_finished`.
+    Does NOT wait for the plans to finish. See :func:`wait_for_plans_finished`.
     """
     import asyncio
 

@@ -1,6 +1,6 @@
 # EasyOCR server
 
-GPU OCR over HTTP — the GPU half of the OCR tier, and the counterpart of
+GPU OCR over HTTP, the GPU half of the OCR tier, and the counterpart of
 [`main_services/ocr_tesseract`](../../main_services/ocr_tesseract/Readme.md).
 
 ## Contract
@@ -27,8 +27,8 @@ substitutes.
 `confidence` is reported on Tesseract's **0..100** scale, not EasyOCR's native 0..1, for
 the same reason: the stored variants are scored against each other.
 
-`words` carries one entry per recognised **line**, not per word — that is EasyOCR's
-detection granularity — with its free quadrilateral reduced to a bounding rectangle.
+`words` carries one entry per recognised **line**, not per word (that is EasyOCR's
+detection granularity) with its free quadrilateral reduced to a bounding rectangle.
 
 ## Concurrency is one, deliberately
 
@@ -51,7 +51,7 @@ internet before answering its first request fails in a way the health check cann
 report. The compose overlay mounts `easyocr_models_cache` over `/root/.EasyOCR`, and an
 empty named volume is seeded from the image, so the baked weights carry into it.
 
-A language that is *not* baked in still works — it is downloaded on first use, and pays
+A language that is *not* baked in still works. It is downloaded on first use, and pays
 for that on the first page. `/health` advertises only the baked set.
 
 Adding a language in a new script is the main cost lever in the pipeline: it adds a full
@@ -66,7 +66,7 @@ There is no CUDA base image. The torch wheels from the CUDA 13 index carry their
 runtime libraries as `nvidia-*-cu13` packages, and the only piece that has to come from
 outside is `libcuda.so.1`, which nvidia-container-toolkit injects from the host driver.
 A CUDA base image on top of that adds a second, unused copy of the toolkit and pins the
-image to one CUDA minor — this way one Dockerfile builds on x86_64 and aarch64 and
+image to one CUDA minor. This way one Dockerfile builds on x86_64 and aarch64 and
 follows whatever driver the host has. See
 [CUDA and GPU architecture](../README.md#cuda-and-gpu-architecture).
 
@@ -80,7 +80,7 @@ place that shows it before a dataset takes a day.
 |---|---|---|
 | `EASYOCR_LANGUAGES` | `en` | `+`-joined codes advertised by `/health`; also the build arg that decides what is baked in |
 | `EASYOCR_MODEL_DIR` | `/root/.EasyOCR` | Where weights live; the cache volume mounts here |
-| `OCR_CONCURRENCY` | `1` | See above — a correctness bound |
+| `OCR_CONCURRENCY` | `1` | See above, a correctness bound |
 | `OCR_QUEUE_DEPTH` | `8` | Requests that may wait before the service sheds load |
 | `OCR_READER_CACHE_SIZE` | `3` | Warm `Reader`s kept; each holds GPU memory, and the key is caller-supplied |
 | `OCR_MAX_IMAGE_BYTES` | `67108864` | Ceiling on one decoded image |

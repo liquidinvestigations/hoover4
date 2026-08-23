@@ -2,12 +2,12 @@
 
 Runs on ``processing-embed-queue``. The stage writes two collection-DB tables:
 
-* ``text_chunks`` — the chunks themselves (model-independent: byte offsets and text);
-* ``text_chunk_vectors`` — the durable embeddings, keyed WITH ``embedding_model`` so a
+* ``text_chunks``, the chunks themselves (model-independent: byte offsets and text);
+* ``text_chunk_vectors``, the durable embeddings, keyed WITH ``embedding_model`` so a
   model change adds rows rather than replacing them. Manticore's ``_vectors`` shards
   are a disposable HNSW copy of this table, written by the P6 vector indexer.
 
-Failure policy matches P4: errors are NOT swallowed — an exception fails the activity
+Failure policy matches P4: errors are NOT swallowed. An exception fails the activity
 so Temporal retries it, and only after retries are exhausted does the workflow record
 the failure in ``processing_errors``. The two non-retryable cases are config lies
 (a missing probe, or a server serving a different model/dimension than the probe
@@ -106,7 +106,7 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     # inserts a second row for the same
     # (collection_dataset, file_hash, extracted_by, page_id) that lives until the
     # background merge collapses it. Without FINAL both rows come back, both are
-    # chunked, and both survive the anti-join below — because they produce *identical*
+    # chunked, and both survive the anti-join below, because they produce *identical*
     # chunk keys, so neither is in `existing` on the first run. The endpoint is then
     # asked to embed every chunk of the page twice, at full GPU cost, and both vectors
     # are inserted. The filter is on the ORDER BY prefix, so FINAL is cheap here.
@@ -168,7 +168,7 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                 # Text extraction is greedy on purpose, so it also yields an email
                 # attachment's base64 and an image's pixel rows. Embedding those costs GPU
                 # time to produce a vector that then wins searches it has no business
-                # winning — live, an `.xpm` colour table was the top hit for "Eiffel Tower
+                # winning: live, an `.xpm` colour table was the top hit for "Eiffel Tower
                 # height". `text_content` still holds every byte; only the embedding and the
                 # KNN index skip them.
                 reason = non_linguistic_reason(chunk.text)
@@ -227,7 +227,7 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
 
         # Chunk rows go in before the first vector of their page: a vector without its
         # chunk row would be a KNN hit with no text to rerank or render. Only pages with
-        # missing vectors are (re)written — text_chunks is keyed without the model, and
+        # missing vectors are (re)written: text_chunks is keyed without the model, and
         # the content is deterministic, so a rewrite would only bump updated_at.
         pages_needing_work = {
             (c["file_hash"], c["extracted_by"], c["page_id"]) for c in missing

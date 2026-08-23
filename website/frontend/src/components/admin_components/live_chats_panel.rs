@@ -1,6 +1,6 @@
 //! Admin panel: agent turns running right now.
 //!
-//! Answers "who is on the GPU, and can I stop them". Polls rather than streams — the
+//! Answers "who is on the GPU, and can I stop them". Polls rather than streams. The
 //! interesting runs last tens of seconds and a two-second refresh is enough to watch
 //! one, without a websocket for a page an admin has open for a minute at a time.
 //!
@@ -144,7 +144,7 @@ fn LiveChatRow(
                         spawn(async move {
                             match chat_admin_cancel_run(workflow_id).await {
                                 // `false` means it finished on its own between the page
-                                // rendering and the click — not an error.
+                                // rendering and the click, not an error.
                                 Ok(_) => on_done.call(()),
                                 Err(e) => on_error.call(e.to_string()),
                             }

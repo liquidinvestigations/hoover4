@@ -5,7 +5,7 @@ retired. Before it, the full research agent carried three overlapping "search th
 tools and had to guess which one to call; now there is exactly one, and choosing *where*
 to look is a `sources` argument rather than a tool choice.
 
-A source's `kind` is not decoration — :mod:`.pipeline` applies a per-kind floor so an
+A source's `kind` is not decoration. :mod:`.pipeline` applies a per-kind floor so an
 encyclopaedia entry or a news story is not buried by ten generic web results that RRF
 happened to rank higher.
 
@@ -19,7 +19,7 @@ name             kind         what it is
 ``yahoo``        web          "
 ``ddg_api``      web          the ``ddgs`` library's ``text()``, from `ddg_search_server`
 ``ddg_news``     news         the ``ddgs`` library's ``news()``, same origin
-``gdelt``        news         GDELT DOC 2.0 — world news across languages and back years
+``gdelt``        news         GDELT DOC 2.0, world news across languages and back years
 ``wikipedia``    reference    MediaWiki search + extracts, from `wikipedia_search_server`
 ``wikidata``     reference    structured entities: a company, a person, an identifier
 ``crossref``     reference    DOI metadata, resolving to doi.org
@@ -29,8 +29,8 @@ name             kind         what it is
 ===============  ===========  =========================================================
 
 `ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
-independently — a selector change breaks one and a library bump breaks the other — and
-the whole point of the `degraded` list is that rot is visible rather than silent.
+independently (a selector change breaks one and a library bump breaks the other), and
+the `degraded` list exists so that rot is visible rather than silent.
 `startpage` was removed for the opposite reason: it never worked at all (see
 :data:`.engines.ENGINES`), and a permanently-degraded source is a facade, not a metasearch.
 
@@ -42,7 +42,7 @@ selector rot, an HTTP 429 and an unreachable host, and those want three differen
 
 **A key-gated source with no key is not registered at all.** It is therefore absent from
 :func:`describe_sources`, from the default set and from dispatch, rather than present and
-failing on every call — a source the model is told about and cannot use costs a round trip
+failing on every call. A source the model is told about and cannot use costs a round trip
 to discover that. The key is read from a file path in the environment and never from a
 value, never defaulted, and never logged.
 """
@@ -91,7 +91,7 @@ SOURCE_TIMEOUT = float(os.getenv("METASEARCH_SOURCE_TIMEOUT", "8"))
 OVERALL_TIMEOUT = float(os.getenv("METASEARCH_OVERALL_TIMEOUT", "20"))
 
 #: How many results to ask each source for. Larger than the caller's `max_results`
-#: because fusion and reranking both need candidates to work with — asking for 8 and
+#: because fusion and reranking both need candidates to work with, asking for 8 and
 #: returning 8 means the reranker has nothing to reorder.
 PER_SOURCE_RESULTS = int(os.getenv("METASEARCH_PER_SOURCE_RESULTS", "15"))
 
@@ -108,7 +108,7 @@ class Source:
     fetch: Callable[[str, int, str | None], Awaitable[list[SearchResult]]]
     description: str = ""
     #: Deadline for this source alone; 0 means :data:`SOURCE_TIMEOUT`. Only for a source
-    #: whose *normal* answer is slower than the common deadline — a source that is merely
+    #: whose *normal* answer is slower than the common deadline, a source that is merely
     #: unreliable belongs on the `degraded` list, not on a longer leash. It can never
     #: exceed :data:`OVERALL_TIMEOUT`, which bounds the whole fan-out either way.
     timeout: float = 0.0
@@ -119,7 +119,7 @@ class Source:
 def _html_engine_source(name: str) -> Source:
     async def fetch(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
         # The HTML endpoints take no time filter, so `timelimit` is ignored here rather
-        # than faked — a filter that silently does nothing is worse than one that is
+        # than faked, a filter that silently does nothing is worse than one that is
         # documented as unsupported.
         headers = {
             "User-Agent": os.getenv(
@@ -143,7 +143,7 @@ def _html_engine_source(name: str) -> Source:
 # ------------------------------------------------------------------- ddgs library
 
 def _ddgs_call(method: str, query: str, max_results: int, timelimit: str | None) -> list[dict]:
-    """Blocking `ddgs` call. Run through `asyncio.to_thread` — the library is sync, and
+    """Blocking `ddgs` call. Run through `asyncio.to_thread`. The library is sync, and
     calling it on the event loop would stall every other source in the fan-out."""
     from ddgs import DDGS
 
@@ -293,7 +293,7 @@ async def _get_json(
 
     An HTTP status, a connection failure and a body that is not JSON are three different
     faults with three different fixes, and a source that answered `200 OK` with an error
-    sentence in plain text — GDELT does this for a query it will not run — is otherwise
+    sentence in plain text (GDELT does this for a query it will not run) is otherwise
     indistinguishable from one that found nothing.
     """
     try:
@@ -374,8 +374,8 @@ def _gdelt_date(stamp: str) -> str:
     return stamp
 
 
-#: Wikidata's entity search. Returns the item itself — a company, a person, an
-#: identifier — rather than an article about it, which is what makes it the reference
+#: Wikidata's entity search. Returns the item itself (a company, a person, an
+#: identifier) rather than an article about it, which is what makes it the reference
 #: source for "who is this and what is it cross-referenced to".
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
@@ -384,7 +384,7 @@ async def _fetch_wikidata(query: str, max_results: int, timelimit: str | None) -
     """Entity search, with the phrase search behind it.
 
     `wbsearchentities` matches an item's *label* by prefix, so it is exact for "Enron"
-    and returns nothing at all for "Arthur Andersen accounting firm" — which is the shape
+    and returns nothing at all for "Arthur Andersen accounting firm", which is the shape
     of query a model actually sends. The full-text `list=search` answers those, so it is
     the fallback, and its rows carry only Q-numbers: one `wbgetentities` call turns them
     into labels and descriptions. Two round trips, and only on a miss.
@@ -584,8 +584,8 @@ async def _fetch_factcheck(query: str, max_results: int, timelimit: str | None) 
 
 # ------------------------------------------------------------------ the archives
 
-#: The Wayback Machine's CDX index. It answers about a **URL**, not about a phrase —
-#: there is no full-text search over the archive — so a query naming no host is a
+#: The Wayback Machine's CDX index. It answers about a **URL**, not about a phrase
+#: (there is no full-text search over the archive), so a query naming no host is a
 #: question this source cannot be asked, and it says so rather than returning nothing.
 WAYBACK_CDX = "https://web.archive.org/cdx/search/cdx"
 
@@ -657,7 +657,7 @@ def _wayback_date(stamp: str) -> str:
 #: sometimes is worth more than no second archive, as long as its failure is visible.
 ARCHIVE_TODAY_URL = os.getenv("ARCHIVE_TODAY_URL", "https://archive.ph")
 
-#: A snapshot is a **short-code** link — `https://archive.ph/wCG1t` — carrying the page's
+#: A snapshot is a **short-code** link (`https://archive.ph/wCG1t`) carrying the page's
 #: title as its anchor text. The same listing also links `/<host>`, `/*.<host>` and
 #: `/<the full url>`, which are navigation into other views of the same listing and not
 #: snapshots at all; requiring a single path segment of a few alphanumerics is what
@@ -695,8 +695,8 @@ async def _fetch_archive_today(
     if response.status_code != 200:
         raise SourceUnavailable(f"HTTP {response.status_code}")
 
-    # Each snapshot is linked twice in the listing — once from its capture date and once
-    # from the page's own title — so the anchors are gathered per URL and the longest one
+    # Each snapshot is linked twice in the listing (once from its capture date and once
+    # from the page's own title), so the anchors are gathered per URL and the longest one
     # is the title. Taking the first match makes every result a bare timestamp.
     order: list[str] = []
     anchors: dict[str, list[str]] = {}
@@ -754,7 +754,7 @@ SOURCES: dict[str, Source] = {
         # Measured: GDELT takes ten to twelve seconds to answer at all, including when it
         # answers 429, so the common eight-second deadline turns every call into a
         # timeout. It also rate-limits per address, so a batch of queries will degrade it
-        # partway through — which the `degraded` list reports rather than hides.
+        # partway through, which the `degraded` list reports rather than hides.
         timeout=GDELT_TIMEOUT,
     ),
     "wikipedia": Source(
@@ -800,7 +800,7 @@ if _factcheck_key():
         description="Published fact-checks of a claim, from the ClaimReview publishers",
     )
 
-#: Default set. Everything registered — a metasearch that leaves a source out by default
+#: Default set. Everything registered, a metasearch that leaves a source out by default
 #: is a metasearch nobody benefits from. Derived from the registry rather than written out,
 #: so retiring a source cannot leave a default naming one that no longer exists.
 DEFAULT_SOURCES = ",".join(SOURCES)
@@ -848,7 +848,7 @@ def configured_sources() -> list[str]:
 def resolve_sources(requested: list[str] | None) -> tuple[list[str], list[str]]:
     """`(names to use, names dropped as unknown)`.
 
-    A caller — that is, the model — asking for a source that does not exist gets the
+    A caller (that is, the model), asking for a source that does not exist gets the
     configured set instead of an error. It is a hint, not a contract, and a typo in a
     tool argument must not cost a search.
     """
@@ -875,7 +875,7 @@ async def fetch_all(
     """Query every named source in parallel.
 
     Returns `(results per source, latency_ms per source, degraded names, reason per
-    degraded name)`. A source that raised, timed out, or came back empty is degraded —
+    degraded name)`. A source that raised, timed out, or came back empty is degraded,
     from the *ordering's* point of view those are the same failure, but from a maintainer's
     they are not, so the reason travels with the name instead of only reaching the log.
     """

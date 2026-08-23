@@ -56,7 +56,7 @@ def drop_collection_database(params: CollectionDatabaseParams) -> str:
     dropped_tables = drop_collection_tables(params.collectionname)
     db_name = drop_collection_db(params.collectionname)
     # The bucket goes with the database. It is one call rather than a prefix scan and
-    # delete, which is the whole reason the objects are split per collection — and its
+    # delete, which is the whole reason the objects are split per collection, and its
     # blocks are shared with nothing, because Garage dedups at the block level globally.
     bucket = collection_bucket(params.collectionname)
     objects_removed = 0
@@ -83,12 +83,12 @@ def count_dataset_rows(collectionname: str, collection_dataset: str) -> dict[str
     """What a purge of `collection_dataset` would delete, per store and table.
 
     Read-only. It walks exactly the table lists the two purge activities below walk, so
-    the report and the deletion can never disagree about what is in scope — a table the
+    the report and the deletion can never disagree about what is in scope. A table the
     purge would miss is missing from the report too, rather than the operator being told
     a number nothing acts on.
 
     Counts are physical rows, not `FINAL` rows: `FINAL` over a large collection is
-    expensive, and the honest answer to "what will this delete" is the row count.
+    expensive, and the row count is what answers "what will this delete".
     """
     from database.clickhouse import get_collection_client
     from database.manticore import get_manticore_client, list_collection_tables
@@ -281,7 +281,7 @@ def collect_eta_samples(params: "CollectEtaSamplesParams") -> "CollectEtaSamples
 def sweep_chat_artifacts() -> str:
     """One chat-artifact retention pass: objects first, then rows.
 
-    See ``tasks/P_admin/artifact_sweeper`` for why the order is not interchangeable — a
+    See ``tasks/P_admin/artifact_sweeper`` for why the order is not interchangeable. A
     ClickHouse TTL cannot delete Garage objects, so dropping the rows first would leak the
     bytes permanently.
     """

@@ -92,7 +92,7 @@ def truncate_json(text: str, max_chars: int = TOOL_PAYLOAD_CHARS) -> str:
     of the places the two are the same code written twice.
 
     Cutting the serialised document leaves a `{` with no `}`, and every reader then treats
-    a recorded result as an absent one — the card printed "the result payload was not
+    a recorded result as an absent one. The card printed "the result payload was not
     recorded" about a row it had just read. So: drop whole elements off the biggest array
     (the result list, in practice), mark the object that owned it, and only clip long
     strings when there is nothing left to drop. Anything that is not JSON, or that is one
@@ -239,7 +239,7 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
         # pane shows the result rather than a second copy of the arguments.
         output = _as_dict(content.get("output"))
         result = output.get("content", content)
-        # Inside the JSON, never across it — see `truncate_json`.
+        # Inside the JSON, never across it. See `truncate_json`.
         tool_output = truncate_json(_dumps(result))
 
         name = _tool_name(content)
@@ -261,7 +261,7 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
 
 #: Tools whose result is a single document rather than a result set.
 #:
-#: `get_document_text` is retired and no live call produces one — **the arm stays anyway**,
+#: `get_document_text` is retired and no live call produces one. **The arm stays anyway**,
 #: because transcripts written before the batch form still hold its rows and a card that
 #: cannot render an old row loses the evidence base this design was built on.
 _SINGLE_DOCUMENT_TOOLS = {"get_document_text", "show_document"}

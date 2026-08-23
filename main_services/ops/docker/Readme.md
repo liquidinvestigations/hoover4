@@ -19,10 +19,10 @@ a single-file bind mount follows the inode it was created with, so an editor tha
 renames leaves the container silently reading the old contents.
 
 `deploy.py` renders the generated `.env` files these read; **never hand-edit a generated
-file** — the next deploy overwrites it, and until then the change looks like it worked.
+file**. The next deploy overwrites it, and until then the change looks like it worked.
 
-Relative paths resolve against the **project directory** — the first compose file's
-directory — not against the file that declares them, so an overlay in `compose/` points
+Relative paths resolve against the **project directory** (the first compose file's
+directory) not against the file that declares them, so an overlay in `compose/` points
 somewhere else from where it reads as pointing. `./deploy --print-command` and
 `docker compose … config` render the absolutes.
 

@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     # The package's own loggers, not uvicorn's. `log_level` below configures uvicorn
     # alone: without this the root logger has no handler, Python's last-resort handler
-    # takes over, and everything the agent logs below WARNING is discarded — including
+    # takes over, and everything the agent logs below WARNING is discarded, including
     # the compaction trail, whose whole purpose is to be readable after the fact.
     logging.basicConfig(
         level=(os.getenv("LOG_LEVEL") or "INFO").upper(),

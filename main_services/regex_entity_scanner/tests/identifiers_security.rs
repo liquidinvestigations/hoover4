@@ -1,7 +1,7 @@
 //! Securities identifiers: ISIN, CUSIP, SEDOL.
 //!
 //! The fixtures are the documented examples from `stdnum/isin.py`, `stdnum/cusip.py` and
-//! `stdnum/gb/sedol.py` — each module's valid number and the counterpart that differs only in the
+//! `stdnum/gb/sedol.py`, each module's valid number and the counterpart that differs only in the
 //! check digit. The subset covers what separates the three: the ISIN's country prefix and Luhn over
 //! the letter-expanded form, the CUSIP's alternating-weight variant, the SEDOL's vowel-free
 //! alphabet, and the cue word both bare tokens require.
@@ -54,7 +54,7 @@ fn accepts_a_documented_isin_and_reports_its_country() {
     }
 }
 
-/// `XS` is not a country: it is the allocation for internationally cleared securities, and an
+/// `XS` is the allocation for internationally cleared securities rather than a country, and an
 /// investigative corpus full of Eurobonds would be empty without it.
 #[test]
 fn accepts_an_internationally_cleared_isin_without_claiming_a_country() {

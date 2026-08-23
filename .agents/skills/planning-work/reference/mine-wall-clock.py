@@ -8,7 +8,7 @@ Run it when the table looks stale; a reference class that cannot be re-derived r
 as hand-written day-costs did.
 
 Wall clock for a sub-agent is first-to-last timestamp inside its own transcript. A sub-agent
-runs with nobody in the loop, so unlike a session there are no idle gaps to strip: the span
+runs with nobody watching, so unlike a session there are no idle gaps to strip: the span
 IS the work. Session spans are reported separately and are only meaningful for sessions that
 ran without long human absences, which is why the organizer multiplier below drops any
 session whose span exceeds two days.

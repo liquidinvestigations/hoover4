@@ -100,7 +100,7 @@ class TestFusedPipeline:
 
     def test_vector_only_hits_enter_the_results(self, monkeypatch):
         # A semantic hit with no keyword overlap must survive even when keyword hits
-        # dominate the fused order — that is the floor's whole job.
+        # dominate the fused order. That is the floor's whole job.
         keyword = [_keyword(H1, p, 10.0 - p, f"keyword page {p}") for p in range(1, 12)]
         vector = [_vector(H3, 2, 0.05, "semantic chunk with no keyword overlap")]
 
@@ -110,28 +110,28 @@ class TestFusedPipeline:
 
     def test_max_results_is_honoured_on_the_hybrid_path(self, monkeypatch):
         """A per-kind floor of 10 reserves 20 slots, so `max_results=8` does nothing,
-        so an agent asking for 8 hits got 20 — at 1200 snippet characters each."""
+        so an agent asking for 8 hits got 20, at 1200 snippet characters each."""
         keyword = [_keyword(H1, p, 20.0 - p, f"keyword page {p}") for p in range(1, 21)]
         vector = [_vector(H2, p, 0.01 * p, f"vector chunk {p}") for p in range(1, 21)]
 
         _identity_rerank(monkeypatch)
         hits = server._fused_pipeline("q", keyword, vector, limit=8, notes=[])
         assert len(hits) == 8
-        # Both rankings still represented — the cap tightened, the floor did not vanish.
+        # Both rankings still represented. The cap tightened, the floor did not vanish.
         assert {s for h in hits for s in h.match_sources} == {"keyword", "vector"}
 
 
 class TestFusedSnippet:
     """Which chunk of a multi-chunk page becomes the page's snippet.
 
-    The snippet is not only what the user reads — it is the document string handed to the
+    The snippet is not only what the user reads. It is the document string handed to the
     cross-encoder. Scoring a page on its least relevant passage misranks it *and* then
     shows the user the passage that lost.
     """
 
     def test_the_nearest_chunk_of_a_page_wins(self, monkeypatch):
         # KNN returns nearest first. Assigning unconditionally meant the LAST assignment
-        # — the farthest chunk — was the one that stuck.
+        # (the farthest chunk) was the one that stuck.
         vector = [
             _vector(H1, 3, 0.05, "the passage that actually answers the query", chunk_index=0),
             _vector(H1, 3, 0.90, "an unrelated aside further down the page", chunk_index=7),

@@ -24,8 +24,8 @@ use dioxus_free_icons::{
 
 /// The glyph for one document's canonical file type.
 ///
-/// `file_type` empty — a document the type resolver has not reached, or a response from a
-/// build before the field existed — draws the generic file icon. That is the same thing
+/// `file_type` empty (a document the type resolver has not reached, or a response from a
+/// build before the field existed) draws the generic file icon. That is the same thing
 /// every one of these sites drew before, so an unfilled field degrades to the old
 /// behaviour rather than to nothing.
 #[component]

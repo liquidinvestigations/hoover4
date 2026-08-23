@@ -258,7 +258,7 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
 
     Extractous (native Tika + Tesseract) wedges forever on some formats (camera
     RAW, PSD, TGA, ...). A stuck native call cannot be interrupted from Python
-    and blocks the worker's activity threads — and every later Extractor() call
+    and blocks the worker's activity threads, and every later Extractor() call
     with it. A subprocess can always be killed. Helpers stay alive across files
     so the cost is isolation, not interpreter startup. A timeout is raised as a
     non-retryable ApplicationError so the file lands in processing_errors after

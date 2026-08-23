@@ -1,7 +1,7 @@
 """Temporal visibility: the ``CollectionDataset`` search attribute.
 
-Every workflow the pipeline starts — top-level submissions and child workflows
-alike — carries the ``CollectionDataset`` keyword search attribute, so the admin
+Every workflow the pipeline starts (top-level submissions and child workflows
+alike) carries the ``CollectionDataset`` keyword search attribute, so the admin
 workflow browser can find all runs of a collection with one visibility query
 (``CollectionDataset = 'testdata_1'``) instead of only the four workflow ids that
 happen to embed the dataset name. Child workflows like ``HandleFolders-<hash>``
@@ -46,7 +46,7 @@ async def ensure_search_attributes(client: Client) -> None:
 
     Idempotent: the cluster silently accepts re-registering an existing
     attribute, so every worker calls this on startup. A failure here is logged
-    and swallowed — the worker can still run workflows that do not set the
+    and swallowed. The worker can still run workflows that do not set the
     attribute, and the admin page keeps its workflow-id fallback clause.
     """
     from temporalio.api.enums.v1 import IndexedValueType

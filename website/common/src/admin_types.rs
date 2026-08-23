@@ -80,7 +80,7 @@ pub struct AdminDatasetItem {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdminDatasetDetail {
     pub dataset: AdminDatasetItem,
-    /// The owning collection. Fixed when the dataset is created — it can
+    /// The owning collection. Fixed when the dataset is created. It can
     /// never be changed, so it is not optional: a dataset without a collection cannot
     /// exist any more.
     pub collectionname: String,
@@ -167,7 +167,7 @@ pub struct DatasetOcrPanel {
     pub tesseract_languages: String,
     pub easyocr_languages: String,
     /// What the Tesseract image can actually serve, read from its `/health` rather than
-    /// from configuration. Empty when the tier did not answer — the form then says so
+    /// from configuration. Empty when the tier did not answer. The form then says so
     /// instead of offering a list it cannot stand behind.
     pub tesseract_available: Vec<String>,
     /// Whether an EasyOCR endpoint is configured at all. False renders that half of the

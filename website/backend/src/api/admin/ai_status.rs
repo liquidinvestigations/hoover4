@@ -1,4 +1,4 @@
-//! `/admin/ai_status` — configured vs serving, circuits, dims, traffic.
+//! `/admin/ai_status`, configured vs serving, circuits, dims, traffic.
 
 use std::time::Duration;
 
@@ -16,7 +16,7 @@ use crate::db_utils::clickhouse_utils::get_global_client;
 /// They are excluded from the traffic and use% panels rather than deleted: the rows are
 /// evidence that the check ran, and dropping them would make a failed smoke test look
 /// identical to one that was never run. But a single 12 ms synthetic call dominated the
-/// p50 of a panel whose whole job is showing how slow real turns are — a median computed
+/// p50 of a panel whose whole job is showing how slow real turns are. A median computed
 /// over two populations describes neither.
 const SYNTHETIC_MODEL_IDS: &[&str] = &["phase5-smoke", "test-model"];
 
@@ -47,8 +47,8 @@ fn fingerprint_local() -> String {
 /// What the endpoint that answered is **actually** running on.
 ///
 /// Read out of the health body, never out of the name of the slot the endpoint occupies.
-/// `NER_URL` is a url, not a promise: point it at the CPU twin — which is exactly what a
-/// deployment with no GPU does — and a row that prints its slot's name says `gpu` on a
+/// `NER_URL` is a url, not a promise: point it at the CPU twin (which is exactly what a
+/// deployment with no GPU does), and a row that prints its slot's name says `gpu` on a
 /// host that has no GPU at all. This page exists to make "configured versus actually
 /// serving" legible, so the one thing it must not do is repeat the configuration back.
 ///
@@ -69,7 +69,7 @@ fn serving_hardware(health_body: &serde_json::Value) -> &'static str {
 ///
 /// The probe stands on its own and is **never** widened to "the main AI server answered".
 /// That server hosts three capabilities behind independent model loads, so
-/// `ner_model_loaded` can be false while the process is perfectly healthy — and the panel
+/// `ner_model_loaded` can be false while the process is perfectly healthy, and the panel
 /// then reported NER up in exactly the situation it exists to report it down. A twin that
 /// does not publish the flag is taken at its word: answering `/health` is all it claims.
 async fn probe_ner(url: &str) -> Option<serde_json::Value> {
@@ -199,10 +199,10 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
         circuit_open_remaining_s: 0,
     });
 
-    // NER — GPU with CPU twin fallback
+    // NER, GPU with CPU twin fallback
     let ner_url = std::env::var("NER_URL").unwrap_or_default();
     let ner_fallback = std::env::var("NER_URL_FALLBACK").unwrap_or_default();
-    // The NER probe stands on its own — **never** `|| ai_ok`.
+    // The NER probe stands on its own, **never** `|| ai_ok`.
     //
     // That fallback made "NER is reachable" mean "the main AI server answered /health",
     // which is a different question with a different answer: the AI server hosts three
@@ -234,7 +234,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
         name: "ner".into(),
         configured_provider: std::env::var("NER_PROVIDER").unwrap_or_else(|_| "none".into()),
         serving_provider: ner_serving,
-        // From the endpoint that actually answered, not from the main AI server's body —
+        // From the endpoint that actually answered, not from the main AI server's body,
         // when the twin is serving, the AI server's `ner_model` is a different process's
         // model or nothing at all.
         serving_model: ner_serving_body
@@ -469,8 +469,8 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
 
 async fn list_shard_dim_checks(probe_dim: u32) -> Vec<AiShardDimCheck> {
     // `manticore_shards` tracks the text shards (`testdata_1`), not the `_vectors`
-    // companions. Derive the vector table name and ask Manticore for the live DDL —
-    // knn_dims is fixed at CREATE and is what the index builder refuses on.
+    // companions. Derive the vector table name and ask Manticore for the live DDL.
+    // Knn_dims is fixed at CREATE and is what the index builder refuses on.
     let client = get_global_client();
     #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
     struct ColRow {
@@ -557,7 +557,7 @@ async fn probe_knn_dims(http: &reqwest::Client, manticore: &str, table: &str) ->
         return None;
     }
     let text = resp.text().await.ok()?;
-    // knn_dims='384' (single or double quotes). Avoid a regex dep — one find is enough.
+    // knn_dims='384' (single or double quotes). Avoid a regex dep, one find is enough.
     let marker = "knn_dims=";
     let idx = text.find(marker)?;
     let rest = &text[idx + marker.len()..];
@@ -574,7 +574,7 @@ mod tests {
     ///
     /// The bodies below are what the two servers actually publish. The twin's carries no
     /// `cuda_available` at all, which is the whole signal: a deployment with no GPU points
-    /// `NER_URL` — the variable named "gpu" throughout this file — straight at the twin,
+    /// `NER_URL` (the variable named "gpu" throughout this file), straight at the twin,
     /// and a row that prints the name of the slot then claims a GPU on a host that has
     /// none, on the one page whose subtitle promises to notice exactly that.
     #[test]
@@ -597,7 +597,7 @@ mod tests {
         assert_eq!(serving_hardware(&gpu), "gpu");
 
         // A server that answers but says it has no CUDA is taken at its word, and so is
-        // one that says nothing — an absent field is not evidence of a GPU.
+        // one that says nothing. An absent field is not evidence of a GPU.
         let gpu_less = serde_json::json!({"status": "healthy", "cuda_available": false});
         assert_eq!(serving_hardware(&gpu_less), "cpu");
         assert_eq!(serving_hardware(&serde_json::json!({})), "cpu");

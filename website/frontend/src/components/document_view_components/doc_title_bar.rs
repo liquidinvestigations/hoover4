@@ -126,7 +126,7 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     let file_path = match file_path_resource.read().clone() {
         Some(Ok(Some(path))) => path.split("/").last().unwrap_or("").to_string(),
         // The identifier resolves to no file: a bookmark that outlived its ingest, or a
-        // hand-edited URL. A neutral name, not an error marker — the rest of the viewer
+        // hand-edited URL. A neutral name, not an error marker, the rest of the viewer
         // still has something to show, and there is nothing here for the user to fix.
         Some(Ok(None)) => {
             return rsx! { div {
@@ -158,7 +158,7 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
 
 /// The title bar's glyph, from the document's own canonical type.
 ///
-/// One point lookup per opened document, and `""` while it is in flight — the icon
+/// One point lookup per opened document, and `""` while it is in flight, the icon
 /// settles from generic to specific rather than popping in from nothing.
 #[component]
 fn FileTypeIcon(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
@@ -203,7 +203,7 @@ async fn get_canonical_file_type(
         .map_err(crate::api::error_util::to_server_fn_error)
 }
 
-/// `Ok(None)` is "this dataset has no file with that hash" — a dead bookmark, not a
+/// `Ok(None)` is "this dataset has no file with that hash", a dead bookmark, not a
 /// failure. See the backend fn.
 #[server]
 async fn get_file_path(

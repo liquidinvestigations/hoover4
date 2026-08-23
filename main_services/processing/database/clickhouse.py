@@ -203,7 +203,7 @@ def _client_ctx(database: str):
     """One client per ``(thread, database)``, kept for the process lifetime.
 
     Nested ``with`` blocks on the same thread and database share that client and
-    must not close it when the inner block exits — ``resolve_collection`` opens
+    must not close it when the inner block exits: ``resolve_collection`` opens
     the global client while a caller may already hold a collection client
     (different database, two pooled entries) and some call sites nest the same
     database.
@@ -310,7 +310,7 @@ def get_server_setting(key: str) -> str | None:
 
     ``server_settings`` is a ReplacingMergeTree versioned by ``updated_at``, so the
     current value is the argMax. Readers of the embeddings probe
-    (``embeddings_serving_model`` / ``embeddings_serving_dim``) go through here — the
+    (``embeddings_serving_model`` / ``embeddings_serving_dim``) go through here, the
     probed value is the truth about what the GPU tier serves, and the ini is only the
     request.
     """

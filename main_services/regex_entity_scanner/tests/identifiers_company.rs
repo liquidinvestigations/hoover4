@@ -1,7 +1,7 @@
 //! Company identifiers.
 //!
 //! The fixtures are the documented examples from the `python-stdnum` modules the arithmetic is
-//! ported from — `stdnum/lei.py` for the code and its single-transposition counterpart, and one
+//! ported from: `stdnum/lei.py` for the code and its single-transposition counterpart, and one
 //! `vat.py` or its alias per country for the tax numbers. The subset covers what the rules claim:
 //! the checksum, the lengths and alphabets each jurisdiction issues, the alternative spellings its
 //! register accepts, and the boundary guards that keep a prefix of a longer run out of the facet.

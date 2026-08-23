@@ -90,7 +90,7 @@ pub async fn get_blob_value_from_clickhouse(
 }
 
 /// The whole document, in memory, for a caller that has to hand the bytes to something
-/// else — the in-PDF search sidecar is the only one today.
+/// else. The in-PDF search sidecar is the only one today.
 ///
 /// `max_bytes` is checked against the **registered size** before a single byte is read, so
 /// an oversized document costs one ClickHouse query rather than a multi-gigabyte

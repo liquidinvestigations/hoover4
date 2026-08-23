@@ -71,7 +71,7 @@ Data ingestion pipelines orchestrated by [Temporal](https://temporal.io/), backe
 
 ### [AI Services](ai_services/README.md)
 
-The optional GPU tier: a FastAPI server providing multilingual embeddings, cross-encoder reranking and named entity recognition, GPU EasyOCR, and a parked local vLLM. Standalone — no dependency on the main stack; the MCP servers and research agents live in [`main_services/agents/`](main_services/agents/README.md).
+The optional GPU tier: a FastAPI server providing multilingual embeddings, cross-encoder reranking and named entity recognition, GPU EasyOCR, and a parked local vLLM. Standalone, no dependency on the main stack; the MCP servers and research agents live in [`main_services/agents/`](main_services/agents/README.md).
 
 ### [Website](website/Readme.md)
 
@@ -122,7 +122,7 @@ both hosts (see `hoover4.ini.example` for the fully commented template):
 
 ```bash
 cp hoover4.ini.example hoover4.ini
-$EDITOR hoover4.ini      # ports, providers, secret file paths — never key values
+$EDITOR hoover4.ini      # ports, providers, secret file paths, never key values
 
 ./deploy                 # main_services: databases, worker, website, agents
 ./deploy --ai-services   # ai_services: the optional GPU tier (needs [ai_services] enabled = true)
@@ -138,10 +138,10 @@ ports), and shells out to `docker compose`. The main stack brings up Temporal (w
 Cassandra and Elasticsearch), ClickHouse, Manticore, Garage, Redis, the processing
 worker, the research agents and MCP servers, monitoring UIs, and the website on port
 `12345`. The GPU tier is standalone: no shared network, no dependency on the main
-host — the pipeline reaches it over the published ports in the ini.
+host. The pipeline reaches it over the published ports in the ini.
 
 Secrets never enter a compose file, a generated `.env` or a command line. The ini
-holds *host paths* to key files (`chmod 600`, outside the checkout — `deploy.py`
+holds *host paths* to key files (`chmod 600`, outside the checkout: `deploy.py`
 refuses paths inside the repo, since those leak into build contexts); the deploy turns
 each into a read-only bind mount, so a container learns the path and never the value.
 
@@ -150,7 +150,7 @@ MCP server on `127.0.0.1:21940` for the coding agents (`.mcp.json` points at it)
 is development tooling, not part of the stack: it runs as its own compose project
 (`hoover4-devtools`) on its own network, so `./deploy --down` and `./deploy --reset`
 cannot take it down mid-session, and its index volume survives a reset. It can read
-and write the whole repository — never publish it off `127.0.0.1`.
+and write the whole repository, never publish it off `127.0.0.1`.
 
 ---
 
@@ -192,7 +192,7 @@ See [`main_services/docs/Readme.md`](main_services/docs/Readme.md) for high-leve
 
 **Where is everything else documented?**
 
-[`docs/`](docs/Readme.md) — how the system is shaped and why (`architecture/`), how to run it
+[`docs/`](docs/Readme.md). How the system is shaped and why (`architecture/`), how to run it
 (`operations/`), how to change it (`development/`), the product manual (`user-manual/`), and
 what the product does stated once (`technical-specification/`). Each code directory also has
 a `Readme.md` describing itself.

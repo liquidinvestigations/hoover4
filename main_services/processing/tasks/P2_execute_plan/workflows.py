@@ -464,7 +464,7 @@ class ExecuteSinglePlan:
         # 5b) One definitive type per document in this plan, from what its parsers
         # actually produced. It sits here, after parsing and before indexing, for the
         # same reason date resolution does: `document_metadata` reads the result, and a
-        # document with no canonical row produces no metadata row at all — losing its
+        # document with no canonical row produces no metadata row at all, losing its
         # file type, its MIME and its extensions, and taking the whole File types facet
         # with it.
         await workflow.execute_activity(

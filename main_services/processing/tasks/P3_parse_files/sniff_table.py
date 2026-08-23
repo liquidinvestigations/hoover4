@@ -12,8 +12,8 @@ The cost of a false negative is one file that stays text. The cost of a false po
 a corpus of mail turning into a corpus of two-column tables: every RFC 822 message is
 hundreds of consistent `Name: value` lines, which a colon-accepting delimiter sniff reads
 as a perfectly rectangular CSV. Measured on `enron-kaminski-v` (21 291 messages) with
-`:` among the candidates, essentially every message is accepted. `:` is therefore
-excluded permanently — it is not a tuning parameter — and a space is excluded with it,
+`:` among the candidates, almost every message is accepted. `:` is therefore
+excluded permanently (it is not a tuning parameter), and a space is excluded with it,
 because prose is full of spaces and nothing exports space-delimited data.
 
 Measured over the corpora on this box with the rules below:

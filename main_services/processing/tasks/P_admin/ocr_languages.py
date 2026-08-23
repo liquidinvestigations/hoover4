@@ -13,8 +13,8 @@ The order below is not interchangeable:
    change up. Writing later would race the re-run against its own configuration.
 2. **Reopen plans, then re-run.** `ExecutePlans` skips plans in
    `processing_plan_finished`, so deleting the finished marker is what puts the work back
-   in front of the pipeline. The plan is the unit of work and every stage is idempotent —
-   re-running one costs time, not correctness.
+   in front of the pipeline. The plan is the unit of work and every stage is idempotent.
+   Re-running one costs time, not correctness.
 3. **Purge dropped variants after the re-run, never before.** A purge that runs first
    deletes rows the re-run has not replaced yet, and a crash in between leaves the
    dataset with neither the old variant nor the new one.
@@ -134,7 +134,7 @@ def _variants_for(engine: str, languages: str) -> List[str]:
     """Every `extracted_by` one engine produces for one language string.
 
     Tesseract takes `eng+ron` in a single pass and produces one variant. EasyOCR cannot
-    mix scripts, so it produces one variant per script group — which is why adding an
+    mix scripts, so it produces one variant per script group, which is why adding an
     EasyOCR language in a new script is a full extra pass plus a complete set of
     downstream rows, and adding a Tesseract one is nearly free. The admin form says so.
     """
@@ -150,7 +150,7 @@ def compute_diff(current: Dict[str, str], requested: Dict[str, str]) -> OcrLangu
     """The variant-level difference between two language settings.
 
     Pure, and tested as such: this is where "add `ron`" becomes "one new variant, no
-    removals" and where "swap `en` for `ru`" becomes "one added, one removed" — and the
+    removals" and where "swap `en` for `ru`" becomes "one added, one removed", and the
     removal is what the purge acts on, so getting it wrong either leaks rows forever or
     deletes a variant that is still in use.
     """
@@ -200,7 +200,7 @@ def _report_stage(params: OcrStageParams) -> None:
 def begin_ocr_language_job(params: ApplyOcrLanguagesParams) -> OcrLanguageDiff:
     """Write the settings, report the first stage, and return what changed.
 
-    Settings first — see the module docstring. The diff is computed against what was
+    Settings first, see the module docstring. The diff is computed against what was
     stored *before* the write, so an operation dispatched twice with the same values
     reports no changed engines and the workflow finishes without touching the corpus.
     """
@@ -307,7 +307,7 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
     """Delete every trace of the removed variants: ClickHouse, then Manticore.
 
     `pdf_ocr_results` is *tombstoned* rather than deleted, because the object it points at
-    is still there — `delete_orphaned_derived_pdfs` reads the tombstones to find the
+    is still there: `delete_orphaned_derived_pdfs` reads the tombstones to find the
     objects and only then removes the rows. That is the whole reason the two steps are
     separate activities.
     """
@@ -364,7 +364,7 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
     if tables:
         # Manticore rows are keyed per (dataset, file, extracted_by, page), and the P6
         # writers only REPLACE. A reindex therefore never removes a dropped variant's
-        # rows — deleting them here is the only thing that does.
+        # rows. Deleting them here is the only thing that does.
         placeholders = ", ".join(["%s"] * len(params.variants))
         with get_manticore_client() as cnx:
             cursor = cnx.cursor()
@@ -394,7 +394,7 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
 
     Objects before rows, the reverse of the write path and for the same reason: the row
     is the sole index of the object, so a row deleted first leaves bytes nothing knows
-    about. A row whose object is already gone is deleted anyway — that is the crash-in-
+    about. A row whose object is already gone is deleted anyway. That is the crash-in-
     between case, and it converges.
     """
     from database.clickhouse import get_collection_client

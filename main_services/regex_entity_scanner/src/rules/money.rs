@@ -3,7 +3,7 @@
 //! Two properties decide the shape of this module.
 //!
 //! **The value is an integer.** A sum of money is a scaled integer, an ISO 4217 code and the
-//! exponent that code divides into — never a float, at any point, including intermediates. Binary
+//! exponent that code divides into, never a float, at any point, including intermediates. Binary
 //! floating point cannot represent a tenth, so a pipeline that touches one has already lost the
 //! cent it was asked to preserve, and it loses it silently.
 //!
@@ -11,7 +11,7 @@
 //! one-and-a-bit in London, and no amount of looking at the digits settles it. What the digits do
 //! settle is which readings are impossible: a group of exactly three digits after the only
 //! separator is the case where both readings survive, and that is what the separator-inferred flag
-//! is for. Every other shape is decided by arithmetic — a group that is not three digits long
+//! is for. Every other shape is decided by arithmetic, a group that is not three digits long
 //! cannot be a thousands group, and a separator followed by one or two digits cannot be anything
 //! but a decimal mark.
 
@@ -123,7 +123,7 @@ impl Rule for IsoCodeRule {
 pub struct SymbolRule;
 
 /// A Unicode currency sign, optionally carrying the one or two capitals that distinguish the
-/// dollars and yuan from each other — `A$`, `CN¥`, `R$`. `\p{Sc}` is the property the signs are
+/// dollars and yuan from each other: `A$`, `CN¥`, `R$`. `\p{Sc}` is the property the signs are
 /// defined by, which is why the pattern does not enumerate them. Beside a sign, an amount may
 /// also be a fraction with no integer part: `$.75` is a price a shelf label carries.
 const SYMBOL_PATTERN: &str = concat!(
@@ -178,7 +178,7 @@ impl Rule for SymbolRule {
 
         // An explicit ISO 4217 code beside the sign settles which of the sign's currencies this
         // is. `NZD $100.70` and `SGD$4.90` are not United States dollars, and reporting them as
-        // such is a wrong value rather than a miss — the worse of the two failures. This is asked
+        // such is a wrong value rather than a miss, which is the worse of the two failures. This is asked
         // before the left-hand guard, because in `SGD$4.90` the pattern's leftmost match starts
         // inside the code and the letters the guard sees are the code itself.
         if leading {
@@ -193,7 +193,7 @@ impl Rule for SymbolRule {
 
         // A capital or two in front of the sign is part of the symbol only when the pair is one
         // somebody actually writes. Otherwise they belong to the word before it, and the span
-        // narrows to the sign — `US$40` and `paid US $40` both mean forty dollars, and neither
+        // narrows to the sign: `US$40` and `paid US $40` both mean forty dollars, and neither
         // means the letters are currency.
         let (symbol, start) = match candidate.data.currency_symbol(symbol) {
             Some(_) => (symbol, candidate.start),
@@ -254,7 +254,7 @@ fn code_beside_sign<'a>(candidate: &Candidate<'a>, symbol: &str) -> Option<(&'a 
         return None;
     }
     // The code has to stand on its own. A letter or digit in front of it makes it the tail of a
-    // longer word, and a sign or a separator makes the whole span the tail of a longer number —
+    // longer word, and a sign or a separator makes the whole span the tail of a longer number,
     // and this rule reports an unsigned amount, so a dropped minus would report the wrong money.
     if head.as_bytes()[..code_at]
         .last()
@@ -311,7 +311,7 @@ fn is_separator(byte: u8) -> bool {
 /// Whether what precedes the span makes it the tail of a longer number. A letter or a digit always
 /// does. A minus sign does too: this rule reports an unsigned amount, so a match that drops a
 /// leading sign would report the wrong money rather than none. A dot or a comma does only when
-/// digits precede it — with or without the space some documents put after it, which is what makes
+/// digits precede it, with or without the space some documents put after it, which is what makes
 /// `1.837, 32 €` one price written oddly rather than thirty-two euro.
 fn continues_left(candidate: &Candidate<'_>) -> bool {
     let before = &candidate.fragment.as_bytes()[..candidate.start];
@@ -337,10 +337,10 @@ fn continues_left(candidate: &Candidate<'_>) -> bool {
 /// A span that ends in a digit is the head of a longer number when digits carry on past it. The
 /// separator that ends a sentence and the separator that groups the next three digits are the same
 /// character, so the test is what comes after it: a digit, or a digit one space away. Anything else
-/// is punctuation, and refusing it would put the commonest way a price appears in prose — at the
-/// end of a sentence, or in a list — out of reach.
+/// is punctuation, and refusing it would put the commonest way a price appears in prose (at the
+/// end of a sentence, or in a list) out of reach.
 ///
-/// A span that ends in a **marker** — a trailing ISO 4217 code or currency sign — is refuted by a
+/// A span that ends in a **marker** (a trailing ISO 4217 code or currency sign) is refuted by a
 /// digit instead, because **a marker binds to the number that follows it**. In `qty 2 EUR 30 per
 /// unit` the trailing-code reading `2 EUR` is a candidate, and it is not merely a worse reading than
 /// `EUR 30`: it is a wrong one, and it reports two euro for a thirty-euro line. The same principle
@@ -389,7 +389,7 @@ fn to_minor_units(amount: &str, exponent: u8) -> Option<(String, bool)> {
         .chars()
         .filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\'' | '\u{2019}'))
         .collect();
-    // A fraction with no integer part is a price, so the amount may open with its decimal mark —
+    // A fraction with no integer part is a price, so the amount may open with its decimal mark,
     // but only with digits behind it, never with a bare separator.
     let opens_well = match amount.as_bytes() {
         [first, ..] if first.is_ascii_digit() => true,
@@ -475,7 +475,7 @@ fn to_minor_units(amount: &str, exponent: u8) -> Option<(String, bool)> {
     }
 
     // A currency with two minor units is not written with four decimal places, and something that
-    // is written that way is a rate, a measurement or a version — not a sum of money.
+    // is written that way is a rate, a measurement or a version, not a sum of money.
     let exponent = usize::from(exponent);
     if fraction.len() > exponent {
         return None;

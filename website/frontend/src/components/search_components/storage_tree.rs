@@ -11,8 +11,8 @@
 //! by an embedded [`VfsTree`] only once its row is expanded. A corpus of N collections x
 //! M datasets therefore costs one request on mount, not N x M.
 //!
-//! Everything below a dataset row — ancestor elision, sibling capping, the indent ladder,
-//! the tri-state checkbox — is the existing per-dataset tree, unchanged. The only thing
+//! Everything below a dataset row (ancestor elision, sibling capping, the indent ladder,
+//! the tri-state checkbox) is the existing per-dataset tree, unchanged. The only thing
 //! this level hands it is [`SYNTHETIC_LEVELS`], which is the ladder rung its folders start
 //! on, so the two rows above a folder are paid for out of the same indent budget rather
 //! than being added on top of it.
@@ -40,8 +40,8 @@ use crate::components::search_components::vfs_tree::{
 /// Rows above a folder: the collection and the dataset. Folders indent from here.
 pub const SYNTHETIC_LEVELS: usize = 2;
 
-/// Which row the user activated. The two surfaces answer this very differently — the
-/// sidebar navigates, the picker ticks — so the tree reports rather than decides.
+/// Which row the user activated. The two surfaces answer this very differently (the
+/// sidebar navigates, the picker ticks), so the tree reports rather than decides.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageRow {
     Collection(String),
@@ -53,7 +53,7 @@ pub enum StorageRow {
 
 /// One synthetic level's rows: the window plus what it hides either side.
 ///
-/// The same cap the folder levels obey ([`window_siblings`]) — a deployment with two
+/// The same cap the folder levels obey ([`window_siblings`]). A deployment with two
 /// hundred datasets in a collection is not a reason to put two hundred rows in a sidebar,
 /// and the overflow rows say exactly how many are hidden and reveal them.
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +106,7 @@ pub fn dataset_tri_state(collection_dataset: &str, selected: &BTreeSet<String>) 
 ///
 /// Checked only when every dataset is fully checked, so the box never claims more than
 /// the filter does. A collection with no datasets is Unchecked rather than vacuously
-/// Checked — an empty tick is a filter that matches nothing.
+/// Checked. An empty tick is a filter that matches nothing.
 pub fn collection_tri_state(dataset_ids: &[String], selected: &BTreeSet<String>) -> TriState {
     if dataset_ids.is_empty() {
         return TriState::Unchecked;
@@ -127,7 +127,7 @@ pub fn collection_tri_state(dataset_ids: &[String], selected: &BTreeSet<String>)
 /// Tick or untick a whole dataset.
 ///
 /// Ticking selects the dataset's ROOT NODE KEY, which is a `file_paths` term exactly
-/// like a folder's — the ancestor closure of every document in the dataset contains it —
+/// like a folder's (the ancestor closure of every document in the dataset contains it)
 /// so the filter machinery downstream needs to know nothing about datasets. Everything
 /// else scoped to the dataset is absorbed, for the same reason ticking a folder absorbs
 /// its subtree: the parent term already covers them, and leaving them in would render
@@ -185,8 +185,8 @@ pub fn StorageTree(
     let unfolded = use_signal(BTreeSet::<String>::new);
 
     // Open the collections as soon as they arrive, and the chain down to the dataset the
-    // URL names. Expanding a collection costs NOTHING — its datasets came with the one
-    // request — so the level that tells you what exists is open by default; the dataset
+    // URL names. Expanding a collection costs NOTHING (its datasets came with the one
+    // request), so the level that tells you what exists is open by default; the dataset
     // level, which does cost a request, is not.
     //
     // An effect that only INSERTS. It must never clear the set: a user who collapsed a
@@ -195,7 +195,7 @@ pub fn StorageTree(
     //
     // Built from `peek()` and written only when it CHANGES. `write()` marks the signal
     // dirty whether or not the value moved, and this effect re-runs on every read of the
-    // resource — so an unconditional write here was a re-render of every collection row,
+    // resource, so an unconditional write here was a re-render of every collection row,
     // every dataset row and every mounted `VfsTree` per run. The same reasoning as the
     // sibling effect in `vfs_tree.rs`.
     use_effect(move || {
@@ -453,8 +453,8 @@ enum SyntheticIcon {
     Dataset,
 }
 
-/// A collection or dataset row. Deliberately the same shape as a folder row — same
-/// height, same disclosure slot, same checkbox slot, same ellipsised label — because a
+/// A collection or dataset row. Deliberately the same shape as a folder row, same
+/// height, same disclosure slot, same checkbox slot, same ellipsised label, because a
 /// tree in which one level looks like a heading and the next like a list reads as two
 /// widgets stacked, which is what this replaced.
 #[component]
@@ -473,7 +473,7 @@ fn SyntheticRow(
 ) -> Element {
     let indent = indent_style(depth);
     // Named so a script can expand exactly this row. Clicking the row itself ticks it in
-    // the picker, which is not the same gesture — the disclosure is the only way to open
+    // the picker, which is not the same gesture. The disclosure is the only way to open
     // a row without also selecting it, and a test that cannot tell them apart tests
     // neither. Both parts of the id are validated slugs, so it is a usable selector.
     let toggle_id = match icon {
@@ -572,7 +572,7 @@ fn MoreRow(
 /// The keys a `file_paths` selection resolves to when it is seeded back from term ids.
 ///
 /// `fetch_db_terms_for_ints` answers with `id -> term value`, and a `vfs_node` term
-/// value IS the node key — so seeding is a filter for the values that look like one, not
+/// value IS the node key, so seeding is a filter for the values that look like one, not
 /// a parse. Values from another term field (a stale query, an id collision) are dropped
 /// rather than shown as a tick on nothing.
 pub fn node_keys_from_terms(terms: impl IntoIterator<Item = String>) -> BTreeSet<String> {

@@ -1,7 +1,7 @@
 """OCR activity: one engine, every language pass that engine needs for this dataset.
 
 Replaces the in-process EasyOCR activity. That version was GPU-or-nothing and, on a box
-without CUDA, recorded a skip for every image — which is why a full ingest of `testdata`
+without CUDA, recorded a skip for every image, which is why a full ingest of `testdata`
 produced 65 `ocr_skipped_no_gpu` rows and not one character of OCR text.
 
 Shape of the work
@@ -51,7 +51,7 @@ class RunOcrParams:
 def _record_skip(params: RunOcrParams, run_time_ms: int, reason: str) -> None:
     """Record a skip in `processing_errors` without failing the activity.
 
-    A skip is a *data* fact — an undecodable image, a disabled engine — and must not
+    A skip is a *data* fact (an undecodable image, a disabled engine), and must not
     consume retries or hold up the plan. An unreachable but configured service is not a
     skip: that raises, so Temporal retries it.
     """
@@ -164,7 +164,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str:
                 # Read from the header, so this costs a few hundred bytes rather than a
                 # decode. An image whose header will not parse is NOT skipped here: the
                 # engines handle formats Pillow does not, and `ocr_skipped_unreadable`
-                # is the honest answer for a file neither can read.
+                # is what this reports for a file neither can read.
                 size = image_dimensions(image_bytes)
                 if size is not None and min(size) < MIN_OCR_IMAGE_PX:
                     _record_skip(

@@ -1,6 +1,6 @@
 ---
 name: planning-work
-description: Sets up and runs a multi-stage piece of work the way this repository does it — a numbered work folder, the request captured verbatim, a research stage, a plan, then paired prompt and report files per pass, a coordinator log, and a final report. Use when asked to "write a plan", "plan this out", "scope it", "spec this", "start an epic", "investigate before building", "write a work package", "archive this", or when a task is large enough that one pass cannot finish it. Covers how a stage is sized, what a prompt file must contain, why artefacts fan out into a folder beside the document, and the rule that nothing in the tracked tree may ever cite the scratch folder.
+description: Sets up and runs a multi-stage piece of work the way this repository does it. A numbered work folder, the request captured verbatim, a research stage, a plan, then paired prompt and report files per pass, a coordinator log, and a final report. Use when asked to "write a plan", "plan this out", "scope it", "spec this", "start an epic", "investigate before building", "write a work package", "archive this", or when a task is large enough that one pass cannot finish it. Covers how a stage is sized, what a prompt file must contain, why artefacts fan out into a folder beside the document, and the rule that nothing in the tracked tree may ever cite the scratch folder.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
@@ -14,13 +14,13 @@ folder is the memory: a later pass reads it instead of re-deriving what was alre
 Working documents go in `plans/<n>-<slug>/` at the repo root. **`plans/` is gitignored
 scratch and is wiped when the work finishes.** Everything follows from that:
 
-- **No tracked file may ever cite it** — not by path, not by document number, not by a phase
+- **No tracked file may ever cite it**, not by path, not by document number, not by a phase
   or part label invented inside it, not by paraphrase (`the design doc`, `the epic`,
   `the part-6 spike`). Every such reference is a dead link the moment it is written.
 - Knowledge that must survive the wipe is **lifted** into the `Readme.md` beside the code, or
   into `docs/`, as a present-tense statement about how the system works. Do that as the work
-  lands, not afterwards — afterwards never comes.
-- Archive a finished folder by moving it under `plans/old/<DDMMYYYY>/`. **Never delete one** —
+  lands, not afterwards. Afterwards never comes.
+- Archive a finished folder by moving it under `plans/old/<DDMMYYYY>/`. **Never delete one**:
   `plans/` is gitignored, so an archived folder exists only on this disk.
 - Two standing files sit at the top of `plans/` and outlive every folder: **`TODO.md`** for
   work that was wanted and not built, and **`DEFECTS.md`** for defects and limitations awaiting
@@ -47,7 +47,7 @@ that did not finish, and that is visible at a glance from the directory listing.
 ## Short tags, and the `## Key` table
 
 A scope table and a results table only line up if the items have short names, so
-letter-and-number tags — `M3`, `S13`, `X7`, `Q1` — are the right tool **inside one plan
+letter-and-number tags (`M3`, `S13`, `X7`, `Q1`) are the right tool **inside one plan
 folder** and nowhere else. Measured across this repository's plans, a quarter of tag
 citations could not be resolved in the document that made them, and more than half the tags
 meant two different things in two different files. That is what the rules below prevent.
@@ -55,8 +55,8 @@ meant two different things in two different files. That is what the rules below 
 - **A tag never leaves the folder that defined it.** Referring to another pass's item means
   **naming it and linking to it**. The same three characters are a scope item in one folder
   and a defect in another, and nothing in a bare citation says which.
-- **A document that uses tags opens with a `## Key` table** — every tag it mentions, what it
-  is, and a link to where it is defined — and expands each at its **first mention** in the
+- **A document that uses tags opens with a `## Key` table** (every tag it mentions, what it
+  is, and a link to where it is defined), and expands each at its **first mention** in the
   body. After that the bare tag is fine, exactly as an acronym works.
 - **If the document links into an earlier pass**, the Key table also decodes the tags a
   reader will meet on the other side of that link. A decoder that is not exhaustive for what
@@ -65,7 +65,7 @@ meant two different things in two different files. That is what the rules below 
   the reader cannot see just as much as `X3` does. Same rule.
 - **Never in a tracked file**, which includes `docs/`, `.agents/`, a `Readme.md` beside code,
   and **a source comment**. `plans/` is gitignored, so a tag cited from shipped code is
-  unresolvable forever for anyone who clones the repository. State the fact instead — in
+  unresolvable forever for anyone who clones the repository. State the fact instead, in
   practice the sentence beside the tag already says it.
 
 ```
@@ -77,8 +77,8 @@ archived folders under `plans/old/` predate the rule and would fail it forever.
 
 ## Fanning out artefacts
 
-Complex work produces more than prose — screenshots, extracted datasets, scratch scripts,
-test output. Those go in a folder **beside** the document that discusses them, named for it,
+Complex work produces screenshots, extracted datasets, scratch scripts and test output as
+well as prose. Those go in a folder **beside** the document that discusses them, named for it,
 and the document links to them. This is the expected pattern, not an exception: a finding
 whose evidence is only in a scrollback is a finding nobody can check.
 
@@ -96,13 +96,13 @@ Two failure shapes to avoid:
 
 **One item per pass.** Measured across this repository's own runs: a brief listing five items
 delivered one, a brief listing six delivered one, and the only brief delivered whole had three
-items in a strict dependency chain that one check closed. A brief with a list in it is not an
-estimate of that list; it is an estimate of one item and a shortfall report.
+items in a strict dependency chain that one check closed. A brief with a list in it estimates one item
+and reports the shortfall. It does not estimate the list.
 
 ## Estimating it
 
 **Cost work in passes, never in developer days.** A pass is one sub-agent invocation, and its
-cost comes from a measured reference class rather than from judgement about the task — median
+cost comes from a measured reference class rather than from judgement about the task. Median
 41 minutes for a pass that writes, 10 for one that only reads, 73 for one that deploys. A
 developer day is a unit nothing here has ever been measured in.
 
@@ -111,9 +111,9 @@ bucket, its verification cost, and `T50`/`T90` in minutes; then passes, agent wa
 session wall clock at twice that for the organizer. **The final report restates the same table
 with an actuals column.**
 
-That last column is the whole point. Twenty-one plan headings in this repository's archive
+That last column is what makes the next estimate better. Twenty-one plan headings in this repository's archive
 carried a parenthetical day-cost and not one was ever checked, because every report that
-followed was written in a different unit — so the estimates could not improve, and each new
+followed was written in a different unit, so the estimates could not improve, and each new
 plan was written from the last plan's estimates rather than its outcomes.
 
 `reference/estimating.md` carries the method, the table and the adders;
@@ -124,11 +124,11 @@ plan was written from the last plan's estimates rather than its outcomes.
 A pass is only as good as its work package. Every one of these, or the pass reconstructs it
 badly from context it does not have:
 
-1. **Role and scope** — what this pass owns, and what it must not touch.
+1. **Role and scope**. What this pass owns, and what it must not touch.
 2. **What to read first**, by path, including the decisions that are already settled and are
    not to be re-opened.
 3. **What is true now**, where the tree has moved since the research was written.
-4. **The deliverable** — the exact output path and its required sections.
+4. **The deliverable**, the exact output path and its required sections.
 5. **The checks to run before finishing**, named as commands.
 6. **The prohibitions**, including the standing ones that are easy to violate under pressure.
 
@@ -136,24 +136,24 @@ badly from context it does not have:
 
 Before a stage is called finished:
 
-- Every check named in its prompt has been run in that session and its output read —
+- Every check named in its prompt has been run in that session and its output read:
   `verifying-before-claiming`.
 - A capability that was added, removed or re-scoped has had its row in
   `docs/technical-specification/` edited **in the same patch** as the code.
-- Documentation beside the changed code is true again — `writing-project-docs`.
+- Documentation beside the changed code is true again: `writing-project-docs`.
 - The report says plainly what was not done and why. A check that failed and was shipped
   anyway is stated as such; an honest gap is worth more than a clean-looking summary.
 - **Everything the report needs from a person is written out where it is raised**, with a
   recommended answer, and repeated in full in whatever message hands the report over. Naming
-  a count — "three open questions" — and leaving the content in the document means the
+  a count ("three open questions"), and leaving the content in the document means the
   question was never actually asked. The reader has to go looking to find out what they owe,
   and at that point the report is blocking on an answer nobody knows is wanted.
 
 ## References
 
-- `reference/prompt-template.md` — the skeleton of a work package, with the sections above.
-- `reference/estimating.md` — the reference class, the verification adders, and the estimate
+- `reference/prompt-template.md`, the skeleton of a work package, with the sections above.
+- `reference/estimating.md`, the reference class, the verification adders, and the estimate
   block every plan carries.
-- `reference/mine-wall-clock.py` — regenerates the reference class from recorded transcripts.
-- `reference/archiving.md` — closing a folder, and what gets lifted into the tree before the
+- `reference/mine-wall-clock.py`, regenerates the reference class from recorded transcripts.
+- `reference/archiving.md`, closing a folder, and what gets lifted into the tree before the
   scratch is wiped.

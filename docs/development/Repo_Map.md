@@ -18,7 +18,7 @@ most questions here are answered by opening one known file rather than by greppi
 |---|---|
 | `main_services/` | the ingestion pipeline, the datastores' operational config, the MCP servers and research agents |
 | `website/` | the full-stack Dioxus application: Rust backend, WASM frontend, shared types |
-| `ai_services/` | the standalone GPU tier — embeddings, reranking, NER, GPU OCR, local model serving |
+| `ai_services/` | the standalone GPU tier, embeddings, reranking, NER, GPU OCR, local model serving |
 | `components/` | build wrappers around the vendored PDF viewer that the website embeds |
 | `docs/` | the documentation tree this page belongs to, including the technical specification |
 | `.agents/` | the shared agent configuration: skills, path-scoped rules, hooks and per-harness adapters |
@@ -46,7 +46,7 @@ most questions here are answered by opening one known file rather than by greppi
 |---|---|
 | `backend/src/` | the server: `api/` by feature, `auth/`, `db_auth/`, `db_chat/`, `db_utils/` |
 | `frontend/src/` | the WASM client: `pages/`, `components/`, `data_definitions/` |
-| `common/src/` | types shared by both halves — anything mirrored across the language boundary belongs here |
+| `common/src/` | types shared by both halves, anything mirrored across the language boundary belongs here |
 | `tools/` | single-question diagnostics driven through a browser container |
 | `tests/` | stack integration tests, split by name rather than by attribute |
 
@@ -75,12 +75,12 @@ fixtures.
 | how the agent configuration works | [Working with agents](Working_With_Agents.md) |
 | every configuration key and its consumer | [Configuration reference](../operations/Configuration_Reference.md) |
 | what the product does, as agreed | [`docs/technical-specification/`](../technical-specification/Readme.md) |
-| how to reach the demo box or the GPU box | `INFRASTRUCTURE_INVENTORY.md` at the repository root — local and gitignored |
+| how to reach the demo box or the GPU box | `INFRASTRUCTURE_INVENTORY.md` at the repository root, local and gitignored |
 
 ## Searching, when searching is right
 
 Searches here run on a `grep` replacement that does **not** skip build output, and
 `website/target` alone is tens of gigabytes. Scope every search: name the extensions, or
 exclude the build roots, or point it at one directory. A search that has not returned within
-seconds is wrong rather than slow — kill it and re-scope. The harness reports the runaway as
+seconds is wrong. Kill it and re-scope. The harness reports the runaway as
 "no output", which is indistinguishable from a search that legitimately found nothing.

@@ -6,14 +6,14 @@ The old `parent_paths` term field hashed the bare path, so
 ``hash_string_to_uint63("/data")`` was the same integer in every dataset and inside
 every archive. Filtering on one dataset's `/data` folder therefore also matched the
 other dataset's, and matched `/data` inside an unrelated zip. A tree built on those ids
-is not slightly wrong, it is meaningless.
+is meaningless rather than slightly wrong.
 
 A node key is scoped by both::
 
     node_key := "{collection_dataset}\\x1f{container_hash}\\x1f{normalised_path}"
 
-The unit separator cannot occur in a dataset id and cannot occur in a path we accept —
-paths with control characters are rejected and logged, on top of P0's existing surrogate
+The unit separator cannot occur in a dataset id and cannot occur in a path we accept.
+Paths with control characters are rejected and logged, on top of P0's existing surrogate
 rejection. The per-dataset pseudo-root is ``"{collection_dataset}\\x1f\\x1f/"`` and is
 what the tree's dataset row filters on.
 
@@ -22,13 +22,13 @@ Why the closure has more than one parent
 The ancestor closure of a document is every folder it can be reached through, and
 "through" crosses container boundaries: a `.docx` inside `a.zip` inside `b.zip` inside
 `/data` must come back when the user filters on `/data`. Containers are content-addressed,
-so ONE container hash can sit at several paths — the `zip-in-multiple-locations` fixture
-is two copies of the same `parent.zip` — and the closure includes the ancestors of
+so ONE container hash can sit at several paths (the `zip-in-multiple-locations` fixture
+is two copies of the same `parent.zip`), and the closure includes the ancestors of
 *every* copy. ``vfs_nodes.parent_key`` is single-valued and is only for breadcrumbs;
 anything that decides *membership* uses :func:`ancestor_node_keys`.
 
 Cycles are not hypothetical: `eml-7-recursive` is an email containing itself. Hence a
-visited set on ``(container_hash, path)``, a container-hop cap, and a term cap — with
+visited set on ``(container_hash, path)``, a container-hop cap, and a term cap, with
 the truncation recorded in ``struct_flags`` rather than silently swallowed.
 """
 
@@ -136,8 +136,8 @@ def ancestor_node_keys(
 
     ``vfs_rows`` are the ``(container_hash, path)`` pairs of the document's own
     ``vfs_files`` rows. ``container_parents`` maps a container hash to every
-    ``(container_hash, path)`` at which that container itself lives — plural, because a
-    content-addressed container can sit in several places at once, and a document inside
+    ``(container_hash, path)`` at which that container itself lives, and it is plural
+    because a content-addressed container can sit in several places at once, and a document inside
     it is genuinely reachable through all of them.
 
     Returns the set of node keys and a truncation flag (a cap was hit, so the closure is
@@ -223,8 +223,8 @@ def build_node_rows(
     an archive, or being an email, is not enough: an email with no attachments and a
     ``.zip`` whose listing found nothing have no children, and rendering them as folders
     gives the tree an expandable chevron that opens onto nothing. The evidence is already
-    in hand — a hash has members exactly when some `vfs_directories` or `vfs_files` row
-    names it as its ``container_hash`` — so the container test is the intersection of "is
+    in hand (a hash has members exactly when some `vfs_directories` or `vfs_files` row
+    names it as its ``container_hash``), so the container test is the intersection of "is
     an archive or an email" with "has members". The demotion is to the tree's ``kind``
     only: the file keeps its `archives`/`emails` rows and its Email or Archive rendering
     in the viewer.
@@ -240,7 +240,7 @@ def build_node_rows(
     whenever a container's listing skipped a level).
 
     ``parent_key`` is single-valued and crosses container boundaries. When a container
-    lives at more than one path the lexicographically smallest location wins — an
+    lives at more than one path the lexicographically smallest location wins. An
     arbitrary but STABLE choice, so breadcrumbs do not flip between runs. Membership
     never uses it (see :func:`ancestor_node_keys`); only "show me the path to this node"
     does, and there is genuinely more than one right answer.
@@ -256,9 +256,9 @@ def build_node_rows(
 
     def add(container_hash, path, kind, file_hash="", size=-1) -> str | None:
         if container_hash and normalise_path(path) == "/":
-            # The root INSIDE a container is not a node. It arrives from three places —
-            # a `vfs_directories` row for `/`, the ancestor walk of every member, and the
-            # old explicit synthesis — so it is refused here once rather than guarded at
+            # The root INSIDE a container is not a node. It arrives from three places
+            # (a `vfs_directories` row for `/`, the ancestor walk of every member, and the
+            # old explicit synthesis), so it is refused here once rather than guarded at
             # each of them. Members hang off the container file instead; see the
             # docstring. The `/` of the DATASET is a different node and is seeded above.
             return None
@@ -306,7 +306,7 @@ def build_node_rows(
             continue
         parent_path = os.path.dirname(node.path) or "/"
         if node.container_hash and parent_path == "/":
-            # The top level inside a container hangs off the container FILE — there is no
+            # The top level inside a container hangs off the container FILE, there is no
             # `/` node in between. When the container lives at more than one path the
             # lexicographically smallest wins: arbitrary, but stable across runs, so a
             # breadcrumb does not flip. A container whose own file was never seen (its

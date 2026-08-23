@@ -23,7 +23,7 @@ ALTER_TABLE_RE = re.compile(r"ALTER\s+TABLE", re.IGNORECASE)
 #: Highest migration number that existed when each directory was collapsed into its
 #: current form. Files at or below these numbers are *history*: the runner records an
 #: md5 per applied migration, so editing one breaks every existing deployment. A schema
-#: change from here on is a NEW numbered file — which, for adding a column to a table
+#: change from here on is a NEW numbered file, which, for adding a column to a table
 #: that already exists, has to be an ALTER. See `test_alter_table_only_in_new_files`.
 COLLAPSED_BASELINE = {
     "db_global_migrations": 20,
@@ -33,7 +33,7 @@ COLLAPSED_BASELINE = {
 #: Every table a global migration creates. It mirrors the `CREATE TABLE` statements in
 #: the directory, not the live schema, so a table a later migration drops stays listed:
 #: the applied file that created it is frozen and cannot be edited away. `dataset_jobs`
-#: is one of those — created, then dropped once the operations log replaced it.
+#: is one of those. Created, then dropped once the operations log replaced it.
 EXPECTED_GLOBAL_TABLES = {
     "api_events",
     "chat_artifacts",
@@ -143,7 +143,7 @@ def test_alter_table_only_in_new_files(path):
     """An ALTER inside a collapsed migration means someone edited history.
 
     The collapsed files (see `COLLAPSED_BASELINE`) describe the schema as one set of
-    CREATE TABLEs and must never change — the runner stores an md5 per applied
+    CREATE TABLEs and must never change. The runner stores an md5 per applied
     migration, so an edit fails on every deployment that already ran it. A *new*
     numbered file adding a column to an existing table has no choice but to use ALTER,
     and that is allowed.
@@ -199,7 +199,7 @@ def test_no_semicolon_inside_line_comments(path):
 
     `multi_statement=True` splits on `;` without parsing SQL, so it does not know a
     `--` comment from executable text. A semicolon in a comment cuts the file there and
-    the leading fragment — comment only — reaches ClickHouse as `Code: 62, Empty query`,
+    the leading fragment (comment only) reaches ClickHouse as `Code: 62, Empty query`,
     which names neither the file nor the comment. Caught for real writing 00031.
     """
     for f in _sql_files(path):
@@ -221,7 +221,7 @@ def test_no_comment_only_statement_fragment(path):
     the file contains no stray semicolon at all, it just has prose *after* the final
     statement terminator. ClickHouse answers `Code: 62, Empty query`, naming neither the
     file nor the comment, and the failure surfaces only when a collection database is
-    created — long after the unit tests were green.
+    created. Long after the unit tests were green.
 
     Caught for real when the re-collapse removed 00031's backfill INSERT and left the
     paragraph explaining the removal below the CREATE. Put explanatory comments ABOVE
@@ -266,7 +266,7 @@ def test_no_migration_recreates_a_removed_table():
 
     Without this, restoring one of the deleted Milvus migrations would only fail
     `test_collection_tables_match_expected` with a diff that reads like a missing entry
-    in the expected set — an inviting thing to "fix" by adding it back.
+    in the expected set, which is an inviting thing to "fix" by adding it back.
     """
     all_tables = set(_table_names(GLOBAL_MIGRATIONS_PATH)) | set(
         _table_names(COLLECTION_MIGRATIONS_PATH)
@@ -280,7 +280,7 @@ def test_no_migration_drops_a_table():
 
     A DROP in a collapsed tree means someone edited history halfway: the CREATE it undoes
     should have been deleted instead. A genuinely new migration above the baseline may
-    still drop a table — hence the baseline check rather than a flat ban.
+    still drop a table, so this checks the baseline rather than banning the statement outright.
     """
     for path in (GLOBAL_MIGRATIONS_PATH, COLLECTION_MIGRATIONS_PATH):
         baseline = COLLAPSED_BASELINE[Path(path).name]
@@ -324,7 +324,7 @@ def test_readiness_sentinel_matches_last_collection_migration():
     and editing it would fail every deployment that already ran it.
 
     The sentinel name is checked in next to the migrations (READINESS_SENTINEL) so this
-    test does not depend on the website sources being mounted — the old version read
+    test does not depend on the website sources being mounted. The old version read
     collections.rs and could never run inside the worker image. The Rust side reads its
     own checked-in copy (website/backend/src/db_auth/READINESS_SENTINEL) and a host-side
     cargo test keeps the two copies in sync."""
@@ -348,7 +348,7 @@ def test_settings_and_job_tables_are_in_the_right_directory():
     """These tables split across both directories, which is the exact mistake this
     module exists to catch.
 
-    Per-dataset settings are global — the admin UI edits them before the collection
+    Per-dataset settings are global. The admin UI edits them before the collection
     database is necessarily built, and workers read them across collections.
     Chunks, vectors and derived-PDF records are per collection because they are corpus
     data. Getting either backwards produces a migration that applies cleanly and a table

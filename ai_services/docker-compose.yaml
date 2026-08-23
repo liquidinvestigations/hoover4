@@ -1,4 +1,4 @@
-# Hoover4 ai_services — the optional GPU tier. STANDALONE: no inbound dependencies,
+# Hoover4 ai_services, the optional GPU tier. STANDALONE: no inbound dependencies,
 # nothing here calls into main_services, and it deploys on its own with
 # `./deploy --ai-services` from an identical copy of hoover4.ini.
 #
@@ -11,7 +11,7 @@
 #
 # SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
 # NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
-# protection — an exposed hoover4-vllm is a free GPU for the internet, an exposed
+# protection. An exposed hoover4-vllm is a free GPU for the internet, an exposed
 # EasyOCR endpoint is a free DoS surface. Set [ai_services] bind_ip to the private
 # interface.
 #
@@ -23,12 +23,12 @@
 #     GPU overlay starts.
 #   * `HEALTHCHECK` from a Dockerfile is dropped for OCI images, so the healthchecks
 #     that matter are declared in the overlays.
-#   * deploy.py creates the `ai_services` network with explicit DNS settings — fresh
+#   * deploy.py creates the `ai_services` network with explicit DNS settings, fresh
 #     podman networks have no DNS until resolvers are attached.
 
 volumes:
   # Model caches. Preserved across `./deploy --reset` unless --reset-caches is
-  # passed — they are tens of gigabytes of re-download.
+  # passed. They are tens of gigabytes of re-download.
   ai_models_cache:
     driver: local
   vllm_huggingface_cache:

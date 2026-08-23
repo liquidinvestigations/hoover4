@@ -38,7 +38,7 @@ paths point at them.
 
 **Document identity in the index is the pair, not the hash alone.** The same content in two
 datasets of one collection is indexed twice, deliberately, because those are two documents
-from a reader's point of view — the stack verification asserts exactly that.
+from a reader's point of view. The stack verification asserts exactly that.
 
 ## ClickHouse: a database per collection
 
@@ -49,7 +49,7 @@ configuration, the stage timing samples, and the short-window telemetry tables.
 Every collection has its own database holding its blobs, its file tree, its parsed content,
 its plans and errors, and its term dictionaries. **A dataset's collection is fixed when the
 dataset is created** and cannot be moved; creating a collection provisions its database, and
-deleting one — allowed only when it holds no datasets — drops it.
+deleting one (allowed only when it holds no datasets) drops it.
 
 The backend resolves the right database per query, immediately after the permission check, so
 an unauthorised dataset never reaches a database name. The mapping from dataset to collection
@@ -57,7 +57,8 @@ is immutable and is cached in process.
 
 ## The file tree, and what deletion means
 
-`vfs_files` holds one current row per path. Three properties of its key are load-bearing:
+`vfs_files` holds one current row per path. Three properties of its key decide what the
+table can answer:
 
 - **The container hash is part of the sort key.** Without it, two containers holding the same
   inner path collapse into one row and the second container loses its children.
@@ -87,8 +88,8 @@ fails by not finding an object rather than by erroring.
 
 ## Derived output is never source
 
-Everything the system generates rather than ingests — searchable PDFs, captured chat
-artefacts — lives under a `derived/` prefix, and **the disk-scan stage must never walk it.**
+Everything the system generates rather than ingests (searchable PDFs, captured chat
+artefacts) lives under a `derived/` prefix, and **the disk-scan stage must never walk it.**
 
 The reason is a loop, not tidiness: an artefact the scanner can see would be ingested,
 re-derived by the stage that produced it, and produce another, forever. A blob row pointing
@@ -102,8 +103,8 @@ indexing planner on both text bytes and row count, plus one entities table and o
 per collection.
 
 **Each document's metadata is denormalised onto every one of its page rows, and there is no
-join.** The join this replaced was the single most expensive thing in the search path — a
-per-row lookup evaluated before any predicate — and it was also silently wrong, because the
+join.** The join this replaced was the single most expensive thing in the search path (a
+per-row lookup evaluated before any predicate), and it was also silently wrong, because the
 engine's outer join drops unmatched left rows. Denormalised costs about fifteen per cent more
 disk and turns a thirteen-second facet into a one-second one. Do not reintroduce a join.
 
@@ -120,7 +121,7 @@ behind an apparent missing row, and the difference is exactly what an audit of t
 needs to see. The username is denormalised onto the artefact row so the check never has to
 join.
 
-The rows are the **sole** index of those objects' existence — nothing else in the system
-knows they are there — so retention tombstones the row first, deletes the object, and only
+The rows are the **sole** index of those objects' existence. Nothing else in the system
+knows they are there, so retention tombstones the row first, deletes the object, and only
 then drops the row. A store-level expiry cannot remove an object, which is why the order is
 that way round.

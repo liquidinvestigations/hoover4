@@ -3,7 +3,7 @@
 A shard's `_vectors` table is the disposable HNSW copy of ClickHouse
 `text_chunk_vectors` (see `main_services/processing/database/manticore.py`). The query
 is embedded with the PROBED serving model (`server_settings.embeddings_serving_model`)
-and its query-side prefix convention (`agent_common.embeddings.embedding_input`) —
+and its query-side prefix convention (`agent_common.embeddings.embedding_input`),
 never the configured ini value.
 
 Two Manticore behaviours below were verified live against the running daemon
@@ -11,10 +11,10 @@ Two Manticore behaviours below were verified live against the running daemon
 
 * **Attribute filters pre-apply before k selection.** `WHERE grp='b' AND knn(v, 2, …)`
   returned the two nearest `b` rows even though the global top-2 were `a` rows. So a
-  filtered KNN needs no over-fetch — the usual recall trap (filters applied AFTER k,
+  filtered KNN needs no over-fetch. The usual recall trap (filters applied AFTER k,
   returning near-empty sets from a healthy index) does not exist in this version. Collection search barely filters (the shard is already per-collection);
   what it relies on is the same mechanism.
-* **`knn(v, k, …)` bounds nothing by itself** — without a LIMIT the query matched every
+* **`knn(v, k, …)` bounds nothing by itself**, without a LIMIT the query matched every
   row. The working shape is `WHERE knn(embedding, K, (…)) ORDER BY <alias> ASC LIMIT K`,
   with the alias because `ORDER BY knn_dist()` is a syntax error.
 """
@@ -45,7 +45,7 @@ VECTOR_PER_SHARD = int(os.getenv("COLLECTION_SEARCH_VECTOR_PER_SHARD", "60"))
 _MODEL_CACHE_SECONDS = 300.0
 
 #: **A miss is cached for seconds, not minutes.** "No serving model" is the state right
-#: after a model change or a cold stack, and it ends the moment the probe lands — so
+#: after a model change or a cold stack, and it ends the moment the probe lands, so
 #: caching it for five minutes meant every search stayed keyword-only for five minutes
 #: after the thing that would have fixed it already happened, with nothing in the logs to
 #: connect the two. A hit is stable and worth caching; a miss is a transient this must not
@@ -57,7 +57,7 @@ _model_cache: tuple[float, str | None] = (0.0, None)
 
 _VECTORS_TABLE_RE = re.compile(r"^[a-z0-9_]+_[0-9]+_vectors$")
 
-#: Same content-hash rule as server.py — hashes heading for a SQL literal are validated
+#: Same content-hash rule as server.py, hashes heading for a SQL literal are validated
 #: first. Duplicated rather than imported to keep this module usable without the server.
 _HASH_RE = re.compile(r"^[0-9a-f]{32,128}$")
 
@@ -125,7 +125,7 @@ def search(query_vector: list[float], collections: list[str]) -> list[VectorCand
     """One distance-ordered vector ranking across every live `_vectors` shard.
 
     Distances are comparable across shards (one model, cosine), so the per-shard lists
-    merge into a single ranking by `knn_dist()` — which is what the RRF fusion then
+    merge into a single ranking by `knn_dist()`, which is what the RRF fusion then
     consumes as the `vector` source.
     """
     if not query_vector or not collections:
@@ -173,7 +173,7 @@ def _attach_chunk_texts(hits: list[VectorCandidate]) -> None:
     """Fill in each candidate's chunk text, one query per collection.
 
     The `_vectors` table carries no text (it is the disposable copy; ClickHouse
-    `text_chunks` is the store of record), so a KNN hit is joined back here — the
+    `text_chunks` is the store of record), so a KNN hit is joined back here, the
     snippet the model reads and the document the reranker scores both come from this.
     """
     by_collection: dict[str, list[VectorCandidate]] = {}

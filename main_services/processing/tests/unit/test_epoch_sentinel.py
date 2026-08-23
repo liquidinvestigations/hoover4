@@ -2,7 +2,7 @@
 
 `date_sent` is not nullable, so P3 has always written the epoch when the `Date:` header
 was missing or unparseable. That makes the epoch both "no date" and "a genuine 1970
-email" — and a corpus of undated mail all landing on 1970-01-01 is a date facet with one
+email", and a corpus of undated mail all landing on 1970-01-01 is a date facet with one
 enormous fake bucket in it. `date_sent_known` is what separates the two, and this pins
 that the resolver honours it in both directions.
 """

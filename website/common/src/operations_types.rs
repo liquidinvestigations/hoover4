@@ -29,7 +29,7 @@ pub struct OperationRow {
     /// Wall time, in seconds, to `finished_at` or to now.
     pub duration_seconds: u64,
     pub progress_done: u64,
-    /// **Zero means "not yet known", not "no work"** — a scan that has not produced
+    /// **Zero means "not yet known", not "no work"**, a scan that has not produced
     /// plans yet reports `0`, and a bar drawn from `done/total` must say so rather
     /// than render an empty bar over a run that is working.
     pub progress_total: u64,
@@ -43,7 +43,7 @@ pub struct OperationRow {
     pub destructive: bool,
     /// Documents in this operation's dataset that recorded at least one error, as
     /// counted by the operation itself. `None` means the operation never recorded a
-    /// count — an older row, or a kind that does not process documents — and must be
+    /// count (an older row, or a kind that does not process documents), and must be
     /// rendered as unknown, never as zero.
     pub failed_documents: Option<u64>,
     /// Individual task failures behind `failed_documents`; one document can fail
@@ -57,7 +57,7 @@ pub struct OperationRow {
 /// The error rate of one task type, and whether it is above the configured line.
 ///
 /// Both counts come from `processing_task_runs`, which records one row per activity
-/// execution whatever its outcome — so the numerator and the denominator are the same
+/// execution whatever its outcome, so the numerator and the denominator are the same
 /// population, which is the only way this number means anything.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TaskErrorRate {

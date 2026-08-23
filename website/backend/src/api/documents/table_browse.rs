@@ -2,7 +2,7 @@
 //!
 //! # The authorisation rule, first, because everything else depends on it
 //!
-//! `table_cells` is keyed by **content hash alone** — it has no `collection_dataset`
+//! `table_cells` is keyed by **content hash alone**. It has no `collection_dataset`
 //! column, because the same spreadsheet ingested into five datasets is one set of cells.
 //! That makes a cell read by hash a read across every dataset in the collection. The
 //! per-dataset manifest `table_documents` is therefore the *entire* authorisation, and
@@ -12,8 +12,8 @@
 //! 2. a `(collection_dataset, hash)` lookup in `table_documents` with `status = 'ok'`,
 //! 3. and only then a query against `table_cells`.
 //!
-//! A hash with no manifest row for that dataset — or one whose row is still `parsing` or
-//! is `failed` — is a 404 that never reaches step 3. There is no shortcut past this and
+//! A hash with no manifest row for that dataset (or one whose row is still `parsing` or
+//! is `failed`) is a 404 that never reaches step 3. There is no shortcut past this and
 //! there must not be one: skipping the lookup lets a reader who may see dataset A read
 //! the cells of a document that only exists in dataset B by pasting its hash.
 //!
@@ -22,27 +22,27 @@
 //! This is ClickHouse. `db_utils::manticore_match`'s escaping rules exist because
 //! Manticore's SQL-ish surface takes a match expression as a *string literal* and there
 //! is nothing to bind; none of that applies here and copying it would be wrong. Every
-//! value a reader supplies — the search text, a filter's text, a range bound — is bound
+//! value a reader supplies (the search text, a filter's text, a range bound) is bound
 //! through `Query::bind`. The only things spliced into the SQL text are integers this
 //! module has already validated against the manifest's own extents, and the fixed
 //! predicate and comparator fragments below.
 //!
 //! # Why the sort is two phases
 //!
-//! Phase 1 orders one contiguous primary-key range — the whole sort column of one sheet,
-//! which `ORDER BY (file_hash, sheet_id, column_id, row_id)` makes a single scan — and
+//! Phase 1 orders one contiguous primary-key range (the whole sort column of one sheet,
+//! which `ORDER BY (file_hash, sheet_id, column_id, row_id)` makes a single scan), and
 //! returns `row_id`s. Phase 2 fetches the window's cells by `row_id IN (…)`. The
 //! comparator is not re-derived in phase 2: the window is re-ordered in Rust into phase
 //! 1's order, so the two cannot disagree.
 //!
 //! Rows with **no cell in the sort column** are not in phase 1's range at all. They are
-//! appended after the sorted rows, in `row_id` order, in both directions — the same thing
-//! a spreadsheet's own sort does with blanks.
+//! appended after the sorted rows, in `row_id` order, in both directions, which is the same
+//! thing a spreadsheet's own sort does with blanks.
 //!
 //! # The header row is not a data row
 //!
-//! The reader stores the header row as ordinary cells — it is row `table_sheets.header_row`
-//! of `table_cells` — and *also* writes its text into `table_columns.header`, and excludes
+//! The reader stores the header row as ordinary cells (it is row `table_sheets.header_row`
+//! of `table_cells`), and *also* writes its text into `table_columns.header`, and excludes
 //! it from every column statistic. So the grid draws that row's text as its column labels,
 //! and drawing it a second time as row 1 of the data shows it twice while making every
 //! count disagree with the statistics the filter popovers and type marks come from.
@@ -50,7 +50,7 @@
 //! Everything reader-facing here therefore starts **after** `header_row`: the row floor
 //! [`data_row_floor`] is spliced into every cell query, the totals subtract it, and the
 //! unfiltered window's arithmetic is offset by it. `header_row = 0` means the sheet has no
-//! header row and nothing is skipped. It is a `row_id` — dense within the sheet — not a
+//! header row and nothing is skipped. It is a `row_id` (dense within the sheet) not a
 //! `source_row`, so it must never be compared against the file's own row numbers.
 
 use common::current_user::CurrentUser;
@@ -149,7 +149,7 @@ pub struct TableManifest {
 
 /// The `(collection_dataset, hash)` lookup, with the read permission checked first.
 ///
-/// `Ok(None)` means "this document is not a browsable table in this dataset" — which is
+/// `Ok(None)` means "this document is not a browsable table in this dataset", which is
 /// the ordinary answer for the overwhelming majority of documents, and is why the source
 /// list and the metadata section can call this on every document they render.
 pub async fn load_table_manifest(
@@ -186,7 +186,7 @@ pub async fn load_table_manifest(
 
     // Three parallel arrays, one cap event per index. `truncated_sheets[i]` is empty both
     // for a document-wide cap and for a delimited file's single unnamed sheet, so the two
-    // are told apart by the limit NAME — never by the sheet string.
+    // are told apart by the limit NAME, never by the sheet string.
     let truncations = row
         .truncated_limits
         .iter()
@@ -229,7 +229,7 @@ async fn require_table_manifest(
 /// Everything the explorer needs before it asks for a single cell: the sheets, the
 /// columns and their statistics, and the caps that fired.
 ///
-/// `Ok(None)` for a document that is not a browsable table — the ordinary answer.
+/// `Ok(None)` for a document that is not a browsable table. The ordinary answer.
 pub async fn get_table_overview(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -267,7 +267,7 @@ pub async fn get_table_overview(
         .await?;
 
     // Every row count a reader sees is a DATA row count, so the header rows come off it
-    // here — once per sheet, and only where a sheet has one. The stored figures are still
+    // here, once per sheet, and only where a sheet has one. The stored figures are still
     // in the raw dumps of `table_documents` and `table_sheets` for anyone who wants them.
     let header_rows: u64 = sheet_rows.iter().map(|row| row.header_row).sum();
 
@@ -470,7 +470,7 @@ pub async fn get_table_page(
     };
 
     // Validation against the manifest's extents, before anything reaches SQL. These are
-    // integers, so this is not an injection question — it is a "a request for column
+    // integers, so this is not an injection question. It is a "a request for column
     // 4 000 000 must not become a query that scans nothing for a second" question.
     let requested_columns: Vec<u32> = if query.visible_columns.is_empty() {
         known_columns.clone()
@@ -645,7 +645,7 @@ pub async fn get_table_page(
         .fetch_all()
         .await?;
 
-    // Pivot into rows. The order is phase 1's, index by index — NOT re-derived from the
+    // Pivot into rows. The order is phase 1's, index by index, NOT re-derived from the
     // comparator, which is what keeps the two phases from ever disagreeing.
     let mut by_row: std::collections::HashMap<u64, TableRow> = std::collections::HashMap::new();
     for cell in cells {
@@ -744,7 +744,7 @@ fn build_constraints(
     }
 }
 
-/// The distinct values of one column, most frequent first — the filter popover's list.
+/// The distinct values of one column, most frequent first, for the filter popover's list.
 pub async fn get_table_column_values(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -833,7 +833,7 @@ pub async fn count_table_cell_matches(
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     // Header rows are excluded, so this number counts the same cells the grid can show a
     // reader. A term that only appears in a header would otherwise promise matches that
-    // no row of the grid contains — the header is drawn once, as the column label.
+    // no row of the grid contains. The header is drawn once, as the column label.
     let count: u64 = client
         .query(
             "SELECT count() FROM table_cells FINAL \
@@ -872,7 +872,7 @@ mod tests {
     }
 
     /// The header row is stored as cells and drawn as the column labels, so no read that
-    /// feeds the grid may see it — and a sheet without one must lose nothing.
+    /// feeds the grid may see it, and a sheet without one must lose nothing.
     #[test]
     fn the_header_row_is_floored_out_and_only_when_there_is_one() {
         assert_eq!(data_row_floor(0), "");
@@ -888,7 +888,7 @@ mod tests {
     }
 
     /// Every reader-supplied value is a `?`, and the count of `?` in a fragment must
-    /// equal the count of binds it pushed — a mismatch is a query that binds the search
+    /// equal the count of binds it pushed. A mismatch is a query that binds the search
     /// text into the hash position, which would silently return nothing.
     #[test]
     fn every_constraint_binds_exactly_as_many_values_as_it_marks() {
@@ -959,7 +959,7 @@ mod tests {
         assert!(sql.contains("sheet_id = 2"), "{sql}");
     }
 
-    /// The search text never appears in the SQL text — only a placeholder does.
+    /// The search text never appears in the SQL text, only a placeholder does.
     #[test]
     fn reader_supplied_text_is_never_spliced_into_the_sql() {
         let mut binds = Vec::new();

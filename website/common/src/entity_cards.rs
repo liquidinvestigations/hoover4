@@ -6,7 +6,7 @@
 //! institution, and none of that is legible in the string.
 //!
 //! The card is produced by the scanner rather than here. It is the only thing that knows
-//! which rule accepted a value and what that rule's validator actually checked — and, as
+//! which rule accepted a value and what that rule's validator actually checked, and, as
 //! usefully, what acceptance does NOT prove. Restating that in the website would be a
 //! second copy of the rule catalogue with no way to notice when it drifted.
 
@@ -42,7 +42,7 @@ pub struct EntityExplanation {
     /// What was matched, in words: "ISO 8601 timestamp", never `date.iso8601`.
     #[serde(default)]
     pub title: String,
-    /// One line about this particular match — country, authority, precision, register.
+    /// One line about this particular match: country, authority, precision, register.
     #[serde(default)]
     pub subtitle: String,
     /// The long text, in Markdown, with links inline.
@@ -64,8 +64,8 @@ pub struct EntityTermHit {
     pub term_id: u64,
     pub term_display: String,
     /// Which facet the term belongs to (`regex_email`, `ner`, `email_address`, …). One
-    /// value can be a term in two fields — an address is both an envelope sender and
-    /// something a body mentions — and ticking them applies different filters.
+    /// value can be a term in two fields (an address is both an envelope sender and
+    /// something a body mentions), and ticking them applies different filters.
     pub term_field: String,
     /// The matched fragment, split into marked and unmarked runs, as the search box's
     /// match reason. Empty when the highlighter had nothing to add.
@@ -108,8 +108,8 @@ impl EntityTermHits {
 /// The boundaries have a test on both sides; changing one without the other makes a
 /// viewer label disagree with the facet it filters into.
 ///
-/// Bucket ids are canonical ASCII. A label spelling change — an en-dash instead of a
-/// hyphen — is a render-time concern and must never be a reindex.
+/// Bucket ids are canonical ASCII. A label spelling change (an en-dash instead of a
+/// hyphen) is a render-time concern and must never be a reindex.
 const MONEY_LADDER: &[(f64, &str)] = &[
     (1.0, "under 1"),
     (10.0, "1-10"),

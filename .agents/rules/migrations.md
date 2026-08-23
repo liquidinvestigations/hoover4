@@ -12,7 +12,7 @@ three fail with an error that names neither the file nor the line:
 1. **A semicolon inside a `COMMENT '...'` literal.** The statement is cut in half.
 2. **A semicolon inside a `--` comment.** Same.
 3. **Prose after the final statement terminator.** It becomes a comment-only fragment and
-   reaches the server as an empty query — the one that has no stray semicolon in it at all,
+   reaches the server as an empty query, the one that has no stray semicolon in it at all,
    and therefore the one that is hardest to see.
 
 **Put explanatory comments above the statement they describe**, never inside it and never
@@ -35,7 +35,7 @@ by line count on purpose. But it states **what is true now**:
   when". The migration number already records the order; `git log` records the rest.
 - **Keep the lesson.** Write the standing property and the failure it prevents. The reason a
   column is not the obvious type, the invariant a sort order depends on, the sentinel that
-  must not be confused with zero — those are exactly what belongs here.
+  must not be confused with zero. Those are exactly what belongs here.
 
 ## Column comments
 

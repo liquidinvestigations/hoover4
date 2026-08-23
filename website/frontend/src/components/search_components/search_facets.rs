@@ -1,6 +1,6 @@
 //! The reusable pieces of a checkbox facet list.
 //!
-//! There is no pill strip here — every facet is a pane inside the "All filters" modal
+//! There is no pill strip here, every facet is a pane inside the "All filters" modal
 //! (`filter_modal.rs`), because a strip of buttons does not scale past four facets and
 //! has nowhere to put a filter that is not a checkbox list. Do not add mime/extension/path
 //! buttons either: `file_paths` is a folder TREE, and a flat list of hashed path ids is
@@ -34,7 +34,7 @@ pub fn FacetSelectorList(
     /// Substring the rendered buckets are narrowed to, case-insensitively.
     ///
     /// This is the CLIENT-SIDE narrowing, and it is right for a facet with a handful of
-    /// buckets all of which are on screen — file types. It is wrong for anything with
+    /// buckets all of which are on screen, such as file types. It is wrong for anything with
     /// more distinct values than one fan-out returns, because it answers "nothing
     /// matches" for a value that is in the corpus and merely did not make the top
     /// twenty-one. Those facets pass `restrict_to_ids` instead and leave this empty.
@@ -64,7 +64,7 @@ pub fn FacetSelectorList(
     let search_result = match search_result {
         // The retry is a BUTTON and never automatic. This pane is one of four rendered
         // at once, and the failure it is most likely to show is the search running out
-        // of its time budget — retrying that by itself doubles the load on a Manticore
+        // of its time budget. Retrying that by itself doubles the load on a Manticore
         // that was already too slow to answer, four times over.
         Err(e) => {
             return rsx! {
@@ -222,7 +222,7 @@ pub fn ResolveMissingItems(
     // **Every hook runs before the first early return, unconditionally.** Dioxus
     // identifies a hook by its call ORDER, so a `use_memo` behind an `if` panics with
     // "Unable to retrieve the hook that was initialized at this index" the first time
-    // that condition flips — and it flips constantly here, because whether a filtered
+    // that condition flips, and it flips constantly here, because whether a filtered
     // value is missing from the returned buckets changes with every query the user
     // narrows. The nothing-to-do cases are handled by returning early BELOW, and by the
     // resource declining to make a round trip for an empty list.
@@ -264,7 +264,7 @@ pub fn ResolveMissingItems(
                     } else {
                         // The id resolved to no text: the term row is gone (a
                         // purged dataset) or the collection is unreadable. Showing the
-                        // raw id is honest and still lets the user un-set the filter —
+                        // raw id is honest and still lets the user un-set the filter:
                         // `Missing2: Int(123)` was a debug print that shipped.
                         format!("#{i}")
                     }

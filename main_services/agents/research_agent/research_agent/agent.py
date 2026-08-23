@@ -97,7 +97,7 @@ _PENDING_COMPACTIONS: ContextVar[Optional[List[compaction.CompactionReport]]] = 
 
 #: How many compiled graphs to keep. Each holds one MCP client with a live connection
 #: per configured server (six, for the full research agent), so this cache is not free
-#: and cannot be unbounded — it is keyed partly by chat session id, which an agent
+#: and cannot be unbounded. It is keyed partly by chat session id, which an agent
 #: serving many conversations would otherwise grow without limit. Evicts
 #: least-recently-used.
 MAX_CACHED_GRAPHS = int(os.getenv("AGENT_MAX_CACHED_GRAPHS", "24"))
@@ -120,7 +120,7 @@ ACL_USER_HEADER = "X-Hoover4-User"
 
 #: Chat session id, forwarded so the browser MCP server can give each conversation its
 #: own cookie jar (see main_services/agents/browser_use_server/sessions.py). Unlike the two
-#: headers above this carries no authority — it is an isolation key, not an ACL.
+#: headers above this carries no authority. It is an isolation key, not an ACL.
 CHAT_SESSION_HEADER = "X-Hoover4-Chat-Session"
 
 
@@ -182,8 +182,8 @@ class MCPGatewayAgent:
         # An override, not the prompt itself. The prompt is rendered per graph in
         # `_create_graph`, because it is a function of what that graph binds: the tool
         # section comes from the bound tool names and the budget from `MAX_TOOL_TURNS`,
-        # neither of which is known here. A non-empty value here — `SYSTEM_PROMPT` in
-        # compose, or a literal handed in by a test — wins outright.
+        # neither of which is known here. A non-empty value here, `SYSTEM_PROMPT` in
+        # compose, or a literal handed in by a test, wins outright.
         self.system_prompt_override = (system_prompt or "").strip()
         self.llm_model = llm_model
         # The profile decides more than the wording: it decides whether the delegation
@@ -198,7 +198,7 @@ class MCPGatewayAgent:
         # is the unit that can safely be reused. Reusing a single graph across users
         # would let one user's tool connection serve another user's question.
         #
-        # An OrderedDict, used as an LRU bounded by MAX_CACHED_GRAPHS — see there.
+        # An OrderedDict, used as an LRU bounded by MAX_CACHED_GRAPHS. See there.
         self._graphs: "OrderedDict[str, Any]" = OrderedDict()
         self.langfuse_handler = self._create_langfuse_handler()
 
@@ -242,7 +242,7 @@ class MCPGatewayAgent:
         #
         # `session_id` is part of the key because the MCP connection headers carry it,
         # and those headers are baked into the graph at construction time. Two chats by
-        # the same user with the same ACL therefore get two graphs — which is the point:
+        # the same user with the same ACL therefore get two graphs, which is the point:
         # it is what gives each conversation its own browser cookie jar.
         #
         # `llm_model` is part of the key for the same reason the model is: the ChatOpenAI
@@ -289,7 +289,7 @@ class MCPGatewayAgent:
     ):
         """Create the agent graph with MCP tools, scoped to one caller's ACL."""
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
-        # enforces it on every tool call — the model cannot widen its own permissions,
+        # enforces it on every tool call. The model cannot widen its own permissions,
         # because it never sees or supplies them.
         headers = acl_headers(username, allowed_collections, session_id)
         servers = {
@@ -360,8 +360,8 @@ class MCPGatewayAgent:
         # Delegation, and the one line that is the whole depth limit.
         #
         # The worker's tool list is built from the MCP tools BEFORE `run_subagent` is
-        # appended, so the delegation tool is not in it and no prompt can put it back —
-        # see research_agent/subagents.py. Workers reuse these tool objects, which means
+        # appended, so the delegation tool is not in it and no prompt can put it back.
+        # See research_agent/subagents.py. Workers reuse these tool objects, which means
         # they reuse this graph's MCP connections and therefore the lead's chat session:
         # that is what makes a worker's citation handles resolve in the lead's session,
         # and what keeps a delegating turn to one browser context rather than four.
@@ -409,7 +409,7 @@ class MCPGatewayAgent:
 
         # The prompt is rendered here and nowhere else, because here is the first point
         # at which the tool list is real. Everything it says about the tool surface comes
-        # from `tools` — which now includes the delegation tool if this profile binds it —
+        # from `tools` (which now includes the delegation tool if this profile binds it)
         # so a prompt cannot claim a tool the model does not have, and a tool the model
         # does have cannot go unmentioned. `collections_hint` is the caller's ACL: an
         # empty one means every collection search will come back empty, which the model
@@ -476,7 +476,7 @@ class MCPGatewayAgent:
         def _repeated_call(state: AgentState) -> bool:
             """Whether the model just re-issued a call it has already made.
 
-            At temperature 0 a repeat is not exploration, it is a stuck loop: the same
+            At temperature 0 a repeat is a stuck loop rather than exploration: the same
             call returns the same result and the next turn is identical again.
             """
             calls = [
@@ -493,8 +493,8 @@ class MCPGatewayAgent:
             # Two guards, both ending at `finalize` so the caller always gets prose.
             #
             # Without them a model that will not stop calling tools produces a langgraph
-            # GraphRecursionError, which surfaces as an HTTP 500 with no answer at all —
-            # the least useful possible outcome, and one Qwen3.5-2B hits regularly: it
+            # GraphRecursionError, which surfaces as an HTTP 500 with no answer at all.
+            # The least useful possible outcome, and one Qwen3.5-2B hits regularly: it
             # finds the right document, then re-issues the identical search until the
             # budget runs out. Small models are bad at deciding they are finished, so
             # that decision is made here rather than left to the prompt.
@@ -512,7 +512,7 @@ class MCPGatewayAgent:
 
             The trailing AIMessage holds tool_calls that will never be satisfied, and an
             OpenAI-shaped request carrying tool_calls with no matching tool results is
-            rejected — so it is removed rather than left in place. `add_messages` merges
+            rejected, so it is removed rather than left in place. `add_messages` merges
             by id and cannot delete, hence `RemoveMessage`.
             """
             last = state["messages"][-1]
@@ -584,7 +584,7 @@ class MCPGatewayAgent:
         # langgraph counts every node visit, so one search costs two steps (agent +
         # tools) and the default 25 is only ~12 tool calls. A thorough research run
         # legitimately needs more than that, and hitting the limit is a hard 500 with no
-        # partial answer — the least useful possible failure. The prompt is what stops
+        # partial answer, which is the least useful possible failure. The prompt is what stops
         # the model looping (see research_agent/prompts/); this is only the backstop.
         config = {"recursion_limit": int(os.getenv("AGENT_RECURSION_LIMIT", "40"))}
         if self.langfuse_handler and user_id and session_id:
@@ -607,13 +607,13 @@ class MCPGatewayAgent:
         # This turn's sub-agent budget, installed for the same reason and in the same
         # place. It bounds the whole user turn rather than one `run_subagent` call,
         # because a nagged turn runs the agent again and the second run can delegate
-        # again — a per-wave cap alone would let the total grow with the nags.
+        # again. A per-wave cap alone would let the total grow with the nags.
         turn_budget = subagents.start_turn(
             session_id, continuing=bool(extra_tool_turns)
         )
         # What delegation had already spent when this run started. A nag round continues
         # the turn's budget, so the counters are cumulative across rounds and this run's
-        # share is the difference — adding the running total to every round would count
+        # share is the difference. Adding the running total to every round would count
         # the first round's workers again in the second.
         workers_before = subagents.TurnBudget(
             workers=turn_budget.workers,
@@ -630,14 +630,14 @@ class MCPGatewayAgent:
         #
         # Two numbers rather than one, because they answer different questions and differ
         # by an order of magnitude. `context_tokens` is what the provider counted for the
-        # FIRST call: the system prompt, the tool schemas, the history and the question —
-        # the standing cost of the conversation, and what the next turn starts from.
+        # FIRST call: the system prompt, the tool schemas, the history and the question.
+        # The standing cost of the conversation, and what the next turn starts from.
         # `peak_context_tokens` is the largest single call in the run, which is the last
         # one in a tool-using turn because every result stays in the model-visible list.
         # A compaction trigger fires on the peak; a user's intuition is about the other.
         #
         # Both stay 0 when the provider reports no usage at all. 0 means unknown here and
-        # everywhere downstream — never "free".
+        # everywhere downstream, never "free".
         context_tokens = 0
         peak_context_tokens = 0
         prompt_tokens_total = 0
@@ -650,7 +650,7 @@ class MCPGatewayAgent:
             kind = event["event"]
             node = event["metadata"].get("langgraph_node")
 
-            # `finalize` is an answer-producing node exactly like `agent` — it is the
+            # `finalize` is an answer-producing node exactly like `agent`. It is the
             # same model with no tools bound (see `_create_graph`). Leaving it out here
             # is why the forced final answer first came back as an empty string with a
             # cheerful HTTP 200.
@@ -703,7 +703,7 @@ class MCPGatewayAgent:
                             }
                             all_content += chunk_content
 
-                # With streaming off (the default — see `_create_graph`) there are no
+                # With streaming off (the default, see `_create_graph`) there are no
                 # per-token events, only this one at the end of each turn. Emitting the
                 # whole message here is what makes the non-streaming path produce an
                 # answer instead of silence.
@@ -761,7 +761,7 @@ class MCPGatewayAgent:
                     try:
                         # `to_thread`, because this is two synchronous POSTs to ClickHouse
                         # inside the stream loop. On the event loop they stall every other
-                        # chat's tokens for as long as ClickHouse takes to answer — and
+                        # chat's tokens for as long as ClickHouse takes to answer, and
                         # this fires once per model turn, so a busy stack pays it
                         # constantly. Telemetry must never be in the way of the answer it
                         # is describing.
@@ -795,7 +795,7 @@ class MCPGatewayAgent:
             if node == "tools":
                 llm_started = False
                 if kind == "on_tool_start":
-                    # `event["data"]` on a start is only `{"input": {...}}` — the tool's
+                    # `event["data"]` on a start is only `{"input": {...}}`. The tool's
                     # name lives on the event, not in its data, and until the matching
                     # end event arrives there is nowhere else to get it. A consumer
                     # rendering the call *while it runs* (the website's streaming chat)
@@ -807,8 +807,8 @@ class MCPGatewayAgent:
                         start_data["name"] = event.get("name") or ""
                     # The run id is what makes a start and its own end pairable. Without
                     # it a consumer has nothing but the tool's name and arrival order:
-                    # a model that issues two calls to the SAME tool at once — which
-                    # these models do, observed milliseconds apart — then has the second
+                    # a model that issues two calls to the SAME tool at once (which
+                    # these models do, observed milliseconds apart) then has the second
                     # result matched to the first call, and a card shows a result that
                     # belongs to a different question. A start event carries no
                     # tool_call_id at all, so this is the only identity available.

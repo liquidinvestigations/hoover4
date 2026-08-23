@@ -34,14 +34,14 @@ See [database/Readme.md](database/Readme.md).
 Usage:
 - Run migrations with `python main.py migrate` - migrates the global database and then every collection's database.
 - Create a collection with `python main.py create-collection <collectionname> [--fullname TEXT] [--public]`. The scripted equivalent of the admin UI's create action: it writes the `collections` row and then provisions the database, so one idempotent command leaves a collection that can be ingested into. Without `--public` the collection is restricted and is readable only through a group grant.
-- Provision one collection's database with `python main.py ensure-collection <collectionname>`. Idempotent; creates the database if missing and applies `database/db_collection_migrations/`. It does **not** write the `collections` row — use `create-collection` for that, or the admin UI, which triggers the same provisioning as a Temporal workflow.
-- Onboard a dataset with `python main.py add-disk-dataset <collectionname> <dataset_name> <path>` — the collection must already exist (admin UI or `create-collection`); the composed `collection_dataset` is `<collectionname>_<dataset_name>` and the collection assignment is fixed at creation. It dispatches an operation, prints the operation id and then follows it, so **Ctrl-C detaches from the ingest rather than stopping it**; `--no-wait` skips the following. A dataset that already exists is rescanned rather than refused.
+- Provision one collection's database with `python main.py ensure-collection <collectionname>`. Idempotent; creates the database if missing and applies `database/db_collection_migrations/`. It does **not** write the `collections` row. Use `create-collection` for that, or the admin UI, which triggers the same provisioning as a Temporal workflow.
+- Onboard a dataset with `python main.py add-disk-dataset <collectionname> <dataset_name> <path>`, the collection must already exist (admin UI or `create-collection`); the composed `collection_dataset` is `<collectionname>_<dataset_name>` and the collection assignment is fixed at creation. It dispatches an operation, prints the operation id and then follows it, so **Ctrl-C detaches from the ingest rather than stopping it**; `--no-wait` skips the following. A dataset that already exists is rescanned rather than refused.
 - List collections with `python main.py list-collections`.
-- Remove one dataset's data with `python main.py purge-dataset <collectionname> <collection_dataset> [--apply] [--registered]` — deletes its rows from every Manticore table of the collection and every collection-DB table that has a `collection_dataset` column, then recomputes the shard ledger. The recovery path for a dataset that was abandoned rather than deleted (a failed ingest, or a re-ingest under a new name), whose index rows otherwise keep answering searches and keep the Collections filter offering a dataset that no longer exists. It reports what it will delete and deletes nothing without `--apply`, refuses a dataset that still has a live registry row (deleting a live dataset belongs in the admin UI, which purges *and* removes the row) unless `--registered` is passed, and is idempotent — a second run finds nothing to purge.
-- Retry the documents one stage failed on with `python main.py retry-failed-files <collectionname> [--dataset X] [--task P4_ExtractEntities] [--apply]` — reads the file hashes out of `processing_errors` and re-runs the stage that failed them, with no re-ingest. A plan is marked finished when its stages have *run*, not when every document succeeded, so re-running the `ExecutePlans` workflow is a no-op for exactly these failures. NER failures clear the failed hashes' `nlp_processed` watermarks and re-run P4 + P6 for their plans; index failures re-run P6 alone; embedding failures re-run P5 + P6; parse failures have no per-file entry point and reopen the whole plan. The `processing_errors` rows are cleared only after the re-run has demonstrably fixed the document, so a second failure leaves the record it started from.
-- Re-index a collection with `python main.py reindex-collection <collectionname>` — drops the collection's Manticore shard tables and shard ledger, then re-runs indexing for every finished plan (recovery path for a lost Manticore volume, a `MAX_SHARD_TEXT_BYTES` change, or shard fragmentation; files are not re-parsed). It refuses while any operation for the collection is non-terminal, or while any `IndexDatasetPlan` workflow is open for it: truncating the ledger under a live writer produces a ledger claiming documents no table holds.
-- Inspect long operations with `python main.py operations list|show|rerun|cancel`. Every significant command above dispatches one and then follows it, so an interrupted command loses a view and never the work. `rerun` mints a fresh operation with the same kind and target — never a resumption, because the original run's record is what the log is for. `cancel` releases the lock the operation holds and lands it in `cancelled`, which is a state of its own and is re-runnable.
-- Start workers with `python main.py worker [common|tika|ocr|nlp|embed|indexing|index-planner|operations]`. The `index-planner` worker must run at exactly one process (see [tasks/Readme.md](tasks/Readme.md)). `operations` runs in its own container rather than in the pipeline fleet, so a long operation's load is bounded by that container's budget; it is not in the set the bare `worker` command spawns. Worker startup also registers the `CollectionDataset` Temporal search attribute and starts the singleton `CollectEtaSamples` ETA workflow — both idempotent, so restarts are safe.
+- Remove one dataset's data with `python main.py purge-dataset <collectionname> <collection_dataset> [--apply] [--registered]`. Deletes its rows from every Manticore table of the collection and every collection-DB table that has a `collection_dataset` column, then recomputes the shard ledger. The recovery path for a dataset that was abandoned rather than deleted (a failed ingest, or a re-ingest under a new name), whose index rows otherwise keep answering searches and keep the Collections filter offering a dataset that no longer exists. It reports what it will delete and deletes nothing without `--apply`, refuses a dataset that still has a live registry row (deleting a live dataset belongs in the admin UI, which purges *and* removes the row) unless `--registered` is passed, and is idempotent. A second run finds nothing to purge.
+- Retry the documents one stage failed on with `python main.py retry-failed-files <collectionname> [--dataset X] [--task P4_ExtractEntities] [--apply]`. Reads the file hashes out of `processing_errors` and re-runs the stage that failed them, with no re-ingest. A plan is marked finished when its stages have *run*, not when every document succeeded, so re-running the `ExecutePlans` workflow is a no-op for exactly these failures. NER failures clear the failed hashes' `nlp_processed` watermarks and re-run P4 + P6 for their plans; index failures re-run P6 alone; embedding failures re-run P5 + P6; parse failures have no per-file entry point and reopen the whole plan. The `processing_errors` rows are cleared only after the re-run has demonstrably fixed the document, so a second failure leaves the record it started from.
+- Re-index a collection with `python main.py reindex-collection <collectionname>`, drops the collection's Manticore shard tables and shard ledger, then re-runs indexing for every finished plan (recovery path for a lost Manticore volume, a `MAX_SHARD_TEXT_BYTES` change, or shard fragmentation; files are not re-parsed). It refuses while any operation for the collection is non-terminal, or while any `IndexDatasetPlan` workflow is open for it: truncating the ledger under a live writer produces a ledger claiming documents no table holds.
+- Inspect long operations with `python main.py operations list|show|rerun|cancel`. Every significant command above dispatches one and then follows it, so an interrupted command loses a view and never the work. `rerun` mints a fresh operation with the same kind and target, never a resumption, because the original run's record is what the log is for. `cancel` releases the lock the operation holds and lands it in `cancelled`, which is a state of its own and is re-runnable.
+- Start workers with `python main.py worker [common|tika|ocr|nlp|embed|indexing|index-planner|operations]`. The `index-planner` worker must run at exactly one process (see [tasks/Readme.md](tasks/Readme.md)). `operations` runs in its own container rather than in the pipeline fleet, so a long operation's load is bounded by that container's budget; it is not in the set the bare `worker` command spawns. Worker startup also registers the `CollectionDataset` Temporal search attribute and starts the singleton `CollectEtaSamples` ETA workflow, both idempotent, so restarts are safe.
 
 ## Navigation
 
@@ -59,9 +59,9 @@ next.
 
 | `mtime_source` | when | indexed as a date? |
 |---|---|---|
-| `archive` | the container is an `archives` row — 7z restores stored timestamps | **yes** |
-| `untrusted` | the container is an email — attachments are re-written by the worker | no |
-| `filesystem` | top level — the clone/save time of the corpus | no |
+| `archive` | the container is an `archives` row, 7z restores stored timestamps | **yes** |
+| `untrusted` | the container is an email, attachments are re-written by the worker | no |
+| `filesystem` | top level, the clone/save time of the corpus | no |
 | `''` | a container we do not recognise (extracted PDF images, video frames) | no |
 
 **P3 (`parse_files`)** owns `document_dates.py`: a pure `resolve_dates` plus the
@@ -73,26 +73,26 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
 
 **P6 (`index_data`)** runs:
 
-* `build_vfs_nodes` — materialises the dataset's tree into ClickHouse `vfs_nodes`.
+* `build_vfs_nodes`, materialises the dataset's tree into ClickHouse `vfs_nodes`.
   Dataset-scoped and idempotent, because a plan holds only a slice and a tree assembled
   slice by slice has holes. It is a REBUILD in both directions: rows written keep their
   key, and rows the rebuild did not produce are deleted afterwards by `updated_at`,
   because a ReplacingMergeTree never removes a key that stops being written.
-  A file counts as a container only if something is inside it — being sniffed as an
+  A file counts as a container only if something is inside it. Being sniffed as an
   archive, or being an email, is a guess, and an email with no attachments rendered as a
   folder that opens onto nothing. What is inside a container hangs off the container FILE;
   there is no `/` node in between. `ExecutePlans` runs it once per batch, before the
   per-plan writers.
-* `index_vfs_structure` — copies it into the collection's `<name>_vfs` Manticore table
+* `index_vfs_structure`, copies it into the collection's `<name>_vfs` Manticore table
   with multi-row REPLACE, then deletes Manticore rows whose `node_key` is not in the
   current ClickHouse tree. No dataset-wide DELETE first. Once per terminal `ExecutePlans`
   batch.
-* `index_text_pages` — one row per text segment plus one synthetic `filename_index` row
+* `index_text_pages`, one row per text segment plus one synthetic `filename_index` row
   per document carrying its basenames, each row also carrying the document's typed
   attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,
   `primary_filename`, `email_from`, `email_to`) and its `vfs_node` closure term ids.
   One writer, because every row of a document must carry the same metadata.
-* `optimize_shard_tables` — compacts a shard whose killed rows or chunk count have
+* `optimize_shard_tables`, compacts a shard whose killed rows or chunk count have
   built up. Storage, not latency.
 
 ### The ancestor closure, and its caps
@@ -101,7 +101,7 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
 container boundaries. Containers are content-addressed, so one container hash can sit at
 several paths and the closure includes all of them.
 
-The caps in `vfs_nodes.py` are not tuning knobs — the corpus contains an email that
+The caps in `vfs_nodes.py` are not tuning knobs. The corpus contains an email that
 contains itself (`eml-7-recursive`) and one archive in two places
 (`zip-in-multiple-locations`):
 

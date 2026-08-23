@@ -23,7 +23,7 @@ deletes the first call's pages. Every writer goes through it.
 
 **`extracted_by` is a storage key and a user-visible label at once.** OCR variants carry an
 engine-and-language prefix; native extractors carry none. The convention is implemented twice
-on purpose — once here, once in the shared Rust types — and neither runtime may depend on the
+on purpose (once here, once in the shared Rust types), and neither runtime may depend on the
 other being right. Call the shared formatter; never assemble or parse the string in place.
 
 **A bucket comes out of the row, not out of the environment.** Blob storage is a bucket per

@@ -3,7 +3,7 @@
 //! `network.ip` does no pattern arithmetic: the candidate is handed to `std::net`, whose parsers
 //! are the definition of the two address formats and already enforce octet ranges, group counts
 //! and the single `::` elision. What is left for the validator is everything the parser cannot
-//! know — that a dotted quad in a document is not always an address, and that four numbers
+//! know. That a dotted quad in a document is not always an address, and that four numbers
 //! separated by dots is also how software versions are written.
 
 use std::collections::BTreeMap;
@@ -26,11 +26,11 @@ const VERSION_CUES: &[&str] = &[
 pub struct IpRule;
 
 /// A dotted quad or a run of colon-separated hex groups, either optionally followed by a prefix
-/// length. Both halves over-match wildly — `09:12:00` matches the second — because `std::net` is
+/// length. Both halves over-match wildly (`09:12:00` matches the second), because `std::net` is
 /// the validator and rejecting there is cheaper than encoding the grammar twice.
 ///
-/// The IPv6 form that ends in a dotted quad — `::ffff:192.0.2.1`, RFC 4291's IPv4-mapped and
-/// IPv4-compatible addresses — is its own alternative and stands first, because alternation is
+/// The IPv6 form that ends in a dotted quad (`::ffff:192.0.2.1`, RFC 4291's IPv4-mapped and
+/// IPv4-compatible addresses) is its own alternative and stands first, because alternation is
 /// leftmost-first: without it the hex run stops at `::ffff:192` and the quad behind it is then a
 /// slice of a longer dotted run, so the whole address yields nothing.
 const IP_PATTERN: &str = r"(?:[0-9A-Fa-f]{0,4}:){2,7}\d{1,3}[.]\d{1,3}[.]\d{1,3}[.]\d{1,3}(?:/\d{1,3})?|\d{1,3}[.]\d{1,3}[.]\d{1,3}[.]\d{1,3}(?:/\d{1,2})?|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?:/\d{1,3})?";
@@ -67,7 +67,7 @@ impl Rule for IpRule {
 
         let (family, canonical, max_prefix) = if let Ok(parsed) = address.parse::<Ipv4Addr>() {
             // A four-component dotted number is also how a release is written, and no arithmetic
-            // separates the two — only the words around them do.
+            // separates the two, only the words around them do.
             if candidate.has_cue(VERSION_CUES, DEFAULT_CUE_WINDOW) {
                 return None;
             }
@@ -116,7 +116,7 @@ fn ends_the_address(candidate: &Candidate<'_>) -> bool {
 
 pub struct AsnRule;
 
-/// The literal prefix is mandatory, and a space is allowed only after the three-letter spelling —
+/// The literal prefix is mandatory, and a space is allowed only after the three-letter spelling:
 /// `AS` followed by a space is the English word far more often than it is a network.
 const ASN_PATTERN: &str = r"AS\d{1,10}|ASN[ ]?\d{1,10}";
 

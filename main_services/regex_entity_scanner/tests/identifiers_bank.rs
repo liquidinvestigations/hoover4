@@ -1,9 +1,9 @@
 //! Bank identifiers: IBAN, BIC, payment card and ABA routing number.
 //!
 //! The fixtures are the documented examples from the `python-stdnum` modules this arithmetic is
-//! ported from — `stdnum/iban.py` and the per-country `stdnum/*/iban.py` docstrings for the valid
+//! ported from: `stdnum/iban.py` and the per-country `stdnum/*/iban.py` docstrings for the valid
 //! numbers and their invalid-check-digit counterparts, `stdnum/bic.py` for the codes,
-//! `stdnum/us/rtn.py` for the routing numbers — and Presidio's recogniser fixtures for the cards.
+//! `stdnum/us/rtn.py` for the routing numbers, and Presidio's recogniser fixtures for the cards.
 //! The IBAN subset is chosen to cover the three BBAN character classes, the shortest and longest
 //! registry lengths, and the four ways an IBAN candidate can fail: unknown country, wrong length,
 //! wrong alphabet, wrong checksum. The card subset covers one number per issuer range and every
@@ -152,7 +152,7 @@ fn rejects_code_shaped_words_and_malformed_codes() {
 
 /// Presidio's `test_credit_card_recognizer.py` fixtures, one per issuer range, plus the three
 /// spellings its first row writes in one fragment. The subset covers every length the table
-/// admits — Diners at fourteen, Amex at fifteen, the rest at sixteen — because the length is half
+/// admits. Diners at fourteen, Amex at fifteen, the rest at sixteen, because the length is half
 /// of what the issuer table checks.
 #[test]
 fn accepts_a_card_number_from_each_issuer_range() {
@@ -195,12 +195,12 @@ fn a_card_carries_its_issuer_and_issuer_identification_number() {
     }
 }
 
-/// Every filter the card rule has, one fragment each. The no-cue case is the load-bearing one: a
+/// Every filter the card rule has, one fragment each. The no-cue case is the one that decides precision. A
 /// page of invoice-like text puts several Luhn-valid runs inside allocated issuer ranges, and the
 /// word beside the number is the only thing that separates a card from an article number.
 #[test]
 fn rejects_card_shaped_runs_that_do_not_check_out() {
-    // The check digit disagrees — Presidio's own invalid fixture.
+    // The check digit disagrees. Presidio's own invalid fixture.
     rejects("card number 4012-8888-8888-1882");
     rejects("credit card 36168002586008");
     // Luhn agrees and nothing says card.

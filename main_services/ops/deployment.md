@@ -5,7 +5,7 @@ which interfaces the ports answer on, whether the accelerated tier exists at all
 the corpus lives. This is the runbook for that configuration, for the reset that precedes it,
 and for the staged ingest that follows.
 
-**Every address below is a placeholder.** This page describes the mechanism — which key
+**Every address below is a placeholder.** This page describes the mechanism, which key
 publishes what, and what each one is protecting against. What a particular deployment
 actually uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
 gitignored: this file is public, and no hostname, address or credential belongs in it.
@@ -29,7 +29,7 @@ identity header set in front of it, so it has to be unreachable except through w
 that header. In demo mode it additionally provisions every anonymous visitor a guest session
 and treats it as an administrator; with demo mode off nothing anonymous is provisioned at
 all, the identity route refuses, the site renders *Sign-in required*, and every endpoint
-answers 401 — so a deployment fronted by something that sets no identity header serves
+answers 401, so a deployment fronted by something that sets no identity header serves
 nobody, which is the intended failure rather than a fault.
 
 The infrastructure ports are worse and simpler: the search engine has no authentication at
@@ -39,8 +39,8 @@ the corpus**.
 
 The port half stays where it is: every service port is an ini key, and the website's
 `12345` is deliberately hardcoded in the compose file as the one URL humans type.
-Services already bound to loopback in the compose file — Temporal, Cassandra,
-Elasticsearch, Redis, the CPU twins, every MCP server and both research agents — ignore
+Services already bound to loopback in the compose file. Temporal, Cassandra,
+Elasticsearch, Redis, the CPU twins, every MCP server and both research agents. Ignore
 `infra_bind_ip` and stay on loopback regardless.
 
 Reaching a loopback-bound admin console from elsewhere is a port forward over ssh, not a
@@ -59,7 +59,7 @@ ai_server_enabled  = false
 ner_enabled        = false
 embeddings_enabled = false
 reranker_enabled   = false
-easyocr_enabled    = false      ; see the trap below — this one is not implied
+easyocr_enabled    = false      ; not implied by the others, see below
 llm_selfhosted     = false
 
 [main_services]
@@ -94,9 +94,9 @@ enabled = false
 enabled = false
 ```
 
-**`easyocr_enabled` is the trap.** `OCR_EASYOCR_URL` is rendered from that flag alone,
+**`easyocr_enabled` behaves differently from the others.** `OCR_EASYOCR_URL` is rendered from that flag alone,
 *regardless* of `[ai_services] enabled`, and it ships `true`. Left alone it renders a
-`host.containers.internal:21962` endpoint into the worker and the website — a name Docker
+`host.containers.internal:21962` endpoint into the worker and the website, a name Docker
 Engine on Linux does not inject at all (only podman and Docker Desktop do), so the OCR
 calls hang rather than fail. `[ai_services] enabled = false` stops
 `./deploy --ai-services` from running; it does not blank the derived URLs.
@@ -114,8 +114,8 @@ For the configuration above it must show `NER_URL=http://hoover4-ner-spacy:8000/
 ### Secrets
 
 Every `*_file` key holds a host path, never a value. `deploy.py` refuses a file that does
-not exist, that is group- or world-readable, or whose real path is inside the checkout —
-a key in the checkout leaks into build contexts and commits. The file is bind-mounted
+not exist, that is group- or world-readable, or whose real path is inside the checkout.
+A key in the checkout leaks into build contexts and commits. The file is bind-mounted
 read-only into the containers that need it; no key value ever reaches a `.env` or a log.
 
 ```bash
@@ -180,8 +180,8 @@ git submodule update --init --recursive     # the PDF viewer is a submodule
 Read the log rather than its last fifty lines. `up -d` reuses existing images and
 containers, so a broken build context stays invisible until something forces a rebuild.
 
-`./deploy` on the main side never calls `nvidia-smi` — the GPU preflight returns
-immediately for the main side — so nothing here needs a GPU to exist.
+`./deploy` on the main side never calls `nvidia-smi` (the GPU preflight returns
+immediately for the main side), so nothing here needs a GPU to exist.
 
 With `website_release_mode = true` the website container then runs `dx build --release`
 **on first boot**, into a build-target volume the reset just emptied. That is a cold Rust
@@ -218,7 +218,7 @@ cd main_services
 ```
 
 `create-collection` registers the collection and provisions its ClickHouse database in
-one idempotent command — the scripted equivalent of the admin UI's create action.
+one idempotent command, which is the scripted equivalent of the admin UI's create action.
 `--public` is worth stating: a collection is restricted by default and is then visible
 only through a group grant. A demo that displays its collections anyway is relying on
 `demo_mode` and the `guest_permissions_mode` server setting both being open, which is two
@@ -267,7 +267,7 @@ reason.
 
 `ingest_dataset` skips a dataset that is already registered and the invariants iterate
 over every collection in the ledger rather than a hardcoded list, so re-running after each
-stage is cheap. Two of its checks earn their keep on a fresh host in particular: the
+stage is cheap. Two of its checks find real problems on a fresh host in particular: the
 **Manticore-vs-ledger equality** check, because the whole index is new, and the assertion
 that **no `blobs` row references `derived/`**, because the searchable-PDF writer writes
 back into the blob store under that prefix and the ingest walker must never re-scan its own output.
@@ -284,12 +284,12 @@ docker ps -a --filter status=exited --format '{{.Names}}\t{{.Status}}'   # look 
 ```
 
 The largest ingest is the window in which this happens. If something is killed, raise
-that container's `mem_limit` — or, for `hoover4-mcp-browser`, which has no `mem_limit`
+that container's `mem_limit`, or, for `hoover4-mcp-browser`, which has no `mem_limit`
 and runs up to eight Chromium instances, lower `BROWSER_MAX_CONTEXTS`.
 
 **A killed server process does not look like a memory problem to its callers.** When a
 cgroup kills the process inside a container that restarts, `docker ps` shows the service
-healthy moments later and `OOMKilled` on the container is **false** — so what the pipeline
+healthy moments later and `OOMKilled` on the container is **false**, so what the pipeline
 reports is `ConnectionError: Connection refused` against something that is plainly up.
 The two things that identify it are `RestartCount` climbing and
 `Memory cgroup out of memory` in `dmesg`. Check both before believing a network fault
@@ -314,7 +314,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
-| **Demo mode means anonymous administrators** | Every guest session is an administrator, and demo mode is what provisions guests at all. Acceptable only behind an authenticating front end — which is what `website_bind_ip` is enforcing. |
+| **Demo mode means anonymous administrators** | Every guest session is an administrator, and demo mode is what provisions guests at all. Acceptable only behind an authenticating front end, which is what `website_bind_ip` is enforcing. |
 | **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
 
 ## Navigation

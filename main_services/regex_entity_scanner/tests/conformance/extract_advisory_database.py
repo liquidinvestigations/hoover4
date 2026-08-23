@@ -5,7 +5,7 @@
 schema. Two of their fields carry a CVE identifier, and they carry it differently, which is the
 whole reason both are taken:
 
-* ``aliases`` is the identifier on its own — the bare token, which goes into the neutral carrier
+* ``aliases`` is the identifier on its own. The bare token, which goes into the neutral carrier
   sentence the other bare-token origins use.
 * ``references[].url`` is the identifier inside an NVD or vendor URL. That is the surface context a
   document actually writes, with a slash on its left rather than a space, and the URL is kept as the

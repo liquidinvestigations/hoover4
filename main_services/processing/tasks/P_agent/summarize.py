@@ -31,7 +31,7 @@ MAX_TOKENS = 512
 
 #: Ask the model not to think about it. Naming a conversation is not a reasoning problem,
 #: and a reasoning model given one spends its whole token budget on the thought and hits
-#: `length` with nothing usable in `content` — measured at 512 and again at 1 536 tokens
+#: `length` with nothing usable in `content`, measured at 512 and again at 1 536 tokens
 #: against the model this deployment runs on. With thinking off the same call answers in
 #: about a second and its budget is generous.
 #:

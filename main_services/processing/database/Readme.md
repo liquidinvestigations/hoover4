@@ -18,7 +18,7 @@ This directory centralizes database utilities and schema definitions used by the
 `hoover4-c-<collectionname>` holds a collection's ingested blobs and everything derived
 from them; `hoover4-system` holds what belongs to no collection, which today is chat
 artifacts. `blobs.s3_path` stores the full `s3://<bucket>/<key>`, and every reader takes
-the bucket from the path rather than from its own configuration — a reader that rebuilds
+the bucket from the path rather than from its own configuration, a reader that rebuilds
 the bucket name fetches from wherever it happens to be pointed instead of from where the
 object is.
 
@@ -39,12 +39,12 @@ system bucket.
 
 **Both halves of a collection's storage are provisioned by one function**,
 `s3.ensure_collection_storage`, and every path that can bring a collection into existence
-— the admin activity, `create-collection`, `ensure-collection`, `add-disk-dataset` —
+ (the admin activity, `create-collection`, `ensure-collection`, `add-disk-dataset`)
 calls it. A path that creates only the database leaves a collection that ingests
 correctly until the first writer that does not create buckets of its own reaches for it:
 the scan stage makes the bucket before its first upload, so a corpus small enough to keep
 every blob inline in ClickHouse never uploads, and the first thing to touch the bucket is
-the searchable-PDF builder — which answers 500 and parks the plan behind an activity that
+the searchable-PDF builder, which answers 500 and parks the plan behind an activity that
 can never succeed.
 
 ## The two databases
@@ -100,7 +100,7 @@ re-runs until the anti-joins converge. Ledgers and watermarks go through
 
 The line is drawn by what re-derives the row, not by how important it is. Every P3
 parser output qualifies: the parser runs again and writes the same content-addressed
-row. A P0 scan row does not — nothing rescans the disk, so a lost `blobs` row is a file
+row. A P0 scan row does not. Nothing rescans the disk, so a lost `blobs` row is a file
 that is never planned and never noticed.
 
 | Wait | Tables |
@@ -131,7 +131,7 @@ consequences:
 
 Both sets are **collapsed at a baseline**, then grow by new numbered files.
 `COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is `{global: 20,
-collection: 31}` — files at or below those numbers are CREATE-only history and must
+collection: 31}`. Files at or below those numbers are CREATE-only history and must
 never be edited. Files above the baseline may `ALTER TABLE`.
 
 Collapsing is a deliberate break of the never-edit-history rule and is paid for by a full
@@ -145,8 +145,8 @@ being acceptable.
 amount of escaping makes it safe. The MySQL driver scans the **fully interpolated**
 statement for a client-side `DELIMITER` command before sending it, and that scanner does
 not understand the backslash escaping the same driver has just applied. A document
-containing the word `delimiter` followed by whitespace and a quote — ordinary MediaWiki
-markup and manual pages do this — is read as a delimiter change: the statement is either
+containing the word `delimiter` followed by whitespace and a quote (ordinary MediaWiki
+markup and manual pages do this) is read as a delimiter change: the statement is either
 refused outright (`the backslash (\) character is not a valid delimiter`) or re-split and
 re-joined into something Manticore answers with `P01: syntax error`. One such page in a
 batch fails the whole indexing activity, and every document in that batch is recorded as
@@ -184,11 +184,11 @@ answer that nobody notices**. Measured on the real `testdata` shard (156 pages, 
 | `document` | 16 | 16 |
 | `docum*` | 0 | 19 |
 | `*ocument*` | 0 | 42 |
-| `doc*` | **7 — wrong, not zero** | 34 |
-| `te*t` | **3 — wrong, not zero** | 28 |
+| `doc*` | **7, wrong, not zero** | 34 |
+| `te*t` | **3, wrong, not zero** | 28 |
 
 The `filename_index` row is a pages row like any other, so a filename fragment
-(`*report*` finding `annual_report_2024.pdf`) is infix-matched by the same setting — the
+(`*report*` finding `annual_report_2024.pdf`) is infix-matched by the same setting. The
 best fuzzy-match case in the schema.
 
 ### The value is a statement of intent, not a tuning knob
@@ -197,7 +197,7 @@ In this Manticore version `min_infix_len` is an **on/off switch, not a threshold
 and 4 are byte-for-byte identical in size *and* behaviour, and `do*` (2 characters) matches
 even at 4. Pick 3 and move on.
 
-`min_prefix_len` *is* a real threshold and is the wrong tool — it gives no infix matching
+`min_prefix_len` *is* a real threshold and is the wrong tool. It gives no infix matching
 at all, and makes stars work only for prefixes longer than the minimum, which is worse than
 either alternative.
 
@@ -212,7 +212,7 @@ session. Under identical treatment (pipeline reindex, then `FLUSH` + `OPTIMIZE`)
 | no infix | 33,588,034 | 35,407,056 |
 | `min_infix_len='3'` | 26,013,634 | 17,537,550 |
 
-The infix build measured *smaller*, which is not a credible causal effect — read it as the
+The infix build measured *smaller*, which is not a credible causal effect. Read it as the
 metric being noisy at this corpus size. A controlled probe (two tables, the same 156 pages,
 same flush/optimise) put the difference at **+0.8%**. Re-measure on a real-sized collection
 before treating infix indexing as a storage problem.
@@ -273,9 +273,9 @@ appended tables and column-adding migrations; the global set does the same.
 | `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
 | `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
 | `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only records failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
-| `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters — read the newest per worker and sum those. TTL 2 days. |
+| `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters, read the newest per worker and sum those. TTL 2 days. |
 | `00037_shard_row_budget.sql` | `row_count` on `manticore_shards` and `manticore_shard_assignments`: the shard planner caps a shard on Manticore rows as well as on text bytes. An `ALTER`, because both tables are in the collapsed baseline. |
-| `00042_table_cells.sql` | One row per non-empty cell of a tabular document, keyed `(file_hash, sheet_id, column_id, row_id)` — column-major, because every operation the grid performs is scoped to one column. No `collection_dataset` column: one parse serves every dataset in the collection holding the same file. |
+| `00042_table_cells.sql` | One row per non-empty cell of a tabular document, keyed `(file_hash, sheet_id, column_id, row_id)`, column-major, because every operation the grid performs is scoped to one column. No `collection_dataset` column: one parse serves every dataset in the collection holding the same file. |
 | `00043_table_documents.sql` | The per-`(collection_dataset, hash)` manifest for those cells: reader, format, counts, and the truncation record. The only thing that authorises a cell read. |
 | `00044_table_sheets.sql` | Per-sheet extents. Every cell read is bounded by these, which is how a re-parse that produces fewer rows leaves the old tail unreachable rather than needing a mutation. |
 | `00045_table_columns.sql` | Per-column header, inferred type, per-kind counts, value range and samples. Real columns rather than JSON, so "every document with a column called IBAN" is a SQL query. |
@@ -284,7 +284,7 @@ appended tables and column-adding migrations; the global set does the same.
 | `00048_processing_errors_join.sql` | `attempt` and `workflow_run_id` on `processing_errors`, so an `outcome = error` row in `processing_task_runs` can join its stack trace without a hash+time window. |
 | `00049_regex_entity_hit.sql` | One row per `(file, variant, segment, rule set, entity type)` holding the segment's deduplicated values in five parallel arrays. Not one row per occurrence: 193 real segments produced 325 365 entities, and density per segment is unbounded. `rule_set_version` is in the sort key so two rule sets' results coexist rather than replace one another. |
 | `00050_regex_scanned.sql` | The scan stage's watermark, per rule set version. A bump makes every segment eligible again and nothing re-runs until a rescan is asked for. Segments the variant filter skipped are watermarked too, or they are reconsidered on every run for ever. |
-| `00029_operations.sql` | Global. One row per long-running operation: kind, target, state, progress, ETA, error, who asked. No TTL — its whole value is answering "was this ever run" about something that happened longer ago than a Temporal history survives (24 hours here). `op_id` carries a timestamp and is also the workflow id, so two dispatches can never collapse into one execution. |
+| `00029_operations.sql` | Global. One row per long-running operation: kind, target, state, progress, ETA, error, who asked. No TTL, its whole value is answering "was this ever run" about something that happened longer ago than a Temporal history survives (24 hours here). `op_id` carries a timestamp and is also the workflow id, so two dispatches can never collapse into one execution. |
 
 `processing_task_runs` and `processing_task_inflight` are written by `tasks/task_timing.py`
 (a Temporal activity interceptor, batched, best-effort but never silent) and read by the
@@ -307,7 +307,7 @@ a deployment exists that must be upgraded rather than rebuilt. `COLLAPSED_BASELI
 deliberately not raised over those edits, so the next schema change is a new numbered file.
 
 `vfs_files`'s sort key needs `container_hash` because two containers holding the same
-inner path — two copies of one archive — otherwise collapse into a single
+inner path (two copies of one archive), otherwise collapse into a single
 ReplacingMergeTree row and the second container loses its children. The P0 dedupe read
 carries the same filter for the same reason.
 
@@ -317,7 +317,7 @@ and must be updated in both copies (`db_collection_migrations/READINESS_SENTINEL
 `website/backend/src/db_auth/READINESS_SENTINEL`) whenever a table-creating migration is
 appended. `00034_vfs_nodes.sql` contains a comment claiming it must stay last; that
 sentence is wrong and is **left alone on purpose**, because it is applied history whose md5
-is recorded. The rule it states still holds — that is why the sentinel is not there.
+is recorded. The rule it states still holds. That is why the sentinel is not there.
 
 ## `table_cells` is keyed by hash, and that is why it needs a sweeper
 
@@ -325,13 +325,13 @@ is recorded. The rule it states still holds — that is why the sentinel is not 
 and **skips every table with no `collection_dataset` column**. `table_cells` has none, on
 purpose: cells are shared by every dataset in the collection that holds the same file, so
 one workbook mailed to forty people is parsed once. A dataset purge therefore reaches
-`table_documents`, `table_sheets` and `table_columns` and leaves the cells alone — which
+`table_documents`, `table_sheets` and `table_columns` and leaves the cells alone, which
 is correct while another dataset still claims them, and a leak once none does.
 
 `sweep_orphan_table_cells` closes that: it deletes the cells of every hash with no
 `table_documents` row in `('ok', 'parsing')`, in bounded batches, and it **refuses to run
 against an empty manifest** and logs the refusal. An authority table with no rows is a
-symptom — an unapplied migration, a failed query — and never a licence to delete every
+symptom (an unapplied migration, a failed query), and never a licence to delete every
 cell in the collection. `'parsing'` counts as a claim so a sweep cannot race an in-flight
 parse, and a `parsing` row older than a day is tombstoned to `failed` by the same pass,
 which is what releases a genuinely abandoned parse's cells on the next one.

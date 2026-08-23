@@ -28,7 +28,7 @@ from .helpers import ingest_dataset, wait_for_plans_finished
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 # Collection-DB tables the assertions care about (all keyed on collection_dataset).
-# text_chunks / text_chunk_vectors are the durable vector store — purge must
+# text_chunks / text_chunk_vectors are the durable vector store. Purge must
 # clear them the same way it clears text_content, or a re-ingest of the same hashes
 # would skip embedding via the left-anti join and leave the corpus unsearchable.
 PURGED_TABLES = [

@@ -3,10 +3,10 @@
 Two things, and they exist for the same reason: a tool result travels to the transcript as
 **text and nothing else**, so anything the card needs that is not in the text is lost.
 
-1. the trailing artifact marker carries the capture ids *and* whether the call failed —
+1. the trailing artifact marker carries the capture ids *and* whether the call failed.
    Playwright reports failure as `is_error`, which does not survive, and its prose is
    indistinguishable from the page it was fetching;
-2. links into the sidecar's own output directory are stripped — nobody downstream can
+2. links into the sidecar's own output directory are stripped. Nobody downstream can
    open `.playwright-mcp/page-….yml`, so it renders as a dead link and invites the model
    to ask for a file it cannot have.
 """
@@ -50,7 +50,7 @@ def test_marker_is_an_object_and_is_always_last():
 
 
 def test_a_failed_call_says_so_in_the_marker():
-    # The whole point: the card cannot tell a refused navigation from a successful one by
+    # What this asserts: the card cannot tell a refused navigation from a successful one by
     # reading the text, so it used to render "opened http://clickhouse:8123".
     out = _append_marker(_result("Error: net::ERR_PROXY_CONNECTION_FAILED"), [], failed=True)
     assert _marker_payload(out)["failed"] is True
@@ -77,7 +77,7 @@ def test_the_capture_entry_rides_in_the_same_marker():
 
 def test_a_capture_that_produced_nothing_still_ends_with_a_marker():
     # The card authenticates the marker by its position, which only works if every result
-    # this router returns has one — including the ones that captured nothing.
+    # this router returns has one, including the ones that captured nothing.
     assert _marker_payload(_attach_artifact(_result("### Console"), None)) == {"artifacts": []}
 
 
@@ -129,7 +129,7 @@ def test_a_heading_with_real_content_under_it_survives():
 
 
 def test_page_text_that_merely_mentions_the_path_is_untouched():
-    # The rule is anchored to a whole line that is only the link — the rest of a browser
+    # The rule is anchored to a whole line that is only the link, the rest of a browser
     # result is the fetched page, and rewriting that would be rewriting evidence.
     text = "### Page\nthe article discusses .playwright-mcp/page-1.yml at length"
     assert _text(_drop_dead_links(_result(text)))[0] == text
@@ -146,9 +146,8 @@ def test_non_text_blocks_pass_through_untouched():
 class TestCaptureIsExplicit:
     """Captures happen only when the model asked to look.
 
-    The rule is "no implicit captures". A router that captures after every tool
-    anyway — a screenshot plus a multi-megabyte MHTML serialisation after almost every
-    click. This is the kind of decision that gets quietly reverted by someone adding "just
+    The rule is "no implicit captures". A router that captures after every tool anyway takes
+    a screenshot plus a multi-megabyte MHTML serialisation after almost every click. This is the kind of decision that gets quietly reverted by someone adding "just
     one more" tool to the set, so the *shape* of the rule is pinned here, not only its
     current membership.
     """

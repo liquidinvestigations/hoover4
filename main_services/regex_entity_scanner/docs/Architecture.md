@@ -2,8 +2,8 @@
 
 ## The shape of the problem
 
-The entity types this service is built for — dates, sums of money, email addresses, phone numbers,
-and the much larger tier of structured identifiers — share a property that decides the whole
+The entity types this service is built for (dates, sums of money, email addresses, phone numbers,
+and the much larger tier of structured identifiers) share a property that decides the whole
 design: **matching them is the cheap half.**
 
 Unit-bearing physical quantities are not extracted. There is no quantity entity type, no value
@@ -52,7 +52,7 @@ linear in the input by construction, which is why it is the engine here and why 
 patterns carry no lookaround and no backreferences.
 
 That constraint costs something real: the best available upstream pattern corpus is .NET flavour and
-leans on lookaround heavily. The answer is not a more permissive engine — it is that a lookbehind
+leans on lookaround heavily. The answer is not a more permissive engine. It is that a lookbehind
 like `(?<!\d)` is exactly the statement "the preceding byte is not a digit", which a validator
 checks in one byte comparison once it has a candidate span. The guard moves from the pattern to the
 validator and the fast path stays linear.
@@ -69,7 +69,7 @@ the text and several hundred.
 
 In descending order of effect: multi-pattern single-pass matching, literal prefiltering, not running
 expensive validation on non-candidates, and parallelism across fragments. Compiling patterns into
-code ahead of time is a real technique and a much smaller lever — a long-lived service compiles its
+code ahead of time is a real technique and a much smaller lever. A long-lived service compiles its
 rule set once at startup and then scans for hours, so compilation cost amortises to nothing.
 
 The engine sits behind `scan::prefilter` for the same reason: swapping in a multi-gigabyte-per-second
@@ -92,5 +92,5 @@ precise error instead of a generic transport failure.
 
 One process, N threads, no models, no writes. The scanner is built once at startup and shared; every
 request carries its own fragment. That is what makes the container disposable, horizontally
-scalable, and independently versionable from anything else in a pipeline — its rules ship on their
+scalable, and independently versionable from anything else in a pipeline. Its rules ship on their
 own cadence.

@@ -1,6 +1,6 @@
 """The date resolver: which metadata dates get indexed, and which never do.
 
-Pure — no stack. This is where the real bugs live: one wrong key here dates every
+Pure, no stack. This is where the real bugs live: one wrong key here dates every
 document in the corpus "today", and one over-strict parser silently drops the only date
 a document has. Both look like "the date filter is a bit off" from the UI.
 """
@@ -114,7 +114,7 @@ def test_collects_every_confirmed_date_not_a_best_of():
     """A document written in 2007 and re-saved in 2013 has BOTH dates.
 
     Search matches a range against any of them, and the viewer shows all of them with
-    their provenance — picking a winner here would make both features wrong.
+    their provenance. Picking a winner here would make both features wrong.
     """
     result = resolve_dates(_tika(**{
         "dcterms:created": "2007-10-10T22:44:00Z",
@@ -176,7 +176,7 @@ def test_naive_email_date_is_read_as_utc():
 
 def test_an_epoch_integer_is_accepted_as_well_as_a_datetime():
     """`query_arrow().to_pylist()` returns ClickHouse DateTime columns as raw epoch
-    integers, not datetimes — caught in a worker log rather than by reading the schema.
+    integers, not datetimes, which was caught in a worker log rather than by reading the schema.
     Both forms must resolve to the same instant."""
     as_int = resolve_dates(None, email_date_sent=1367409600, now=NOW)
     as_dt = resolve_dates(None, email_date_sent=datetime(2013, 5, 1, 12, 0, 0, tzinfo=UTC), now=NOW)

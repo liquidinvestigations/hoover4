@@ -1,13 +1,13 @@
 """Client for the searchable-PDF service, over `tasks.remote`.
 
-The engine asymmetry from `tasks/ocr_client.py` applies unchanged — a variant is
+The engine asymmetry from `tasks/ocr_client.py` applies unchanged. A variant is
 `tesseract+eng` or `easyocr+en`, so there is no cross-engine fallback and an engine with
 no endpoint simply produces no variant. What is different here is *which* endpoint is
 missing: `hoover4-ocr-pdf` is one service that speaks to both engines, so the switch that
 turns OCR'd PDFs off entirely is `ocr_pdf_enabled` (rendered as `OCR_PDF_URL`), while the
 per-engine switch stays where it already is, in the OCR tier's own endpoints.
 
-`pdf_ocr_provider` — `tesseract | easyocr | both | none` — is read here, and this is the
+`pdf_ocr_provider` (`tesseract | easyocr | both | none`) is read here, and this is the
 only place that reads it. A switch rendered into the worker's environment and consumed
 nowhere is a lie; keep this the consumer.
 """
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 OCR_PDF_READ_TIMEOUT = float(os.getenv("OCR_PDF_READ_TIMEOUT_SECONDS", "3600"))
 
 #: The one prefix a derived object may live under. Mirrors `DERIVED_PREFIX` in
-#: `main_services/ocr_pdf/ocr_pdf.py`, which refuses anything else — the duplication is
+#: `main_services/ocr_pdf/ocr_pdf.py`, which refuses anything else. The duplication is
 #: deliberate, like `collectionname` validation: the caller must not be able to ask for a
 #: key the ingest walker could see, and the service must not trust that it did not.
 DERIVED_PREFIX = "derived/ocr-pdf"
@@ -79,8 +79,8 @@ def engines_for_provider() -> List[str]:
 def derived_key(collection_dataset: str, pdf_hash: str, engine: str, languages: str) -> str:
     """The Garage key for one variant.
 
-    Keyed exactly like the `pdf_ocr_results` row — `(collection_dataset, pdf_hash, engine,
-    languages)` — so the row and the object can always be matched from either side. That
+    Keyed exactly like the `pdf_ocr_results` row (`(collection_dataset, pdf_hash, engine,
+    languages)`), so the row and the object can always be matched from either side. That
     is what makes the purge in `change_ocr_languages` able to delete both.
     """
     return f"{DERIVED_PREFIX}/{collection_dataset}/{pdf_hash}/{engine}+{languages}.pdf"
@@ -99,7 +99,7 @@ def build_ocr_pdf(
     """Assemble one searchable PDF and return where it landed.
 
     Raises :class:`tasks.remote.RemoteUnavailable` when the service is configured but did
-    not answer — retryable, and deliberately distinct from "not configured", which callers
+    not answer. That is retryable, and deliberately distinct from "not configured", which callers
     check with :func:`service_configured` first.
     """
     from database.s3 import collection_bucket

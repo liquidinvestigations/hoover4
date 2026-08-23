@@ -1,5 +1,5 @@
 #!/bin/bash
-# Thin alias for muscle memory — the real thing is deploy.py at the repo root.
+# Thin alias for muscle memory. The real thing is deploy.py at the repo root.
 # Scoped reset: only this compose project's containers and volumes. Model caches are
 # preserved unless --reset-caches; the Serena container/volume is never touched.
 set -e

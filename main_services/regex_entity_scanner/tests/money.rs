@@ -2,8 +2,8 @@
 //!
 //! The separator fixtures are the documented examples from `vendored/reference/price-parser/`,
 //! whose `parse_number` docstring is where this arithmetic comes from. The subset covers the four
-//! shapes that actually occur — grouped-and-fractioned in both conventions, space grouping, a bare
-//! integer, and the single-separator case where both readings survive — plus the near-misses that
+//! shapes that actually occur: grouped-and-fractioned in both conventions, space grouping, a bare
+//! integer, and the single-separator case where both readings survive, plus the near-misses that
 //! reach a money pattern and must not become money: version strings, page ranges and rates.
 
 mod support;
@@ -104,7 +104,7 @@ fn capitals_in_front_of_a_sign_are_part_of_the_symbol_only_when_they_are_one() {
     assert_eq!(entities[0].text, "$40", "{entities:?}");
 }
 
-/// A bare number to the left of a sign — a list item, a table row, a quantity column — makes the
+/// A bare number to the left of a sign (a list item, a table row, a quantity column) makes the
 /// trailing-sign reading the leftmost one, and the engine proposes leftmost first. Rejecting it has
 /// to leave the price behind it reachable, which the interior of a rejected candidate never is.
 #[test]

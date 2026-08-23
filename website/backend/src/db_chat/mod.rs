@@ -74,7 +74,7 @@ pub struct ChatMessageRow {
     pub created_at: time::OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime")]
     pub updated_at: time::OffsetDateTime,
-    /// Milliseconds since Unix epoch — matches `DateTime64(3)` on the wire.
+    /// Milliseconds since Unix epoch. Matches `DateTime64(3)` on the wire.
     pub created_ms: i64,
     #[serde(default)]
     pub agent_duration_ms: u32,
@@ -95,7 +95,7 @@ pub struct ChatMessageRow {
     /// that collision detectable instead of silently keeping one message.
     #[serde(default)]
     pub message_uuid: String,
-    /// Prompt tokens of the first model call of this turn — the conversation as the
+    /// Prompt tokens of the first model call of this turn, the conversation as the
     /// model received it. 0 means nothing counted it, never "no tokens".
     #[serde(default)]
     pub context_tokens: u32,
@@ -122,7 +122,7 @@ pub struct ChatStreamRow {
     #[serde(default)]
     pub tool_name: String,
     pub is_final: u8,
-    /// Milliseconds since Unix epoch — matches `DateTime64(3)` on the wire, same as
+    /// Milliseconds since Unix epoch. Matches `DateTime64(3)` on the wire, same as
     /// `ChatMessageRow::created_ms`.
     pub updated_at: i64,
     #[serde(default)]
@@ -152,7 +152,7 @@ fn fmt_ms(ms: i64) -> String {
 }
 
 /// Random id for a new chat. Reuses the web-session generator rather than adding a uuid
-/// dependency — it is the same shape of value (opaque, unguessable, hex) and this
+/// dependency. It is the same shape of value (opaque, unguessable, hex) and this
 /// codebase already trusts it for auth cookies.
 fn generate_chat_session_id() -> String {
     crate::db_auth::sessions::generate_session_id()
@@ -203,7 +203,7 @@ pub async fn get_session(
 ///
 /// **The one function here that does not filter on a username**, because its caller does
 /// not have one: a Temporal visibility query knows the session a running turn belongs to
-/// and nothing else. The exception is narrow on purpose — it returns the header a panel
+/// and nothing else. The exception is narrow on purpose. It returns the header a panel
 /// renders (owner, title, frozen switches) and never a message, so it cannot become a way
 /// to read someone's transcript. The caller checks for admin before it asks.
 pub async fn sessions_by_ids(session_ids: &[String]) -> anyhow::Result<Vec<ChatSessionRow>> {
@@ -297,7 +297,7 @@ pub async fn list_messages(
         .collect())
 }
 
-/// Finished rows with `seq > after_seq` — the poll endpoint's incremental read.
+/// Finished rows with `seq > after_seq`. The poll endpoint's incremental read.
 /// `after_seq` of -1 returns the whole transcript (a client that has nothing yet).
 pub async fn list_messages_after(
     username: &str,
@@ -347,7 +347,7 @@ pub async fn list_messages_after(
 /// detector for anything that still slips through (two website processes, say).
 ///
 /// **`chat_message_stream` counts too.** Deep research allocates its answer seq up front
-/// and reserves it as a *stream* row — the transcript row only appears when the Temporal
+/// and reserves it as a *stream* row. The transcript row only appears when the Temporal
 /// workflow finishes, minutes later. A `next_seq` that looked only at `chat_messages`
 /// therefore handed the reserved seq straight back to the next inline send, and since
 /// `chat_messages` is read `FINAL`, the later write won and one message disappeared from
@@ -380,7 +380,7 @@ pub async fn next_seq(username: &str, session_id: &str) -> anyhow::Result<u32> {
 ///
 /// This is what `message_uuid` is *for*. Every row of one turn carries the same uuid, so
 /// two rows at the same seq with different uuids means two writers allocated the same
-/// seq — the exact outcome `next_seq` cannot rule out without a database-side sequence.
+/// seq. The exact outcome `next_seq` cannot rule out without a database-side sequence.
 /// Until now the column was written by every path and read by none, which detected
 /// nothing; a write-only detector is worse than no detector, because it reads as covered.
 ///
@@ -440,9 +440,9 @@ pub struct AppendMessageExtras {
     pub model: String,
     /// Reasoning kept out of the answer body.
     pub reasoning: String,
-    /// Per-turn uuid — see `ChatMessageRow::message_uuid`.
+    /// Per-turn uuid, see `ChatMessageRow::message_uuid`.
     pub message_uuid: String,
-    /// Token accounting for an assistant row — see `ChatMessageRow`. Left at 0 by every
+    /// Token accounting for an assistant row, see `ChatMessageRow`. Left at 0 by every
     /// writer that is not the one the model answered through, which readers show as
     /// unknown.
     pub context_tokens: u32,
@@ -538,8 +538,8 @@ pub async fn touch_session(
 /// Freeze the Deep Research / Internet tools switches onto the conversation.
 ///
 /// Called once, from the first message. Later calls are no-ops so a second turn cannot
-/// silently change which agent the transcript was produced by — the whole point of
-/// locking. Returns the options now in force.
+/// silently change which agent the transcript was produced by, which is what the lock
+/// is for. Returns the options now in force.
 pub async fn lock_session_options(
     username: &str,
     session_id: &str,
@@ -613,8 +613,8 @@ static TURN_LOCKS: std::sync::LazyLock<
 /// finalisation). Never await the agent without holding it.
 ///
 /// Entries are evicted opportunistically, on the way in. Nothing ever removed them, so a
-/// long-lived process accumulated one `Arc<Mutex>` per conversation it had ever served —
-/// small, but unbounded and proportional to traffic, which is the definition of a leak. An
+/// long-lived process accumulated one `Arc<Mutex>` per conversation it had ever served.
+/// Small, but unbounded and proportional to traffic, which is the definition of a leak. An
 /// entry nobody else holds an `Arc` to has no waiter and no holder, so dropping it is
 /// invisible: the next caller for that session simply gets a fresh lock.
 pub fn turn_lock(username: &str, session_id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
@@ -676,7 +676,7 @@ pub async fn append_stream_row(
 ///   `max(updated_at) AS updated_at` makes every sibling `argMax(…, updated_at)` read as
 ///   an aggregate inside an aggregate: `Code: 184, ILLEGAL_AGGREGATION`, whole query
 ///   dead. The aggregates therefore land on `last_*` aliases.
-/// * `clickhouse::Row` matches columns **by name**, not by position — a `last_role`
+/// * `clickhouse::Row` matches columns **by name**, not by position. A `last_role`
 ///   column with a `role` field is `schema mismatch: … column last_role … not found in
 ///   the struct definition`, which fails just as hard.
 ///
@@ -726,7 +726,7 @@ pub async fn read_stream_rows(
 ///
 /// This is how "is a turn still being produced" is answered: a turn is open when the
 /// last user row has no assistant or error row after it. Deriving that from the
-/// *transcript* rather than from an open stream row is what makes it reliable — the
+/// *transcript* rather than from an open stream row is what makes it reliable. The
 /// stream writer finalises one row and opens the next as two separate inserts, and a
 /// poll landing between them would otherwise see a turn that had vanished.
 ///
@@ -780,7 +780,7 @@ pub async fn mark_stream_row_final(
     Ok(())
 }
 
-/// Mark every stream row of a session final — the turn is over (one way or another)
+/// Mark every stream row of a session final. The turn is over (one way or another)
 /// and the rows are only kept around for the TTL to collect. Reads filter on
 /// `is_final = 0`, so this is also how an interrupted turn is dismissed.
 pub async fn mark_stream_final(username: &str, session_id: &str) -> anyhow::Result<()> {

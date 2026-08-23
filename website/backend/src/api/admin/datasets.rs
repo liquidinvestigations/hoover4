@@ -40,7 +40,7 @@ async fn get_dataset_row(collection_dataset: &str) -> anyhow::Result<Option<Data
 }
 
 /// Per-collection stats. `blobs`, `vfs_files`, the plan tables and `processing_errors`
-/// all live in the collection's own database, so the collection must be known — it is
+/// all live in the collection's own database, so the collection must be known. It is
 /// read off the global registry row by the caller.
 async fn fetch_stats(collection_dataset: &str, collectionname: &str) -> anyhow::Result<AdminDatasetStats> {
     let client = get_collection_client(collectionname);
@@ -145,8 +145,8 @@ pub async fn admin_delete_dataset(
     insert.write(&row).await?;
     insert.end().await?;
     // Dispatched as a `delete_dataset` operation, which tombstones the registry row
-    // again — idempotently, and it has to, because a dispatch from the command line has
-    // no first writer — and then purges the dataset's rows from the collection database
+    // again. Idempotently, and it has to, because a dispatch from the command line has
+    // no first writer, and then purges the dataset's rows from the collection database
     // and its Manticore shards and recomputes the shard ledger. The row is written here
     // as well so the dataset stops being listed the moment the request returns, rather
     // than when the operation's first activity runs. The kind is `delete_dataset` and

@@ -66,14 +66,14 @@ def test_pages_table_ddl_golden():
 
 def test_the_shard_table_carries_every_document_column():
     """One table per shard, so a document column missing from the DDL is not a JOIN that
-    returns nothing — it is a Manticore error on every query that names it."""
+    returns nothing. It is a Manticore error on every query that names it."""
     ddl = pages_table_ddl("testdata_1_pages")
     for column in DOCUMENT_COLUMNS:
         assert f"{column} " in ddl, column
 
 
 def test_page_text_is_the_only_full_text_field():
-    """`primary_filename` must be a string ATTRIBUTE — Manticore can ORDER BY an
+    """`primary_filename` must be a string ATTRIBUTE. Manticore can ORDER BY an
     attribute and cannot ORDER BY a text field, and the name sort is what needs it.
     Filename MATCHING goes through the `filename_index` row's `page_text` instead."""
     ddl = pages_table_ddl("testdata_1_pages")
@@ -84,7 +84,7 @@ def test_page_text_is_the_only_full_text_field():
 
 def test_the_shard_table_carries_signed_columns_for_dates_and_sizes():
     """Manticore's own `timestamp` is 32-bit UNSIGNED (1970..2106), useless for a corpus
-    with pre-1970 material — hence bigint seconds and a multi64 MVA."""
+    with pre-1970 material, so this uses bigint seconds and a multi64 MVA."""
     ddl = pages_table_ddl("testdata_1_pages")
     for signed in ("dates multi64", "date_min bigint", "date_max bigint",
                    "file_size_bytes bigint"):
@@ -118,8 +118,8 @@ def test_vfs_table_ddl_golden():
 
 
 def test_the_vfs_table_is_named_so_the_shard_regex_cannot_match_it():
-    """It is one table per COLLECTION, not per shard. Everything that iterates shards —
-    the ledger equality check in verify-stack, the per-shard search fan-out — must not
+    """It is one table per COLLECTION, not per shard. Everything that iterates shards,
+    the ledger equality check in verify-stack, the per-shard search fan-out. Must not
     see it, and the shard regex requires a numeric segment."""
     import re
 

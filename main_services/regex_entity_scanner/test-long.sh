@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# The upstream conformance run, in the dev container. It scans the checked-in conformance cases —
-# valid and invalid numbers taken from the reference projects our rules were ported from — and
+# The upstream conformance run, in the dev container. It scans the checked-in conformance cases.
+# Valid and invalid numbers taken from the reference projects our rules were ported from, and
 # reports recall, precision and coverage per scheme and in aggregate.
 #
 # This is not the fast battery and does not run it. `./test.sh` stays inside two to three minutes

@@ -1,7 +1,7 @@
 //! Session cookie middleware and identity resolution.
 //!
-//! **One route mints, everything else requires.** Session creation — a `web_sessions`
-//! row, a `guest-*` user, a `user_login` event, a `set-cookie` header — happens only on
+//! **One route mints, everything else requires.** Session creation (a `web_sessions`
+//! row, a `guest-*` user, a `user_login` event, a `set-cookie` header) happens only on
 //! the route [`crate::auth::route_policy::is_session_mint_route`] names. Every other
 //! server function and every custom byte route answers `401` when nothing resolved an
 //! identity; the app shell is served regardless, because the browser needs it to reach
@@ -12,7 +12,7 @@
 //! * a client that does not store cookies cannot accumulate users. It gets one `401` per
 //!   request instead of one `guest-<hex>` and one `user_login` row per request.
 //! * with [`demo_mode`] off, nothing mints a guest at all, so an unauthenticated visitor
-//!   fails the mint route and the app refuses to render — which is the intended
+//!   fails the mint route and the app refuses to render, which is the intended
 //!   behaviour of a deployment that expects a reverse proxy to authenticate.
 
 use std::collections::HashMap;
@@ -121,13 +121,13 @@ fn is_admin_from_groups(groups: &[String]) -> bool {
 /// The grant is applied to the REQUEST, never written to the account: a guest's `users`
 /// row keeps `is_admin = false` while `whoami` reports true for the same session, and
 /// that disagreement is the design. The elevation belongs to the deployment and lasts
-/// exactly as long as the switch does — persisting it would leave real administrators
+/// exactly as long as the switch does. Persisting it would leave real administrators
 /// behind the day the switch is turned off. `/admin/users` says so on the page, because
 /// the two readings sit side by side there.
 ///
 /// Wired up in Docker via the `HOOVER4_DEMO_MODE` environment variable on the
 /// `hoover4-website` service. Accepts `1`, `true`, `yes`, or `on`
-/// (case-insensitive); anything else — including unset — means normal auth.
+/// (case-insensitive); anything else (including unset) means normal auth.
 pub fn demo_mode() -> bool {
     std::env::var("HOOVER4_DEMO_MODE")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -137,7 +137,7 @@ pub fn demo_mode() -> bool {
 /// May a visitor who proved nothing be given an anonymous `guest-*` identity?
 ///
 /// Only in demo mode, and only on the mint route. With it off, a deployment has exactly
-/// one way in — a reverse proxy that sets `X-Forwarded-User` — and a visitor arriving
+/// one way in (a reverse proxy that sets `X-Forwarded-User`), and a visitor arriving
 /// without one is refused rather than silently provisioned. That refusal is the whole
 /// difference between a public demo and an access-controlled deployment, so it is derived
 /// from the demo switch in this one place rather than being a second switch that can
@@ -241,8 +241,8 @@ fn cache_user(session_id: &str, user: &CurrentUser) {
 /// Derive a stable guest username from the session id.
 ///
 /// The session id lives in the browser cookie, so deriving the username from it
-/// means a refresh always resolves to the *same* guest — even if the backing DB
-/// row is momentarily unreadable — instead of minting a new random identity.
+/// means a refresh always resolves to the *same* guest, even if the backing DB
+/// row is momentarily unreadable, instead of minting a new random identity.
 fn guest_username_for_session(session_id: &str) -> String {
     let suffix: String = session_id.chars().take(12).collect();
     format!("guest-{suffix}")
@@ -277,16 +277,16 @@ fn cookie_session_id(request: &Request) -> Option<String> {
         })
 }
 
-/// Resolve the caller from a session cookie or a proxy-set identity header, and — only on
-/// the mint route — create a session for them when neither exists yet.
+/// Resolve the caller from a session cookie or a proxy-set identity header, and (only on
+/// the mint route) create a session for them when neither exists yet.
 ///
 /// Returns `None` when nothing identified the caller. `may_mint` is the whole of the "one
 /// route mints" rule: with it false this function reads state and never writes a session,
 /// a user row or a `user_login` event.
 ///
 /// Takes the two things it needs out of the request as owned values rather than borrowing
-/// it: `axum::middleware::from_fn` demands a `Send` future, and holding a `&Request` — and
-/// therefore a `&Body`, which is not `Sync` — across an await makes it one that is not.
+/// it: `axum::middleware::from_fn` demands a `Send` future, and holding a `&Request` (and
+/// therefore a `&Body`, which is not `Sync`) across an await makes it one that is not.
 /// The resulting error names the middleware layer and not this function.
 async fn resolve_identity(
     cookie_sid: Option<String>,
@@ -298,7 +298,7 @@ async fn resolve_identity(
         match sessions::get_session(sid).await {
             Ok(session) => session,
             Err(e) => {
-                // A DB error here is not the same as "no session" — surface it so a
+                // A DB error here is not the same as "no session". Report it so a
                 // down/unreachable ClickHouse is visible instead of silently
                 // dropping the user to a fresh guest every request.
                 tracing::error!("session lookup failed for cookie session: {e}");
@@ -310,8 +310,8 @@ async fn resolve_identity(
     };
 
     if let Some(identity) = header_identity {
-        // A proxy-set identity is proof on its own — the proxy is the thing that
-        // authenticated it — so it is honoured on every route, not only the mint route.
+        // A proxy-set identity is proof on its own, because the proxy authenticated
+        // it, so it is honoured on every route, not only the mint route.
         // What is confined to the mint route is *writing a session for it*.
         if let Err(e) = sync_header_user(&identity).await {
             tracing::error!("header identity sync failed for {}: {e}", identity.username);
@@ -395,7 +395,7 @@ async fn resolve_identity(
 
     // Mint. The cookie is the durable anchor: a browser holding a cookie whose session row
     // has expired or been lost re-anchors to the SAME id, which derives the SAME guest
-    // username — so a re-anchor costs no new user row. Only a caller with no cookie at all
+    // username, so a re-anchor costs no new user row. Only a caller with no cookie at all
     // creates one.
     let session_id = cookie_sid
         .clone()
@@ -405,7 +405,7 @@ async fn resolve_identity(
 
     // Best-effort persistence so the admin user list stays populated and the session
     // survives server restarts. A failure here must NOT change the identity the browser
-    // sees — the cookie already fixes it — but it is logged so a broken DB is never
+    // sees (the cookie already fixes it), but it is logged so a broken DB is never
     // invisible.
     if let Err(e) = users::upsert_user(UserRow {
         username: username.clone(),
@@ -593,7 +593,7 @@ mod tests {
     /// The property that keeps a returning visitor from becoming a second user.
     ///
     /// A browser holding a cookie whose `web_sessions` row has expired, or been lost to a
-    /// database reset, re-anchors to the id it already has — so the derived username is
+    /// database reset, re-anchors to the id it already has, so the derived username is
     /// the one it had before and no row is added. Randomising it instead mints a new
     /// `guest-<hex>` on every such re-anchor, which is one of the ways they accumulate.
     #[test]
@@ -611,7 +611,7 @@ mod tests {
     }
 
     /// The demo switch is one switch. Guest provisioning and guest-as-admin are two
-    /// consequences of it, and a deployment cannot end up with one without the other —
+    /// consequences of it, and a deployment cannot end up with one without the other,
     /// which would be a site that hands out anonymous identities and then refuses them
     /// everything, or one that refuses to sign anybody in and treats them as root.
     #[test]

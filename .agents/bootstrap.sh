@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Wire this checkout's shared agent instructions into every harness on this machine.
 #
-# One source of truth: .agents/. The pieces git carries — the two .claude symlinks and the
-# skills, rules and hooks themselves — are already in the checkout. What this script creates
+# One source of truth: .agents/. The pieces git carries (the two .claude symlinks and the
+# skills, rules and hooks themselves) are already in the checkout. What this script creates
 # is the per-harness adapters, which are machine-local and generated rather than tracked.
 #
 #   ./.agents/bootstrap.sh            report what is wired and what is missing, change nothing

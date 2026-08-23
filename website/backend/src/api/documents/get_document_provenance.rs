@@ -4,11 +4,11 @@
 //! which is exhaustive and unreadable. These two are the questions people actually
 //! arrive with:
 //!
-//! * "Why did my date filter miss this?" — the Dates section shows every date the
+//! * "Why did my date filter miss this?". The Dates section shows every date the
 //!   indexer confirmed AND where each one came from. A document with no dates says so
 //!   explicitly, because "no Dates section" and "no dates" look identical otherwise, and
 //!   only one of them is an answer.
-//! * "Who was on this email?" — the raw `addresses` column is a flat
+//! * "Who was on this email?". The raw `addresses` column is a flat
 //!   `"from: A; to: B, C"` string. The structured rows are what the filters use, so
 //!   showing the same rows is also showing why a sender filter did or did not match.
 

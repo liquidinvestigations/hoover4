@@ -9,7 +9,7 @@
 //! has no bounded worst case.
 //!
 //! Candidates are collected per rule, so two rules may propose spans that overlap or nest. That is
-//! intended — deciding between them is [`super::resolve`]'s job, not this one's.
+//! intended. Deciding between them is [`super::resolve`]'s job, not this one's.
 
 use anyhow::{bail, Context, Result};
 use regex::{Regex, RegexSet};
@@ -71,7 +71,7 @@ impl Prefilter {
     /// The haystack stays the whole fragment and only the search start moves, which is the
     /// difference that matters: a slice would move the boundaries the pattern sees, and the
     /// candidate patterns are compiled on the promise that they never depend on where their
-    /// haystack begins or ends. One match, not an iterator — the scan loop queues it, and a
+    /// haystack begins or ends, and it returns one match rather than an iterator. The scan loop queues it, and a
     /// further resume is a further rejection with a budget of its own.
     pub fn find_from(
         &self,
@@ -88,8 +88,8 @@ impl Prefilter {
 /// A candidate pattern is re-run over a slice of a fragment when the scan loop looks inside a
 /// rejected candidate, so it must not depend on where its haystack begins or ends. An anchor or a
 /// word boundary means something different against a slice than against the whole fragment, and the
-/// difference is silent. Boundary conditions are validator work — the neighbouring byte is there in
-/// the candidate — so this is enforced at startup rather than remembered.
+/// difference is silent. Boundary conditions are validator work (the neighbouring byte is there in
+/// the candidate), so this is enforced at startup rather than remembered.
 fn reject_haystack_dependent(rule_id: &str, pattern: &str) -> Result<()> {
     let offending = if pattern.contains('^') {
         "^"

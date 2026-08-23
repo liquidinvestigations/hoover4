@@ -1,7 +1,7 @@
 """Tool names that no longer exist, answered with the name that replaced them.
 
 When a single-item tool becomes a batched one the old name has to go, or the model that
-learned it never discovers the batch form — which is the entire point of the rename. But
+learned it never discovers the batch form, which is the entire point of the rename. But
 it must not go *silently*: a model calling a name that has been removed gets the
 transport's bare `Unknown tool`, which reads as "this capability is gone" rather than
 "this moved", so it either gives up or retries the same name.

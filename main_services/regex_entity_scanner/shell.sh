@@ -13,7 +13,7 @@ fi
 
 # A terminal is allocated only when there is one on both ends. Docker's `--tty` joins the
 # container's stdout and stderr into a single stream, so allocating one unconditionally puts a
-# script's progress line into the file its output was redirected to —
+# script's progress line into the file its output was redirected to:
 # `./shell.sh python3 extract.py > cases.jsonl` would write a corpus with a count in the middle of
 # it. Redirected output keeps the two streams apart.
 tty_args=()

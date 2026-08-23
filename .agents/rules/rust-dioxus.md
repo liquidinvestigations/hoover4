@@ -15,7 +15,7 @@ Type-check there rather than waiting for a dev-server rebuild:
 
 It includes the test targets. That matters: a plain `cargo check` does not build them, so a
 signature change updated everywhere in `src/` leaves the check green while the test binaries
-no longer compile — the tests do not fail, they are never built.
+no longer compile. The tests do not fail. They are never built.
 
 **A conditional hook traps the WebAssembly runtime** on the render that adds it, leaving the
 page painted and completely inert. A type check cannot see it and a release build reports only
@@ -43,7 +43,7 @@ conditional into a `let` above the `rsx!` and interpolate the variable.
 spawning a task does not escape it. Move blocking work to the runtime that can take it.
 
 **A result row binds by column name.** An alias shadows the column it derives from, and an
-aggregate returns a row even over an empty match — so "there is a row" is not "there is
+aggregate returns a row even over an empty match, so "there is a row" is not "there is
 data".
 
 **Every full-text match argument goes through the shared builder.** Assembling one in a call

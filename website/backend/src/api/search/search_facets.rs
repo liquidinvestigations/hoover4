@@ -63,7 +63,7 @@ async fn _search_enrich_collection_list(
 
 /// Make the Collections facet agree with the dataset registry, in both directions.
 ///
-/// The index is not the authority on which datasets exist — `dataset` is. Manticore
+/// The index is not the authority on which datasets exist: `dataset` is. Manticore
 /// keeps whatever was written under a name until something deletes it, so a dataset
 /// that was abandoned (a failed ingest, a re-ingest under a new name) goes on producing
 /// buckets with real counts long after its registry row is gone. Offering one is worse
@@ -71,7 +71,7 @@ async fn _search_enrich_collection_list(
 /// hands the user a control whose only outcome is `0 documents found`.
 ///
 /// So a value that names no readable dataset is **dropped**, and a readable dataset the
-/// index returned no bucket for is **added with a count of 0** — the pane then lists
+/// index returned no bucket for is **added with a count of 0**. The pane then lists
 /// exactly the datasets the file-location tree lists, which is the other half of the
 /// same modal.
 ///
@@ -403,7 +403,7 @@ pub async fn search_mva_facet(
         if is_entity_facet {
             // Header names, encoding fragments and letter-spaced PDF headings. The
             // pipeline stops these before they are stored, so this only has work to do on
-            // rows the NLP stage wrote without that rule — but on a mail corpus those
+            // rows the NLP stage wrote without that rule, but on a mail corpus those
             // outrank every real entity, which is the whole facet.
             result
                 .facet_values
@@ -443,7 +443,7 @@ fn retain_restricted_buckets(
 /// content-derived hashes (`hash_string_to_uint63`), so the same string has the same id
 /// in every collection: each collection's database is queried (through the shared
 /// bounded `fan_out` helper) and the results merged, first non-empty value wins. A
-/// genuine conflict means a hash collision — the lexicographically smallest value is
+/// genuine conflict means a hash collision. The lexicographically smallest value is
 /// kept to stay deterministic and a WARNING is logged.
 pub async fn fetch_db_terms_for_ints(
     collections: &[String],
@@ -566,7 +566,7 @@ mod tests {
     }
 
     /// The permission set is the same list, so a dataset the user may not read is not
-    /// registered as far as this function is concerned — and must not be advertised by
+    /// registered as far as this function is concerned, and must not be advertised by
     /// a facet either.
     #[test]
     fn an_unreadable_dataset_is_dropped_like_a_ghost_one() {

@@ -7,7 +7,7 @@
 //! trees forty levels deep. A row that lays out at its natural width turns the sidebar
 //! into a horizontal scroller and the labels into something you have to drag to read. So
 //! every row is `flex; min-width: 0` with a single-line ellipsised label, the full path is
-//! always in `title`, and the indent is bounded — see [`indent_style`].
+//! always in `title`, and the indent is bounded. See [`indent_style`].
 //!
 //! **No unbounded row counts, ever, either.** The same corpora contain
 //! `many-children/deep-stuff`, a 42-level chain, and `many-children/the-directory`, 334
@@ -17,10 +17,10 @@
 //! * [`CHILDREN_PAGE_SIZE`] caps what is FETCHED per request. Its overflow row asks for
 //!   the NEXT page and appends it.
 //! * [`MAX_SIBLINGS_EACH_SIDE`] caps what is RENDERED per level, once the level has been
-//!   fetched — centred on the node you are on when the level contains it, from the top
+//!   fetched, centred on the node you are on when the level contains it, from the top
 //!   otherwise. Its overflow rows are client-side only.
 //! * [`MAX_VISIBLE_ANCESTORS`] caps how many levels of the path to the current node are
-//!   rendered at all — the middle of a 42-deep chain is scrollbar, not information.
+//!   rendered at all. The middle of a 42-deep chain is scrollbar, not information.
 //!
 //! Only one of the first two ever shows at a time: while a sibling window is active the
 //! fetch row is suppressed, so "34 more…" never sits next to "126 more…" meaning two
@@ -29,7 +29,7 @@
 //! **The indent counts RUNGS, not depth**, and that is what lets the two rules above pay
 //! for each other. A row's `rung` is its position in the ladder actually on screen; its
 //! `depth` is its position in the tree. Ancestor elision makes the first much smaller than
-//! the second — the deepest folder in a 42-level chain sits on rung 11 — so indenting by
+//! the second (the deepest folder in a 42-level chain sits on rung 11), so indenting by
 //! rung means every row on the path the tree opens for you is indented strictly more than
 //! the row it hangs off, at every width the sidebar can be dragged to, in a total the
 //! sidebar can afford. Indenting by depth is what forced the old flat cap: it had to stop
@@ -73,7 +73,7 @@ pub const CHILDREN_PAGE_SIZE: u64 = 500;
 ///
 /// The arithmetic is against the narrowest pane this tree lives in: four rungs at 16 px is
 /// 64 px, and with ~40 px of chevron and folder icon and ~56 px of depth badge that is
-/// most of a 240 px sidebar already. A tree forty levels deep cannot spend 16 px a level —
+/// most of a 240 px sidebar already. A tree forty levels deep cannot spend 16 px a level,
 /// but stopping the indent outright made ten nested folders render as ten siblings
 /// distinguishable only by a badge you have to read, which is the defect this shape
 /// replaces.
@@ -86,7 +86,7 @@ pub const MAX_VISIBLE_ANCESTORS: usize = 8;
 
 /// How many of those always come from the TOP of the chain. The rule is "the
 /// dataset/collection root and the last folder always render", and the tail is where you
-/// are — but one top row is a single name with no context above the `N more levels…`
+/// are, but one top row is a single name with no context above the `N more levels…`
 /// row, and in a 42-level chain that name is as likely to be `1` as anything else. Two
 /// says where the chain STARTED as well as where it goes.
 pub const ANCESTORS_SHOWN_AT_TOP: usize = 2;
@@ -133,7 +133,7 @@ pub(crate) const ROW_STYLE: &str = "
     box-sizing: border-box;
 ";
 
-/// The label. Single line, shrinks rather than wraps or scrolls — see the module docs.
+/// The label. Single line, shrinks rather than wraps or scrolls. See the module docs.
 pub(crate) const LABEL_STYLE: &str = "
     flex: 1 1 auto;
     min-width: 0;
@@ -163,7 +163,7 @@ pub enum TreeSkin {
 pub struct TreeContext {
     pub skin: TreeSkin,
     pub collection_dataset: String,
-    /// Rows rendered above this tree by whoever mounted it — the collection and dataset
+    /// Rows rendered above this tree by whoever mounted it, the collection and dataset
     /// rows of the unified storage tree. It seeds the root level's rung and it is what the
     /// depth badge adds, so the number a row states is its depth in the tree on screen
     /// rather than in the dataset's own.
@@ -173,14 +173,14 @@ pub struct TreeContext {
     /// not shift because of what is above it.
     pub indent_offset: usize,
     /// Selected node keys. The `Picker` filter. Unused by `Sidebar`, which highlights
-    /// [`TreeContext::focus_key`] instead — one node, always the one the URL names.
+    /// [`TreeContext::focus_key`] instead, one node, always the one the URL names.
     pub selected: Signal<BTreeSet<String>>,
     pub on_activate: Callback<VfsTreeNode>,
     /// The node the tree is centred on, or empty.
     pub focus_key: ReadSignal<String>,
     /// Node keys from the dataset root down to the focused node, root first. Empty when
-    /// nothing is focused, in which case neither elision nor sibling capping applies —
-    /// they are both defined relative to "the node you are on".
+    /// nothing is focused, in which case neither elision nor sibling capping applies.
+    /// They are both defined relative to "the node you are on".
     pub focus_chain: Signal<Vec<String>>,
     /// Parent keys whose elision gap or sibling window the user has clicked open.
     pub unfolded: Signal<BTreeSet<String>>,
@@ -195,7 +195,7 @@ pub fn VfsTree(
     on_activate: Callback<VfsTreeNode>,
     /// Expanded from the start, e.g. the chain down to the current folder.
     initially_expanded: Vec<String>,
-    /// The node the tree should reveal and centre its caps on — the folder the storage
+    /// The node the tree should reveal and centre its caps on, the folder the storage
     /// page is showing. Empty in the picker, where there is no single "here".
     ///
     /// A SIGNAL, not a `String`. Component props are not reactive in Dioxus: a
@@ -248,7 +248,7 @@ pub fn VfsTree(
             return;
         };
         let keys: Vec<String> = nodes.iter().map(|node| node.node_key.clone()).collect();
-        // Open the path to the focus and close everything under it — see
+        // Open the path to the focus and close everything under it. See
         // [`expansion_after_refocus`]. Written only when it changes: this effect re-runs
         // on every chain read, and an unconditional `write()` on a signal the tree
         // renders from is a re-render per run.
@@ -290,7 +290,7 @@ struct LevelFocus {
 /// One level of the tree: either the elision gap, or the level itself.
 ///
 /// The split is not cosmetic. Deciding elision needs the focus chain, and fetching the
-/// children needs a resource — putting both in one component would mean a `use_resource`
+/// children needs a resource. Putting both in one component would mean a `use_resource`
 /// that sometimes runs and sometimes does not, which is a hook-order violation and also
 /// a wasted query against a level nobody is going to see.
 #[component]
@@ -308,7 +308,7 @@ fn VfsTreeLevel(
     let unfolded_signal = context.unfolded;
 
     // Is this level on the path to the focused node, and if so which of its children is
-    // the next step? Everything below keys off those answers — and they are read through
+    // the next step? Everything below keys off those answers, and they are read through
     // a MEMO rather than straight out of the signal. Reading `focus_chain` in the render
     // subscribes the level to the whole chain, so every mounted level re-renders whenever
     // the focus moves anywhere in the tree. A level that is not on the new path computes
@@ -392,7 +392,7 @@ fn VfsTreeLevelBody(
     // `parent_key` through a memo, not captured directly. Dioxus props are not reactive:
     // this component keeps its identity while its `parent_key` changes, because the level
     // the elided chain resumes at moves whenever the focus moves. Capturing the prop by
-    // clone meant the resource kept the children of the parent it first had — so
+    // clone meant the resource kept the children of the parent it first had, so
     // navigating UP one folder in-app left the tail of the ladder showing the folders you
     // came FROM, correctly indented, under freshly recomputed depth badges. A page reload
     // on the same URL rendered perfectly, which is what made it look like a data bug.
@@ -412,7 +412,7 @@ fn VfsTreeLevelBody(
     let mut request_signal = request;
     use_effect(move || {
         let parent = parent();
-        // Written only when it changes — an unconditional `write()` on a signal the
+        // Written only when it changes, an unconditional `write()` on a signal the
         // resource reads from is a refetch per run.
         if request_signal.peek().0 != parent {
             request_signal.set((parent, 0));
@@ -581,7 +581,7 @@ struct LoadedChildren {
 /// A component rather than an inline block, because the expansion boolean is a HOOK: the
 /// row subscribes to its OWN expansion through a memo, so toggling one chevron wakes one
 /// row instead of every level in the tree. `VfsTreeLevelBody` reading the expansion set
-/// directly is what made a click cost O(levels x rows) of render work in WASM — nothing
+/// directly is what made a click cost O(levels x rows) of render work in WASM. Nothing
 /// visibly wrong, because the DOM diff then found almost nothing to do, but all of the
 /// work.
 #[component]
@@ -605,7 +605,7 @@ fn VfsTreeBranch(node: VfsTreeNode, depth: usize, rung: usize) -> Element {
 ///
 /// Full steps for the first few rungs, a reduced step for every rung after them, and a
 /// ceiling. The reduced step is the point: a ladder that keeps stepping stays a ladder,
-/// and the alternative — an indent that stops — turns a chain into a list.
+/// and the alternative (an indent that stops) turns a chain into a list.
 pub(crate) fn indent_px(rung: usize) -> usize {
     let full = rung.min(FULL_STEP_RUNGS) * INDENT_PX;
     let deep = rung.saturating_sub(FULL_STEP_RUNGS).saturating_mul(DEEP_INDENT_PX);
@@ -617,8 +617,8 @@ pub(crate) fn indent_px(rung: usize) -> usize {
 /// This is what makes the pane-relative ceiling keep its steps. A flat
 /// `min(Npx, {MAX_INDENT_PERCENT}%)` collapses every rung whose pixel indent is past the
 /// percentage into one value, so at the narrowest pane the drag offers, four to five
-/// consecutive levels render at pixel-identical indent — the flattening the rung ladder
-/// exists to prevent, reachable by dragging the sidebar to its floor. Scaling the
+/// consecutive levels render at pixel-identical indent, which is the flattening the rung
+/// ladder exists to prevent, reachable by dragging the sidebar to its floor. Scaling the
 /// percentage by the rung's own share instead means the narrow-pane branch is a
 /// proportional copy of the wide-pane one: it is bounded by the same
 /// [`MAX_INDENT_PERCENT`] of the pane, and it still steps at every rung the pixel ladder
@@ -631,7 +631,7 @@ fn indent_fraction(rung: usize) -> f64 {
 ///
 /// Two ceilings, because they guard different things: [`indent_px`] is what the layout was
 /// designed against, and [`MAX_INDENT_PERCENT`] is what keeps a row readable in a pane the
-/// user has dragged narrow — the percentage resolves against the pane, so it tracks the
+/// user has dragged narrow. The percentage resolves against the pane, so it tracks the
 /// drag with no re-render. Both are scaled by the rung's [`indent_fraction`], so whichever
 /// binds, the ladder still steps.
 pub(crate) fn indent_style(rung: usize) -> String {
@@ -645,7 +645,7 @@ pub(crate) fn indent_style(rung: usize) -> String {
 /// What [`indent_style`] resolves to, in pixels, in a tree `container_px` wide.
 ///
 /// The CSS is what the browser evaluates; this is the same arithmetic written twice on
-/// purpose, so the ladder's one load-bearing property — a step at every width — is a test
+/// purpose, so the ladder's one required property (a step at every width) is a test
 /// rather than a measurement taken by hand at three widths. It has to move whenever the
 /// format string above does.
 #[cfg(test)]
@@ -668,7 +668,7 @@ pub struct AncestorElision {
 
 /// Elide the middle of the ancestor chain, or `None` when it is short enough to render.
 ///
-/// `chain_rows` is the number of ancestor ROWS — one less than the chain length, because
+/// `chain_rows` is the number of ancestor ROWS, one less than the chain length, because
 /// the dataset root is the tree container rather than a row in it.
 pub fn elide_ancestors(chain_rows: usize) -> Option<AncestorElision> {
     if chain_rows <= MAX_VISIBLE_ANCESTORS {
@@ -703,7 +703,7 @@ impl SiblingWindow {
 /// Render at most `2 * MAX_SIBLINGS_EACH_SIDE + 1` of a level's siblings.
 ///
 /// Centred on the focused child when the level has one. When it does not, the window
-/// still applies, from the top — the level below the folder you are in is exactly the
+/// still applies, from the top. The level below the folder you are in is exactly the
 /// 334-row case, and "there is no centre" is not a reason to render eight screens of
 /// folders into a 240 px sidebar. Nothing is lost either way: the overflow rows say how
 /// many are hidden and reveal them on click.
@@ -729,7 +729,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
     let node_key = node.node_key.clone();
     let check_state = tri_state(&node_key, &context.selected.read());
     // The sidebar highlights the one folder the URL names; the picker highlights what is
-    // ticked. Two different questions, deliberately not sharing a signal — the sidebar's
+    // ticked. Two different questions, deliberately not sharing a signal, the sidebar's
     // answer changes on every navigation and the picker's does not.
     let is_selected = match context.skin {
         TreeSkin::Sidebar => *context.focus_key.read() == node_key,
@@ -810,7 +810,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             div { style: "{LABEL_STYLE}", "{label}" }
 
             // Past the full-step rungs the indent still steps but no longer counts, and
-            // once ancestors are elided the ladder is shorter than the path anyway — so
+            // once ancestors are elided the ladder is shorter than the path anyway, so
             // the depth is stated. Above the shallow rows it is absent rather than
             // always-on noise. The number is the row's depth in the tree on screen, which
             // starts at the collection, so it counts the synthetic levels too.
@@ -854,7 +854,7 @@ pub fn tri_state(node_key: &str, selected: &BTreeSet<String>) -> TriState {
 ///
 /// Leaving descendants expanded is what turned navigating *up* into a flat list: elision
 /// only shortens the ladder on the path to the focus, so rows below it keep taking a rung
-/// each until the indent ceiling swallows them — going up from a 44-deep folder to a
+/// each until the indent ceiling swallows them. Going up from a 44-deep folder to a
 /// 26-deep one left twenty-one consecutive rows at identical indent, twenty-one nested
 /// levels rendered as twenty-one siblings.
 ///
@@ -879,7 +879,7 @@ pub fn expansion_after_refocus(
 
 /// The string every descendant key of `node_key` starts with.
 ///
-/// A separator has to be appended so that `/ab` is not read as a child of `/a` — except
+/// A separator has to be appended so that `/ab` is not read as a child of `/a`, except
 /// when the key already ends in one, which the DATASET ROOT does: its path is `"/"`, and
 /// `"{root}/"` matches nothing at all. That row is a real, tickable row in the unified
 /// tree, so getting this wrong showed a dataset as unticked while folders under it were
@@ -894,7 +894,7 @@ fn descendant_prefix(node_key: &str) -> String {
 
 /// Tick or untick a node in a picker selection.
 ///
-/// Selecting a folder covers everything below it — the filter it becomes is one
+/// Selecting a folder covers everything below it. The filter it becomes is one
 /// ancestor-closure term id, and `file_paths IN (parent)` already matches every document
 /// under `parent`. So a descendant that was ticked separately is now redundant, and
 /// leaving it in the set would render the parent as Partial while it is in fact fully
@@ -959,7 +959,7 @@ mod tests {
 
     /// The rung the deepest row of a `chain_rows`-long path renders on, once ancestor
     /// elision has trimmed the middle out of it. This is the number the indent budget is
-    /// actually spent against — the tree's depth is not.
+    /// actually spent against. The tree's depth is not.
     fn deepest_visible_rung(chain_rows: usize) -> usize {
         use crate::components::search_components::storage_tree::SYNTHETIC_LEVELS;
         let Some(elision) = elide_ancestors(chain_rows) else {
@@ -1024,7 +1024,7 @@ mod tests {
     ///
     /// A pane-relative ceiling that is not scaled by the rung collapses every rung above
     /// it onto one value: at the 240 px floor the drag allows, five consecutive levels
-    /// then render at pixel-identical indent and a deep chain reads as a flat list —
+    /// then render at pixel-identical indent and a deep chain reads as a flat list,
     /// which is exactly the defect the ladder replaced, reached from the other direction.
     /// The tree also scrolls, which takes a further ~13 px off the containing block, so
     /// the narrow case is checked below the pane width as well as at it.
@@ -1098,7 +1098,7 @@ mod tests {
 
     #[test]
     fn the_dataset_root_is_a_prefix_of_its_own_folders() {
-        // Its key ends in `/`, so appending another one matches nothing — and the
+        // Its key ends in `/`, so appending another one matches nothing, and the
         // dataset row would render unticked with every folder under it ticked.
         let root = common::vfs::dataset_root_key("testdata_zips");
         let folder = common::vfs::make_node_key("testdata_zips", "", "/location-1");

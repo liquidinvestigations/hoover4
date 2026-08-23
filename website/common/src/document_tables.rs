@@ -9,13 +9,13 @@
 //!
 //! Three facts about the storage shape the types below:
 //!
-//! * `row_id` is 1-based, dense, and restarts at 1 in every sheet — it is pagination
+//! * `row_id` is 1-based, dense, and restarts at 1 in every sheet. It is pagination
 //!   arithmetic. `source_row` is the row number the file itself gives and is what the
 //!   grid's `#` column draws, because someone comparing the browser against the same file
 //!   open in a spreadsheet application is the normal case.
 //! * `column_id` is 1-based as the file gives it, so gaps survive, and only non-empty
 //!   cells exist: an absent `(column_id, row_id)` is empty by construction.
-//! * `sheet_id` values are the workbook's own sheet ordinals and are **not contiguous** —
+//! * `sheet_id` values are the workbook's own sheet ordinals and are **not contiguous**,
 //!   a sheet that produced no cells is simply absent. Sheet pickers are built from
 //!   [`TableOverview::sheets`], never from a range.
 
@@ -88,7 +88,7 @@ pub struct TableColumnInfo {
 
 impl TableColumnInfo {
     /// What the header cell reads. A column with no header falls back to its letter
-    /// rather than to nothing — an unlabelled header is a column nobody can name in a
+    /// rather than to nothing. An unlabelled header is a column nobody can name in a
     /// conversation about the file.
     pub fn label(&self) -> String {
         if self.header.trim().is_empty() {
@@ -112,11 +112,11 @@ pub const TABLE_CELL_KINDS: [&str; 9] = [
 /// filter popover offers depend only on which typed ClickHouse column carries the value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TableColumnClass {
-    /// `int` / `float` — sorts and ranges on `cell_float`.
+    /// `int` / `float`, sorts and ranges on `cell_float`.
     Number,
-    /// `date` / `datetime` / `time` — sorts and ranges on `cell_time`.
+    /// `date` / `datetime` / `time`, sorts and ranges on `cell_time`.
     Temporal,
-    /// Everything else — sorts and matches on `cell_text`.
+    /// Everything else, sorts and matches on `cell_text`.
     Text,
 }
 
@@ -133,7 +133,7 @@ impl TableColumnClass {
 /// One cap that fired while the document was read.
 ///
 /// Stored as three parallel arrays on `table_documents` and zipped into this on the way
-/// out. The banner names the maximum as well as the limit, because the point is that the
+/// out. The banner names the maximum as well as the limit, because a reader needs to know that the
 /// reader learns the ceiling, not merely that one exists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct TableTruncation {
@@ -365,7 +365,7 @@ pub fn clamp_table_visible_columns(requested: &[u32]) -> Vec<u32> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TableCell {
     pub column_id: u32,
-    /// The cell exactly as the reader stored it. Authoritative for display, always —
+    /// The cell exactly as the reader stored it. Authoritative for display, always,
     /// never reconstructed from the typed columns.
     pub text: String,
     /// One of [`TABLE_CELL_KINDS`].

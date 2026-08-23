@@ -30,8 +30,8 @@ pub enum DocumentEntityType {
 impl DocumentEntityType {
     /// The scanner's own type name for a rule-found value, or `Unknown`.
     ///
-    /// The scanner emits more types than the viewer has sections for — coordinates,
-    /// vessels, publications — and those arrive as `Unknown` rather than being dropped,
+    /// The scanner emits more types than the viewer has sections for (coordinates,
+    /// vessels, publications), and those arrive as `Unknown` rather than being dropped,
     /// so a rule added upstream shows up as an unlabelled row instead of vanishing.
     pub fn from_scanner_type(name: &str) -> Self {
         match name.trim().to_lowercase().as_str() {
@@ -93,7 +93,7 @@ pub struct DocumentEntityItem {
     /// The pipeline runs more than one NER provider and more than one text variant per
     /// document, so the same name is found several times. The rows are aggregated by
     /// value rather than listed, because a panel that shows "Voronkov" four times reads as
-    /// a bug — but *which* provider found it is real provenance and the reason this is a
+    /// a bug, but *which* provider found it is real provenance and the reason this is a
     /// list rather than a count.
     #[serde(default)]
     pub providers: Vec<String>,
@@ -106,8 +106,8 @@ pub struct DocumentEntityItem {
     /// The canonical value object, exactly as the scan stage stored it.
     ///
     /// Passed back to the explainer untouched. Re-deriving it from `value` would lose
-    /// everything the validator worked out — the country inside an IBAN, the currency
-    /// and minor units inside an amount — and would silently produce a thinner card.
+    /// everything the validator worked out (the country inside an IBAN, the currency
+    /// and minor units inside an amount), and would silently produce a thinner card.
     #[serde(default)]
     pub value_json: String,
     /// The text as the document wrote it, which a normalised value frequently is not.
@@ -149,7 +149,7 @@ mod tests {
     }
 
     /// The scanner finds vessels, coordinates and publications too. None of those has a
-    /// section, and they must arrive as an unlabelled row rather than disappear — a rule
+    /// section, and they must arrive as an unlabelled row rather than disappear, a rule
     /// added upstream should show up as something to name, not as nothing.
     #[test]
     fn a_scanner_type_with_no_section_is_unknown_rather_than_dropped() {

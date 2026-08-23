@@ -24,7 +24,7 @@ class TestFuseRankedLists:
         assert fused[0].source_ranks == {"keyword": 2, "vector": 2}
 
     def test_within_source_dedupe(self):
-        # One source listing a key at ranks 1 and 2 contributes ONE rank — otherwise a
+        # One source listing a key at ranks 1 and 2 contributes ONE rank, otherwise a
         # repeater beats two independent sources agreeing.
         fused = fuse_ranked_lists(
             {"a": ["x", "x", "y"], "b": ["y"]},
@@ -52,7 +52,7 @@ class TestFuseRankedLists:
 class TestPerKindFloor:
     @staticmethod
     def _items(spec):
-        # spec: list of (kind, score-rank) — input order IS the rank order.
+        # spec: list of (kind, score-rank). Input order IS the rank order.
         return [{"kind": kind, "rank": i} for i, kind in enumerate(spec)]
 
     def test_minority_kind_is_reserved(self):
@@ -126,7 +126,7 @@ class TestMovedWebFusion:
         assert sorted(fused[0].engines) == ["a", "b"]
 
     def test_normalise_url_strips_tracking_and_www(self):
-        # The key keeps the "//host" form (urlunparse with an empty scheme) — only
+        # The key keeps the "//host" form (urlunparse with an empty scheme), only
         # its identity as a comparison key matters, never its display.
         assert normalise_url("https://www.example.com/a/?utm_source=x&b=2") == \
             "//example.com/a?b=2"

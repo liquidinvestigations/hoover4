@@ -16,8 +16,8 @@ rpc_public_addr = "garage:3901"
 [s3_api]
 # Garage's own default here is "garage", and that value breaks every S3 client that has
 # not been told about it: SigV4 signs the region into the credential scope, so a client
-# using the universal default answers `AuthorizationHeaderMalformed … unexpected scope`
-# — an error that reads like a credential problem and is not one. Declaring the region
+# using the universal default answers `AuthorizationHeaderMalformed … unexpected scope`,
+# an error that reads like a credential problem and is not one. Declaring the region
 # every client already assumes is what keeps "point it at a different endpoint" a
 # one-line change. Changing this value means editing every S3 client in the tree.
 s3_region     = "us-east-1"

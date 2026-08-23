@@ -6,7 +6,7 @@ use std::time::Duration;
 ///
 /// Retries briefly so a database that is still coming up doesn't cause a
 /// spurious failure, then returns an error. The website bootstrap turns that
-/// error into a hard, logged exit — the server must not start up looking healthy
+/// error into a hard, logged exit. The server must not start up looking healthy
 /// while every DB-backed route silently fails.
 pub async fn ensure_clickhouse_reachable() -> anyhow::Result<()> {
     const ATTEMPTS: usize = 10;

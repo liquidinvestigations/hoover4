@@ -2,7 +2,7 @@
 
 Testing this against a real page would make the suite fail whenever that page changes,
 which tells us nothing. The fixtures below are the five shapes the plan names, each one a
-case where getting it wrong produces a capture that *renders* — just wrongly, with no
+case where getting it wrong produces a capture that *renders*, just wrongly, with no
 error anywhere.
 """
 
@@ -18,7 +18,7 @@ def build(parts, root_location="https://example.com/page"):
     """Assemble a minimal multipart/related MHTML document.
 
     Written by hand rather than captured from Chromium so each test controls exactly one
-    variable — a real capture is 3 MB of noise around the one line under test.
+    variable. A real capture is 3 MB of noise around the one line under test.
     """
     boundary = "----MultipartBoundary--test--"
     out = [
@@ -135,7 +135,7 @@ class TestInlining:
         assert "url(https://example.com/a.png)" not in html
 
     def test_a_relative_reference_resolves_against_the_parts_own_location(self):
-        """The trap the plan names: `url(../img/x.png)` inside a stylesheet served from
+        """The failure this pins: `url(../img/x.png)` inside a stylesheet served from
         a CDN means a CDN path, not a path under the page's own URL. Resolving against
         the document produces a capture with silently missing images."""
         raw = build(

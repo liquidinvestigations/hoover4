@@ -39,15 +39,15 @@ container.
   same content in two datasets of one collection is indexed twice, on purpose.
 - **The website answers**, and a search through its HTTP interface returns hits for a word
   known to be in the fixtures. The interface's URL carries a build hash, so the run discovers
-  it from the served bundle rather than assuming a layout — and it checks the *content* it got
+  it from the served bundle rather than assuming a layout, and it checks the *content* it got
   back, because the site serves its shell for any unrecognised path and therefore answers 200
   for everything.
 - **A configuration fingerprint agrees between hosts** where a second tier is enabled,
   because the configuration file is copied by hand and will drift.
 - **Nothing derived is reachable as source.** No blob row may reference the derived prefix.
   That prefix is where OCR output and captured chat artefacts live; if the disk-scan stage
-  ever walked it, each derived object would be ingested, re-derived, and produce another —
-  forever. A blob row pointing into it is the signature of that loop having started.
+  ever walked it, each derived object would be ingested, re-derived, and produce another
+  one without end. A blob row pointing into it is the signature of that loop having started.
 
 ## Away from the fixture corpus
 

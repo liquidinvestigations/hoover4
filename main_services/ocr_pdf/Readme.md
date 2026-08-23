@@ -1,4 +1,4 @@
-# ocr_pdf — searchable PDFs over HTTP
+# ocr_pdf: searchable PDFs over HTTP
 
 Takes a PDF, renders every page, sends each render to the **existing** OCR tier, and
 writes back a PDF that looks identical and selects, copies and searches like text. It
@@ -18,7 +18,7 @@ POST /ocr-pdf  {"source_key"|"pdf_b64", "dest_key", "engine", "languages", "dpi"
 * **`source_key` or `pdf_b64`.** Blobs above the small-file threshold live in the object store and
   are read by key; the ones below it live in `blob_values` in ClickHouse and have no
   object at all, so the caller sends those inline. Exactly one is required.
-* **`dest_key` must start with `derived/`** — see below. The service writes the object and
+* **`dest_key` must start with `derived/`**. See below. The service writes the object and
   returns its hash; it writes **no** database row. `pdf_ocr_results` is the caller's, and
   the ordering is deliberate: bytes before row.
 * **`languages` is part of the storage key**, not a hint. An empty value is a 400.
@@ -29,12 +29,12 @@ POST /ocr-pdf  {"source_key"|"pdf_b64", "dest_key", "engine", "languages", "dpi"
 ## The derived-PDF trap
 
 The output is a new PDF. If the ingest walker could see it, it would be ingested, OCR'd
-and produce another PDF — forever, burning OCR time on each lap. Three guards:
+and produce another PDF without end, burning OCR time on each lap. Three guards:
 
 1. **`validate_dest_key`** refuses any key not under `derived/`, plus traversal and
    directory-shaped keys, *before* any work happens. Pinned by tests.
 2. **No `blobs` row and no `vfs_files` row** are ever written here. `pdf_ocr_results` is
-   the sole index of a derived PDF's existence — which also means deleting a row without
+   the sole index of a derived PDF's existence, which also means deleting a row without
    deleting the object orphans it permanently, and the purge order in the apply job
    (`change_ocr_languages`) is objects-then-rows for that reason.
 3. **`verify-stack.sh`** asserts that no `blobs` row references `derived/`, which covers
@@ -53,7 +53,7 @@ and produce another PDF — forever, burning OCR time on each lap. Three guards:
 ## The text layer
 
 Each page becomes a JPEG at `dpi` (default 200) placed at the page's original size in
-points, with the OCR words drawn over it in **text render mode 3** — laid out, measured,
+points, with the OCR words drawn over it in **text render mode 3**, laid out, measured,
 selectable, and painting nothing.
 
 Two details that are easy to get subtly wrong and impossible to see afterwards:

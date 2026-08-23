@@ -47,7 +47,7 @@ produce `identifier`, and one type may produce more than one shape.
 | `network_address` | `family`, `address`, `prefix_length?` |
 | `geo_point` | `latitude`, `longitude`, `datum` |
 
-`identifier.parts` is a string map of scheme-specific components — bank code, check digits, issuer —
+`identifier.parts` is a string map of scheme-specific components (bank code, check digits, issuer)
 omitted when empty. A named field per scheme across two dozen schemes would force a model change for
 every new identifier. `country` is promoted out of that map because it is cross-scheme and maps to a
 property of its own.
@@ -64,7 +64,7 @@ question is which of its rules is the weakest, not how to raise the cap.
 
 `national_id` is full. Its six are `natid.it_codice_fiscale`, `natid.es_nif_nie`, `natid.mx_curp`,
 `natid.in_pan`, `natid.pl_pesel` and `natid.se_personnummer`. The next national scheme is therefore
-a contract conversation — splitting the type per region changes what a consumer's facet means —
+a contract conversation. Splitting the type per region changes what a consumer's facet means,
 rather than a seventh entry.
 
 `bank_account` holds four, and its two newest are a payment card and a United States routing number,
@@ -75,7 +75,7 @@ extension because the schema has no property for either. `company_id` holds four
 ## The value is the point
 
 `text` is what was written. `value` is what it means, and it is what belongs in a typed index field
-— a date field, a scaled integer plus a currency, a double plus a unit — so that range queries
+ (a date field, a scaled integer plus a currency, a double plus a unit), so that range queries
 work. Keeping `text` alongside it is not redundancy: highlighting needs it, and so does a user
 asking why the system thinks this is a date.
 
@@ -101,7 +101,7 @@ Comparable means a fixed ladder, not a per-rule opinion:
 
 | Value | What the validator was able to do |
 |---|---|
-| 0.99 | Check digit verified **and** the surface form is self-identifying — a country prefix, a fixed alphabet, a literal marker |
+| 0.99 | Check digit verified **and** the surface form is self-identifying, a country prefix, a fixed alphabet, a literal marker |
 | 0.97 | Check digit verified on a bare token, admitted on a cue word |
 | 0.95 | No check digit; structure plus membership of an authoritative list or published register (email TLD, BIC country, MMSI MID, ISO 4217 code, a country's numbering plan) |
 | 0.90 | No check digit; structure plus a cue word |
@@ -115,12 +115,12 @@ same kind of arithmetic agreement a check digit gives. A telephone number sits o
 for the mirror-image reason: nothing in it is redundant, so no arithmetic can ever confirm it, and
 what earns the number instead is that the country calling code and the national number both match
 the numbering plan that country publishes. That is the same kind of evidence a sum of money has when
-its ISO 4217 code is in the list — narrow, authoritative, and not arithmetic — so the two rules
+its ISO 4217 code is in the list (narrow, authoritative, and not arithmetic), so the two rules
 report the same number, and the no-checksum flag says which kind of evidence it was.
 
 ## Flags, not guesses
 
-Some ambiguity is real and unresolvable from the text alone — `03/04/2021` is genuinely two dates, a
+Some ambiguity is real and unresolvable from the text alone: `03/04/2021` is genuinely two dates, a
 timestamp without an offset is genuinely not an instant. The contract reports it instead of picking
 one and presenting it as certainty: `ambiguous_order`, `no_timezone`, `no_checksum` for a format
 that carries no check digit at all, `ambiguous_currency` for a symbol shared by several ISO 4217
@@ -131,7 +131,7 @@ is expensive.
 ## The entity is a handle
 
 An entity is self-describing, and one endpoint depends on that: `POST /explain` takes an entity back
-exactly as it was returned — no field stripped, renamed or reordered — and answers with a card for
+exactly as it was returned (no field stripped, renamed or reordered), and answers with a card for
 the reader who clicked it. A client can therefore explain a match it stored months ago, and needs to
 keep nothing but the entity itself. See [Explainer_Cards.md](Explainer_Cards.md).
 

@@ -42,7 +42,7 @@ struct SearchForResultsResponse {
     file_size_bytes: i64,
 
     /// 1 when at least one row in this document's group came from something other than
-    /// the synthetic filename row. Computed in the same grouped query — knowing it needs
+    /// the synthetic filename row. Computed in the same grouped query. Knowing it needs
     /// the group, and a second round trip per result to learn it is not worth a snippet.
     has_text_match: i64,
 }
@@ -67,11 +67,11 @@ impl HitIdentity for SearchForResultsResponse {
     }
 }
 
-/// Build the per-shard results query. Fetches `fetch_limit` rows from offset 0 —
-/// never the page's global offset — because the global page is assembled from all
+/// Build the per-shard results query. Fetches `fetch_limit` rows from offset 0
+/// (never the page's global offset), because the global page is assembled from all
 /// shards by the merge.
 ///
-/// The `ORDER BY` is load-bearing: Manticore's order among equal-weight rows is not
+/// The `ORDER BY` decides correctness here. Manticore's order among equal-weight rows is not
 /// stable across queries with different `LIMIT`/`max_matches`, and `fetch_limit`
 /// grows with the requested page. Without a total order a document tied at the
 /// truncation boundary can appear on two pages or on none. The key order must match
@@ -122,8 +122,8 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
 /// Highlight the query's terms inside the result title, client-side.
 ///
 /// `primary_filename` is a string attribute rather than a text field, so the title
-/// highlight cannot come from `HIGHLIGHT()`, and the alternative — a second `HIGHLIGHT`
-/// scoped to the `filename_index` pages row — needs a per-result subquery for a
+/// highlight cannot come from `HIGHLIGHT()`, and the alternative (a second `HIGHLIGHT`
+/// scoped to the `filename_index` pages row) needs a per-result subquery for a
 /// decoration. Matching the query's whitespace-separated terms
 /// against the title is simpler, has no extra round trip, and is honest about what it is:
 /// a visual aid, not the thing that decided the document matched.
@@ -240,7 +240,7 @@ pub async fn search_for_results(
     let mut search_results = merged
         .into_iter()
         .map(|hit| {
-            // The title is `primary_filename` — the lexicographically first basename of
+            // The title is `primary_filename`, the lexicographically first basename of
             // the document, written by the indexer. The highlight is applied here rather
             // than by Manticore; see `highlight_title`.
             let title = hit._source.primary_filename.clone();
@@ -364,7 +364,7 @@ mod tests {
         SortSpec { key: SortKey::Relevance, desc: true }
     }
 
-    /// Golden string for the full per-shard results query — the largest interpolated
+    /// Golden string for the full per-shard results query, the largest interpolated
     /// SQL string in the repo. In particular this locks the `ORDER BY` that makes
     /// pagination a stable prefix: removing it must fail loudly here. It also
     /// locks the SELECT list, which the cross-shard merge depends on: the sort key must

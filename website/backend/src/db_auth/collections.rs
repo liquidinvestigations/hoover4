@@ -14,7 +14,7 @@ pub struct CollectionRow {
     pub is_deleted: u8,
     /// 0 = restricted (readable only through a group grant), 1 = public (readable by
     /// every authenticated user). Declared in `00005_collections.sql`, not in an `ALTER`
-    /// of its own — the migration set is collapsed.
+    /// of its own. The migration set is collapsed.
     pub is_public: u8,
 }
 
@@ -155,13 +155,13 @@ pub async fn get_dataset_collection(
 
 /// Table created by the last collection migration. Used as the readiness sentinel:
 /// `EnsureCollectionDatabase` creates the database first and only then applies the
-/// migrations in filename order, so the database existing proves nothing — this table
+/// migrations in filename order, so the database existing proves nothing. This table
 /// existing proves every migration before it ran too.
 ///
 /// The canonical value lives in
 /// `main_services/processing/database/db_collection_migrations/READINESS_SENTINEL`
 /// (asserted there against the last migration file by the Python test suite). This is
-/// a checked-in copy — the website build cannot include files outside `website/` —
+/// a checked-in copy (the website build cannot include files outside `website/`)
 /// kept in sync by the unit test below. Update BOTH when a migration is added after
 /// it in `main_services/processing/database/db_collection_migrations/`.
 const LAST_COLLECTION_MIGRATION_TABLE: &str = include_str!("READINESS_SENTINEL");
@@ -271,7 +271,7 @@ pub async fn permitted_collection_datasets(username: &str) -> anyhow::Result<Vec
     Ok(result)
 }
 
-/// Sibling of [`permitted_collection_datasets`] at collection granularity — the search
+/// Sibling of [`permitted_collection_datasets`] at collection granularity, the search
 /// fan-out and the DB routing need permitted collections, not just permitted datasets.
 pub async fn permitted_collections(username: &str) -> anyhow::Result<Vec<String>> {
     let client = get_global_client();

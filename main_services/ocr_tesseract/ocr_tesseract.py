@@ -1,4 +1,4 @@
-"""Tesseract OCR over HTTP — the CPU twin of the GPU EasyOCR service.
+"""Tesseract OCR over HTTP, the CPU twin of the GPU EasyOCR service.
 
 Why this is a service and not a subprocess in the worker
 -------------------------------------------------------
@@ -9,7 +9,7 @@ OCR is not in the worker image, on purpose. Two reasons, both learned the hard w
   nobody could turn off per dataset. Removing the binary makes that parser inert, and
   the same text comes back through here as its own attributed variant instead.
 * **EasyOCR in-process deadlocked the worker.** Two concurrent `readtext` calls in one
-  process parked all 91 threads in `futex_wait` with heartbeats still flowing — a live
+  process parked all 91 threads in `futex_wait` with heartbeats still flowing. A live
   thread making no progress, which is the one failure the heartbeat pump cannot see.
   A bounded pool behind an HTTP boundary is what stops that from being possible.
 
@@ -119,7 +119,7 @@ def _run_tesseract(image_bytes: bytes, languages: str, psm: int) -> tuple:
 
     Uses the TSV output rather than plain text because the per-word confidence is what
     lets several language variants of the same image be scored against each other and a
-    winner marked — storing every variant is only useful if they can be compared.
+    winner marked. Storing every variant is only useful if they can be compared.
     """
     with tempfile.TemporaryDirectory(prefix="ocr_") as work:
         src = os.path.join(work, "input")
@@ -192,7 +192,7 @@ def health():
 def ocr(request: OcrRequest, response: Response):
     if not _inflight.acquire(blocking=False):
         # Shed load rather than queue without bound. The client turns this into a
-        # retryable Temporal error, so the work is not lost -- it is rescheduled.
+        # retryable Temporal error, so the work is rescheduled rather than lost.
         raise HTTPException(
             status_code=503,
             detail="OCR queue is full",

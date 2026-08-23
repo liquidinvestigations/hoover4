@@ -8,7 +8,7 @@ the cluster, or the shape of the work?**
 
 Measuring the pipeline measures the pipeline. Every stage carries its own I/O, its own
 retries and its own batch shape, so a slow run is consistent with a dozen causes. The probe
-removes all of them and leaves the cluster and the worker library — the two things a
+removes all of them and leaves the cluster and the worker library, the two things a
 configuration change could actually move.
 
 ## Why it runs inside the worker container
@@ -40,10 +40,10 @@ the number it produces cannot be compared with anything.
 
 | probe rate | pipeline rate | conclusion |
 |---|---|---|
-| high | low | the limit is the pipeline's shape — barriers, one driver, batch skew |
+| high | low | the limit is the pipeline's shape, barriers, one driver, batch skew |
 | ≈ pipeline rate | low | the limit is the cluster or the worker configuration |
-| rises with executions, flat with slots | — | per-execution serialisation, as expected; the fix is more executions |
-| schedule-to-start climbing toward the heartbeat deadline | — | the machine is oversubscribed; reduce the load, do not widen the deadline |
+| rises with executions, flat with slots | - | per-execution serialisation, as expected; the fix is more executions |
+| schedule-to-start climbing toward the heartbeat deadline | - | the machine is oversubscribed; reduce the load, do not widen the deadline |
 
 ## After the probe
 

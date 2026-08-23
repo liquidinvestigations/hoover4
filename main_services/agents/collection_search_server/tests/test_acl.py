@@ -25,7 +25,7 @@ class TestParseAcl:
 
         The deployed container has `MCP_SHARED_SECRET_FILE` bind-mounted, so a test
         that only unsets `MCP_SHARED_SECRET` still finds a secret and every
-        no-auth case fails when the suite runs where it is meant to run —
+        no-auth case fails when the suite runs where it is meant to run:
         `docker exec hoover4-mcp-collections`.
         """
         monkeypatch.delenv("MCP_SHARED_SECRET", raising=False)
@@ -112,7 +112,7 @@ class TestMatchOperatorsPassThrough:
     """The operators are the point, so they must survive sanitisation.
 
     Every expression here was run against the live `testdata_1_pages` shard and returns
-    rows rather than an HTTP 500 — see the battery in `main_services/agents/README.md`.
+    rows rather than an HTTP 500. See the battery in `main_services/agents/README.md`.
     """
 
     @pytest.mark.parametrize(
@@ -182,7 +182,7 @@ class TestMatchQueryRepairs:
         assert prepare_match_query("NEAR/3 -zzz").expr == ""
 
     def test_empty_query_is_refused_rather_than_matching_everything(self):
-        # MATCH('') is not an error — it returns every row in the shard, which is the
+        # MATCH('') is not an error. It returns every row in the shard, which is the
         # worst possible default for a tool an LLM drives.
         for empty in ["", "   ", "\t\n"]:
             prepared = prepare_match_query(empty)
@@ -216,7 +216,7 @@ class TestCollectionArgumentCoercion:
     """`collections` must survive an XML-style tool-call parser.
 
     Qwen3.5 needs vLLM's `qwen3_xml` parser, which hands every argument across as a
-    string — so a `list[str]` parameter arrives as the literal `'["testdata"]'`. Before
+    string, so a `list[str]` parameter arrives as the literal `'["testdata"]'`. Before
     this coercion, pydantic rejected it, the model retried the identical call, and the
     agent exhausted its 25-step recursion budget without ever running a search.
     """

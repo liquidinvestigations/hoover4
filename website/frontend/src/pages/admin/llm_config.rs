@@ -1,4 +1,4 @@
-//! Admin page: `/admin/llm` — provider health, catalog, defaults, allowlist.
+//! Admin page: `/admin/llm`, provider health, catalog, defaults, allowlist.
 
 use common::llm_types::{AdminLlmPage as LlmPageData, LlmModelItem};
 use dioxus::prelude::*;

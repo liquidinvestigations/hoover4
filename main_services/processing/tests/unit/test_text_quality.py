@@ -4,7 +4,7 @@ Two failure directions, and they are not symmetric. A **false negative** puts an
 pixel rows into vector search, where a passage of noise is close to everything: live,
 `search_collections("Eiffel Tower height")` returned an `.xpm` colour table and an `.eml`'s
 base64 as its top two hits, and the chat transcript rendered them. A **false positive**
-costs one passage its semantic searchability — the bytes stay in `text_content` and the
+costs one passage its semantic searchability. The bytes stay in `text_content` and the
 keyword index still finds them.
 
 So the negatives here (real documents that must survive) are the tests that matter most,
@@ -63,7 +63,7 @@ class TestRealDocumentsSurvive:
             "During its construction, the Eiffel Tower surpassed the Washington Monument "
             "to become by far the tallest human-made structure in the world, a title it "
             "held for 41 years until the Chrysler Building was finished in 1930.",
-            # Romanian with diacritics — the corpus this pipeline was built for.
+            # Romanian with diacritics. The corpus this pipeline was built for.
             "Prin multipol electric se înţelege o porţiune de circuit electric cu borne "
             "de acces, dar fără cuplaje magnetice cu exteriorul. De regulă multipolul se "
             "consideră pasiv, adică nu are surse proprii şi funcţionează liniar.",

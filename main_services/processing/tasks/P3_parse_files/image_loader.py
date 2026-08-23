@@ -64,7 +64,7 @@ def image_dimensions(data: bytes):
     """`(width, height)` from an image's header alone, or `None` if it cannot be read.
 
     Header only: Pillow's `open` is lazy, so this costs a few hundred bytes rather than a
-    full decode. That is the point — it is the gate in front of OCR, and a gate that has
+    full decode. That is the point. It is the gate in front of OCR, and a gate that has
     to decode the image to decide is not a saving.
     """
     import io

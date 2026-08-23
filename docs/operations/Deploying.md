@@ -39,7 +39,7 @@ of a failure they prevent:
 2. Render the generated `.env` beside the compose files, and print whether it changed.
 3. **Create or repair the container network, with its upstream resolvers pinned**, before
    compose runs. Without that the network's DNS forwards to the host's local resolver stub
-   and every external lookup from inside a container wedges — while container-name
+   and every external lookup from inside a container wedges, while container-name
    resolution keeps working, so the stack looks healthy and only internet-facing work hangs.
 4. Bring the selected side up.
 5. On the main side, bring the symbol-navigation server up last, **as its own compose
@@ -65,7 +65,7 @@ change looks like it worked.
 ## Secrets
 
 Secrets are **files outside the repository**, bind-mounted read-only. No key value goes into
-a tracked file, a script, or a log line — the configuration names the path, and the container
+a tracked file, a script, or a log line. The configuration names the path, and the container
 reads it.
 
 Host addresses, users and credentials for a particular deployment live in
@@ -74,7 +74,7 @@ Host addresses, users and credentials for a particular deployment live in
 ## Before you deploy anything
 
 **Check what is in flight.** A deploy restarts containers, and the end-to-end verification
-runs for tens of minutes inside the worker — restarting it kills the run outright.
+runs for tens of minutes inside the worker. Restarting it kills the run outright.
 
 ```
 docker ps --format '{{.Names}}\t{{.Status}}'
@@ -87,8 +87,8 @@ of the process list before concluding that the load is yours.
 **Check whether the diff is one you may deploy under live executions.** A running workflow
 replays its history against the code deployed *now*. An activity change is free: its
 results are already in the history and the new code only runs for the next call. A
-workflow change — the order of its commands, the ids it gives its children, a loop, a
-timer — makes the replay disagree with the history, and the execution wedges with a
+workflow change (the order of its commands, the ids it gives its children, a loop, a
+timer) makes the replay disagree with the history, and the execution wedges with a
 non-determinism error until someone terminates it. A workflow change therefore requires no
 live executions of the workflows it touches: drain the queue, or terminate what is running
 and re-drive it, and only then deploy.
@@ -98,14 +98,14 @@ and re-drive it, and only then deploy.
 ```
 
 Exit 0 means activity-only, deploy whenever. Exit 1 names the workflow files and means
-drain first. The worker's own restart is graceful — in-flight activities get
+drain first. The worker's own restart is graceful. In-flight activities get
 `worker_graceful_shutdown_seconds` to finish before they are cancelled, and the container's
-stop grace period is derived from the same key — but no graceful period helps a replay that
+stop grace period is derived from the same key, but no graceful period helps a replay that
 no longer matches its history.
 
 ## What a deploy does not do
 
-**Bringing containers up is not a deployment; it is a no-op with opinions.** It reuses
+**Bringing containers up is a no-op with opinions rather than a deployment.** It reuses
 existing images and containers, so a broken build context, a changed ignore file and new
 environment all stay invisible until something forces a rebuild or a recreate. After changing
 anything that feeds a build, run `--build`.
@@ -121,12 +121,12 @@ its correct final state. Stop and then start works.
 `docker stop` or `docker restart` kills through the drain after ten seconds however the
 graceful period is configured: the runtime applies the compose file's stop grace period only
 when it is the one stopping the container, and the value cannot be set on the container
-afterwards. A deploy prints the number really in force. Anything else that stops the worker —
-a person, a script, a supervisor — has to pass the timeout itself, which is all the wrapper
+afterwards. A deploy prints the number really in force. Anything else that stops the worker
+(a person, a script, a supervisor) has to pass the timeout itself, which is all the wrapper
 does.
 
-**Relative paths in a compose file resolve against the project directory** — the first
-compose file's directory — not against the file that declares them. An overlay in a
+**Relative paths in a compose file resolve against the project directory** (the first
+compose file's directory) not against the file that declares them. An overlay in a
 subdirectory therefore points somewhere else entirely from where it reads as pointing.
 `./deploy --print-command`, and `docker compose … config`, render the absolutes.
 
@@ -134,7 +134,7 @@ subdirectory therefore points somewhere else entirely from where it reads as poi
 
 Never judge a build from its last fifty lines: the interesting failure is usually thousands
 of lines above the end, and reading only the tail has cost a full rebuild cycle to recover.
-Redirect the whole run to a file and grep it —
+Redirect the whole run to a file and grep it:
 `.agents/skills/deploying-the-stack/scripts/deploy-logged.sh` does exactly that and prints
 the exit status on its own line.
 
@@ -151,8 +151,8 @@ Preserved across a reset: the symbol-navigation server and its state volume, bec
 a separate project; and the model-cache volumes, unless the cache flag is also given.
 
 Lost across a reset, and worth capturing first: anything held only in the datastores that no
-export reproduces. Collection display names and visibility flags are the recurring example —
-a reset plus a re-ingest recreates collections with bare names.
+export reproduces. Collection display names and visibility flags are the recurring example.
+A reset plus a re-ingest recreates collections with bare names.
 
 A reset also drops the website's build-target volume, so the next deploy pays a cold release
 build wherever release mode is on.
@@ -161,7 +161,7 @@ build wherever release mode is on.
 
 Confirm from **inside** the network. A service being up on the host proves nothing about
 whether the container that needs it can reach it: containers on separate networks cannot use
-each other's names, and a rootless container cannot reach its host's LAN address at all — it
+each other's names, and a rootless container cannot reach its host's LAN address at all. It
 hangs rather than refuses.
 
 ```

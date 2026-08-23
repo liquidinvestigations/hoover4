@@ -201,7 +201,7 @@ def test_invalid_collectionname_raises():
 
 def test_open_shard_already_over_budget_seals_before_taking_more():
     # Possible after a purge shrank a shard's neighbours: the newest open shard is
-    # already over budget. The next candidate must seal it and open a fresh shard —
+    # already over budget. The next candidate must seal it and open a fresh shard,
     # never pile onto an over-budget shard.
     ledger = [_shard(1, text_bytes=GB + 5, doc_count=3)]
     assignments, new_ledger = pack_into_shards(
@@ -271,7 +271,7 @@ def test_existing_assignment_to_shard_absent_from_ledger_keeps_that_shard():
 
 
 def test_malformed_shard_name_in_existing_assignments_raises_with_context():
-    # A malformed name must fail loudly and say WHICH name was bad — a silent skip
+    # A malformed name must fail loudly and say WHICH name was bad. A silent skip
     # would lose documents, a bare ValueError would send the reader hunting.
     with pytest.raises(ValueError, match="not-a-shard-name"):
         pack_into_shards(

@@ -2,7 +2,7 @@
 
 ClickHouse query parameters travel in the request's HTTP form fields, and a field over
 `http_max_field_value_size` (128 KiB by default) is rejected with
-`Code: 1000 ... HTML Form Exception: Field value too long` — an error that names neither
+`Code: 1000 ... HTML Form Exception: Field value too long`, an error that names neither
 the parameter nor the query.
 
 Every other `IN {…:Array(String)}` lookup in the pipeline passes file HASHES, which are

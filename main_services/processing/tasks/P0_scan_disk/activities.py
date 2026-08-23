@@ -236,7 +236,7 @@ def _touch_vfs_rows(collectionname: str, collection_dataset: str, container_hash
 
     A file whose mtime moved but whose content did not is still current, and the
     deletion sweep decides what is current by when it was last confirmed. Without this
-    touch a copy or a restore — which moves every mtime and changes no content — would
+    touch a copy or a restore (which moves every mtime and changes no content) would
     make the sweep tombstone the whole dataset.
     """
     if not rows:
@@ -316,7 +316,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     # A path whose size AND mtime both match its row is unchanged: no read, no hash.
     # A size that differs settles it without reading the file at all. An mtime that moved
     # with the size unchanged is the only case that has to hash to find out, and it is
-    # the common one after a copy or a restore — so it is hashed and then compared,
+    # the common one after a copy or a restore: so it is hashed and then compared,
     # rather than assumed either way.
     unchanged: Set[str] = set()
     maybe_changed: List[str] = []
@@ -351,8 +351,8 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
 
     # **Every path this scan saw is touched, not only the rehashed ones.** The deletion
     # sweep decides what is still there by when a row was last confirmed, so a file that
-    # matched on size and mtime — the overwhelmingly common case, and the one that costs
-    # nothing to check — is exactly the file that has been confirmed. Touching only the
+    # matched on size and mtime: the overwhelmingly common case, and the one that costs
+    # nothing to check: is exactly the file that has been confirmed. Touching only the
     # rehashed subset tombstones and de-indexes every unmodified file on the second scan
     # of a dataset, which looks like the corpus deleting itself.
     confirmed = sorted(set(touched) | unchanged)
@@ -627,13 +627,13 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
 
     **The blob is kept.** Only the index rows go, so search stops answering with content
     that is no longer in the corpus, immediately. The blob, its extracted text and its
-    derived work stay where they are — reclaiming those is a separate decision about
+    derived work stay where they are. Reclaiming those is a separate decision about
     storage, not about what a search should return, and a deletion that also destroyed
     them could not be undone.
 
     **De-indexing is driven by reachability, not by the tombstones.** A hash reachable
-    from any live path is still in the corpus — the same content at two paths losing one
-    of them must not vanish from search — and a hash no live path reaches is stale
+    from any live path is still in the corpus (the same content at two paths losing one
+    of them must not vanish from search), and a hash no live path reaches is stale
     whatever made it so. That covers the edited file as well as the deleted one: an edit
     tombstones no path, it replaces the path's row with a new hash, so a sweep driven by
     the tombstones alone leaves the previous version of every edited document searchable.
@@ -661,14 +661,14 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
         # **Everything indexed that no live path reaches**, which is a wider question
         # than "what did this scan stop finding". A deleted file leaves an orphaned
         # hash; so does an EDITED one, whose path now carries a new hash while the old
-        # one is still in the shard tables — and an edit tombstones no path at all, so a
+        # one is still in the shard tables: and an edit tombstones no path at all, so a
         # sweep driven by the tombstones alone leaves the previous version of every
         # edited document searchable for ever.
         #
         # `index_state` is the list of what has been indexed, so the difference between
         # it and the live paths is exactly the set to remove. Newly ingested files are
-        # not in it yet — this runs at the end of the walk, before P2-P6 index anything
-        # — so nothing in flight is caught by it.
+        # not in it yet: this runs at the end of the walk, before P2-P6 index anything,
+        # so nothing in flight is caught by it.
         orphaned = [row[0] for row in client.query("""
             SELECT DISTINCT file_hash FROM index_state
             WHERE collection_dataset = {cd:String}

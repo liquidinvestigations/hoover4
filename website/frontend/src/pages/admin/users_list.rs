@@ -34,7 +34,7 @@ fn UsersListContent() -> Element {
     // The SUPERUSER column is the stored account flag, and on a demo deployment that is
     // not the whole answer: an anonymous `guest-*` session is treated as an administrator
     // for as long as it lasts, while its row keeps `is_admin = false`. The two are
-    // supposed to disagree — the grant belongs to the deployment, not to the account —
+    // supposed to disagree (the grant belongs to the deployment, not to the account)
     // but a reader comparing this table against what `whoami` says about them has no way
     // to know that from the table alone. The current session is the evidence: being a
     // guest and an admin at once is only possible under that grant.

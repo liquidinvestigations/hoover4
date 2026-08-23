@@ -6,7 +6,7 @@
 //! # Where the view lives
 //!
 //! The selected sheet, the sort, the filters, the hidden columns and the page are in
-//! `DocViewerState::table_state` and therefore in the URL — a table view someone found is
+//! `DocViewerState::table_state` and therefore in the URL. A table view someone found is
 //! worth sending to a colleague. They are deliberately NOT in
 //! `DocumentSourceItem::Table`: that variant is the key of `ItemHitCounts` and the value
 //! the source selector compares against the selected source, so a variant carrying view
@@ -14,8 +14,8 @@
 //!
 //! # The two Dioxus traps this component is exposed to
 //!
-//! * **Every hook runs on every render, in the same order.** The natural shape here —
-//!   "once the overview resolves, seed the visible columns" — is exactly the conditional
+//! * **Every hook runs on every render, in the same order.** The natural shape here
+//!   ("once the overview resolves, seed the visible columns") is exactly the conditional
 //!   `use_effect` that trapped two other pages in this repo. So: the resources are
 //!   declared unconditionally at the top, every early return happens after them, and the
 //!   "has the overview arrived" question is asked *inside* closures, never around a hook.
@@ -76,7 +76,7 @@ pub fn DocumentPreviewForTable(
     let overview_value = overview.read().clone().flatten();
 
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
-    // that produced no cells is simply absent — so a state naming a sheet this document
+    // that produced no cells is simply absent, so a state naming a sheet this document
     // does not have falls back to the first one the manifest lists rather than to an
     // empty grid that reads as "this sheet is empty".
     let sheet_id = match (&overview_value, table_state.sheet_id) {
@@ -626,7 +626,7 @@ fn ColumnFilterPopover(
     //
     // `is_open` is one of them, and it is not an optimisation. A header renders one of
     // these per column, so fetching the value list eagerly costs one GROUP BY over a whole
-    // column PER COLUMN on every page render — 60 server calls to open a wide sheet whose
+    // column PER COLUMN on every page render, 60 server calls to open a wide sheet whose
     // reader may never touch a filter. The list is only ever shown inside the popover.
     let value_search = text();
     let is_text = class == TableColumnClass::Text;

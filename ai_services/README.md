@@ -1,4 +1,4 @@
-# Hoover4 ai_services — the optional GPU tier
+# Hoover4 ai_services: the optional GPU tier
 
 GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
 (`hoover4-vllm`), and GPU EasyOCR (`hoover4-easyocr-gpu`).
@@ -6,7 +6,7 @@ GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
 > **Standalone.** This tier is fully optional and has **no
 > dependencies on anything else**: no external network, nothing here calls into
 > `main_services`. The MCP servers and research agents live in
-> [`main_services/agents/`](../main_services/agents/README.md) instead — they read
+> [`main_services/agents/`](../main_services/agents/README.md) instead. They read
 > ClickHouse and Manticore directly, so they belong to the always-on stack. `main_services`
 > reaches this tier over the published ports only, using the `[ai_services] host` and
 > `*_port` values from an **identical copy** of `hoover4.ini` (copied by hand to both
@@ -42,7 +42,7 @@ From the repo root, with `hoover4.ini` in place (`[ai_services] enabled = true`)
 
 `deploy.py` preflights the GPU before anything starts: `nvidia-smi` must work, and on
 podman a CDI spec must exist (`sudo nvidia-ctk cdi generate
---output=/etc/cdi/nvidia.yaml` if not). It also prunes stale CDI mounts — a partial
+--output=/etc/cdi/nvidia.yaml` if not). It also prunes stale CDI mounts. A partial
 driver upgrade leaves `/etc/cdi/nvidia.yaml` entries pointing at files that were never
 installed, and crun refuses to start the GPU containers over the missing bind source,
 which looks like a GPU problem and is not. **The durable fix is to bring every
@@ -50,7 +50,7 @@ which looks like a GPU problem and is not. **The durable fix is to bring every
 reintroduce the bad entries.
 
 The private `ai_services` network is created by `deploy.py` with explicit DNS
-settings — fresh podman networks have no DNS until resolvers are attached. It is created
+settings. Fresh podman networks have no DNS until resolvers are attached. It is created
 carrying the `com.docker.compose.project` / `com.docker.compose.network` labels compose
 would have set itself, because docker compose refuses to adopt a network that lacks them
 and fails the whole `up`; podman-compose does not check, so the labels only start
@@ -74,7 +74,7 @@ weight.
 Both images take their torch wheels from the **CUDA 13 index**
 (`download.pytorch.org/whl/cu130`), not from PyPI and not from cu126. That index is the
 first one that publishes, for **x86_64 and aarch64 alike**, wheels carrying `sm_120`
-kernels — which is what a Blackwell card needs. A GB10 reports compute capability
+kernels, which is what a Blackwell card needs. A GB10 reports compute capability
 **12.1** and runs those `sm_120` cubins; the cu126 index has no aarch64 build of the
 pinned torch at all, so on ARM the build fails outright at dependency resolution rather
 than at first inference.
@@ -87,16 +87,16 @@ by one minor, so it is torchvision that decides which triple is available, not t
 
 * GPUs are requested with `devices: nvidia.com/gpu=all` (CDI). The
   `deploy.resources.reservations.devices` block docker-compose uses is **silently
-  ignored** by podman-compose — services appeared to start and then ran on CPU.
+  ignored** by podman-compose. Services appeared to start and then ran on CPU.
 * `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
   in the compose overlays.
-* The GPU services share one device. `vllm_gpu_fraction` (default `0.50`) is the knob to
-  turn down first if any of them OOMs, and it is a fraction of the **whole** device —
+* The GPU services share one device. `vllm_gpu_fraction` (default `0.50`) is the setting to
+  turn down first if any of them OOMs, and it is a fraction of the **whole** device,
   which on unified-memory hardware means total system memory, not a card's own.
 
 ### Testing
 
-Python here runs **in containers only** — the host has almost no tooling.
+Python here runs **in containers only**. The host has almost no tooling.
 
 ```bash
 cd ai_services/hoover4_ai_server
@@ -106,7 +106,7 @@ docker run --rm --network ai_services -v "$PWD":/w -w /w \
     -c 'pip -q install pytest requests && python -m pytest tests/ -q'
 ```
 
-The runtime image carries the server module and nothing else — no `tests/`, no pytest —
+The runtime image carries the server module and nothing else (no `tests/`, no pytest)
 so the suite is mounted in rather than run with `docker exec`. `AI_SERVER_TEST_URL`
 defaults to `http://localhost:21961`; point it at a container name on the `ai_services`
 network as above, or at a remote GPU host.
@@ -117,7 +117,7 @@ network as above, or at a remote GPU host.
 262144`, `--max-num-seqs 16`. vLLM 0.17 is the first release with native `qwen3_5`
 support.
 
-35B total with 3B active per token — a mixture of experts, which is what makes it usable
+35B total with 3B active per token, a mixture of experts, which is what makes it usable
 on memory-bandwidth-bound hardware where a dense 30B is not. It has the four capabilities
 the agents assume: tool calling, parallel tool calls, thinking, and vision.
 
@@ -125,7 +125,7 @@ the agents assume: tool calling, parallel tool calls, thinking, and vision.
 
 A server with one slot serialises every caller head-of-line. A chat turn queued behind a
 benchmark then looks like a sixteen-minute model when most of it was a sixteen-minute
-queue — a misdiagnosis that costs a full debugging session and reaches the wrong
+queue, a misdiagnosis that costs a full debugging session and reaches the wrong
 conclusion about the model. One research agent is already several concurrent streams, and
 there is more than one conversation.
 
@@ -148,8 +148,8 @@ build's PyTorch supports compute capability 8.0 through 12.0, and GB10 is **12.1
 CUTLASS FP8 kernels are compiled for architectures the device is not, and the error names
 the operator rather than the architecture.
 
-bf16 avoids that path entirely. It costs memory — roughly 70 GB of weights against FP8's
-35 — which on the unified-memory box means nothing else large can be resident beside it.
+bf16 avoids that path entirely. It costs memory (roughly 70 GB of weights against FP8's
+35) which on the unified-memory box means nothing else large can be resident beside it.
 `vllm_gpu_fraction` is a fraction of **total system memory** there, not of a discrete
 card, so a value tuned for a 24 GB card overcommits badly.
 
@@ -160,7 +160,7 @@ That matches the published bf16 figure for this model on this hardware.
 
 Qwen3.5 thinks by default, so `--reasoning-parser qwen3` is not optional here: without it
 vLLM leaves the `<think>…</think>` block inside `content` and every answer arrives with
-the model's working prepended — visible to the user, counted against the payload budget,
+the model's working prepended, visible to the user, counted against the payload budget,
 and parsed by nothing. See
 [`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
 for the measured cost of thinking (~4x completion tokens).
@@ -178,7 +178,7 @@ Qwen3.5 emits XML-style blocks:
 ```
 
 `hermes` does not match that, so every tool call arrives as ordinary assistant text, the
-agent makes **zero** tool calls, and answers from nothing — the same symptom as the streaming interop bug below,
+agent makes **zero** tool calls, and answers from nothing. That is the same symptom as the streaming interop bug below,
 from a different cause. The right parser is **`qwen3_xml`** (note the underscore: the
 registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
 spelling is a startup crash-loop rather than a clear error).
@@ -188,12 +188,12 @@ infinite loops rather than as errors:
 
 * **Array arguments arrive as strings.** `collections` comes across as the literal
   `'["testdata"]'`, pydantic rejects it, and the model retries the identical call until
-  the recursion budget is gone — without ever running a search. The collection server
+  the recursion budget is gone, without ever running a search. The collection server
   coerces it (`_as_collection_list`).
 * **The model does not reliably stop.** Given good results it will still re-issue a
   search it has already run. The agent now detects a repeated call, and enforces a
   12-turn tool budget, and in either case forces a final answer instead of letting
-  langgraph raise `GraphRecursionError` — which surfaced as an HTTP 500 with no answer at
+  langgraph raise `GraphRecursionError`, which surfaced as an HTTP 500 with no answer at
   all. See
   [`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md).
 
@@ -203,5 +203,5 @@ infinite loops rather than as errors:
 streamed tool-call deltas arrived with `arguments` absent and never accumulated, so the
 agent silently made zero tool calls. Re-tested on 0.17.1 with a real agent run: **4 tool
 calls and a correctly cited answer with streaming on.** The `disable_streaming` workaround
-and its comment are left in `research_agent/agent.py` — set `LLM_STREAMING=false` if it
+and its comment are left in `research_agent/agent.py`. Set `LLM_STREAMING=false` if it
 ever regresses. The symptom to watch for is an agent that answers with no tool calls.

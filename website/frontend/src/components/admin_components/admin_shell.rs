@@ -1,4 +1,4 @@
-//! Admin page chrome — Django-admin-style top bar, breadcrumbs, sidebar and content frame.
+//! Admin page chrome, Django-admin-style top bar, breadcrumbs, sidebar and content frame.
 
 use dioxus::prelude::*;
 

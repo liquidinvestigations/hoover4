@@ -1,6 +1,6 @@
 ---
 name: operating-remote-hosts
-description: Works on the two machines outside the development workstation — the demo box that serves the public deployment, and the GPU box that runs the standalone accelerated tier. Use when asked to "check the demo", "look at the server", "ssh in", "deploy to the demo box", "what's happening on the GPU box", "read the logs on the remote host", or when a symptom is reported from a deployment that is not the local one. Covers what differs there and therefore what transfers from a local success and what does not, the standing rule that these hosts are read first and changed only on purpose, and where the access details live — which is never in this repository.
+description: Works on the two machines outside the development workstation. The demo box that serves the public deployment, and the GPU box that runs the standalone accelerated tier. Use when asked to "check the demo", "look at the server", "ssh in", "deploy to the demo box", "what's happening on the GPU box", "read the logs on the remote host", or when a symptom is reported from a deployment that is not the local one. Covers what differs there and therefore what transfers from a local success and what does not, the standing rule that these hosts are read first and changed only on purpose, and where the access details live, which is never in this repository.
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
@@ -37,11 +37,11 @@ Then, in order:
   visibility flags are held only in the database; a reset plus a re-ingest recreates
   collections with bare names.
 
-## The demo box — what differs, and therefore what does not transfer
+## The demo box: what differs, and therefore what does not transfer
 
 - **It runs a different container engine from the workstation**, and that difference is the
   source of most surprises. A compose file the local engine accepts can be rejected outright
-  there — a duplicate mapping key is the recurring example — and some flags the local
+  there (a duplicate mapping key is the recurring example), and some flags the local
   workflow relies on do not exist. Validate a compose change against a strict parser before
   assuming a local success transfers.
 - **It shares its container runtime with an unrelated stack.** Every cleanup must be scoped
@@ -50,7 +50,7 @@ Then, in order:
 - **The website is not reachable on the host's own loopback.** Something in front of it
   terminates traffic, and the site binds accordingly, so a connection refused on the box
   itself is the expected reading rather than a fault. The details are in the inventory file.
-- **The test corpus is a bind mount**, so no reset touches it — but its fixtures sit one
+- **The test corpus is a bind mount**, so no reset touches it, but its fixtures sit one
   level deeper than the end-to-end verification's defaults expect, which makes the
   ingest-root overrides mandatory there.
 - **Release mode is on**, so a reset that drops the build-target volume costs a cold release
@@ -58,9 +58,9 @@ Then, in order:
 - **The worker fleet is sized narrower than the defaults** because the cores are shared.
   Oversubscription is expensive here in a specific way: a heartbeat deadline is also a slot
   lease, so a machine pushed past its capacity holds slots for activities nobody is waiting
-  on and multiplies its own timeouts — `tuning-the-pipeline`.
+  on and multiplies its own timeouts: `tuning-the-pipeline`.
 
-## The GPU box — a target for experiments, and its state is in flux
+## The GPU box: a target for experiments, and its state is in flux
 
 Treat its configuration as unsettled. It is where accelerated serving is tried, and what it
 is running today is a measurement, not a documented invariant. Ask it what it is running
@@ -70,11 +70,11 @@ rather than assuming.
   have a matching manifest, so architecture is rarely the real blocker.
 - **The one genuinely architecture-bound dependency is the tensor library.** The pinned older
   CUDA build has no wheel for that architecture and carries no kernels for that device
-  generation in any case; the newer index does, and it is the vision companion package —
-  not the tensor library itself — that selects the compatible version. Dropping the
+  generation in any case; the newer index does, and it is the vision companion package,
+  not the tensor library itself, that selects the compatible version. Dropping the
   per-package pins around it is not an architecture concession: they conflict with the newer
   build on the workstation's architecture as well. **When porting such a bump back, test it
-  first and alone** — it is the only change that can regress a working host.
+  first and alone**. It is the only change that can regress a working host.
 - **Three failures there look architecture-specific and are not.** A network pre-created
   without the compose project's labels is adopted by one engine and refused by the other,
   failing the whole bring-up. A service directory that does not exist takes the *entire*
@@ -86,10 +86,10 @@ rather than assuming.
 ## What to check before believing a remote symptom
 
 The same rule as anywhere: reproduce from **inside** the container that has the problem, not
-from the host and not from your workstation. `debugging-the-stack` applies unchanged — the
+from the host and not from your workstation. `debugging-the-stack` applies unchanged. The
 mechanisms do not become different because the machine is remote.
 
 ## References
 
-- `reference/remote-work.md` — the read-only diagnosis pass, and what to capture before a
+- `reference/remote-work.md`, the read-only diagnosis pass, and what to capture before a
   reset.

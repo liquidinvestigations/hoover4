@@ -12,7 +12,7 @@
 //!
 //! | window | budget in window        | env factor (default)   |
 //! |--------|-------------------------|------------------------|
-//! | 1 min  | `X`                     | — (the base rate)      |
+//! | 1 min  | `X`                     |, (the base rate)      |
 //! | 10 min | `10X`                   | `…_W10M_FACTOR` (1.00) |
 //! | 30 min | `22.5X`                 | `…_W30M_FACTOR` (0.75) |
 //! | 1 h    | `30X`                   | `…_W1H_FACTOR`  (0.50) |
@@ -21,8 +21,8 @@
 //!
 //! A factor of `0` disables that window. Defaults: chat `X = 40` (~10x the
 //! fastest substantive chat turn measured on the dev GPU, 16.2 s), API
-//! `X = 1000` (~10x a fast sweep of every route, on the order of 100 calls —
-//! see `main_services/ops/Readme.md` for the measured numbers).
+//! `X = 1000` (~10x a fast sweep of every route, on the order of 100 calls.
+//! See `main_services/ops/Readme.md` for the measured numbers).
 //!
 //! **The ladder does not apply to polling.** `ChatPoll` uses a factor of `1.0`
 //! in every window, so its per-minute number is a flat ceiling. The decay
@@ -36,7 +36,7 @@
 //! running and would be the textbook choice, but the website has no Redis
 //! dependency today and the container is started with
 //! `--maxmemory-policy allkeys-lru`, so it would silently evict rate-limit
-//! counters under memory pressure — a limiter that quietly stops limiting is
+//! counters under memory pressure, a limiter that quietly stops limiting is
 //! worse than none. The in-process design is correct only while the website is
 //! a single container; scaling it out needs a shared store, and that is the
 //! point at which Redis gets its own database index and eviction policy.
@@ -120,7 +120,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 fn load_config(kind: RateLimitKind) -> LimiterConfig {
     // `decays`: whether the ladder's sustained-rate discount applies. It is right for
-    // anything a *person* does — a burst is fine, an hour of bursts is abuse. It is wrong
+    // anything a *person* does. A burst is fine, an hour of bursts is abuse. It is wrong
     // for a loop the client is required to run: a streaming turn polls at the 500 ms floor
     // for as long as the model is generating, so the sustained rate IS the normal rate.
     // With the discount on, one tab watching a long answer ran at exactly the 1 h window's
@@ -130,7 +130,7 @@ fn load_config(kind: RateLimitKind) -> LimiterConfig {
     let (base, default_x, decays) = match kind {
         RateLimitKind::ChatMessage => ("HOOVER4_RATE_CHAT", 40, true),
         // 600/min ≈ 5 tabs of the same conversation streaming flat out. The expensive
-        // half of a poll — the held request — has its own cap (`HeldPollGuard`), so this
+        // half of a poll (the held request) has its own cap (`HeldPollGuard`),, so this
         // number is about query load, which a poll barely makes.
         RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 600, false),
         RateLimitKind::ApiCall => ("HOOVER4_RATE_API", 1000, true),
@@ -388,7 +388,7 @@ mod tests {
 
     /// The poll limiter must NOT decay, and must clear a streaming tab by a wide margin.
     ///
-    /// One tab watching a turn polls at the 500 ms floor — 120/min, for as long as the
+    /// One tab watching a turn polls at the 500 ms floor, 120/min, for as long as the
     /// model generates. Under the decaying ladder the 1 h window's budget was exactly
     /// 120/min, so a single long answer sat on the ceiling and two tabs went over; the
     /// page then counted the refusals as failures and declared the chat lost mid-turn.

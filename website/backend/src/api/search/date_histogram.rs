@@ -1,14 +1,14 @@
 //! The date histogram behind the Date filter pane.
 //!
-//! Different from a plain range facet — [`super::search_numeric_facet`], which is what
-//! the deleted per-year date facet was — in three ways that all matter:
+//! Different from a plain range facet, [`super::search_numeric_facet`], which is what
+//! the deleted per-year date facet was, in three ways that all matter:
 //!
 //! * **The bins are computed, not fixed.** A per-year facet is unreadable for a corpus
 //!   spanning a week and useless for one spanning four centuries. The domain is measured
 //!   first and the bin width is chosen from it.
 //! * **The active cutoffs are bin edges.** The pane filters with a low-pass, a high-pass
-//!   or a band-pass, and the three resulting intervals — below the low cutoff, between
-//!   the cutoffs, above the high one — each get their own run of bins at a similar width.
+//!   or a band-pass, and the three resulting intervals (below the low cutoff, between
+//!   the cutoffs, above the high one) each get their own run of bins at a similar width.
 //!   A bin that straddles a cutoff would show half of itself as selected, which is a
 //!   picture of nothing.
 //! * **It counts the query WITHOUT its own date filter.** The bars are the corpus the
@@ -44,7 +44,7 @@ const DAY: i64 = 86_400;
 /// Widths are picked off this ladder rather than computed as `span / 24` so that the
 /// axis reads in hours, days, months and years instead of "every 4 days 7 hours". The
 /// ladder's step ratio is what bounds how far below [`HISTOGRAM_TARGET_BUCKETS`] the
-/// result can land — see `the_bin_count_stays_inside_the_band`.
+/// result can land. See `the_bin_count_stays_inside_the_band`.
 const WIDTH_LADDER: [i64; 22] = [
     3_600,             // 1 hour
     3 * 3_600,         // 3 hours
@@ -67,7 +67,7 @@ const WIDTH_LADDER: [i64; 22] = [
     100 * 365 * DAY,   // 1 century
     250 * 365 * DAY,   //
     500 * 365 * DAY,   //
-    1000 * 365 * DAY,  // 1 millennium — `dates` is a signed bigint, so this is reachable
+    1000 * 365 * DAY,  // 1 millennium, `dates` is a signed bigint, so this is reachable
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,8 +93,8 @@ struct BoundRow {
 
 /// Document counts per computed date bin, plus the undated count.
 ///
-/// The cutoffs come from the query's own `dates` filter — the caller passes the query it
-/// is about to run, cutoffs and all — and are then stripped before counting.
+/// The cutoffs come from the query's own `dates` filter (the caller passes the query it
+/// is about to run, cutoffs and all), and are then stripped before counting.
 pub async fn search_date_histogram(
     user: &CurrentUser,
     query: SearchQuery,
@@ -165,8 +165,8 @@ pub async fn search_date_histogram(
 /// The extent of the dated documents and the count of the undated ones.
 ///
 /// `min()`/`max()` without a `GROUP BY` is not a query shape this codebase has ever got
-/// an answer out of Manticore for, so the bounds come from `ORDER BY … LIMIT 1` instead —
-/// the same ordering the result list already sorts by, so it is known to work and known
+/// an answer out of Manticore for, so the bounds come from `ORDER BY … LIMIT 1` instead.
+/// The same ordering the result list already sorts by, so it is known to work and known
 /// to use the attribute index.
 async fn probe_domain(
     query: &SearchQuery,
@@ -236,7 +236,7 @@ async fn probe_domain(
         if let Some(hit) = high.hits.hits.first() {
             end = Some(end.map_or(hit._source.bound, |v: i64| v.max(hit._source.bound)));
         }
-        // An aggregate over an empty match still returns one row, with count 0 — see
+        // An aggregate over an empty match still returns one row, with count 0. See
         // `docs/architecture/Search_Architecture.md`. Summing it is correct; assuming a row
         // means a hit is not.
         unknown_count += undated.hits.hits.first().map_or(0, |h| h._source.doc_count);
@@ -318,13 +318,13 @@ fn ceil_div(a: i64, b: i64) -> i64 {
 /// as `[edges[i-1], edges[i])` at `INTERVAL` result `i`.
 ///
 /// The width is one value off [`WIDTH_LADDER`] for the whole domain, not per segment, so
-/// the three intervals a band-pass creates are drawn at the same scale — the point of the
+/// the three intervals a band-pass creates are drawn at the same scale. The point of the
 /// picture is comparing them.
 pub fn histogram_edges(domain: DateDomain, cuts: &[Option<i64>]) -> Vec<i64> {
     let span = domain.end.saturating_sub(domain.start).max(1);
 
     // Segment boundaries: the domain ends plus any cutoff strictly inside it. A cutoff
-    // outside the domain is not a boundary — it is a filter that excludes everything on
+    // outside the domain is not a boundary. It is a filter that excludes everything on
     // one side, and forcing an edge there would produce an empty run of bins.
     let mut boundaries = vec![domain.start, domain.end];
     for cut in cuts.iter().flatten() {
@@ -352,7 +352,7 @@ pub fn histogram_edges(domain: DateDomain, cuts: &[Option<i64>]) -> Vec<i64> {
     };
     // Step up the ladder until the total fits. One bin per segment is the irreducible
     // floor; if even that exceeds the cap there is nothing left to widen, and one bin per
-    // segment is still a correct — if coarse — picture.
+    // segment is still a correct (if coarse) picture.
     let mut total = bins_at(width);
     for candidate in WIDTH_LADDER.iter().copied() {
         if total <= HISTOGRAM_MAX_BUCKETS {

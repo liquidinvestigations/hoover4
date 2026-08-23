@@ -2,7 +2,7 @@
 //!
 //! Why this exists at all
 //! ----------------------
-//! A facet pane holds the buckets one query returned — twenty-one of them, by the
+//! A facet pane holds the buckets one query returned, twenty-one of them by the
 //! over-fetch limit. Narrowing that list client-side answers "nothing matches" for a
 //! value that is present in the corpus and simply did not make the top twenty-one, which
 //! on any real corpus is almost every value. The needle has to be asked of the corpus.
@@ -14,7 +14,7 @@
 //!
 //! Uncached, for the same reason the folder tree is uncached: the table changes while
 //! ingestion runs, and a stale term list is worse than a slow one. These queries are
-//! cheap — one small table per collection, one infix `MATCH`.
+//! cheap, one small table per collection, one infix `MATCH`.
 
 use common::{
     current_user::CurrentUser,
@@ -33,7 +33,7 @@ use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 ///
 /// The two are the same number on purpose. Manticore caps a result set at `max_matches`
 /// silently, so a `LIMIT` above it returns a truncated list with no indication that it
-/// was truncated — which is exactly the failure this endpoint exists to remove.
+/// was truncated, which is exactly the failure this endpoint exists to remove.
 const TERM_HIT_LIMIT: u64 = 200;
 
 /// Facet fields a needle may be resolved against, and the term field each one is stored
@@ -42,7 +42,7 @@ const TERM_HIT_LIMIT: u64 = 200;
 /// This is a whitelist because the value is interpolated into SQL, and it is a *mapping*
 /// because the two names are genuinely different: the search column is `re_email`, the
 /// term dictionary's field is `regex_email`, and `ner_per`/`ner_org`/`ner_loc`/`ner_misc`
-/// all share the single term field `ner` — the NER dictionary does not distinguish them.
+/// all share the single term field `ner`. The NER dictionary does not distinguish them.
 const TERM_FIELD_OF: &[(&str, &str)] = &[
     ("ner_per", "ner"),
     ("ner_org", "ner"),
@@ -91,7 +91,7 @@ fn entities_table(collectionname: &str) -> anyhow::Result<String> {
 ///
 /// The needle is wrapped in stars for infix matching and goes through
 /// [`prepare_match_query`], never `QuotedData`: a facet search box is a full-text query
-/// against `term_text`, and the shapes the parser rejects — a lone quote, a stray `~` —
+/// against `term_text`, and the shapes the parser rejects (a lone quote, a stray `~`)
 /// are shapes people type. Repairing them is what keeps a keystroke from reading as the
 /// site falling over.
 ///
@@ -222,7 +222,7 @@ mod tests {
     }
 
     /// The four NER columns share one dictionary field. Asking for all four must not
-    /// send `'ner'` four times — the `IN` list would be redundant and the intent
+    /// send `'ner'` four times. The `IN` list would be redundant and the intent
     /// unreadable.
     #[test]
     fn the_four_ner_columns_collapse_to_one_term_field() {

@@ -1,4 +1,4 @@
-"""spaCy NER over HTTP — the CPU twin of the GPU transformer NER.
+"""spaCy NER over HTTP, the CPU twin of the GPU transformer NER.
 
 Speaks the **same contract** as `ai_services/hoover4_ai_server`'s
 `POST /v1/extract-entities`, deliberately down to the response field names, so
@@ -12,12 +12,12 @@ produces is attributed `nlp_model = 'ner-spacy-xx'`, distinct from the GPU tier'
 `ner-gpu-xlmr`, and `entity_hit` carries `nlp_model` in its ORDER BY so the two sets
 coexist instead of overwriting each other. When the GPU host comes back, the files it
 missed still have no `ner-gpu-xlmr` watermark, so they reprocess under it and both sets
-end up present — which is the point: the fallback is visible in the data, not just in a
+end up present, which is the point: the fallback is visible in the data, not just in a
 log line nobody reads.
 
 Model
 -----
-`xx_ent_wiki_sm` — the multilingual model, matching the `-xx` in the identifier. It
+`xx_ent_wiki_sm`, the multilingual model, matching the `-xx` in the identifier. It
 recognises PER / LOC / ORG / MISC, a deliberately narrower set than the GPU model's,
 which is why label mapping below is explicit rather than passthrough.
 """
@@ -56,7 +56,7 @@ MAX_TEXT_CHARS = int(os.getenv("NER_MAX_TEXT_CHARS", "1000000"))
 #:
 #: **A spaCy pipeline's memory grows monotonically with the number of DISTINCT strings it
 #: has ever seen.** The `Vocab`/`StringStore` interns every token, and nothing is ever
-#: evicted — that is by design, because `Doc` objects hold integer keys into it. In a
+#: evicted. That is by design, because `Doc` objects hold integer keys into it. In a
 #: long-lived server processing an entire corpus the practical effect is an unbounded
 #: leak with no leaking allocation anywhere: memory climbs steadily, is unrelated to
 #: request or batch size, and ends with the cgroup killing the process.
@@ -68,7 +68,7 @@ MAX_TEXT_CHARS = int(os.getenv("NER_MAX_TEXT_CHARS", "1000000"))
 #: in what has been seen, not in what is resident.
 #:
 #: Rebuilding drops the accumulated vocabulary. The cost is one model load (tens of MB,
-#: about a second) per budget, which is nothing next to the throughput of the interval —
+#: about a second) per budget, which is nothing next to the throughput of the interval,
 #: so the budget should be set from how much memory the growth is worth, not from what
 #: the reloads cost.
 #:
@@ -92,7 +92,7 @@ _load_error = ""
 #: spaCy's multilingual labels mapped onto the GPU model's CoNLL-03 vocabulary. Without
 #: this the same entity arrives under two different `entity_type` values depending on
 #: which provider served it, and the Manticore facet union in P6 shows both as separate
-#: facets — which reads as duplicate data rather than as one entity found twice.
+#: facets, which reads as duplicate data rather than as one entity found twice.
 _LABEL_MAP: Dict[str, str] = {
     "PER": "PER",
     "PERSON": "PER",
@@ -128,8 +128,8 @@ def _note_processed(chars: int) -> None:
     """Account for finished work and rebuild the pipeline once the budget is spent.
 
     The swap is a rebind of a module global, so threads already inside `_nlp.pipe` keep
-    working against the object they started with and it is freed — with its accumulated
-    vocabulary — when the last of them lets go. Nothing is interrupted and no request
+    working against the object they started with and it is freed (with its accumulated
+    vocabulary) when the last of them lets go. Nothing is interrupted and no request
     waits for the load: the lock only stops two threads rebuilding at once.
 
     A failed reload keeps the existing pipeline. Serving with a pipeline that is too

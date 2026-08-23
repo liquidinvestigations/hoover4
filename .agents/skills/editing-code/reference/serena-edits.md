@@ -8,7 +8,7 @@ class, `/format_extracted_by` anchors at the top level.
 
 `replace_symbol_body` with `name_path` and the new body. The signature line stays; the body
 is replaced whole. This is the right tool when a function's implementation changes and its
-contract does not — the diff then shows exactly the body, with no accidental re-indentation
+contract does not. The diff then shows exactly the body, with no accidental re-indentation
 of the lines around it.
 
 ## Insert beside a symbol
@@ -31,7 +31,7 @@ both exist in this tree:
 - **A constant mirrored in the other language.** The stage identifiers are Rust constants and
   Python constants naming the same stored strings. Renaming one side compiles cleanly and
   breaks the join at runtime.
-- **A name that also appears as a string** — in SQL, in a compose file, in a generated
+- **A name that also appears as a string**, in SQL, in a compose file, in a generated
   environment file, in a log message that something greps. Search for the literal separately.
 
 After a rename, type-check the workspace *including test targets*: a signature change updated

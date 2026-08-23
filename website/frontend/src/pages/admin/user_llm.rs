@@ -1,4 +1,4 @@
-//! Admin page: `/admin/users/:username/llm` — per-user LLM usage: chat
+//! Admin page: `/admin/users/:username/llm`, per-user LLM usage: chat
 //! sessions, message and tool-call counts, agent (GPU) time, and current
 //! rate-limit usage.
 

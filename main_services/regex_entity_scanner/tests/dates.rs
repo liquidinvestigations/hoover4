@@ -120,9 +120,9 @@ fn shrinking_a_candidate_does_not_defeat_the_adjacent_digit_guard() {
     assert!(entities.is_empty(), "{entities:?}");
 }
 
-/// Two timestamps run together carry no boundary, so neither of them is reported. The trap is the
-/// retry: the whole run is refused for the digit behind it, and the window then shrinks to a span
-/// that ends at a field boundary — a real-looking instant with its offset amputated, which is a
+/// Two timestamps run together carry no boundary, so neither of them is reported. The failure
+/// comes from the retry: the whole run is refused for the digit behind it, and the window then shrinks to a span
+/// that ends at a field boundary. A real-looking instant with its offset amputated, which is a
 /// wrong value rather than a miss.
 #[test]
 fn a_timestamp_is_never_carved_out_of_a_longer_one() {
@@ -210,12 +210,12 @@ fn formats_that_do_not_fix_a_whole_day_are_not_matched() {
 }
 
 /// The ISO week date's whole claim is that week 53 exists only in the years that have one, and no
-/// public corpus carries a week date at all — so this sweep is the rule's evidence rather than a
+/// public corpus carries a week date at all, so this sweep is the rule's evidence rather than a
 /// sample of it. It is exhaustive over eight chosen years: 2004, 2009, 2015, 2020 and 2026, which
 /// are the long years of this century's first three decades, and 2021, 2022 and 2023, which are
 /// short. Every week from 1 to 53 and every weekday from 1 to 7 is scanned in both ISO spellings,
 /// and each is compared against week-date arithmetic worked out here rather than against the
-/// library the rule uses — an oracle that shares the implementation proves nothing.
+/// library the rule uses, an oracle that shares the implementation proves nothing.
 #[test]
 fn every_week_of_a_long_and_a_short_year_resolves_or_is_refused() {
     let scanner = support::scanner();

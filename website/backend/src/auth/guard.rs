@@ -23,7 +23,7 @@ pub const NOT_FOUND: &str = "not found";
 /// Is this the absence of a resource rather than a failure?
 ///
 /// It matters twice. The status: an anyhow error became a 500, so a bot walking chat URLs
-/// with fresh guest cookies made the site look like it was throwing — one crawler put 11
+/// with fresh guest cookies made the site look like it was throwing, one crawler put 11
 /// errors and 22 % on the admin metrics page overnight. And the telemetry: `is_error` is
 /// derived from the status, so those 500s were counted as breakage. A 404 is a correct,
 /// complete answer to a question about something that is not there.
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn a_refusal_is_still_a_refusal() {
-        // 404 is checked first, so a forbidden message must not read as one — the
+        // 404 is checked first, so a forbidden message must not read as one, the
         // artifact route's 403-vs-404 distinction is deliberate.
         let forbidden = anyhow::anyhow!("forbidden: this artifact belongs to another user");
         assert!(is_forbidden(&forbidden));

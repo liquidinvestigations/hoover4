@@ -1,7 +1,7 @@
 """MHTML -> one self-contained HTML file.
 
 Chromium's `Page.captureSnapshot` returns MHTML: `multipart/related`, the page plus every
-subresource it loaded. That is a faithful archive and an unusable one — no browser will
+subresource it loaded. That is a faithful archive and an unusable one, no browser will
 render it from an `<iframe src>`. This module inlines it into a single HTML document with
 `data:` URIs, which *does* render, and which the website serves under a CSP that forbids
 every network fetch.
@@ -13,7 +13,7 @@ this is pure Python rather than a service.
 
 Every `<script>`, every `on*` attribute, `<base>`, and any `javascript:` or
 `data:text/html` href. The CSP (`default-src 'none'`) and the `sandbox=""` iframe already
-prevent execution — this is defence in depth against a viewer that gets the headers wrong,
+prevent execution. This is defence in depth against a viewer that gets the headers wrong,
 and it removes bytes nobody needs. A capture is an archive; it does not need to run.
 
 Remaining absolute links get `rel="noopener noreferrer nofollow" target="_blank"`. The CSP
@@ -67,7 +67,7 @@ class Part:
 class Converted:
     html: str
     root_url: str
-    #: Parts that were inlined, for the log — a capture with two of forty resources
+    #: Parts that were inlined, for the log. A capture with two of forty resources
     #: inlined is a broken capture that still renders.
     inlined: int = 0
     total_parts: int = 0
@@ -140,7 +140,7 @@ def _decode(part) -> bytes:
     """Decode one part's payload, honouring its transfer encoding.
 
     `get_payload(decode=True)` handles base64 and quoted-printable, but returns `None` for
-    a part with no recognised encoding — falling through to the raw string is what keeps a
+    a part with no recognised encoding. Falling through to the raw string is what keeps a
     plain 7-bit stylesheet from vanishing.
     """
     try:
@@ -230,7 +230,7 @@ def _inline_references(
         part = resources.get(candidate)
         if part is not None:
             return part
-        # Resolve against the part's own location, not the document's — see the module
+        # Resolve against the part's own location, not the document's. See the module
         # docstring. `relative_to` is the caller's context, which for CSS is the
         # stylesheet's own URL.
         absolute = urljoin(relative_to or base_url, candidate)
@@ -285,7 +285,7 @@ def _inline_references(
         html,
     )
 
-    # 3. srcset, before the plain attributes — a srcset value contains commas and
+    # 3. srcset, before the plain attributes. A srcset value contains commas and
     #    descriptors, so the single-URL rewriter would mangle it.
     def replace_srcset(match):
         entries = []

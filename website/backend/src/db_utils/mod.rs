@@ -14,8 +14,8 @@ pub mod manticore_utils;
 /// the stack already reads (`compose/agents.yaml`, `agent_common/s3_store.py`), so
 /// nothing needs configuring for a local run and a real deployment sets two variables.
 ///
-/// Garage enforces minimum lengths — an access key id under 8 characters and a secret
-/// under 16 are refused — so short placeholders that pass against other S3
+/// Garage enforces minimum lengths (an access key id under 8 characters and a secret
+/// under 16 are refused), so short placeholders that pass against other S3
 /// implementations do not work here.
 pub fn s3_credentials() -> (String, String) {
     (
@@ -25,8 +25,8 @@ pub fn s3_credentials() -> (String, String) {
     )
 }
 
-/// The bucket for everything that belongs to no collection — chat artifacts and the
-/// like. A collection's own objects are in [`collection_bucket`].
+/// The bucket for everything that belongs to no collection, such as chat artifacts and
+/// the like. A collection's own objects are in [`collection_bucket`].
 pub fn system_bucket() -> String {
     std::env::var("S3_SYSTEM_BUCKET").unwrap_or_else(|_| "hoover4-system".to_string())
 }
@@ -63,7 +63,7 @@ pub fn split_s3_path(s3_path: &str) -> Option<(String, String)> {
 /// Path-style addressing is mandatory: virtual-host addressing would put the bucket in
 /// the hostname, and `garage` is a container name with no wildcard DNS under it.
 ///
-/// The region is whatever the server declares (`s3_region` in `garage.toml`) — SigV4
+/// The region is whatever the server declares (`s3_region` in `garage.toml`). SigV4
 /// signs it into the credential scope, and a mismatch fails as
 /// `AuthorizationHeaderMalformed`, which names authorization and not the region.
 pub async fn s3_client() -> anyhow::Result<aws_sdk_s3::Client> {

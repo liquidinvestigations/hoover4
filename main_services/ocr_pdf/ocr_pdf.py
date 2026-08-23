@@ -1,4 +1,4 @@
-"""Searchable-PDF assembly over HTTP — renders, OCRs, and writes a text-layered PDF.
+"""Searchable-PDF assembly over HTTP, renders, OCRs, and writes a text-layered PDF.
 
 What it does
 ------------
@@ -24,7 +24,8 @@ its own:
 The derived-PDF trap
 --------------------
 The output is a new PDF. If the ingest walker could see it, it would be ingested, OCR'd,
-and produce another PDF, forever — the most expensive possible bug. Three
+and produce another PDF, forever, which is the most expensive defect this service can
+have. Three
 guards, of which this file owns the first two:
 
 1. `dest_key` **must** start with ``derived/``. A request that asks for anything else is
@@ -73,7 +74,7 @@ MAX_PDF_BYTES = int(os.getenv("OCR_PDF_MAX_INPUT_BYTES", str(512 * 1024 * 1024))
 MAX_PAGES = int(os.getenv("OCR_PDF_MAX_PAGES", "2000"))
 
 #: JPEG quality for the page images. The output is a scan of a scan either way, so the
-#: lever that matters is file size: quality 75 is roughly a third of the bytes of 95 and
+#: setting that changes the result is file size: quality 75 is roughly a third of the bytes of 95 and
 #: does not change what Tesseract already read off the pre-compression raster.
 JPEG_QUALITY = int(os.getenv("OCR_PDF_JPEG_QUALITY", "75"))
 
@@ -114,11 +115,11 @@ _inflight = threading.Semaphore(OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH)
 
 
 class OcrPdfRequest(BaseModel):
-    #: The bucket both keys live in — the collection's own. Empty falls back to this
+    #: The bucket both keys live in, which is the collection's own. Empty falls back to this
     #: service's configured default, which exists only so that a probe can be made
     #: without one.
     bucket: str = Field("", description="Bucket holding the source and destination keys")
-    #: Object key of the source PDF, inside `bucket`. Either this or `pdf_b64` — blobs
+    #: Object key of the source PDF, inside `bucket`. Either this or `pdf_b64`, blobs
     #: under the small-file threshold live in ClickHouse and have no object at all, so
     #: the caller sends those inline.
     source_key: str = Field("", description="Object key of the source PDF")
@@ -197,7 +198,7 @@ def _ocr_page(engine: str, languages: str, image_bytes: bytes) -> dict:
 def _draw_invisible_words(canvas, words: List[dict], scale: float, page_height_pt: float) -> int:
     """Draw one page's OCR words as invisible text over the already-placed image.
 
-    Text render mode 3 is "neither fill nor stroke" — the glyphs are laid out, measured
+    Text render mode 3 is "neither fill nor stroke". The glyphs are laid out, measured
     and selectable, and nothing is painted. That is what makes the output a *searchable*
     scan rather than a scan with a text file stapled to it.
 
@@ -303,7 +304,7 @@ def build_searchable_pdf(pdf_bytes: bytes, engine: str, languages: str, dpi: int
 
 @app.get("/health")
 def health():
-    """What this instance can actually do — engines included.
+    """What this instance can actually do, engines included.
 
     `engines` reports *configured*, not *reachable*: an unreachable OCR tier is a
     transient fact that changes between two health checks, and reporting it here would

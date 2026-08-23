@@ -10,8 +10,8 @@ Qwen3.5's chat template decides thinking in the *prompt*, not in the sampler:
         {{- '<think>\\n\\n</think>\\n\\n' }}   # opened AND closed before generation
     {%- endif %}
 
-So the default -- `enable_thinking` unset -- is not "a small thinking budget", it is
-**no thinking at all**: the block is closed before the model emits its first token.
+So the default, with `enable_thinking` unset, gives **no thinking at all** rather than a
+small thinking budget: the block is closed before the model emits its first token.
 Measured on this host with Qwen3.5-2B, "what is 17*23, think it through":
 
     thinking off (default)   441 completion tokens

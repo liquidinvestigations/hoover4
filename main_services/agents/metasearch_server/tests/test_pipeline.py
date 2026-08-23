@@ -1,7 +1,7 @@
 """The ordering pipeline: the per-kind floor, the rerank fallback, and the payload split.
 
 Nothing here touches the network. The sources are stubbed, and the rerank client is
-monkeypatched — the point is the *ordering*, which is where a silent wrong answer would
+monkeypatched. What is under test is the *ordering*, which is where a silent wrong answer would
 hide, not whether DuckDuckGo is up.
 """
 
@@ -52,7 +52,7 @@ class TestPerKindFloor:
         assert [r.rrf_rank for r in kept] == [1, 2, 3]
 
     def test_reserved_slots_outlive_a_smaller_max_results(self):
-        """`max_results` caps the total, but never at the cost of a reserved slot —
+        """`max_results` caps the total, but never at the cost of a reserved slot,
         otherwise the floor would be undone by the very next line."""
         ranked = [_ranked("web", i) for i in range(1, 11)] + [_ranked("news", 11)]
         kept = apply_per_kind_floor(ranked, max_results=2, min_per_kind=2, max_per_kind=20)
@@ -65,7 +65,7 @@ class TestPerKindFloor:
 
     def test_the_default_floor_leaves_the_cap_meaningful(self, monkeypatch):
         """15 results, always reranked. A floor of 10 across three kinds reserves
-        30 slots and `max_results` stops meaning anything — the defect this pins.
+        30 slots and `max_results` stops meaning anything. This test pins that defect.
 
         Reloaded with the env cleared because the *code* default is what is under test;
         a deployment is free to set the knob higher and live with the consequence.
@@ -91,7 +91,7 @@ class TestReserveScoreGate:
     """A floor guarantees representation, and representation of nothing is padding.
 
     Live, an Eiffel Tower query returned "Yanam district" and "Aasta Hansteen spar" as
-    reference results — reserved by the floor, scored around -5 by the cross-encoder,
+    reference results, reserved by the floor, scored around -5 by the cross-encoder,
     and indistinguishable to the model from a result that earned its place.
     """
 

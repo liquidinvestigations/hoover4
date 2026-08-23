@@ -3,36 +3,36 @@
 Two extractors read the parsed text content of a plan, *before* indexing: a
 named-entity model, and the regex entity scanner. They are separate stages sharing a
 directory because they ask the same question of the same rows and write to disjoint
-tables — neither waits on the other, and `ExecuteSinglePlan` runs both concurrently.
+tables, neither waits on the other, and `ExecuteSinglePlan` runs both concurrently.
 
 NER was split out of the indexing stage so the remote NER service (the slowest and least
 reliable link) gets its own task queue, retries and worker, and so NER results are
 reusable when indexing is re-run.
 
-There is no P4b or P4.5. The stage numbers are a stored contract — `STAGE_INDEX` is a
-value in `processing_eta_samples` and is mirrored in the website — so a new number
+There is no P4b or P4.5. The stage numbers are a stored contract: `STAGE_INDEX` is a
+value in `processing_eta_samples` and is mirrored in the website, so a new number
 between P4 and P5 would move a number that existing rows already hold.
 
 ## Key Responsibilities
 
 - Read `text_content` for a plan's hashes, skipping segments already present in
-  `nlp_processed` for the current `nlp_model` (left-anti join — the stage is
+  `nlp_processed` for the current `nlp_model` (left-anti join, the stage is
   cheaply re-runnable). The recorded `nlp_model` is the provider that **served
   each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`,
-  `spacy → ner-spacy-xx`), not the configured one — under fallback the two
+  `spacy → ner-spacy-xx`), not the configured one, under fallback the two
   differ, and that difference is the only evidence an outage happened.
 - Send only the variants worth reading (below) and drop the values that are
   debris rather than entities (`tasks/entity_stoplist.py`).
 - Call the remote NER service in batches of `NLP_BATCH_TEXTS = 32` texts per
   request (and `NLP_BATCH_CHARS = 250_000` characters), via `tasks.remote.post_json` over an ordered endpoint list
   (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin, which is
-  rendered only when `[main_services] ner_spacy_enabled = true` — off by default,
+  rendered only when `[main_services] ner_spacy_enabled = true`, and off by default
   because spaCy's accuracy on real corpora is poor and its noise makes the entity
   facets unusable. With it off there is no fallback and an unreachable GPU fails
   fast naming the url, which is the intent).
   Calls use a `(connect, read)` timeout pair and a per-endpoint,
   time-boxed circuit breaker; a connect failure falls back, a read timeout
-  does not (the host is alive — degrading would mask a server-side fault).
+  does not (the host is alive, so degrading would mask a server-side fault).
 - Write `entity_hit` rows and populate the `ner` string-term dictionary. **Each
   entity row carries the `nlp_model` that served its text**, and `nlp_model` is
   part of `entity_hit`'s `ORDER BY`, so two providers' hits for the same
@@ -45,10 +45,10 @@ the Entities facet rather than tuning.
 
 **Which variant.** `text_sources.ner_reads_variant` drops a stored variant that is a
 worse copy of another variant of the same document. Today that is exactly one case: a
-mail file has both `raw_text` (its MIME envelope — header block, boundaries, base64
+mail file has both `raw_text` (its MIME envelope, meaning the header block, boundaries and base64
 payloads) and `email_parser` (the body alone), and running the model over the envelope
 makes every header name an entity on every message in the corpus. The predicate is
-structural — a file HAS a parsed body or it does not — so mail whose only body part is
+structural (a file HAS a parsed body or it does not), so mail whose only body part is
 HTML produces no `email_parser` rows and keeps its `raw_text` entities instead of
 silently losing all of them.
 
@@ -60,7 +60,7 @@ bar would never reach its own segment count.
 Deliberately *not* used here: `text_quality.non_linguistic_reason`, which P5 applies to
 chunks. Its unit is a chunk; this stage's unit is a whole page or a 256 KB segment, and
 one mostly-base64 page whose remaining fifth is prose would lose that prose's entities
-entirely — the failure mode this stage exists to avoid.
+entirely. The failure mode this stage exists to avoid.
 
 **Which values.** `tasks/entity_stoplist.py` rejects what cannot be an entity: mail and
 MIME header names (`X-` extension headers by shape, so no corpus's private ones need
@@ -80,33 +80,33 @@ still attached (`Sara Shackleton To:`) and `Blind Date` stays searchable.
 The website applies the same rules again when it renders entities
 (`website/common/src/entity_stoplist.rs`), because rows written before a rule existed
 keep their values until this stage is re-run over the collection. The two copies cannot
-share a file — the two test suites run in containers that mount different trees — so each
+share a file (the two test suites run in containers that mount different trees), so each
 hashes its own rule data and canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the
 same literal, which makes a one-sided change fail a test rather than drift.
 
 ## Two providers, and the two places they collide
 
-Both providers run over every text variant, and both sets are kept — that is the
+Both providers run over every text variant, and both sets are kept. That is the
 design, not an accident. It has two consequences that are invisible when broken:
 
 1. **`entity_hit` must carry `nlp_model`.** With it empty, both providers land on
    the same key and whichever ran last is the only one with entities.
 2. **P6 must UNION the two, not take the last one.** `union_entities_by_segment`
-   in `P6_index_data/activities.py` does this and deduplicates — the providers
+   in `P6_index_data/activities.py` does this and deduplicates. The providers
    agree on most entities, and the same term id twice in a Manticore MVA inflates
    every facet count that includes it.
 
 The CPU twin maps spaCy's multilingual labels onto the GPU model's CoNLL-03
 vocabulary (`GPE → LOC`, `PERSON → PER`). Without that the same entity arrives
 under two different `entity_type` values depending on which provider served it,
-and the union above renders them as two facets — which reads as duplicate data
+and the union above renders them as two facets, which reads as duplicate data
 rather than as one entity found twice.
 
 **Fallback is verified, not assumed.** Stopping
 `hoover4-ai-server` makes NER fail over to `ner-spacy-xx` in ~0.02 s, the breaker
 opens for 60 s after three consecutive connect failures, and work returns to
 `ner-gpu-xlmr` once the host is back.
-- Write `nlp_processed` watermark rows, including `text_bytes` — the byte
+- Write `nlp_processed` watermark rows, including `text_bytes`. The byte
   length of the cleaned text actually indexed (`len(clean_text(text).encode('utf-8'))`).
   The Manticore shard planner (part 6) sizes shards from this column.
 
@@ -125,7 +125,7 @@ Everything else about it is different from NER, and the differences are the desi
   `ner`: the website applies the stop-list to whatever maps to the `ner` field.
 - **No fallback twin.** The service is CPU-only already, so there is nothing to fall back
   to and nothing to prefer. A 503 from it is admission control, which
-  `tasks.remote.post_json` raises as retryable — the answer to a full scan queue is to
+  `tasks.remote.post_json` raises as retryable. The answer to a full scan queue is to
   come back, never to scan somewhere else.
 - **The rule set version is part of the key.** It is read from `/health` once per
   activity and every batch response is checked against it: an image swapped mid-activity
@@ -135,18 +135,18 @@ Everything else about it is different from NER, and the differences are the desi
   destroying what the previous version found.
 - **Batches are bounded by characters** (`REGEX_BATCH_CHARS = 1_000_000`,
   `REGEX_BATCH_TEXTS = 64`), an order of magnitude above NER's, because the scanner holds
-  188 MB at full load with no per-request growth and runs at about 0.85 MB/s per thread —
-  a megabyte is roughly a second of one thread's work rather than a queue-blocking unit.
+  188 MB at full load with no per-request growth and runs at about 0.85 MB/s per thread.
+  A megabyte is roughly a second of one thread's work rather than a queue-blocking unit.
 
 **An entity that straddles a segment boundary is lost.** `text_content.page_id` is a real
 page number for paged formats and a ~256 KB segment ordinal otherwise, and a value split
-across two segments is seen by neither — at most one per boundary, which on a corpus of
+across two segments is seen by neither, at most one per boundary, which on a corpus of
 ordinary documents is a handful. The scanner takes an `offset` parameter precisely so a
 windowed caller can overlap its windows and deduplicate on `(type, start, end)`; this
 stage does not window. The loss is real, bounded, and written down here so it is not
 rediscovered later as a mystery about one missing value.
 
-The derived facets — the money magnitude ladder, the day snap, the date sanity window —
+The derived facets (the money magnitude ladder, the day snap, the date sanity window)
 are **not** here. They live in `tasks/regex_entities.py`, which the indexing stage imports
 too: changing any of them means a rescan and a reindex together, and a rule that lives in
 one stage is a rule the other can drift away from.
@@ -157,10 +157,10 @@ one stage is a rule the other can drift away from.
   like all workflows).
 - Workflow: `ScanRegexEntitiesForPlan` in `workflows.py`, a sibling of it rather than a
   successor.
-- Activity: `scan_regex_entities_for_hashes` in `scan_regex_entities.py` — on
+- Activity: `scan_regex_entities_for_hashes` in `scan_regex_entities.py`, on
   `processing-common-queue`, not on a queue of its own: the CPU work is in another
   container and this activity only moves rows.
-- Activity: `extract_entities_for_hashes` in `activities.py` — runs on
+- Activity: `extract_entities_for_hashes` in `activities.py`, runs on
   `processing-nlp-queue` with a dedicated worker (`main.py worker nlp`,
   concurrency 2; concurrency here pipelines HTTP to the remote service, not
   local CPU).

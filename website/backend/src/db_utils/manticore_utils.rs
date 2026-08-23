@@ -13,7 +13,7 @@ pub const SEARCH_TIMEOUT_ENV: &str = "HOOVER4_SEARCH_TIMEOUT_SECONDS";
 
 /// Extra seconds the client waits beyond the budget it asked Manticore for, so that a
 /// query Manticore is about to cut off itself is reported as Manticore's timeout rather
-/// than as the client's — the two are different failures and only one of them says the
+/// than as the client's. The two are different failures and only one of them says the
 /// daemon is unreachable.
 const CLIENT_TIMEOUT_GRACE_SECONDS: u64 = 5;
 
@@ -45,7 +45,7 @@ pub fn search_timeout_ms() -> u64 {
 /// difference is not visible in a message: a shard the fan-out could not REACH is
 /// dropped with the amber partial-results notice, because a missing collection is
 /// visible and honest. A shard that TIMED OUT answered with truncated counts, and
-/// Manticore says so only in a flag nobody sees — displaying or caching that is serving
+/// Manticore says so only in a flag nobody sees. Displaying or caching that is serving
 /// a wrong number as if it were right. So this fails the whole request instead.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchTimedOut(pub String);
@@ -59,7 +59,7 @@ impl std::fmt::Display for SearchTimedOut {
 impl std::error::Error for SearchTimedOut {}
 
 /// Whether an error is (or was caused by) a search timeout. Matched by TYPE, never by
-/// message text — see `auth::guard::is_bad_request` for why.
+/// message text. See `auth::guard::is_bad_request` for why.
 pub fn is_search_timeout(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| cause.is::<SearchTimedOut>())
 }
@@ -109,7 +109,7 @@ pub struct RawSearchResultHit<T> {
 /// existing cache entries).
 ///
 /// **A timed-out response is an error and is never cached.** Manticore answers a query
-/// that hit `max_query_time` with whatever it had found so far plus `timed_out: true` —
+/// that hit `max_query_time` with whatever it had found so far plus `timed_out: true`,
 /// a count that is silently short, in a response shaped exactly like a correct one.
 /// Caching it would freeze that wrong number in for the life of the shard generation.
 pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
@@ -143,7 +143,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
         tracing::debug!("search cache INSERTED: {query_hash} (searched in {dt_ms}ms)");
     } else {
         // Not an error path for the caller: the answer is already in hand and the next
-        // identical query simply pays for itself again.
+        // identical query simply costs the same again.
         tracing::debug!("search cache insert failed: {query_hash}");
     }
     Ok(response)
@@ -154,7 +154,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
 /// The request carries the same budget as the `OPTION` clause plus a few seconds of
 /// grace ([`CLIENT_TIMEOUT_GRACE_SECONDS`]). `max_query_time` is best-effort inside the
 /// daemon and covers neither a connect stall nor a read stall, so without this a request
-/// could outlive its budget indefinitely — which is what let the proxy return 504 while
+/// could outlive its budget indefinitely, which is what let the proxy return 504 while
 /// the daemon kept working on the query behind it.
 async fn manticore_post(sql: String) -> anyhow::Result<String> {
     let database_url =
@@ -192,8 +192,8 @@ async fn manticore_post(sql: String) -> anyhow::Result<String> {
 /// Same wire call as [`manticore_search_sql`], minus the cache read and the cache
 /// write. It exists for the VFS structure index: the tree changes as ingestion
 /// proceeds, a user watching a folder fill up is the normal case, and a stale tree is
-/// worse than a slow one. Structure queries are also cheap — one small attribute table,
-/// no text bodies — so there is little to cache.
+/// worse than a slow one. Structure queries are also cheap (one small attribute table,
+/// no text bodies), so there is little to cache.
 ///
 /// Do NOT route ordinary search through this. The result cache is what keeps repeated
 /// facet fan-outs off Manticore.

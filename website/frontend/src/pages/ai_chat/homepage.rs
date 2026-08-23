@@ -1,4 +1,4 @@
-//! `/ai_chat` — "What are you researching?" homepage.
+//! `/ai_chat`, "What are you researching?" homepage.
 
 use common::chat_types::{rate_limited_seconds, ChatOptions};
 use dioxus::prelude::*;
@@ -35,7 +35,7 @@ pub fn AiChatPage() -> Element {
         .unwrap_or(true);
     // `None` while the session gate's `whoami` is in flight, not `false`. Defaulting to
     // "not a guest" drew the model picker for a moment on every guest's first paint, then
-    // took it away — a control that appears and vanishes reads as a bug.
+    // took it away, a control that appears and vanishes reads as a bug.
     let is_guest = use_session_user().map(|u| u.is_guest);
     let choices = models_res
         .read()
@@ -82,7 +82,7 @@ pub fn AiChatPage() -> Element {
                 Ok(id) => {
                     // The session exists before the first message can be refused. When
                     // that message never lands, the empty "New chat" it left behind is
-                    // pure litter — and rate limiting is exactly the case that produces
+                    // pure litter, and rate limiting is exactly the case that produces
                     // one per press. So the failure paths take it back out.
                     let sent = if opts.deep_research {
                         match chat_start_research(id.clone(), text, opts).await {

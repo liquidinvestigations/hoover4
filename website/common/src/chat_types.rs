@@ -11,7 +11,7 @@ pub struct ChatSessionItem {
     #[serde(default)]
     pub summary: String,
     /// Collections this chat searches. Always a subset of the owner's permitted
-    /// collections *at the time each message was sent* — it is re-checked per message,
+    /// collections *at the time each message was sent*. It is re-checked per message,
     /// so a stale selection here cannot widen access.
     pub collections: Vec<String>,
     pub created_at: String,
@@ -102,7 +102,7 @@ impl ChatRole {
     }
 }
 
-/// One document a tool step surfaced — enough to render a search-result card and open
+/// One document a tool step surfaced. Enough to render a search-result card and open
 /// the document preview (`DocumentIdentifier` = `collection_dataset` + `file_hash`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatDocRef {
@@ -177,8 +177,8 @@ impl ChatDocRef {
     /// The snippet as a card may render it: collapsed whitespace, clamped length.
     ///
     /// A hit's snippet is up to `SEARCH_SNIPPET_CHARS` (1200) of page text chosen by a
-    /// search server, and one turn can surface a dozen of them. Rendered whole, a single
-    /// result put kilobytes into the transcript — and the worst offenders were exactly the
+    /// search server, and one turn can return a dozen of them. Rendered whole, a single
+    /// result put kilobytes into the transcript, and the worst offenders were exactly the
     /// results least worth reading, because extraction indexes an email attachment's
     /// base64 and an image's pixel rows as page text (`tasks/text_quality.py` now keeps
     /// those out of the *vector* index, but a keyword hit can still surface one, and a
@@ -283,7 +283,7 @@ impl ChatMessageItem {
     /// Both numbers, always. They answer different questions and differ by an order of
     /// magnitude: the peak is what a compaction trigger fires on, and the standing size
     /// is what a reader's intuition is about. Either one alone is confusing, whichever
-    /// is chosen — a conversation that reads as 1.2k while its turns cost 23k looks
+    /// is chosen, a conversation that reads as 1.2k while its turns cost 23k looks
     /// free, and one that reads as 23k looks like it is about to fall over.
     ///
     /// The percentage appears only when the provider stated a window. **A model whose
@@ -329,11 +329,11 @@ impl ChatMessageItem {
 /// One agent turn currently running, for the admin "live chats" panel.
 ///
 /// Read from Temporal, not from the website's memory: every turn is a workflow, so the
-/// list is true across a website restart in both directions — it does not lose the turns
+/// list is true across a website restart in both directions. It does not lose the turns
 /// that were already running, and it does not keep listing the ones whose process died.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiveChatRun {
-    /// The Temporal workflow id — the handle the kill button cancels.
+    /// The Temporal workflow id, the handle the kill button cancels.
     pub workflow_id: String,
     pub username: String,
     pub session_id: String,
@@ -350,7 +350,7 @@ pub struct LiveChatRun {
 
 /// One in-flight tool call, as far as the stream has reported it.
 ///
-/// `seq` is the position the finished row will take in `chat_messages` — the streaming
+/// `seq` is the position the finished row will take in `chat_messages`, the streaming
 /// writer assigns it when the tool starts, so a poll and a refresh order identically.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StreamToolRow {
@@ -360,14 +360,14 @@ pub struct StreamToolRow {
     pub tool_name: String,
     /// Input summary while running, output summary once `done`.
     pub summary: String,
-    /// False between start_tool and end_tool — the card renders a running state.
+    /// False between start_tool and end_tool, the card renders a running state.
     pub done: bool,
     /// How long this call has been running, in milliseconds, as of this poll.
     ///
     /// Computed server-side rather than from a start timestamp the client subtracts:
     /// this type is rendered by a component compiled into the server-side build too,
     /// where there is no browser clock, and a wrong-by-a-timezone counter is worse than
-    /// none. Refreshing a page mid-tool-call used to restart the counter at 0 — a
+    /// none. Refreshing a page mid-tool-call used to restart the counter at 0. A
     /// two-minute browse read as having just begun, which is the opposite of the signal
     /// the counter exists to give.
     #[serde(default)]
@@ -376,7 +376,7 @@ pub struct StreamToolRow {
 
 /// The turn currently being produced, reconstructed from `chat_message_stream`.
 ///
-/// Read-path rules (both load-bearing): the stream table is read with `argMax`, never a
+/// Read-path rules, and neither can be dropped: the stream table is read with `argMax`, never a
 /// bare SELECT, or the visible text can shrink mid-stream; and a finished
 /// `chat_messages` row always wins over a stream row at the same `seq`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -407,8 +407,8 @@ pub struct ChatPollResult {
     pub stream: Option<StreamTurn>,
     /// A turn is still being produced for this session. **This, not `stream`, is what
     /// says "keep polling".** A turn is registered before the agent is called and the
-    /// first stream row only appears with the first event, so there is a window —
-    /// often several seconds of model latency — where the turn is alive and `stream`
+    /// first stream row only appears with the first event, so there is a window
+    /// (often several seconds of model latency) where the turn is alive and `stream`
     /// is still `None`. A poller that stopped on `stream.is_none()` would abandon
     /// every turn in exactly that window.
     #[serde(default)]
@@ -425,7 +425,7 @@ pub struct ChatPollResult {
 /// When `retry_after_seconds` is `Some`, the rate limiter refused the turn and
 /// `messages` is unchanged (nothing was written). The composer shows "try again in N s".
 ///
-/// With streaming chat, `messages` is the trajectory *so far* — the turn itself runs in
+/// With streaming chat, `messages` is the trajectory *so far*. The turn itself runs in
 /// a spawned task and the client follows it through `chat_poll`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatSendResult {
@@ -439,11 +439,11 @@ pub struct ChatSendResult {
 pub struct ChatSessionDetail {
     pub session: ChatSessionItem,
     pub messages: Vec<ChatMessageItem>,
-    /// The collections the owner may currently read — what the collection picker offers.
+    /// The collections the owner may currently read, which is what the collection picker offers.
     /// Resolved fresh on every load, so a revoked permission disappears from the picker
     /// even in an old conversation.
     pub available_collections: Vec<String>,
-    /// The in-flight turn, when the page is (re)loaded mid-answer — a refresh shows
+    /// The in-flight turn, when the page is (re)loaded mid-answer. A refresh shows
     /// exactly what a poller sees.
     #[serde(default)]
     pub stream: Option<StreamTurn>,
@@ -465,7 +465,7 @@ pub const TITLE_CHARS: usize = 60;
 
 /// Cap on `tool_output` (and a soft cap on `tool_input`) stored in `chat_messages`.
 /// A `search_collections` result set with long snippets is large; this table is read on
-/// every page load. Sized for the richer web_search payload — the search-detail artifact
+/// every page load. Sized for the richer web_search payload, the search-detail artifact
 /// absorbs anything bigger.
 pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
 
@@ -492,7 +492,7 @@ pub const RATE_LIMITED_PREFIX: &str = "rate_limited:";
 ///
 /// Searches rather than matching a prefix: by the time the browser sees it the message has
 /// been through `ServerFnError`, which is free to wrap it in prose. Anything this does not
-/// recognise is a real error and must stay one — silently treating an unknown failure as
+/// recognise is a real error and must stay one, silently treating an unknown failure as
 /// "wait and retry" is how a dead backend looks like a slow one forever.
 pub fn rate_limited_seconds(message: &str) -> Option<u64> {
     let at = message.find(RATE_LIMITED_PREFIX)? + RATE_LIMITED_PREFIX.len();
@@ -506,7 +506,7 @@ pub fn rate_limited_seconds(message: &str) -> Option<u64> {
 
 /// Truncate a text payload for storage, by cutting it off.
 ///
-/// For anything that is **not** a JSON document. A tool result is one — use
+/// For anything that is **not** a JSON document. A tool result is one. Use
 /// [`truncate_tool_payload`], which keeps it parseable.
 pub fn truncate_payload(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
@@ -518,7 +518,7 @@ pub fn truncate_payload(text: &str, max_chars: usize) -> String {
 /// Headroom left for the `"truncated": true` markers before they are added.
 const TRUNCATION_MARK_RESERVE: usize = 64;
 
-/// Below this a string is not worth clipping — the quotes and key cost nearly as much.
+/// Below this a string is not worth clipping. The quotes and key cost nearly as much.
 const MIN_CLIPPABLE_STRING: usize = 80;
 
 /// Fit a tool result into `max_chars` **without breaking its JSON**.
@@ -531,8 +531,8 @@ const MIN_CLIPPABLE_STRING: usize = 80;
 ///
 /// So: drop whole elements off the biggest array (the result list, almost always), mark the
 /// object that owned it with `"truncated": true`, and only clip long strings if dropping
-/// alone cannot get there. A payload that is not JSON at all — or that is one enormous
-/// scalar with nothing to drop — falls back to [`truncate_payload`]; the cards render the
+/// alone cannot get there. A payload that is not JSON at all (or that is one enormous
+/// scalar with nothing to drop) falls back to [`truncate_payload`]; the cards render the
 /// raw bytes in that case rather than claiming there was nothing to render.
 pub fn truncate_tool_payload(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
@@ -556,7 +556,7 @@ pub fn truncate_tool_payload(text: &str, max_chars: usize) -> String {
         return out;
     }
     // The markers themselves pushed it back over, or the document has nothing left to
-    // give. Cutting the text is the last resort it always was — but now a rare one.
+    // give. Cutting the text is the last resort it always was, but now a rare one.
     truncate_payload(text, max_chars)
 }
 
@@ -676,7 +676,7 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// - end:   `{"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}`
 ///
 /// `search_collections` content is `{"results":[{collection_dataset,file_hash,path,…}]}`.
-/// `read_documents` and `list_document_entities` content is `{"documents":[…]}` — the same
+/// `read_documents` and `list_document_entities` content is `{"documents":[…]}`. The same
 /// document objects in a list. `get_document_text` / `show_document` content is a single
 /// document object. Unknown tools are scanned for document-shaped objects generically.
 ///
@@ -713,7 +713,7 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
 /// The documents the agent put forward as evidence, in handle order.
 ///
 /// Not collapsed the way search results are. A citation is a statement the agent made,
-/// and two citations of one document with different quotes are two statements — the
+/// and two citations of one document with different quotes are two statements. The
 /// handle table already guarantees they share a handle, so they render as one entry in
 /// the Sources strip and keep both quotes.
 fn extract_from_citations(content: &serde_json::Value) -> Vec<ChatDocRef> {
@@ -785,8 +785,8 @@ pub fn handle_number(handle: &str) -> Option<u32> {
 /// A batch read's documents, one card each.
 ///
 /// Collapsed the same way search results are: `read_documents` de-duplicates its input,
-/// but a transcript row written before it did — or one where two entries named the same
-/// document through different argument shapes — must still render as one card.
+/// but a transcript row written before it did (or one where two entries named the same
+/// document through different argument shapes) must still render as one card.
 /// **A row with no `documents` array is an old single-document row**, not an empty result.
 /// `list_document_entities` answered with one document object before it was batched, and
 /// every such row in a stored transcript would otherwise render as nothing at all.
@@ -808,15 +808,15 @@ fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
 
 /// One card per document, however many rows the tool returned for it.
 ///
-/// `search_collections` answers with one hit per PAGE — `page_id` is part of the search
+/// `search_collections` answers with one hit per PAGE: `page_id` is part of the search
 /// server's own dedup key, deliberately, because two pages of one document are two pieces
-/// of evidence — and the same bytes can also be ingested into more than one collection. A
+/// of evidence, and the same bytes can also be ingested into more than one collection. A
 /// reader wants neither of those as repetition: the transcript showed the same title three
 /// times over, and the disclosure counted page-hits while calling them "documents".
 ///
 /// Rows are keyed on `file_hash` alone, so the cross-collection case collapses too, and
-/// the surviving row is the best-scoring one — the same argument the search server's
-/// fusion step makes for keeping the nearest chunk's snippet rather than the last one.
+/// the surviving row is the best-scoring one, which is the same argument the search
+/// server's fusion step makes for keeping the nearest chunk's snippet rather than the last one.
 /// Input order is otherwise preserved, because it is rank order.
 fn collapse_by_document(refs: Vec<ChatDocRef>) -> Vec<ChatDocRef> {
     let mut order: Vec<String> = Vec::new();
@@ -863,7 +863,7 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
         return None;
     }
     // Prefer collection_dataset (DocumentIdentifier key). Fall back to nothing rather
-    // than inventing one from collectionname — a wrong dataset id opens the wrong doc.
+    // than inventing one from collectionname, a wrong dataset id opens the wrong doc.
     let collection_dataset = v
         .get("collection_dataset")
         .and_then(|x| x.as_str())
@@ -1112,7 +1112,7 @@ mod tests {
     #[test]
     fn a_doc_ref_snippet_is_clamped_before_it_reaches_the_transcript() {
         // One search hit carries up to SEARCH_SNIPPET_CHARS (1200) of page text, and a
-        // turn surfaces a dozen. Rendered whole, one result buried the conversation.
+        // turn returns a dozen. Rendered whole, one result buried the conversation.
         let long = "word ".repeat(500);
         let shown = doc_ref(&long).display_snippet();
         assert_eq!(shown.chars().count(), DOC_REF_SNIPPET_CHARS + 1);
@@ -1275,7 +1275,7 @@ mod tests {
         assert!(results.len() < 60, "and some must have been dropped");
         // Best-first order: the ones kept are the ones the reader was going to read.
         assert_eq!(results[0]["title"], "Result 0");
-        // Every surviving row is whole — no half-written last element.
+        // Every surviving row is whole, no half-written last element.
         for row in results {
             assert!(row["url"].is_string() && row["snippet"].is_string());
         }

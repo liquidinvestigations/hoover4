@@ -2,8 +2,8 @@
 //!
 //! One chip per CATEGORY, not per value: a search with eight file types selected has one
 //! "File type" chip, not eight. The chip has a hard width budget, so the summary drops
-//! values from the right and grows a `+N` counter rather than overflowing or wrapping —
-//! the full selection always lives in the chip's `title`.
+//! values from the right and grows a `+N` counter rather than overflowing or wrapping.
+//! The full selection always lives in the chip's `title`.
 //!
 //! Pure and in `common` because the rules are fiddly (a size range must never say the
 //! word "Custom"; a date range must render as years when it is whole years) and because
@@ -19,7 +19,7 @@ pub const CHIP_SUMMARY_BUDGET: usize = 28;
 /// Join a list of selected values into `a, b +N`, inside the budget.
 ///
 /// Drops values from the right and grows the counter, so the chip always says how much
-/// it is not showing. When even the first value does not fit it is ellipsised — at a
+/// it is not showing. When even the first value does not fit it is ellipsised, at a
 /// CHARACTER boundary, not a byte one, or a multi-byte name panics the formatter.
 pub fn summarize_values(values: &[String], budget: usize) -> String {
     let total = values.len();

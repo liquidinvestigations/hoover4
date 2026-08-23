@@ -3,7 +3,7 @@
 //! This is static because it is knowledge about the rule, not about any particular match: the
 //! standard that defines the format, the authority that administers it, what the validator verifies
 //! and what it deliberately does not. It belongs next to the rule for the same reason a doc comment
-//! does — it goes stale the moment it lives anywhere else.
+//! does. It goes stale the moment it lives anywhere else.
 //!
 //! Every rule gets an entry. A rule with an entry and no shaper in [`super::cards`] still produces
 //! a usable card from this alone, so the catalogue is the requirement and the shaper is the polish.
@@ -21,7 +21,7 @@ pub struct RuleDoc {
     pub rule_id: &'static str,
     pub entity_type: EntityType,
     /// Human-readable name for the rule itself. A shaper may make it more specific for a given
-    /// match — "ISO 8601 timestamp" rather than "ISO 8601 date and time".
+    /// match, such as "ISO 8601 timestamp" rather than "ISO 8601 date and time".
     pub title: &'static str,
     /// One or two sentences: what shapes this rule matches, and why it is worth having.
     pub matches: &'static str,
@@ -41,15 +41,15 @@ pub struct RuleDoc {
 /// The FollowTheMoney schema and property an extraction feeds.
 ///
 /// Where FollowTheMoney defines a property we use its exact name, and where the property sits on an
-/// abstract parent — `amount` and `currency` on `Value`, `idNumber` and `leiCode` on `LegalEntity`
-/// — the mapping names the parent, because that is where FollowTheMoney defines it and every
+/// abstract parent (`amount` and `currency` on `Value`, `idNumber` and `leiCode` on `LegalEntity`
+///), the mapping names the parent, because that is where FollowTheMoney defines it and every
 /// concrete schema a consumer builds inherits it.
 #[derive(Debug, Serialize)]
 pub struct FtmMapping {
     /// The schema, e.g. `BankAccount`.
     pub schema: &'static str,
     /// The property on it, e.g. `iban`. **Prefixed `res:` where FollowTheMoney has no property for
-    /// this and we are extending its schema locally** — an extension that is written down is a
+    /// this and we are extending its schema locally**, an extension that is written down is a
     /// mapping a consumer can implement, and one that is not is a surprise.
     pub property: &'static str,
     /// Why this is the right property, or why FollowTheMoney has none and an extension was needed.

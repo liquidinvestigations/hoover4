@@ -3,7 +3,7 @@
 //! The sidecar is a node process serving `backend/pdf-viewer/_server/server-search.js` on
 //! loopback inside this container; `api::documents::search_document_pdf` is its only
 //! caller. It is started from here rather than from compose because it is useless without
-//! this server — it fetches the PDF back over the server's own HTTP port.
+//! this server. It fetches the PDF back over the server's own HTTP port.
 
 use anyhow::Context;
 
@@ -98,7 +98,7 @@ mod tests {
         assert_eq!(find_server_dir_from(&root.0).unwrap(), sidecar);
     }
 
-    /// The pid file outlives the process it names, and pids are recycled — so "the file
+    /// The pid file outlives the process it names, and pids are recycled, so "the file
     /// says 537" is never evidence that 537 is the sidecar. Unchecked, the kill has taken
     /// out the website's own server binary seconds after start and left every route
     /// answering 500 across restarts, because the same low pid kept being handed out.
@@ -109,7 +109,7 @@ mod tests {
         assert!(!pid_is_the_sidecar(std::process::id()));
         assert!(!pid_is_the_sidecar(1), "pid 1 here is the container's shell");
         // A pid that cannot exist has no cmdline to read, and that is not the sidecar
-        // either — the old check treated "kill -s 0 succeeded" as proof enough.
+        // either. The old check treated "kill -s 0 succeeded" as proof enough.
         assert!(!pid_is_the_sidecar(u32::MAX));
     }
 
@@ -136,10 +136,10 @@ async fn read_pid_file() -> anyhow::Result<u32> {
 
 /// Is this pid **our** sidecar, right now?
 ///
-/// The pid file outlives the process that wrote it — it is on the container's filesystem
-/// and a restart does not clear it — and pids are recycled from a small range at boot, so
+/// The pid file outlives the process that wrote it. It is on the container's filesystem
+/// and a restart does not clear it, and pids are recycled from a small range at boot, so
 /// the recorded number very often names a *different, live* process next time. Killing it
-/// unchecked is not a stale-cleanup, it is a random `SIGKILL`: it has killed the website's
+/// unchecked is a random `SIGKILL` rather than a stale cleanup: it has killed the website's
 /// own server binary seconds after start, leaving `dx serve` believing the app was
 /// running and every route answering 500 with nothing else in the log, across restarts,
 /// because the same pid was handed out again.

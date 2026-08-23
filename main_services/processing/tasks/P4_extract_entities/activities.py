@@ -34,7 +34,7 @@ NLP_BATCH_TEXTS = 32
 # Characters per NER-service request, and the limit that actually matters.
 #
 # A count alone does not bound anything: a text may be up to the service's
-# NER_MAX_TEXT_CHARS (1 M), so 32 of them is up to 32 MB of text in one request — and the
+# NER_MAX_TEXT_CHARS (1 M), so 32 of them is up to 32 MB of text in one request, and the
 # NER server holds a parsed document for every text in the batch at once. On a corpus of
 # large plain-text files that drove the spaCy container past a 4 GB limit, then past a
 # 12 GB one; the cgroup killed uvicorn and every in-flight activity failed with
@@ -106,7 +106,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     with get_collection_client(params.collectionname) as client:
         # FINAL for the same reason P5 and P6 need it: a re-parse leaves a second
         # ReplacingMergeTree row for the segment until the background merge collapses it,
-        # and the anti-join cannot tell the copies apart — so the page is sent to the NER
+        # and the anti-join cannot tell the copies apart, so the page is sent to the NER
         # model twice and writes two sets of `entity_hit` rows.
         text_content = client.query_arrow("""
             SELECT t.collection_dataset, t.file_hash, t.extracted_by, t.page_id, t.text

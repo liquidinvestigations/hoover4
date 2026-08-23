@@ -218,7 +218,7 @@ fn SourceItemRow(
             common::document_sources::text_source_label(&source.extracted_by),
         ),
         // A scanned document now offers the original PDF and one searchable PDF per OCR
-        // pass, so the label has to name which — three entries all reading "PDF" is a
+        // pass, so the label has to name which, three entries all reading "PDF" is a
         // selector that cannot be used.
         DocumentSourceItem::Pdf(source) => (_item_icon_rsx(MdPictureAsPdf), source.label()),
         DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),

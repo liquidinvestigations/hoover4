@@ -2,19 +2,19 @@
 //!
 //! **Only a rule-found value is a link.** The explainer card is fetched with the rule
 //! that accepted the value, so a value no rule produced has no card to open. The tool
-//! answers in two tiers for exactly that reason — a language model's reading of the prose
-//! against a validator's arithmetic — and this card keeps the two apart: the structured
+//! answers in two tiers for exactly that reason (a language model's reading of the prose
+//! against a validator's arithmetic), and this card keeps the two apart: the structured
 //! tier is clickable, the model tier is text with a line saying why.
 //!
 //! **A link needs the dataset, and the tool does not name one.** It answers with the
 //! collection and the content hash; the viewer is addressed by dataset and hash. The
 //! dataset comes from the rest of the conversation, where a search result or a citation
 //! named it for the same hash. When nothing in the conversation did, the values render as
-//! text under a line that says so — an unopenable value has to look unopenable, because a
+//! text under a line that says so. An unopenable value has to look unopenable, because a
 //! link that resolves for some values and silently does nothing for others is worse than
 //! no link at all.
 //!
-//! Every string here is a text node — see the module docstring in `tool_cards/mod.rs`.
+//! Every string here is a text node. See the module docstring in `tool_cards/mod.rs`.
 
 use std::collections::HashMap;
 
@@ -45,8 +45,8 @@ struct DocumentEntities {
     error: String,
 }
 
-/// Both shapes the tool has answered in: a batch of documents, and — in a conversation
-/// recorded before the tool was batched — one document at the top level. A card that read
+/// Both shapes the tool has answered in: a batch of documents, and (in a conversation
+/// recorded before the tool was batched) one document at the top level. A card that read
 /// only the newer shape would render nothing for a transcript that is still perfectly
 /// readable.
 fn parse_documents(content: &serde_json::Value) -> Vec<DocumentEntities> {
@@ -286,7 +286,7 @@ mod tests {
     }
 
     /// A value with no rule behind it has no card, so it must not reach the linking
-    /// branch at all — the tier it arrived in is not enough on its own.
+    /// branch at all. The tier it arrived in is not enough on its own.
     #[test]
     fn a_structured_value_without_a_rule_is_not_offered_a_card() {
         let document = serde_json::json!({

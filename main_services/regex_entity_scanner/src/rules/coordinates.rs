@@ -4,7 +4,7 @@
 //! facet and every pair of numbers in a spreadsheet are the range checks and the surface form.
 //! That is why the decimal rule insists on four decimal places on both sides: three or fewer is
 //! indistinguishable from a pair of measurements, and four is what a coordinate someone meant to
-//! write actually looks like. The datum is stated as WGS84 rather than inferred — it is the datum
+//! write actually looks like. The datum is stated as WGS84 rather than inferred. It is the datum
 //! every one of these forms is written in today, and saying so is the difference between a value a
 //! consumer can reproject and one it has to guess about.
 
@@ -86,8 +86,8 @@ pub struct DmsRule;
 /// self-identifying. Both halves are required: a latitude on its own is not a point.
 ///
 /// Minutes and seconds are marked with the ASCII apostrophe and quote or with the typographic
-/// prime and double prime, U+2032 and U+2033. Every typeset document uses the latter — a word
-/// processor substitutes them as they are typed — so a rule that read only the ASCII pair would
+/// prime and double prime, U+2032 and U+2033. Every typeset document uses the latter (a word
+/// processor substitutes them as they are typed), so a rule that read only the ASCII pair would
 /// see the form nobody prints. The marks are notation and take no part in the arithmetic, so
 /// admitting both costs nothing: the degree sign, the hemisphere letters and the sexagesimal range
 /// checks are what make the match.

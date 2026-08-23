@@ -1,4 +1,4 @@
-//! `/ai_chat/history` — full conversation list with delete.
+//! `/ai_chat/history`, full conversation list with delete.
 
 use dioxus::prelude::*;
 

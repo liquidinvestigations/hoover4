@@ -1,9 +1,9 @@
 //! An SVG `<title>` element that rsx can actually build.
 //!
 //! `<title>` is the only tooltip an SVG shape has, and it only works when the node is in
-//! the SVG namespace. `dioxus-html` declares `title` in the HTML namespace alone — its
+//! the SVG namespace. `dioxus-html` declares `title` in the HTML namespace alone (its
 //! SVG twin is commented out in that crate because the two would collide on the Rust
-//! identifier — so `title { … }` written inside an `svg { … }` is created with
+//! identifier), so `title { … }` written inside an `svg { … }` is created with
 //! `createElement` and lands in the document as an `HTMLTitleElement`. Inside `<svg>` that
 //! is a foreign element: it is not rendered, and it is not a tooltip. Nothing warns, on
 //! any build; the markup looks right in the inspector and the hover does nothing.
@@ -29,7 +29,7 @@ pub mod dioxus_elements {
 
     /// SVG `<title>`: the native tooltip of the shape it is a child of.
     ///
-    /// The Rust name differs from the tag name on purpose — `title` is taken by the HTML
+    /// The Rust name differs from the tag name on purpose: `title` is taken by the HTML
     /// element of the same name, and having both under one identifier is what stopped
     /// `dioxus-html` from shipping this one.
     #[allow(non_camel_case_types)]

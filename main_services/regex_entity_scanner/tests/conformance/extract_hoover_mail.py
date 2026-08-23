@@ -4,7 +4,7 @@
 ``vendored/reference/hoover-mail/`` is real mail: mbox archives, `.eml` files and Apple Mail
 `.emlx` messages, with the message ids, dates, addresses and Received chains that were actually
 written into them. Every other origin here puts a token into a sentence somebody wrote for a test.
-**This one is the sentence**, and that is the whole point of it: the fragment scanned is the header
+**This one is the sentence**, and that is why it is here. The fragment scanned is the header
 field, folding line breaks and all, which is the only place the field-scoped cue window and the
 header-label test are exercised by the shape they exist for.
 
@@ -12,7 +12,7 @@ Where the labels come from, since no upstream assertion exists in a mailbox: RFC
 field means. A `Message-ID:` field holds a message id, a `Date:` field holds a date-time, an address
 field holds addresses, and a `Received:` field's bracketed literal is an address literal under RFC
 5321. The fields are parsed with the standard library's own mail parser and, for addresses, its
-address parser — never with a pattern of ours, because a pattern of ours labelling the cases it is
+address parser, never with a pattern of ours, because a pattern of ours labelling the cases it is
 then scored against measures nothing.
 
 Three things the material decides:
@@ -164,8 +164,8 @@ def messages():
 def fields(message):
     """Each header field as it stands in the message: its name, its raw value, and the fragment.
 
-    The fragment is the field itself — the name, the colon and the value with its folding line
-    breaks — because that is what the rules are given in production and what the cue window is
+    The fragment is the field itself (the name, the colon and the value with its folding line
+    breaks), because that is what the rules are given in production and what the cue window is
     scoped to.
     """
     for name, value in message.items():

@@ -1,13 +1,13 @@
 //! Rule definitions: one candidate pattern plus one validator each.
 //!
 //! A rule owns both halves of the two-stage design. [`Rule::candidate_pattern`] is deliberately
-//! loose and must be expressible in a linear-time engine — no lookaround, no backreferences —
+//! loose and must be expressible in a linear-time engine (no lookaround, no backreferences)
 //! because it runs over raw, attacker-influenceable document text. [`Rule::validate`] then sees
 //! one candidate at a time and may be as expensive as it likes: it re-imposes the guards that were
 //! stripped out of the pattern, applies the checks that decide truth, and produces the canonical
 //! value.
 //!
-//! Adding a type is therefore a pattern, a validator and a fixture — not a new pipeline.
+//! Adding a type is therefore a pattern, a validator and a fixture, not a new pipeline.
 
 pub mod bank;
 pub mod checksum;
@@ -31,7 +31,7 @@ use crate::data::VendoredData;
 use crate::model::{EntityType, Flag, Value};
 
 /// Bumped whenever a pattern, a validator, or the rule inventory changes. Extraction is not
-/// idempotent across rule sets — the same document yields different entities under different ones —
+/// idempotent across rule sets (the same document yields different entities under different ones)
 /// so this is what makes the scope of a reindex computable rather than guessed. It ships on every
 /// scan response and on `/health` and `/rules`.
 ///
@@ -88,7 +88,7 @@ impl<'a> Candidate<'a> {
 
 /// What a validator returns when it accepts a candidate.
 pub struct Verdict {
-    /// Offsets within the fragment. A validator may narrow the span it was given — trailing
+    /// Offsets within the fragment. A validator may narrow the span it was given, trailing
     /// punctuation that the pattern swallowed is trimmed here, not in the pattern.
     pub start: usize,
     pub end: usize,

@@ -1,4 +1,4 @@
-# Codex CLI — append to ~/.codex/config.toml (user level) or .codex/config.toml (project).
+# Codex CLI, append to ~/.codex/config.toml (user level) or .codex/config.toml (project).
 #
 # Codex speaks stdio and streamable HTTP only; it has no SSE transport, which is the
 # second reason serena's entrypoint moves to --transport streamable-http.
@@ -24,7 +24,7 @@ url = "http://127.0.0.1:21932/mcp"
 [mcp_servers.hoover4-whois]
 url = "http://127.0.0.1:21934/mcp"
 
-# NOTE — needs a manual check: whether this Codex build passes custom headers to a
+# NOTE, needs a manual check: whether this Codex build passes custom headers to a
 # remote MCP server. The browser server wants x-hoover4-chat-session and
 # x-hoover4-user; without them it may hand every Codex session the same browser.
 # Verify before relying on the browser tools from Codex.

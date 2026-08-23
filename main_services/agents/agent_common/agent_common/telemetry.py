@@ -9,7 +9,7 @@ that cannot tell those apart is worse than one that admits it has no data.
 **Best-effort, and never in the way.** Every function here swallows its own failures: a
 ClickHouse hiccup must not fail the search it is describing. Writes are fire-and-forget
 over the HTTP interface with a short timeout, the same shape `research_agent/llm_events.py`
-uses for the LLM half — the two are deliberately separate because they run in different
+uses for the LLM half. The two are deliberately separate because they run in different
 images, and neither may depend on the other being present.
 
 The worker has its own copy in `main_services/processing/tasks/ai_telemetry.py`: it holds
@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
 
-#: Short — this runs on a request path. A telemetry write that takes longer than this has
+#: Short, because this runs on a request path. A telemetry write that takes longer than this has
 #: already cost more than the row is worth.
 WRITE_TIMEOUT_SECONDS = float(os.getenv("AI_TELEMETRY_TIMEOUT", "2"))
 
@@ -72,7 +72,7 @@ def record(
         "session_id": session_id or "",
         "latency_ms": max(0, int(latency_ms)),
         "ok": 1 if ok else 0,
-        # Free-form and short. A model id, or an error class — never a stack trace.
+        # Free-form and short. A model id, or an error class, never a stack trace.
         "detail": (detail or "")[:200],
     }
     try:
@@ -100,7 +100,7 @@ def record_async(service: str, **kwargs) -> None:
     """`record` on a daemon thread, for callers on an event loop.
 
     The clients that call this are synchronous (`requests`) inside async servers, so the
-    natural fix — `asyncio.to_thread` — is not available at the call site. A daemon thread
+    natural fix (`asyncio.to_thread`) is not available at the call site. A daemon thread
     per call is cheap next to the model call it is describing, and a dropped row at
     shutdown is the correct trade for never delaying an answer.
     """

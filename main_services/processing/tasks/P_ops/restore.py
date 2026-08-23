@@ -21,8 +21,8 @@ Three rules decide everything here, and none of them is a preference:
   pointing at blobs that were never written.
 
 **The configuration rows are restored last, and that ordering is the point.** They are
-what makes the collection visible and usable — the collection itself, who may read it,
-its datasets and their settings — so writing them at the end means a half-finished
+what makes the collection visible and usable (the collection itself, who may read it,
+its datasets and their settings), so writing them at the end means a half-finished
 restore is a collection nobody is offered rather than one that is offered and broken.
 
 **A failed import leaves the target empty rather than half full**, in the sense that
@@ -61,7 +61,7 @@ MANTICORE_RESTORE_ROOT = "/stores/manticore-restore"
 #: Where a restore stages one table's files before handing them to the daemon.
 #:
 #: Inside the data directory but named for the operation, because the directory has to be
-#: on the data directory's filesystem and must not be the destination — `IMPORT TABLE`
+#: on the data directory's filesystem and must not be the destination: `IMPORT TABLE`
 #: refuses a destination that already exists, and moves out of the staging directory it
 #: is given.
 #:
@@ -133,7 +133,7 @@ def read_manifest(directory: str) -> dict:
 #:
 #: A collection database has forty-odd tables and naming every populated one produces a
 #: paragraph nobody reads and no interface can show. The count and the biggest few say
-#: the same thing — the target is not empty, and here is the shape of what is in it.
+#: the same thing. The target is not empty, and here is the shape of what is in it.
 OCCUPANCY_EXAMPLES = 3
 
 
@@ -153,7 +153,7 @@ def _occupancy(collectionname: str, backed_up_datasets: set[str]) -> list[str]:
     whichever store happened to be checked first.
 
     **A registered dataset is only in the way when the backup does not contain it.** A
-    collection whose stores have been emptied still has its datasets registered — that is
+    collection whose stores have been emptied still has its datasets registered. That is
     what dropping a collection database leaves behind, and restoring over it is the case
     this whole operation exists for. A dataset the backup has never heard of is different:
     restoring would leave it registered, offered, and pointing at nothing.
@@ -229,7 +229,7 @@ def begin_import(params: ImportParams) -> str:
     What it then removes is only ever empty: an empty collection database, whose presence
     would make `RESTORE DATABASE` fail, and empty Manticore tables with the directories
     `DROP TABLE` leaves behind, which `IMPORT TABLE` refuses to overwrite. The bucket is
-    kept — an empty bucket is exactly what the object phase wants.
+    kept. An empty bucket is exactly what the object phase wants.
     """
     from database.clickhouse import drop_collection_db, get_global_client
     from database.manticore import drop_collection_tables, list_collection_tables
@@ -278,7 +278,7 @@ def begin_import(params: ImportParams) -> str:
     drop_collection_tables(params.collectionname)
     for table in tables:
         # `DROP TABLE` leaves the table's directory behind, and `IMPORT TABLE` refuses a
-        # destination that already exists — with an error about a directory rather than
+        # destination that already exists, with an error about a directory rather than
         # about a table.
         shutil.rmtree(os.path.join(MANTICORE_RESTORE_ROOT, table), ignore_errors=True)
     ensure_bucket(collection_bucket(params.collectionname))
@@ -416,13 +416,13 @@ def import_manticore(params: ImportParams) -> ExportStoreResult:
 
     **Manticore's own restore tool cannot be used**: it restores configuration and data
     together into an empty instance, and refuses one that is already serving. The
-    per-table path is the one that works against a live daemon — stage the table's files,
-    then hand the daemon the staging directory — and it needs no restart.
+    per-table path is the one that works against a live daemon. Stage the table's files,
+    then hand the daemon the staging directory, and it needs no restart.
 
     Two constraints shape the rest: the destination directory must not already exist,
     and the staging directory must not *be* the destination, because
     `IMPORT TABLE` moves the files rather than copying them. The staging directory lives
-    on the data directory's own filesystem for the same reason — a move across
+    on the data directory's own filesystem for the same reason. A move across
     filesystems is not a rename.
 
     Decompression happens here rather than in the Manticore container, which has no zstd.
@@ -503,7 +503,7 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
     columns is one conversion instead of a table of them.
 
     **`server_settings` is deliberately not restored.** It is the deployment's, not the
-    collection's — the probed embedding dimension, the model catalogue — and a backup
+    collection's (the probed embedding dimension, the model catalogue), and a backup
     carrying one deployment's settings into another would reconfigure everything else
     running there as a side effect of restoring one collection.
 

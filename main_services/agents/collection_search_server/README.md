@@ -12,7 +12,7 @@ because nothing ever populated it.
 
 | Tool | Purpose |
 |---|---|
-| `list_collections` | what this user may read — always call first |
+| `list_collections` | what this user may read, always call first |
 | `search_collections` | full-text search across the permitted shards |
 | `read_documents` | the extracted text of several documents, each by `collectionname` + `file_hash`, sharing one budget |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
@@ -20,14 +20,14 @@ because nothing ever populated it.
 
 ## Two tiers of entity, and why they are not merged
 
-`list_document_entities` answers with `entities` — an NER model's reading of the prose —
+`list_document_entities` answers with `entities` (an NER model's reading of the prose)
 and `structured`, the rule scanner's checksum-validated identifiers, normalised dates and
 money. They stay in separate blocks because the confidence behind them is not comparable:
 a name is a judgement, an IBAN either has a valid check digit or it does not. Merging them
 would tell the model the two are the same kind of fact.
 
-It takes the same three argument shapes as `read_documents` — a list of objects, two
-parallel lists, and a bare pair of strings, which is the single-document call it replaced —
+It takes the same three argument shapes as `read_documents` (a list of objects, two
+parallel lists, and a bare pair of strings, which is the single-document call it replaced)
 and shares one character budget across the batch. **The rule-scanner tier is filled first
 and the NER tier takes what is left**: when only one of the two fits, it is the
 checksum-validated evidence that survives and the model's guess at a span of prose that
@@ -36,8 +36,8 @@ goes. A document that was cut says so in `truncated`, and the batch's `note` nam
 The `structured` query is the same one the website's document viewer runs against the same
 table, and for the same reason: two different answers to "what identifiers are in this
 file" would put the model and the reader in different conversations about one document. It
-reads only the newest rule set — the table keeps every rule set's results side by side so a
-version bump can be rescanned without destroying what came before — sums counts across
+reads only the newest rule set (the table keeps every rule set's results side by side so a
+version bump can be rescanned without destroying what came before) sums counts across
 segments, and takes the maximum across text variants, because a document parsed twice
 carries the same occurrences under both. A scanner that has never run leaves no rows, and
 the block is then absent rather than an error.
@@ -46,11 +46,11 @@ the block is then absent rather than an error.
 
 `cite_documents` is how the agent says which documents its answer rests on, as against
 which documents a search happened to return. Each citation names a document, a quote and
-one line of why, and gets back a handle — `[D1]`, `[D2]` — that the model writes into its
+one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its
 prose; the reader sees the handle as a chip and the document beneath the answer.
 
 **The quote is checked** against the document's extracted text before a handle is issued,
-after folding whitespace, case and typographic punctuation — a model quoting a sentence it
+after folding whitespace, case and typographic punctuation. A model quoting a sentence it
 read reproduces the words, not the extractor's line breaks, and an exact-substring test
 rejects nearly every honest quote. A quote that does not check out is returned **flagged,
 never refused**: a model that stops citing is a worse outcome than a citation the reader
@@ -67,9 +67,9 @@ than `[D1]` starting over.
 
 The agent acts *on behalf of a user*, so every call is bounded by two headers:
 
-* `Authorization: Bearer <MCP_SHARED_SECRET>` — proves the caller is the website/agent
+* `Authorization: Bearer <MCP_SHARED_SECRET>`, proves the caller is the website/agent
   tier and not something else that found the port.
-* `X-Hoover4-Collections` — the user's permitted collections, resolved by the website
+* `X-Hoover4-Collections`, the user's permitted collections, resolved by the website
   backend, which is the only component that can read `collection_group_permissions`.
 
 **This server never derives permissions**, it only enforces the list it is handed. Putting
@@ -77,7 +77,7 @@ the ACL in a tool argument would let the model choose its own permissions; re-de
 here would mean a second implementation of the group/public union that could drift from
 the website's. See [`collection_search_server/acl.py`](collection_search_server/acl.py).
 
-## MATCH syntax — operators pass through
+## MATCH syntax: operators pass through
 
 `sanitize_match_query` used to **strip** every operator character (`!"$()-/<@^|~*`) on the
 grounds that an LLM writes prose, not query syntax. That is wrong: the operators are
@@ -85,7 +85,7 @@ valuable and the model is told how to use them. The canonical syntax reference l
 [`collection_search_server/prompts/`](collection_search_server/prompts/) and reaches the
 model as the server's FastMCP `instructions`, i.e. at tool-discovery time. The instructions
 are rendered from `SERVER_TOOLS`, the tool names this server registers, and
-`tests/test_prompts.py` fails when that list stops matching what `server.py` decorates —
+`tests/test_prompts.py` fails when that list stops matching what `server.py` decorates,
 so a renamed tool is caught rather than left as prose telling a model to call something
 that no longer exists.
 
@@ -101,7 +101,7 @@ the model cannot interpret, plus the empty query that is worse than an error:
 | `''` | **matched every row in the shard** | refused |
 
 Repairs are reported back in the response's `note`, and Manticore's own error text is now
-returned in `error` rather than only logged — a syntax error the model never sees is one
+returned in `error` rather than only logged. A syntax error the model never sees is one
 it cannot correct.
 
 **The escaping is unchanged and is the injection barrier.** `\` and `'` are what could
@@ -116,7 +116,7 @@ and belongs in `WHERE`.
 ## Wildcards work now
 
 Infix indexing was turned on in `main_services/processing/database/manticore.py` and the
-collections reindexed. Before, `doc*` returned a *wrong* answer rather than none — the
+collections reindexed. Before, `doc*` returned a *wrong* answer rather than none, the
 star was dropped during tokenisation and a truncated literal was searched:
 
 | query | before | after |
@@ -127,7 +127,7 @@ star was dropped during tokenisation and a truncated literal was searched:
 | `doc*` | **7 (wrong)** | 34 |
 | `te*t` | **3 (wrong)** | 28 |
 
-Changing that setting requires a **reindex** — `ALTER TABLE` updates the metadata and
+Changing that setting requires a **reindex**: `ALTER TABLE` updates the metadata and
 leaves the old index in place, so `SHOW TABLE ... SETTINGS` will report the new value
 while queries keep returning the old answers. See
 [`../../../main_services/processing/database/Readme.md`](../../../main_services/processing/database/Readme.md).
@@ -145,22 +145,22 @@ still get the full 1 200 characters each; a request for 200 comes back as ~60 wi
 apiece. Reading them properly is `read_documents`.
 
 Bounding a field is not bounding a payload. A per-snippet budget with a count cap leaves
-every hit's envelope — `collection_dataset`, `collectionname`, a 64-character `file_hash`,
-`match_sources`, `page_id`, `path`, `score` — unmeasured at ~250 characters each, so 200
+every hit's envelope (`collection_dataset`, `collectionname`, a 64-character `file_hash`,
+`match_sources`, `page_id`, `path`, `score`) unmeasured at ~250 characters each, so 200
 results are 50 000 characters of ids and paths on top of whatever the snippets are allowed:
 a prompt that is heavier than the one a count cap alone produces, while the cap does exactly
-what it says. Envelopes also vary — a deep path costs several times a shallow one — which is
+what it says. Envelopes also vary (a deep path costs several times a shallow one) which is
 why they are measured per hit rather than assumed.
 
 The budget matches the website's cap on a stored `tool_output`
 (`common/src/chat_types.rs`), and that is the point: a result that fits is stored whole,
 so `chat_messages.tool_output` is an honest copy of what the model saw rather than a
 truncated one that cannot answer the question. Every call also logs
-`search_collections payload: N chars, K of M hit(s) returned` — the only place the size
-the model actually received is observable.
+`search_collections payload: N chars, K of M hit(s) returned`, which is the only place
+the size the model actually received is observable.
 
 `max_results` is clamped to `SEARCH_MAX_ALLOWED_RESULTS` (200) and defaults to
-`SEARCH_MAX_RESULTS` (50) — a model that asks for `10000` gets 200 — but it decides how
+`SEARCH_MAX_RESULTS` (50) (a model that asks for `10000` gets 200), but it decides how
 deep the search goes, not how much comes back. The default is most of
 the cap on purpose: a tool call costs one provider round trip regardless of how much comes
 back, so running the same search four times to see what one run could have shown is four
@@ -176,12 +176,12 @@ After RRF and reranking, `per_kind_floor` reserves each of the `keyword` and `ve
 rankings its own best results so an exact-term match cannot drown a semantic one. **A
 reserved slot is never evicted by the overall cap**, so the floor has to be well under it:
 at `10` per kind, two kinds reserved twenty results and a caller asking for `max_results=8`
-got twenty back — at 1200 snippet characters each, into an agent's context window. It is
+got twenty back, at 1200 snippet characters each, into an agent's context window. It is
 `3` now.
 
 The *ceiling* has the opposite failure. `COLLECTION_SEARCH_MAX_PER_KIND` is a diversity
 guard for small result sets, and left at a constant it silently becomes the real cap on a
-hybrid search — two kinds x 15 is 30 hits however many were asked for. It is raised to
+hybrid search, two kinds x 15 is 30 hits however many were asked for. It is raised to
 `max_results` when that is larger, as are the fusion pool and the per-shard fetch, so the
 cap the tool advertises is the cap it can deliver.
 
@@ -216,6 +216,6 @@ versions:
 docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 72 tests
 ```
 
-Everything in `tests/test_acl.py` is pure — no database — because the ACL and the query
+Everything in `tests/test_acl.py` is pure (no database), because the ACL and the query
 sanitiser are the security-relevant parts. The operator table above is asserted case by
 case there.

@@ -1,7 +1,7 @@
 """Every reader of a Manticore pages table must exclude the `filename_index` row.
 
 That row is not a page. It carries a document's basenames so a query for a filename finds
-the document, and it has `page_id = -1` — a value chosen to be unreachable for a real
+the document, and it has `page_id = -1`. A value chosen to be unreachable for a real
 extractor. The cost is that it leaks into every code path that assumes a pages row is a
 page:
 
@@ -11,7 +11,7 @@ page:
 * a viewer that offers to jump to "page -1" has nowhere to go.
 
 Grep-based, and deliberately so. The readers are in two languages across two crates, and
-the alternative — trusting each author to remember — is exactly what this row makes
+the alternative (trusting each author to remember) is exactly what this row makes
 dangerous. It is ugly and it is effective.
 """
 
@@ -66,7 +66,7 @@ def _sql_blocks(text: str) -> list[str]:
 
 def test_the_website_backend_is_reachable_or_explicitly_skipped():
     """This test is worthless if it silently finds no files. The worker image mounts
-    only `main_services/processing`, so skipping there is legitimate — vanishing without
+    only `main_services/processing`, so skipping there is legitimate, vanishing without
     saying so is not."""
     if WEBSITE_BACKEND is None:
         import pytest
@@ -115,7 +115,7 @@ def test_the_indexer_and_the_readers_agree_on_the_spelling():
 def test_the_clickhouse_side_never_sees_the_row():
     """`text_content` is the ClickHouse page store, and the filename row is written ONLY
     to Manticore. P4 (entity extraction), P5 (chunk/embed) and the `nlp_processed`
-    watermark all read `text_content`, so they are immune by construction — this pins
+    watermark all read `text_content`, so they are immune by construction. This pins
     that the indexer did not start writing it to ClickHouse as well."""
     import ast
     import inspect
@@ -126,7 +126,7 @@ def test_the_clickhouse_side_never_sees_the_row():
     # The AST of the function alone, with its docstring dropped: the docstring
     # deliberately NAMES `text_content` to say the row never comes from there, and a
     # substring search over the source would read that promise as a violation of itself.
-    # `document_metadata` is where the row's TEXT comes from — its `basenames` — which is
+    # `document_metadata` is where the row's TEXT comes from (its `basenames`) which is
     # what has to stay clear of the page store; the writer around it reads text_content
     # for the real pages.
     target = p6.document_metadata

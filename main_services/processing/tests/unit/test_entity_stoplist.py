@@ -12,8 +12,8 @@ instead each side hashes its own copy of the rule data and the cases below into
 `STOPLIST_PARITY_DIGEST`, which is the same literal on both sides. Changing a header name,
 a threshold or a case on one side alone fails that side immediately; updating the digest
 to match then fails the *other* side until the same change is made there. The digest is
-therefore not a reminder to keep the lists in step, it is the thing that makes landing
-them out of step impossible.
+therefore what makes landing the lists out of step impossible, rather than a reminder to
+keep them in step.
 """
 
 import pytest
@@ -170,7 +170,7 @@ def test_filter_keeps_order_and_duplicates():
 
 
 def test_a_header_keyword_that_is_also_an_english_word_needs_its_colon():
-    """The whole point of the two-tier keyword set.
+    """What the two-tier keyword set is for.
 
     `Cc` and `Subject` end nothing but a reply block, so a bare one is enough. `Date` and
     `To` end real names, so they are debris only when the header's colon is still there --

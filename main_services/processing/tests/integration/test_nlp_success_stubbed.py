@@ -1,8 +1,8 @@
 """Integration test: the NLP success path, with a stubbed NER service.
 
 The real NER service is a GPU box that is not reachable from every environment,
-which left the P4 success path — entity_hit rows, nlp_processed watermarks with
-text_bytes, and the ner_* MVAs in the shard pages tables — with no end-to-end
+which left the P4 success path (entity_hit rows, nlp_processed watermarks with
+text_bytes, and the ner_* MVAs in the shard pages tables) with no end-to-end
 coverage anywhere. This stubs the service client in-process (and uses a
 dedicated nlp_model id so the left-anti join reprocesses every segment) and
 drives the activity against a real temp collection, then re-runs the pages

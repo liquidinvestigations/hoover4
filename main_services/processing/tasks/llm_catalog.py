@@ -12,10 +12,10 @@ Refresh discipline
 "Refresh if older than 3h" with N concurrent readers is a thundering herd against every
 provider, on the request path. This module is therefore:
 
-* **single-flight** — an in-process lock, so N concurrent callers make one round of
+* **single-flight**. An in-process lock, so N concurrent callers make one round of
   requests;
-* **time-boxed per provider** — one slow provider cannot hold the refresh open;
-* **stale-tolerant** — `fetched_at` marks rows as stale, and callers serve stale rows
+* **time-boxed per provider**, one slow provider cannot hold the refresh open;
+* **stale-tolerant**: `fetched_at` marks rows as stale, and callers serve stale rows
   rather than waiting.
 
 It never blocks a request path itself: it is invoked from the CLI and from a background
@@ -32,14 +32,14 @@ from typing import Dict, List, Optional
 
 log = logging.getLogger(__name__)
 
-#: Connect fast, read patiently but finitely — the same two-tuple discipline
+#: Connect fast, read patiently but finitely, which is the same two-tuple discipline
 #: `tasks/remote.py` exists to enforce. A provider that is down must not cost more than
 #: a couple of seconds per refresh.
 CONNECT_TIMEOUT = 3.0
 READ_TIMEOUT = float(os.getenv("LLM_CATALOG_READ_TIMEOUT_SECONDS", "5"))
 
 #: Preference order for the chat model. Matched as regexes, case-insensitively, against
-#: the ids the account actually returns — never used as ids themselves.
+#: the ids the account actually returns, never used as ids themselves.
 #:
 #: Nemotron Super before Ultra deliberately: measured against this account, Super
 #: answers a tool-calling smoke test in 1.4 s and Ultra in 7.3 s for the same tool call.
@@ -81,7 +81,7 @@ class RefreshResult:
     error: str = ""
     models: List[str] = field(default_factory=list)
     #: `{model_id: context_window}` for the models whose listing said. Absent means the
-    #: provider did not say, and the stored value stays 0 — a consumer showing "% of
+    #: provider did not say, and the stored value stays 0, a consumer showing "% of
     #: context used" hides the percentage rather than dividing by an invented number.
     context_windows: Dict[str, int] = field(default_factory=dict)
 
@@ -218,7 +218,7 @@ def _prior_state(client, provider: str) -> Dict[str, tuple]:
 
     `llm_models` is a ReplacingMergeTree read through `argMax(..., updated_at)`, and
     `is_allowed` defaults to 1. So an insert that simply omits the column writes a fresher
-    "allowed" version and **undoes an admin's disallow** — silently, on a schedule. The
+    "allowed" version and **undoes an admin's disallow**, silently and on a schedule. The
     allowlist is enforced server-side against forged model ids, so that is a security
     control being reset by a background task, not a cosmetic dropdown.
 

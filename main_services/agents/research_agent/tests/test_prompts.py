@@ -1,7 +1,7 @@
 """The drift test: a prompt that claims a tool it does not have fails here.
 
 A system prompt is prose about a tool surface, and prose about a tool surface goes stale
-silently — renaming one tool used to mean correcting the same sentence by hand in several
+silently. Renaming one tool used to mean correcting the same sentence by hand in several
 files, and the one that was missed told the model to call a name that no longer existed.
 Nothing failed; the model just wasted a turn.
 
@@ -29,7 +29,7 @@ import pytest
 
 from research_agent import prompts, subagents
 
-#: Everything the collection-search and todo servers advertise — the narrow profile.
+#: Everything the collection-search and todo servers advertise, the narrow profile.
 INTERNAL_SEARCH_TOOLS = frozenset(
     {
         "cite_documents",
@@ -82,7 +82,7 @@ BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 NOT_TOOLS = frozenset({"needs_plan", "cancelled", "goal", "degraded", "max_results"})
 
 #: The union of every name any profile binds. A backticked word inside it, in a prompt for
-#: a profile that does not bind it, is drift — which is what the second pass looks for.
+#: a profile that does not bind it, is drift, which is what the second pass looks for.
 ALL_TOOLS = frozenset().union(*PROFILE_TOOLS.values())
 
 
@@ -193,7 +193,7 @@ def test_naming_an_unbound_tool_is_an_error_under_strict_rendering():
 
 
 def test_a_prompt_survives_a_tool_disappearing():
-    """A shrunken surface renders — smaller, and without the missing tool.
+    """A shrunken surface renders, smaller and without the missing tool.
 
     The running agent must not refuse to start because an MCP server is down and its
     tools are therefore unbound. It renders what is left, which is also the truth.

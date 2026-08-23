@@ -3,7 +3,7 @@
 Every string here is taken from a document that could not be indexed, or is the naive
 escaping case next to it. The write goes through the same helper the P6 writers use, into
 a real Manticore table with a real ``page_text`` field, and the text is read back and
-compared — a store that silently truncated or re-escaped would pass a "did it raise"
+compared, a store that silently truncated or re-escaped would pass a "did it raise"
 check and fail this one.
 
 Requires the docker stack; run inside the worker container:

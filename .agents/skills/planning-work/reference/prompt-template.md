@@ -4,7 +4,7 @@ Copy the headings, fill every one. A section left empty is a section the pass wi
 itself, badly.
 
 ```markdown
-# <id> — <one line naming the deliverable>
+# <id>: <one line naming the deliverable>
 
 You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact path>`.**
 
@@ -28,7 +28,7 @@ You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact pa
 
 ## 4. What must not happen
 <the standing prohibitions, restated because they are easiest to violate under pressure>
-<what would be unrecoverable — anything published, pushed, or deleted>
+<what would be unrecoverable, such as anything published, pushed, or deleted>
 
 ## 5. Before you finish
 <each check as a runnable command, with what its output must show>
@@ -36,7 +36,7 @@ You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact pa
 ## 6. The report
 <the exact section list the report must carry>
 <end it with "Open questions for the user": each one written out in full with a recommended
- answer, never a count and never a pointer elsewhere — and restated in the handover message>
+ answer, never a count and never a pointer elsewhere, and restated in the handover message>
 ```
 
 ## The sections that are always got wrong

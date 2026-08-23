@@ -4,8 +4,8 @@
 # They need a container of their own rather than a `docker exec` like every other suite
 # here, and the reason is worth knowing: the agent's Dockerfile installs with
 # `poetry install --without dev` and never copies `tests/`, so the running container has
-# neither pytest nor the tests. Nothing else reaches this directory either —
-# pytest-agents.sh loops over the five MCP server containers, and pytest-unit.sh runs in
+# neither pytest nor the tests. Nothing else reaches this directory either.
+# `pytest-agents.sh` loops over the five MCP server containers, and `pytest-unit.sh` runs in
 # hoover4-worker, which has no langchain_core. Without this script these tests execute in
 # no suite at all.
 #
@@ -13,7 +13,7 @@
 # into the throwaway container. The image is not modified and nothing is left behind.
 #
 # `--asyncio-mode=auto` because the async tests declare no marker and pytest-asyncio
-# skips them silently otherwise — three of them reported as passed while running nothing.
+# skips them silently otherwise, three of them reported as passed while running nothing.
 #
 # One test is deselected by default: test_agent_interactive_chat opens a connection to the
 # live LLM endpoint, so it is an integration test in a unit directory and fails with a

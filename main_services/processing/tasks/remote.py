@@ -16,7 +16,7 @@ all. Two defects stack to produce it:
 
 The config contract must also be honoured. ``deploy.py`` renders
 ``GPU_CONNECT_TIMEOUT_MS``, ``GPU_FALLBACK`` and ``GPU_CIRCUIT_BREAK_SECONDS``
-into the worker's environment, and this module is what reads them. A knob that
+into the worker's environment, and this module is what reads them. A setting that
 is rendered and never read means a dead GPU host stalls the pipeline instead of
 degrading it, which is precisely what those three settings exist to prevent.
 
@@ -29,7 +29,7 @@ The contract implemented here
                             endpoint entirely for this long
 ====================== ======================================================
 
-The ``(connect, read)`` two-tuple is the whole point: the failure modes are
+The ``(connect, read)`` two-tuple is what this module exists for. The failure modes are
 completely different. A dead host must be detected in ~2 seconds, while a live
 host chewing through a batch legitimately needs minutes. A single scalar forces
 one number to serve both and guarantees one of them is wrong.
@@ -174,8 +174,8 @@ def post_json(
     error does not, because the host is alive and retrying elsewhere would hide
     a real server-side problem behind a silently degraded provider.
 
-    HTTP 503 is the admission-control signal (queue full). It is retryable —
-    Temporal reschedules the activity — and it is **not** a connect failure:
+    HTTP 503 is the admission-control signal (queue full). It is retryable
+    (Temporal reschedules the activity), and it is **not** a connect failure:
     the host is alive and busy. It does not open the circuit breaker and it
     does not fall through to a CPU twin. spaCy is not the answer to a full GPU.
 
@@ -280,7 +280,7 @@ def probe_embeddings(base_url: str) -> tuple[str, int]:
 
     The ini's ``embeddings_model`` / ``embeddings_dim`` are the *request*; this probe is
     the *truth*. The index builder builds Manticore ``_vectors`` tables from the probed value and
-    refuses to index when it stops matching a shard's ``knn_dims`` — a table's knn_dims
+    refuses to index when it stops matching a shard's ``knn_dims``. A table's knn_dims
     is fixed at creation, so writing 384-dim vectors into a 1024-dim table is the
     failure this exists to catch early.
     """
@@ -303,7 +303,7 @@ def record_embeddings_probe() -> tuple[str, int] | None:
 
     **This must never raise.** Its callers are a worker's startup path and a CLI, and a
     worker that refuses to boot because the GPU tier is down is worse than one that boots
-    and refuses the embed activity with a clear message — the same stack still has five
+    and refuses the embed activity with a clear message. The same stack still has five
     other stages to run. A failed probe simply leaves ``server_settings`` as it was.
     """
     import os

@@ -46,8 +46,8 @@ const KINDS: &[(&str, &str, bool)] = &[
     ("import_collection", "collection", true),
 ];
 
-/// Kinds the operations workflow can actually drive today. The rest are registered —
-/// the table, the lock and the destructive flag know them — but dispatching one raises
+/// Kinds the operations workflow can actually drive today. The rest are registered
+/// (the table, the lock and the destructive flag know them), but dispatching one raises
 /// a named error, so the UI must not offer to start or re-run them.
 const DRIVEN_KINDS: &[&str] = &[
     "add_dataset",
@@ -112,7 +112,7 @@ struct OperationDbRow {
 }
 
 /// The column list, in table order. A `ReplacingMergeTree` update rewrites the whole
-/// row, so a column missing from an insert is silently reset to its default — and
+/// row, so a column missing from an insert is silently reset to its default, and
 /// RowBinary is positional, so a select in a different order pairs values with the
 /// wrong fields without complaining.
 const COLUMNS: &str = "op_id, kind, target_kind, collectionname, collection_dataset, \
@@ -213,7 +213,7 @@ async fn fetch_rows(
 /// Numerator and denominator both come from `processing_task_runs`, which holds one row
 /// per activity execution whatever its outcome. Taking the failures from
 /// `processing_errors` instead would divide one table's count by another's, and the two
-/// do not name detector failures the same way — a rate off a mismatched denominator is
+/// do not name detector failures the same way. A rate off a mismatched denominator is
 /// worse than no rate, because it is believable.
 async fn task_error_rates(collectionname: &str) -> anyhow::Result<Vec<TaskErrorRate>> {
     #[derive(Debug, clickhouse::Row, serde::Deserialize)]
@@ -318,7 +318,7 @@ pub async fn admin_list_operations(
 /// attempt, which is the reason the id carries a timestamp in the first place.
 ///
 /// `confirm_target` is what the person typed. A destructive kind is refused unless it
-/// matches the target exactly — checked here and not only in the browser, because a
+/// matches the target exactly. Checked here and not only in the browser, because a
 /// confirmation enforced in the page is a confirmation that is not enforced.
 pub async fn admin_rerun_operation(
     user: &CurrentUser,
@@ -351,7 +351,7 @@ pub async fn admin_rerun_operation(
         );
     }
     // The original row's `detail` is what the re-run is dispatched with. A kind whose
-    // behaviour is decided by parameters — which languages, which failed task — would
+    // behaviour is decided by parameters (which languages, which failed task) would
     // otherwise be re-run against whatever the dataset is set to now, which is not what
     // the row in front of the person says.
     let detail = display.detail.clone();
@@ -373,7 +373,7 @@ pub async fn admin_rerun_operation(
 /// the start then fails, the row is landed in `errored` rather than left holding the
 /// lock for ever.
 ///
-/// `detail` is the JSON object the operation is dispatched with — the languages of an
+/// `detail` is the JSON object the operation is dispatched with: the languages of an
 /// OCR change, the failed task of a retry. It goes onto the row *and* into the workflow
 /// input, which is what makes a re-run of that row ask for the same thing. Empty falls
 /// back to whatever the kind can work out for itself.
@@ -397,7 +397,7 @@ pub async fn dispatch_operation(
     let op_id = format!("{kind}-{target}-{}", now.unix_timestamp());
 
     // The lock is one rule with one owner: a second dispatch is refused while a
-    // non-terminal row holds the same kind and target. A stale row is NOT free — a run
+    // non-terminal row holds the same kind and target. A stale row is NOT free. A run
     // that stopped reporting may still have activities in flight.
     let client = get_global_client();
     let target_column = match *target_kind {
@@ -498,7 +498,7 @@ async fn dataset_path(collection_dataset: &str) -> anyhow::Result<String> {
 /// Start the `Operation` workflow over Temporal's HTTP API, on the operation's own id.
 ///
 /// The workflow id **is** the operation id. It already carries a timestamp, so a reuse
-/// policy would decide nothing and a conflict is a genuine one — two dispatches can
+/// policy would decide nothing and a conflict is a genuine one, two dispatches can
 /// never collapse into a single execution, which is the property the whole operations
 /// layer exists to guarantee.
 async fn start_operation_workflow(
@@ -554,7 +554,7 @@ async fn start_operation_workflow(
 ///
 /// The terminal row is written **here, by the canceller**, and not by the workflow. A
 /// cancelled workflow cannot schedule further activities, so a cleanup write attempted
-/// inside it is cancelled with it and the row stays non-terminal for ever — holding the
+/// inside it is cancelled with it and the row stays non-terminal for ever, holding the
 /// lock that cancelling was meant to release.
 pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow::Result<()> {
     guard::require_admin(user)?;

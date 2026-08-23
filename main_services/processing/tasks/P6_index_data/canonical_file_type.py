@@ -11,7 +11,7 @@ last pass: once every parser has run, it picks the winner.
 
 The resolution is a total order over *evidence*, not a vote:
 
-1. a parse succeeded and produced rows — the document is a docx because the docx parser
+1. a parse succeeded and produced rows. The document is a docx because the docx parser
    read text out of it, not because a lookup table says .docx is not a zip;
 2. a zip-based document MIME beats `archive`;
 3. the content sniff saying email beats `text`;
@@ -131,7 +131,7 @@ def resolve_canonical(
     """The definitive type of one document.
 
     `detections` maps ``extracted_by`` to the MIME types that detector reported.
-    `parsed` is the set of coarse types a parser actually produced rows for — `email`
+    `parsed` is the set of coarse types a parser actually produced rows for: `email`
     from `emails`, `pdf` from `pdfs`, `image` from `image`, `doc`/`xls`/`ppt` from the
     office extractor, `archive` from `archives`. `archive_member_count` is how many
     members the archive branch actually produced.

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// How the table explorer is currently looking at a workbook.
 ///
-/// This lives in the viewer state — and therefore in the URL — rather than in the
+/// This lives in the viewer state (and therefore in the URL) rather than in the
 /// `DocumentSourceItem::Table` variant, for a reason that is not stylistic: the variant
 /// is the key of `ItemHitCounts` and the value the source selector compares against the
 /// selected source, so a variant that changed when the reader clicked a column header
@@ -48,7 +48,7 @@ pub struct DocViewerState {
     pub selected_source: Option<DocumentSourceItem>,
     pub selected_source_page: Option<u32>,
     /// Absent means "the default view", which is what a URL written before the table
-    /// browser existed describes — the same reasoning as
+    /// browser existed describes, the same reasoning as
     /// `DocumentEmailSourceItem::has_body`.
     #[serde(default)]
     pub table_state: Option<DocTableState>,
@@ -111,7 +111,7 @@ pub struct DocViewerStateControl {
 pub enum ViewerRightTabSelection {
     Entities,
     /// Declaration order is the rendered order of the tab strip, so `FileLocations` sits
-    /// here — between `Entities` and `Metadata` — and nowhere else.
+    /// here (between `Entities` and `Metadata`), and nowhere else.
     FileLocations,
     Metadata,
 }
@@ -156,7 +156,7 @@ mod tests {
 
     /// A viewer URL written before `DocumentSourceItem::Table` existed. CBOR carries the
     /// variant NAME, not its index, so wedging `Table` into the middle of the enum cannot
-    /// change what an old bookmark means — and `table_state` is `#[serde(default)]`, so a
+    /// change what an old bookmark means, and `table_state` is `#[serde(default)]`, so a
     /// state that never had the field is "the default view" rather than a parse failure
     /// the router shows as "Page not found".
     #[test]
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(parsed, state);
     }
 
-    /// The whole point of putting the open card in the address: a card reached from a
+    /// Why the open card is in the address: a card reached from a
     /// conversation is a link, and the link opens the same card.
     #[test]
     fn a_selected_entity_survives_the_url() {
@@ -237,7 +237,7 @@ mod tests {
         // The two variants that predate `FileLocations`, encoded by the same Display
         // impl: CBOR carries the variant NAME, not its index, so wedging a variant into
         // the middle of the enum cannot shift what an old link means. This is the
-        // assertion that keeps that true — a bookmarked viewer URL is a real thing.
+        // assertion that keeps that true. A bookmarked viewer URL is a real thing.
         let entities = "oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=";
         let metadata = "oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=";
         for (encoded, expected) in [

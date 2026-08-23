@@ -4,7 +4,7 @@
 ``vendored/reference/grok/spec/`` holds, per pattern family, the log lines that family is expected
 to match: Apache and nginx access logs, syslog, firewall, mail, database and application logs. That
 is the native habitat of every machine date format there is, and it is what the four date rules were
-written for, so — as with the Recognizers-Text specs — the carrier sentence the identifier
+written for, so (as with the Recognizers-Text specs), the carrier sentence the identifier
 extractors build is not used. Upstream's own log line is the fragment we scan, and the token is the
 timestamp inside it.
 
@@ -17,8 +17,8 @@ match.
 
 Exclusions are large here and they are the finding rather than a way around it. Log timestamps are
 mostly yearless (syslog), locale-specific (a German month inside an Apache log) or all-numeric, and
-the standing policy in ``docs/Rules_And_Patterns.md`` — a date rule ships only when the match itself
-fixes year, month and day — refuses all three by design. Each exclusion below names the limit it
+the standing policy in ``docs/Rules_And_Patterns.md`` (a date rule ships only when the match itself
+fixes year, month and day) refuses all three by design. Each exclusion below names the limit it
 rests on.
 
 The script emits one JSON object per line on stdout, sorted by id, in the shape the Rust runner
@@ -119,9 +119,9 @@ SHAPES = [
             r"(?:([T ])(\d{2}):(\d{2})(?::(\d{2}))?([.,]\d{1,9})?(Z|z|[+-]\d{2}:?\d{2})?)?"
         ),
     ),
-    # 20150502T102019Z — the ISO 8601 basic spelling.
+    # 20150502T102019Z, the ISO 8601 basic spelling.
     ("iso8601_basic", re.compile(r"\b(\d{8})T(\d{6})(Z|[+-]\d{4})?")),
-    # Tue, 04 Mar 2021 09:12:00 +0200 — the mail-header date, zone optional in the corpus.
+    # Tue, 04 Mar 2021 09:12:00 +0200, the mail-header date, zone optional in the corpus.
     (
         "rfc2822",
         re.compile(
@@ -129,7 +129,7 @@ SHAPES = [
             r"(?: ([+-]\d{4}|UT|GMT|[ECMP][SD]T))?" % (WEEKDAY, MONTH_ABBR)
         ),
     ),
-    # Wed Mar 04 09:12:00 2021 — the C library's asctime order, which no rule matches.
+    # Wed Mar 04 09:12:00 2021, the C library's asctime order, which no rule matches.
     (
         "ctime",
         re.compile(
@@ -137,7 +137,7 @@ SHAPES = [
             % (WEEKDAY, MONTH_ABBR)
         ),
     ),
-    # Mar  4 09:12:00 — the syslog stamp, with no year anywhere in it.
+    # Mar  4 09:12:00, the syslog stamp, with no year anywhere in it.
     ("syslog", re.compile(r"\b(%s) {1,2}(\d{1,2}) (\d{2}):(\d{2}):(\d{2})" % MONTH_ABBR)),
     # 04-Mar-2021 09:12:00 and 04/Mar/2021 09:12:00 without the brackets.
     (
@@ -146,7 +146,7 @@ SHAPES = [
     ),
     # 2021-W09-4 and 2021-W09.
     ("iso_week", re.compile(r"\b(\d{4})-?W(\d{2})(?:-?(\d))?\b")),
-    # 03/04/2021, 2021/03/04, 04.03.2021 — every all-numeric order. A four-digit year is required in
+    # 03/04/2021, 2021/03/04, 04.03.2021, every all-numeric order. A four-digit year is required in
     # one of the two end positions: without it the shape is indistinguishable from a version string
     # or the leading octets of an IP address, and a log corpus is full of both.
     (

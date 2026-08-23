@@ -9,12 +9,12 @@ The consequence is different in each stage and invisible in all three:
 
 * **P4** sends the page to the NER model twice and writes two sets of `entity_hit` rows.
 * **P5** chunks it twice; the two copies produce *identical* chunk keys, so neither is
-  excluded by the left-anti join against `text_chunk_vectors` on a first run — the page is
+  excluded by the left-anti join against `text_chunk_vectors` on a first run. The page is
   embedded twice at full GPU cost and both vectors are inserted.
 * **P6** indexes it twice; the Manticore row id is deterministic so the index survives, but
   the work doubles and the stored page text becomes whichever copy came back last.
 
-None of this fails, none of it logs, and it only happens in the window before a merge — so
+None of this fails, none of it logs, and it only happens in the window before a merge, so
 it reproduces on a busy reprocess and never on a quiet stack. That is exactly the kind of
 defect a source-shape assertion is worth more than a runtime test for.
 """

@@ -1,7 +1,7 @@
 //! The one place a canonical file type becomes a symbol and a label.
 //!
 //! `file_type_canonical.file_type` is simultaneously a storage key, a search facet value
-//! and the thing five different components draw a glyph for — the search result card, the
+//! and the thing five different components draw a glyph for: the search result card, the
 //! storage browser, the viewer's title bar, an email's attachment cards and the preview
 //! source selector. Before this module three of those drew a generic page icon for
 //! everything and the fourth had its own four-arm match, so a spreadsheet and an email
@@ -10,7 +10,7 @@
 //! formatting applies here and more strongly: five call sites means five chances to
 //! disagree about what a document is.
 //!
-//! `common` deliberately does not depend on `dioxus-free-icons` — it is compiled into the
+//! `common` deliberately does not depend on `dioxus-free-icons`. It is compiled into the
 //! backend too. So this module names a [`FileTypeGlyph`], and the frontend's
 //! `components::file_type_icon` maps that one enum to one icon. Adding a type here
 //! without giving it a glyph there is a non-exhaustive-match compile error, which is the
@@ -34,7 +34,7 @@ pub const CANONICAL_FILE_TYPES: [&str; 13] = [
 pub enum FileTypeGlyph {
     Email,
     Pdf,
-    /// A parsed spreadsheet or delimited file — one this build can open in the grid.
+    /// A parsed spreadsheet or delimited file, one this build can open in the grid.
     Table,
     /// A spreadsheet the pipeline did NOT parse into cells. Deliberately a different
     /// glyph from [`FileTypeGlyph::Table`]: the two look the same to a reader otherwise,
@@ -49,7 +49,7 @@ pub enum FileTypeGlyph {
     Document,
 }
 
-/// The glyph for a canonical file type. An unknown or empty type is a document — a type
+/// The glyph for a canonical file type. An unknown or empty type is a document. A type
 /// this build has not heard of is still a file, and a missing `file_type_canonical` row
 /// (a document indexed before the type resolver ran) is the ordinary case, not an error.
 pub fn file_type_glyph(file_type: &str) -> FileTypeGlyph {

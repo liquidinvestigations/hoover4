@@ -39,7 +39,7 @@ deadline, together with a stretch of wall clock in which no activity starts at a
 
 **Reduce how far the machine is oversubscribed. Never reduce the detector's sensitivity.**
 
-## Server limit or shape limit — one measurement
+## Server limit or shape limit: one measurement
 
 Do not infer it from the pipeline. Run a throwaway workflow and a no-op activity on a private
 task queue, from inside the worker container. It measures the same cluster and the same
@@ -53,14 +53,14 @@ worker library with none of the pipeline in the way, so the answer is unambiguou
 
 ## Order of investigation
 
-1. **Where is the time?** Per-stage and per-activity timings, from the stored timing samples
-   — `querying-the-datastores`. Tuning a stage that is not the bottleneck is free of effect.
+1. **Where is the time?** Per-stage and per-activity timings, from the stored timing samples,
+   `querying-the-datastores`. Tuning a stage that is not the bottleneck is free of effect.
 2. **Is it slow or is it blocked?** Low CPU with no progress is I/O or a lock, not slow work.
-   `debugging-the-stack` — a hang and a slow run need completely different answers.
+   `debugging-the-stack`, a hang and a slow run need completely different answers.
 3. **How many executions are in flight?** If the answer is one, that is the finding.
 4. **What does the distribution look like?** A p99 far above the p50 with a barrier over the
    batch is a shape problem, and the fix is to remove the barrier, not to add capacity.
-5. **Only then**, worker counts and slot counts — and re-measure after each single change.
+5. **Only then**, worker counts and slot counts, and re-measure after each single change.
 
 ## What not to do
 
@@ -73,5 +73,5 @@ worker library with none of the pipeline in the way, so the answer is unambiguou
 
 ## References
 
-- `reference/synthetic-probe.md` — the throwaway workflow and no-op activity, what to
+- `reference/synthetic-probe.md`, the throwaway workflow and no-op activity, what to
   measure, and how to read the two outcomes.

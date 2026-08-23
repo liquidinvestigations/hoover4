@@ -7,7 +7,7 @@
 services:
   hoover4-easyocr-gpu:
     build:
-      # Narrow context on purpose — never widen to ai_services/ or the repo root,
+      # Narrow context on purpose, never widen to ai_services/ or the repo root,
       # which hold large untracked scratch directories that would silently bloat
       # every build.
       context: ${HOOVER4_REPO_ROOT}/ai_services/easyocr_server

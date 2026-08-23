@@ -33,7 +33,7 @@ import re
 
 log = logging.getLogger(__name__)
 
-# <collectionname>_<digits>_pages|_vectors — the SHARDED table families.
+# <collectionname>_<digits>_pages|_vectors, the SHARDED table families.
 #
 # `<collectionname>_vfs` is deliberately NOT matched by this: it is one table per
 # collection rather than per shard, and everything that iterates shards (the ledger
@@ -86,8 +86,8 @@ def quote_manticore_values(cnx, params) -> list:
 def bind_manticore_sql(cnx, sql, params=()) -> bytes:
     """Substitute `%s` placeholders in `sql` with `params`, escaped by the driver.
 
-    Same convention as ``cursor.execute(sql, params)`` — every ``%s`` takes one
-    parameter, quoting included — and the escaping is the connection's own, so a quote
+    Same convention as ``cursor.execute(sql, params)`` (every ``%s`` takes one
+    parameter, quoting included), and the escaping is the connection's own, so a quote
     becomes ``\\'`` as Manticore wants and never the SQL-standard doubling it rejects.
     Splitting the TEMPLATE on ``%s`` is what makes a ``%s`` inside the *data* harmless.
 
@@ -120,8 +120,8 @@ def manticore_execute(cnx, sql, params=()) -> None:
     driver scans the fully interpolated statement for a client-side ``DELIMITER``
     command before sending it, and that scanner does not understand the backslash
     escaping the same driver has just applied: a document containing the word
-    ``delimiter`` followed by whitespace and a quote — ordinary MediaWiki and manual-page
-    text does this — is read as a delimiter change. The statement is then either rejected
+    ``delimiter`` followed by whitespace and a quote (ordinary MediaWiki and manual-page
+    text does this) is read as a delimiter change. The statement is then either rejected
     outright or re-split and re-joined into something Manticore answers with
     ``P01: syntax error``, and the document can never be indexed. No amount of escaping
     fixes it, because the corruption happens after the escaping; the data has to stay out
@@ -167,7 +167,7 @@ def shard_table_from_name(shard_name: str) -> str:
 
     Inverse of :func:`shard_table_name`; raises ``ValueError`` for anything that is
     not the CANONICAL spelling of a validated collectionname plus a positive integer
-    suffix — no leading zeros (``testdata_01``), no stray separators
+    suffix, no leading zeros (``testdata_01``), no stray separators
     (``testdata_-1``): those would alias shard 1 while naming tables the ledger
     never records.
     """
@@ -203,7 +203,7 @@ def vectors_table_from_name(shard_name: str) -> str:
 #:
 #: Without it the star is dropped during tokenisation and the query silently becomes an
 #: exact search for the truncated word - ``doc*`` returned 7 rows where ``document``
-#: returned 16, which is not "no wildcard support", it is a *wrong answer* nobody
+#: returned 16, which is a *wrong answer* rather than "no wildcard support", and nobody
 #: notices. On the real `testdata` shard (156 pages, 26 MB of text) the wrong answers
 #: become right ones: `docum*` 0 -> 19, `*ocument*` 0 -> 42, `doc*` 7 -> 34, `te*t`
 #: 3 -> 28, while the exact term `document` stays at 16.
@@ -232,7 +232,7 @@ _INFIX_SETTING = "min_infix_len='3'"
 #: not nullable, so "unknown" needs a reserved value, and i64::MIN is the one no real
 #: date can collide with. A BETWEEN range can never match it, so undated documents drop
 #: out of every date range automatically; the UI's "Unknown only" filters on equality.
-#: The Rust side pins the same constant — keep them in step.
+#: The Rust side pins the same constant. Keep them in step.
 DATE_UNKNOWN = -9223372036854775808
 
 #: `file_size_bytes` for a document that exists in `file_types` but in no `vfs_files`
@@ -268,49 +268,49 @@ def pages_table_ddl(table_name: str) -> str:
 
     ``page_text`` is the only full-text field; everything else is a typed attribute,
     which is what Manticore can group, sort and range-filter on. The document-level half
-    (:data:`DOCUMENT_COLUMNS`) repeats on every page of a document — see the module
+    (:data:`DOCUMENT_COLUMNS`) repeats on every page of a document. See the module
     docstring for why that is cheaper than joining it.
 
     Attributes and what reads them:
 
-    * ``ner_per`` / ``ner_org`` / ``ner_loc`` / ``ner_misc`` multi64 — term ids of the
+    * ``ner_per`` / ``ner_org`` / ``ner_loc`` / ``ner_misc`` multi64, term ids of the
       entities found in THIS segment. Per segment rather than per document, which is
       what lets a facet count documents while the extraction stays page-local.
-    * ``dates`` multi64 — every confirmed historical date, SIGNED epoch seconds.
+    * ``dates`` multi64, every confirmed historical date, SIGNED epoch seconds.
       Manticore's own ``timestamp`` is 32-bit unsigned (1970..2106), useless for a
       corpus with pre-1970 material. Verified empirically that multi64 stores negatives
       and that ``ANY(dates) BETWEEN lo AND hi`` matches across zero.
-    * ``date_min`` / ``date_max`` bigint — Manticore cannot ORDER BY an MVA, so "oldest
+    * ``date_min`` / ``date_max`` bigint, Manticore cannot ORDER BY an MVA, so "oldest
       first" sorts on one and "newest first" on the other, and the date filter is an
       interval-overlap test over the pair. :data:`DATE_UNKNOWN` when the document has no
       dates.
-    * ``file_size_bytes`` bigint — buckets are computed at query time with
+    * ``file_size_bytes`` bigint, buckets are computed at query time with
       ``INTERVAL()``; pre-baking them would make adding a bucket a schema change.
       :data:`SIZE_UNKNOWN` when the document has no ``vfs_files`` row.
-    * ``struct_flags`` bigint — a bitfield (see ``STRUCT_FLAG_*``) for the cheap
+    * ``struct_flags`` bigint, a bitfield (see ``STRUCT_FLAG_*``) for the cheap
       booleans that do not each deserve a column.
-    * ``primary_filename`` string — a string ATTRIBUTE, not a text field: Manticore can
+    * ``primary_filename`` string, a string ATTRIBUTE, not a text field: Manticore can
       ORDER BY the former and not the latter, and this is the result-card title and the
       "sort by name" key. Filename MATCHING goes through the ``filename_index`` row
       instead.
-    * ``file_paths`` multi64 — `vfs_node` closure term ids, scoped by dataset AND
+    * ``file_paths`` multi64, `vfs_node` closure term ids, scoped by dataset AND
       container, so the same folder name in two datasets or two archives is two ids.
-    * ``email_from`` / ``email_to`` multi64 — term ids of normalised addresses;
+    * ``email_from`` / ``email_to`` multi64, term ids of normalised addresses;
       to+cc+bcc merge into ``email_to``.
     * ``re_email`` / ``re_phone`` / ``re_bank_account`` / ``re_company_id`` /
-      ``re_money`` / ``re_crypto_wallet`` multi64 — term ids from the regex entity
+      ``re_money`` / ``re_crypto_wallet`` multi64, term ids from the regex entity
       scanner, per segment like the ``ner_*`` columns. ``re_email`` is NOT
       ``email_from``/``email_to``: those are the envelope's sender and recipients, and
       this is every address the body mentions. ``re_money``'s ids resolve to magnitude
-      buckets, never to amounts — thousands of distinct sums are not a facet.
-    * ``mentioned_dates`` multi64 — dates the document TALKS ABOUT, signed epoch seconds
+      buckets, never to amounts. Thousands of distinct sums are not a facet.
+    * ``mentioned_dates`` multi64, dates the document TALKS ABOUT, signed epoch seconds
       snapped to midnight UTC, one entry per distinct day. Snapped because second
       precision gives a term per instant and the corpus's distinct *days* are bounded by
       its span. It is filtered with ``ANY(mentioned_dates) BETWEEN lo AND hi`` and never
       with the interval-overlap test ``dates`` uses: a document that mentions 1936 and
       2020 occupies neither 2005 nor anything in between, while a file created in 1990
       and modified in 2020 genuinely occupies that whole span.
-    * ``mentioned_date_min`` / ``mentioned_date_max`` bigint — the histogram's domain,
+    * ``mentioned_date_min`` / ``mentioned_date_max`` bigint, the histogram's domain,
       and :data:`DATE_UNKNOWN` for a segment that mentions no date. They must never be
       used to filter, for the reason above.
     """
@@ -370,7 +370,7 @@ def vfs_table_ddl(table_name: str) -> str:
     bodies, so it does not need the shard budget: `testdata` has hundreds of rows, and a
     million-file collection is a couple of hundred MB of attributes.
 
-    ``name`` is the only full-text field and it is infix indexed — matching
+    ``name`` is the only full-text field and it is infix indexed. Matching
     ``*report*`` against a basename is the entire point of in-folder search.
 
     Every read of this table goes through the website's NON-caching Manticore primitive.
@@ -423,7 +423,7 @@ def entities_table_ddl(table_name: str) -> str:
     id together, and looking it up again in ClickHouse would be a second round trip for
     a number this row already knows.
 
-    One table per COLLECTION, holding every facet field except ``filetype`` — that one
+    One table per COLLECTION, holding every facet field except ``filetype``, that one
     has few enough buckets to fit on screen and needs no search. Reads go through the
     NON-caching Manticore primitive, for the same reason the tree does: it changes while
     ingestion runs, and a stale term list is worse than a slow one.
@@ -461,7 +461,7 @@ def vectors_table_ddl(table_name: str, dims: int) -> str:
     deliberately lean: the chunk text stays in ClickHouse, so a dropped or
     wrong-dimensioned table is rebuilt from the durable store, and the RAM-resident
     HNSW graph carries no text. ``knn_dims`` is fixed at creation and CANNOT be
-    altered — ``dims`` must be the probed serving dimension, and a model change means
+    altered: ``dims`` must be the probed serving dimension, and a model change means
     drop + rebuild (``main.py reindex-collection``).
 
     ``collection_dataset`` stays on the rows: the dataset purge deletes by it.
@@ -483,7 +483,7 @@ def vectors_table_ddl(table_name: str, dims: int) -> str:
 def shard_knn_dims(vectors_table: str) -> int | None:
     """The ``knn_dims`` of an existing vectors table, or ``None`` if it does not exist.
 
-    Read from Manticore's own ``SHOW CREATE TABLE`` — the only source of truth for a
+    Read from Manticore's own ``SHOW CREATE TABLE``, which is the only source of truth for a
     property that cannot be altered after creation. The P6 vector indexer compares
     this against the probed serving dimension and refuses on mismatch: writing 384-dim
     vectors into a 1024-dim table is the failure the whole probe mechanism exists to
@@ -545,8 +545,8 @@ def list_collection_tables(collectionname: str) -> list[str]:
     collection-wide indexes, the VFS tree and the facet-term list.
 
     What teardown and purge iterate. Kept separate from :func:`list_shard_tables`
-    because the callers that reason about *shards* — the ledger equality check, the
-    per-shard search fan-out — must not be handed a table that has no shard index.
+    because the callers that reason about *shards* (the ledger equality check, the
+    per-shard search fan-out) must not be handed a table that has no shard index.
     """
     tables = list_shard_tables(collectionname)
     all_tables = _list_all_tables()
@@ -570,7 +570,7 @@ def drop_collection_tables(collectionname: str) -> list[str]:
 def probed_embedding_dims() -> int | None:
     """The probed serving dimension from ``server_settings``, or ``None`` if unprobed.
 
-    Every ``_vectors`` table is created from this value — never from the ini, which is
+    Every ``_vectors`` table is created from this value, never from the ini, which is
     the request rather than the truth. ``None`` means `main.py probe-embeddings` has
     not run (or embeddings are disabled): no vectors tables get created, and the P6
     vector indexer refuses loudly if it nevertheless finds vectors to write.
@@ -600,8 +600,8 @@ def manticore_migrate():
     from database.clickhouse import get_collection_client, list_collections
     vector_dims = probed_embedding_dims()
     for collectionname in list_collections():
-        # The structure index and the facet-term index have no ledger to recover from —
-        # each is one table per collection, rebuilt from ClickHouse by P6 — so they are
+        # The structure index and the facet-term index have no ledger to recover from
+        # (each is one table per collection, rebuilt from ClickHouse by P6), so they are
         # healed here unconditionally rather than per recorded shard.
         create_vfs_table(collectionname)
         create_entities_table(collectionname)

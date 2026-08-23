@@ -7,7 +7,7 @@
 services:
   hoover4-tesseract-cpu:
     build:
-      # Narrow context on purpose — never widen to main_services/ or the repo root,
+      # Narrow context on purpose, never widen to main_services/ or the repo root,
       # which hold large untracked scratch directories that would bloat every build.
       context: ${HOOVER4_REPO_ROOT}/main_services/ocr_tesseract
       dockerfile: Dockerfile

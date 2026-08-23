@@ -16,7 +16,7 @@
 //! dimmed: "we do not know when" has to be visible, because the alternative is silently
 //! drawing it in 1970 and letting someone read that as a fact.
 //!
-//! y comes from a plain force loop — pairwise repulsion, attraction along edges, damping.
+//! y comes from a plain force loop: pairwise repulsion, attraction along edges, damping.
 //!
 //! **Positions persist across navigations.** The map is keyed by `(dataset, hash)` and
 //! survives a selection change; on a diff, surviving nodes keep their coordinates and new
@@ -54,7 +54,7 @@ const TIME_SPRING: f64 = 0.08;
 /// The same pull for a node with no known date. Weak on purpose: it drifts to the middle
 /// rather than being pinned there, so it does not sit on top of a dated node.
 const UNDATED_SPRING: f64 = 0.01;
-/// Pairwise repulsion, in units² — the numerator of an inverse-square term.
+/// Pairwise repulsion, in units², the numerator of an inverse-square term.
 const REPULSION: f64 = 42_000.0;
 /// Attraction along an edge.
 const EDGE_PULL: f64 = 0.012;
@@ -121,7 +121,7 @@ fn EmailGraphContent(
 
     let on_node_click = Callback::new(move |identifier: DocumentIdentifier| {
         // `push`, not `replace`: clicking a node is a navigation, and back and forward
-        // keep the layout — because the layout lives in the signal above and not in the
+        // keep the layout, because the layout lives in the signal above and not in the
         // URL.
         navigator().push(Route::EmailGraphPage {
             centre: centre.read().clone().into(),
@@ -198,7 +198,7 @@ fn EmailGraphCanvas(
             let seeded = seed_positions(&value, &node_keys, &positions.peek().clone());
             if seeded != *positions.peek() {
                 positions.set(seeded);
-                // The diff is done, so the loop gets its budget back — that is exactly
+                // The diff is done, so the loop gets its budget back. That is exactly
                 // what "iterate the positions after the add/remove diff" means.
                 ticks.set(0);
             }

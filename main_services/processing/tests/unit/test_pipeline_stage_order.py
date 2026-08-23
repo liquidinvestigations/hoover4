@@ -131,7 +131,7 @@ def test_date_resolution_runs_after_parsing_and_before_indexing():
     """P6 builds the `dates` search attribute from `document_dates`.
 
     Resolve too early and there is no tika_metadata to read; resolve too late and the
-    document is indexed undated and stays that way until something re-indexes it —
+    document is indexed undated and stays that way until something re-indexes it,
     which nothing does on its own. Both failures are silent, hence the pin.
     """
     order = _stage_order()
@@ -214,7 +214,7 @@ def test_canonical_file_type_runs_inside_the_plan_that_produced_the_evidence():
     """`file_types` is written by P3, inside the per-plan children. A canonical pass
     that runs only outside them reads an empty table on a first ingest and writes
     nothing, and every document is then indexed with no file type, no MIME and no
-    extensions at all — which is what an empty File types facet looks like."""
+    extensions at all, which is what an empty File types facet looks like."""
     source = open(p2_workflows.__file__).read()
     single = [name for _, name in _execute_targets(source, "ExecuteSinglePlan")]
     assert "resolve_canonical_file_type" in single, (

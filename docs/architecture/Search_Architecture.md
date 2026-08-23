@@ -23,19 +23,19 @@ Manticore holds no global search tables. Each collection's search data lives in 
 dynamic number of shard tables, `<collectionname>_<n>_pages` (capped by the indexing
 planner at 4 GB of text or 2.5 M rows, whichever binds first). Distributed tables are
 deliberately not used: Manticore 14.1.0 cannot run this site's stored-field/FACET query
-shape over them — measured, not assumed, and it fails by returning NULL stored fields
+shape over them. Measured, not assumed, and it fails by returning NULL stored fields
 rather than by erroring.
 
 **One table per shard, and no JOIN.** Each document's metadata is denormalized onto every
 one of its pages rows by the indexer. The JOIN this replaced was the single most expensive
-thing in the search path — a nested-loop lookup per left row, evaluated before any
+thing in the search path. A nested-loop lookup per left row, evaluated before any
 predicate, so an unfiltered entity facet on the largest shard cost 13 s alone and 100 s
 under the four-way concurrency of the Entities tab, which is what produced HTTP 504 there.
 It was also silently wrong: Manticore's `LEFT JOIN` drops unmatched left rows, 0.28% of
 documents on the corpus it was measured against. Denormalized, the same facet is ~1 s and
 a `file_types` facet is ~0.27 s, for about 15% more disk. Do not reintroduce a join.
 
-Every search — result list, hit count, string facets, MVA facets, the date histogram — is
+Every search (result list, hit count, string facets, MVA facets, the date histogram) is
 therefore built once **per shard** (`website/backend/src/api/search/search_sql.rs`) and fanned out
 through a PROCESS-WIDE gate of `MAX_PARALLEL_INDEX_QUERIES = 8` concurrent Manticore
 queries (`website/backend/src/api/search/fanout.rs`, override with
@@ -52,12 +52,12 @@ fails.
 **A timeout is not a partial result.** Every query carries `max_query_time` and
 `agent_query_timeout` of 30 s (`HOOVER4_SEARCH_TIMEOUT_SECONDS`, ini key
 `search_timeout_seconds`), and the HTTP client applies the same budget plus five seconds
-of grace — Manticore's own limit is best-effort and covers neither a connect nor a read
+of grace. Manticore's own limit is best-effort and covers neither a connect nor a read
 stall. A shard that hits either limit fails the whole request, is never written to the
 search cache, and the facet pane offers a Retry button. That is deliberate asymmetry: a
 shard that could not be reached is dropped with a visible amber notice, while a shard that
 timed out answers with counts that are short by an unknown amount in a response shaped
-exactly like a correct one. The retry is never automatic — retrying by itself doubles the
+exactly like a correct one. The retry is never automatic. Retrying by itself doubles the
 load on a Manticore that was already too slow.
 
 What is exact, and what is approximate:
@@ -65,8 +65,8 @@ What is exact, and what is approximate:
 - **Exact:** per-shard results and per-shard counts; pagination stability (hits are
   merged by score with a deterministic `(collection_dataset, file_hash)` tie-break).
 - **Approximate:** cross-shard/cross-collection **ranking** (BM25 statistics are
-  per-table; there is no global IDF — accepted, deliberately not "fixed" with a
-  normalisation hack); cross-shard **facet counts** (each shard only returns its top
+  per-table, so there is no global IDF. That is accepted and deliberately not "fixed" with
+  a normalisation hack); cross-shard **facet counts** (each shard only returns its top
   buckets, over-fetched to `21 × n_shards`, capped at 200, before the merge sums
   them); the **total hit count** (a sum of per-shard `count(distinct file_hash)`,
   which is an upper bound because the same file can exist in two collections).
@@ -74,7 +74,7 @@ What is exact, and what is approximate:
 The **Collections facet is intersected with the dataset registry** before it is offered
 (`search_facets.rs::reconcile_dataset_facets`): a value that names no readable dataset is
 dropped, and a readable dataset the index returned no bucket for is added at zero. The
-index is not the authority on which datasets exist — `dataset` is — and Manticore keeps
+index is not the authority on which datasets exist (`dataset` is), and Manticore keeps
 whatever was written under a name until something deletes it, so an abandoned ingest goes
 on producing buckets with real counts. Offering one hands the user a filter whose only
 possible outcome is `0 documents found`. The guard is display-only: the orphan rows still
@@ -97,8 +97,8 @@ against a checksummed identifier it would only do damage.
 twenty-one buckets of one query, so narrowing those client-side answers "nothing matches"
 for a value that is present and merely unpopular. `search_entity_terms`
 (`website/backend/src/api/search/entity_terms.rs`) resolves a needle against
-`<collectionname>_entities` — the only table carrying both the text and the term id the
-search columns are written in — and the ids narrow the facet query through
+`<collectionname>_entities` (the only table carrying both the text and the term id the
+search columns are written in), and the ids narrow the facet query through
 `search_string_facet`'s `restrict_to_ids`. `Some(vec![])` is a needle that matched
 nothing and returns no buckets; `None` is no needle and returns the whole facet, and
 collapsing the two answers a failed search with everything. `file_types` keeps
@@ -108,7 +108,7 @@ client-side narrowing: a handful of buckets, all visible, and no rows in the ter
 that pane's `field` prop rather than building a new pane. Props are not reactive: a
 `String` prop is read once into the hooks and never again, and a `use_resource` that
 closed over it goes on asking about the column the reader left. The field is therefore a
-`ReadSignal`, read *inside* the resource, and the search box empties when it changes — the
+`ReadSignal`, read *inside* the resource, and the search box empties when it changes. The
 failure it prevents is a facet full of values answering "nothing matches" for a needle
 typed against a different list.
 
@@ -117,12 +117,12 @@ ingestion runs. **Manticore 14.1.0's SQL grammar has no `EXCLUDE FILTERS` clause
 position a `FACET` accepts, so a facet drops its own selection by having it removed from
 the query before the query is sent. That also removes the `collection_dataset` filter
 permission sanitisation injected, which is safe only for as long as permissions are
-collection-granular — a permitted collection implies all of its datasets. Dataset-level
+collection-granular. A permitted collection implies all of its datasets. Dataset-level
 permissions would make that line a leak.
 
 The two copies are held together by a digest rather than by discipline. No path is
-visible to both test runs — `hoover4-website` mounts only `website/` and `hoover4-worker`
-only `main_services/processing` — so each side hashes its own header names, thresholds and
+visible to both test runs (`hoover4-website` mounts only `website/` and `hoover4-worker`
+only `main_services/processing`), so each side hashes its own header names, thresholds and
 canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the same literal. A rule changed
 on one side alone fails that side's test; updating the digest then fails the other side
 until the same change is made there.
@@ -142,7 +142,7 @@ stored it:
 * Tika's `dcterms:created` / `dcterms:modified`, `xmp:CreateDate` / `xmp:ModifyDate`,
   `pdf:docinfo:created` / `pdf:docinfo:modified`, `exif:DateTimeOriginal`;
 * an email `Date:` header that actually parsed (`email_headers.date_sent_known = 1`);
-* the mtime of an **archive member** — 7z restores the timestamps the archive stored.
+* the mtime of an **archive member**, 7z restores the timestamps the archive stored.
 
 Deliberately NOT dates: Tika's `File Modified Date` (the mtime of the worker's temp file,
 which would date the whole corpus "today"), and the mtime of a top-level disk file (the
@@ -150,7 +150,7 @@ clone or save time of the corpus, recorded in `vfs_files.mtime_source = 'filesys
 never indexed).
 
 A document has a SET of dates, not one, and `document_dates` keeps each with the key it
-came from. The viewer's **Dates** section shows all of them with provenance — that is
+came from. The viewer's **Dates** section shows all of them with provenance. That is
 where a user finds out why a date filter did or did not match.
 
 **`email_headers.date_sent` is a `DateTime` whose fallback is the epoch, and the epoch is
@@ -168,7 +168,7 @@ text writer drops a page whose stripped text is under two characters. Mail whose
 `text/plain` part is a single `,` clears the first bar and not the second, exactly like
 mail whose only body part is HTML. `DocumentEmailSourceItem` therefore carries
 `has_body` alongside the body's page range, and the preview renders the headers with an
-explicit "no body text was extracted" line instead of asking for a page that has no row —
+explicit "no body text was extracted" line instead of asking for a page that has no row,
 which the text endpoint answers, correctly, with a 404 the viewer rendered as *document
 not found!* where the body belongs.
 
@@ -179,11 +179,11 @@ more useful than none for narrowing a corpus, and the viewer names the source so
 can discount it.
 
 **A date range is an interval-overlap test.** The filter compiles to
-`date_min <= hi AND date_max >= lo`, not `ANY(dates) BETWEEN lo AND hi` — Manticore 14.1.0
+`date_min <= hi AND date_max >= lo`, not `ANY(dates) BETWEEN lo AND hi`. Manticore 14.1.0
 cannot evaluate `ANY(mva)` across the pages⋈meta join in any spelling (see
 `search_sql.rs::range_predicate`). A document whose dates STRADDLE the range with none
 inside it therefore matches: created 2007, modified 2020, filtered 2013–2016. The error is
-one-sided — a superset, never a subset — and the viewer explains each result.
+one-sided (a superset, never a subset), and the viewer explains each result.
 
 **Three range shapes, one filter.** `RangeFilter`'s bounds are `Option`s and an absent one
 compiles to an open end, so a low-pass (`before X`), a high-pass (`after X`) and a
@@ -196,7 +196,7 @@ asks for them.
 ## The date histogram
 
 Under the date selector, one bar per computed bin, over **the query without its own date
-filter** — a facet that filtered itself would be one solid block inside the cutoffs and
+filter**, a facet that filtered itself would be one solid block inside the cutoffs and
 zero outside. The bars the cutoffs cover are drawn in the accent, so the picture is
 "what you selected against what is there".
 
@@ -208,7 +208,7 @@ zero outside. The bars the cutoffs cover are drawn in the accent, so the picture
    out of Manticore for. There is no histogram, date-bucket or date-truncate function to
    use instead, and `date_min` is a signed `bigint` rather than a `timestamp` precisely
    because the timestamp type is 32-bit unsigned and cannot hold a 1936 date.
-2. **Count the bins.** One `INTERVAL(date_min, e0, e1, …)` + `GROUP BY` per shard — the
+2. **Count the bins.** One `INTERVAL(date_min, e0, e1, …)` + `GROUP BY` per shard. The
    same shape as the size facet, with up to thirty edges instead of three.
 
 Bins are computed, not fixed: a per-year bucket is unreadable for a corpus spanning a week
@@ -219,7 +219,7 @@ three intervals a band-pass creates each get their own run of bins at a comparab
 and no bar is half-selected. `histogram_edges` is a pure function and is where the tests
 live.
 
-Clicking a bar means whatever the active mode means — in `Before` it moves the upper
+Clicking a bar means whatever the active mode means, in `Before` it moves the upper
 cutoff, in `After` the lower one, otherwise it selects that bin. Each bar's `title` says
 which, because the answer is not visible from the bar.
 
@@ -234,7 +234,7 @@ Undated documents carry `DATE_UNKNOWN` (`i64::MIN`) and sort last descending, fi
 ascending.
 
 Sorting is cross-shard, so the per-shard `ORDER BY` and the merge comparator must agree
-exactly — the sort column is SELECTed for that reason alone. `merge_hits_sorted` is tested
+exactly. The sort column is SELECTed for that reason alone. `merge_hits_sorted` is tested
 over every key in both directions for page disjointness.
 
 **The Sort control edits the PENDING query, like everything else in the search toolbar.**
@@ -249,7 +249,7 @@ user had not confirmed.
 
 `MAX_PAGINATION_DOCUMENT_LIMIT` (`website/common/src/search_const.rs`) caps how deep the pager
 and the next/previous-result buttons go. The hit count above them is the whole match, so
-a corpus-wide query says "6 379 documents found" over a pager that ends at `1000` — two
+a corpus-wide query says "6 379 documents found" over a pager that ends at `1000`, two
 numbers on one line that legitimately disagree. The `i` beside the count explains it
 whenever the count exceeds the cap (`search_result_list_controls.rs::PaginationCapNotice`).
 
@@ -263,7 +263,7 @@ One synthetic pages row per document (`extracted_by = 'filename_index'`, `page_i
 carries its distinct basenames, so a query for a filename finds the document. It is built
 from `vfs_files` paths and never from page text.
 
-**It is not a page**, and every query over a pages table must exclude it — `page_id` is
+**It is not a page**, and every query over a pages table must exclude it: `page_id` is
 deserialised as `u32` in the document endpoints, so a leak is a failed query rather than an
 off-by-one. `EXCLUDE_FILENAME_ROW` is the predicate; `test_filename_row_excluded.py` greps
 for readers that forget it.
@@ -295,7 +295,7 @@ server's own `MAX_CHILDREN_PER_PAGE` (2000) is a page-size cap and is deliberate
 than what the tree asks for: while the two were the same number, a wider request was
 clamped back to the page the caller already had.
 
-The last two are measured from the tree's **focus** — the node the URL names — and are
+The last two are measured from the tree's **focus** (the node the URL names), and are
 inert in the filter pane, which has no "here". Only one of the first two is ever on screen
 at once: while a sibling window is capping, the fetch row is suppressed, because raising
 the fetch limit would not reveal anything the window is hiding. `elide_ancestors` and
@@ -309,7 +309,7 @@ whole levels without spending rungs, so the deepest folder of a 43-row chain ren
 rung 11 rather than rung 45. Every visible row is therefore indented strictly more than the
 row it hangs off, at any depth and at any pane width, which is the thing a tree has to
 show. `indent_px` spends 16 px on the first four rungs and 8 px on every rung after them,
-bounded by a pixel ceiling and — through a CSS `min()` — by a share of the pane, so
+bounded by a pixel ceiling and (through a CSS `min()`) by a share of the pane, so
 dragging the sidebar narrow tightens the ladder with no re-render. The 8 px step is small
 because the app lays out at a 1920 px design width and `zoom`s it to the window
 (`assets/main.css`): a 4 px step would be 2.5 device pixels at a 1280 px window, which is
@@ -319,8 +319,8 @@ because the ladder does not count it.
 **That pane share is scaled by the rung, not applied flat**, which is the difference
 between a ladder that tightens and one that stops. A flat `min(Npx, 40%)` resolves to one
 number for every rung above the percentage, so at the narrowest pane the drag offers, four
-to five consecutive levels render at pixel-identical indent — the flat cap the ladder
-replaced, reached from the other direction. `indent_style` emits
+to five consecutive levels render at pixel-identical indent, which is the flat cap the
+ladder replaced, reached from the other direction. `indent_style` emits
 `min(Npx, calc(40% * f))` where `f` is the rung's share of the pixel ceiling, so the
 narrow-pane branch is a proportional copy of the wide-pane one: bounded by the same share
 of the pane, and still stepping at every rung.
@@ -333,7 +333,7 @@ twenty-one siblings. The path to the focus stays open, including the levels elis
 and branches elsewhere in the tree keep whatever the user opened by hand.
 
 **The storage sidebar is resizable and remembers its width**
-(`website/frontend/src/components/resizable_sidebar.rs`). The unit is CSS pixels — a percentage or `vw` would
+(`website/frontend/src/components/resizable_sidebar.rs`). The unit is CSS pixels. A percentage or `vw` would
 re-scale the pane on every window change, and the width a folder name needs is a number of
 pixels, not a share of a screen. Those are LAYOUT pixels, before the app's scale, so the
 drag divides the cursor's travel by the scale it measures off `#x-nav-container`; the
@@ -345,16 +345,16 @@ plain positive integer falls back to the default, and `max-width: 50%` backstops
 **The double-click that resets it is recognised from the two `mousedown`s**, because no
 `click` or `dblclick` ever reaches the handle: the first press mounts the full-screen
 overlay that catches the drag, the release lands on that overlay, and the overlay unmounts
-in the same handler — so the browser has no live common ancestor for the two and drops the
+in the same handler, so the browser has no live common ancestor for the two and drops the
 whole activation sequence. `is_double_press` pairs two presses within 400 ms and 4 px of
 each other, which is the only path that writes the default width back to storage.
 
 Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
-crosses container boundaries — `PathDescriptor` carries a single `container_hash`, so an
+crosses container boundaries: `PathDescriptor` carries a single `container_hash`, so an
 archive inside an archive used to render one hop and lose the rest. A container has no
 `/` node: what is inside it hangs off the container FILE, so expanding `report.zip` shows
 its contents and the trail reads `dataset › folder › report.zip › member`. The content
-pane still addresses that level as the descriptor `container_hash + "/"` — a descriptor
+pane still addresses that level as the descriptor `container_hash + "/"`. A descriptor
 and a tree node are different things. Past
 `MAX_CRUMBS_SHOWN` (3) the leading crumbs collapse into a `…` chip whose popup lists them.
 
@@ -363,7 +363,7 @@ ingestion runs, watching a folder fill up is the normal case, and a stale tree i
 than a slow one.
 
 Filtering on a folder finds everything below it **including through containers**, and a
-content-addressed container that sits at two paths contributes both ancestries — the
+content-addressed container that sits at two paths contributes both ancestries. The
 `zip-in-multiple-locations` fixture, which `verify-stack.sh` asserts on. `vfs_nodes.parent_key`
 is single-valued and is only for breadcrumbs; membership always uses the full closure.
 
@@ -371,6 +371,6 @@ is single-valued and is only for breadcrumbs; membership always uses the full cl
 
 Every search response is cached under a salt made of the collection's shard-ledger
 generation AND `server_settings.cache_epoch`. The generation covers data changes; the epoch
-is the manual lever for SEMANTICS changes, where every cached response is a correct answer
+is the manual control for SEMANTICS changes, where every cached response is a correct answer
 to a question the code no longer asks. Bump it (any new value) after changing a query
 shape.

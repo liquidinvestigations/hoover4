@@ -1,4 +1,4 @@
-//! Admin access guard — shows 403 for non-admins.
+//! Admin access guard, shows 403 for non-admins.
 
 use dioxus::prelude::*;
 

@@ -1,7 +1,7 @@
 //! Upstream conformance: do our rules agree with the projects we ported them from?
 //!
 //! The golden corpus measures us against cases we wrote. This measures us against cases the
-//! upstream implementers wrote — every `python-stdnum` module's docstring is a labelled
+//! upstream implementers wrote, every `python-stdnum` module's docstring is a labelled
 //! valid/invalid corpus for its own scheme, and the same is true of the other reference projects
 //! on disk. Agreement with upstream is the only evidence that a ported check digit means what its
 //! author meant.
@@ -30,7 +30,7 @@
 //!
 //! Recall, precision and coverage are reported separately and never blended. Recall is over
 //! upstream-valid cases in a scheme we implement; precision is over upstream-invalid ones, and
-//! asks only whether we stayed silent — except where upstream's assertion was about one
+//! asks only whether we stayed silent, except where upstream's assertion was about one
 //! recogniser rather than about a span, for which see `classify`; coverage is how much of the extracted material was scored
 //! at all. Every excluded case carries an individually justifiable reason and is counted beside
 //! the scores, because a run that excludes its way to a good number is worthless.
@@ -69,7 +69,7 @@ const MIN_RECALL_PERCENT: f64 = 97.4;
 const MIN_PRECISION_PERCENT: f64 = 99.5;
 
 /// The same ratchet per origin: minimum recall, then minimum precision. The aggregate floor alone
-/// lets one origin regress a long way behind the others — the largest origin is twenty times the
+/// lets one origin regress a long way behind the others. The largest origin is twenty times the
 /// smallest, so a rule that loses every case in a small one moves the aggregate by less than the
 /// floor's own margin. Every origin in the corpus must appear here, which is what makes adding an
 /// origin a decision about the number it is expected to hold rather than a free pass.
@@ -316,16 +316,16 @@ fn canonical(entity: &Entity) -> String {
 }
 
 /// How far two coordinate readings may differ and still name the same point. A reference
-/// implementation's own encode and decode material disagrees in the last bits of the double —
-/// `2.7821874999999996` on one side, `2.7821875` on the other — and scoring that pair as a
+/// implementation's own encode and decode material disagrees in the last bits of the double
+/// (`2.7821874999999996` on one side, `2.7821875` on the other), and scoring that pair as a
 /// disagreement measures floating-point formatting rather than the rule. A billionth of a degree is
 /// a tenth of a millimetre, so nothing a reader would call a different place hides under it. It is
 /// one constant applied componentwise rather than a per-case field, because a per-case field makes
 /// every extractor fill in a column that one origin needs.
 const COORDINATE_TOLERANCE: f64 = 1e-9;
 
-/// Whether an observed canonical value answers the expected one: exact string equality, or —
-/// for the comma-separated pair a geographic point formats as — componentwise agreement within
+/// Whether an observed canonical value answers the expected one: exact string equality, or
+/// (for the comma-separated pair a geographic point formats as) componentwise agreement within
 /// [`COORDINATE_TOLERANCE`].
 fn values_agree(observed: &str, expected: &str) -> bool {
     if observed == expected {
@@ -388,7 +388,7 @@ fn classify(case: &Case, entities: &[Entity]) -> (Outcome, Vec<String>) {
     // nothing in. That says nothing about the other facets: an email corpus asserting "no address
     // here" in a sentence that also holds an IP address is not a claim about the IP address, and
     // scoring the IP match as a false positive would measure the wrong thing. Where upstream named
-    // a span, any type over that span is still a failure — that is the case the distinction turns
+    // a span, any type over that span is still a failure. That is the case the distinction turns
     // on.
     let whole_fragment = case.token_start == 0 && case.token_end == case.text.len();
 
@@ -581,7 +581,7 @@ fn upstream_conformance() {
         report.total.scored > 0,
         "no case was scored; the harness measured nothing"
     );
-    // A floor over an empty measurement is not zero, it is nothing: an origin whose upstream
+    // A floor over an empty measurement is nothing rather than zero: an origin whose upstream
     // publishes only registered identifiers has no invalid case to stay silent about, and a run
     // narrowed to it has no precision to compare against a floor.
     if let Some(recall) = report.recall_percent {

@@ -16,8 +16,8 @@ use crate::auth::permissions;
 
 /// Where the in-PDF search sidecar answers.
 ///
-/// It is a **child process of this server**, not a service of its own — see
-/// `server_extra::run_pdf_search_server` — so loopback is the right default and the
+/// It is a **child process of this server**, not a service of its own (see
+/// `server_extra::run_pdf_search_server`), so loopback is the right default and the
 /// variable exists only so a deployment that moves it does not need a rebuild. This is
 /// not `PDF_TO_HTML_ENDPOINT`: that names the page-rendering container, which speaks a
 /// different protocol entirely (POST of raw PDF bytes, HTML back) and answers
@@ -31,8 +31,8 @@ pub fn pdf_search_endpoint() -> String {
 
 /// Ceiling on a document sent to the sidecar for highlighting.
 ///
-/// The whole PDF is buffered three times over — here, on the wire, and inside pdfium's
-/// wasm heap — so this is a memory bound on the server, not a policy about documents.
+/// The whole PDF is buffered three times over (here, on the wire, and inside pdfium's
+/// wasm heap), so this is a memory bound on the server, not a policy about documents.
 /// A document above it still opens, downloads and searches by text; only the in-page
 /// highlight overlay is unavailable, which is the right thing to lose.
 const MAX_PDF_SEARCH_BYTES: u64 = 128 * 1024 * 1024;
@@ -53,7 +53,7 @@ pub async fn search_document_pdf(
     //
     // Do NOT turn this back into a nested loop over `source.min_page..=source.max_page`
     // per text source. `page_id` is a real PDF page number, so that loop issues one
-    // Manticore round trip per page of the document — a one-shot lookup becoming a
+    // Manticore round trip per page of the document, a one-shot lookup becoming a
     // thousand-shot one, on the intended semantics rather than on a bug.
     let text_results =
         search_document_text_all_hits(user, document_identifier.clone(), query.clone()).await?;
@@ -78,7 +78,7 @@ pub async fn search_document_pdf(
 
     // The sidecar is given the bytes. Handing it a URL pointing back at this server's own
     // HTTP port instead makes the server fetch a document it already knows how to read,
-    // over a request that can carry no session — so requiring a session on the download
+    // over a request that can carry no session, so requiring a session on the download
     // route silently kills in-document search.
     let pdf_bytes = crate::api::documents::download_document::read_blob_bytes(
         user,

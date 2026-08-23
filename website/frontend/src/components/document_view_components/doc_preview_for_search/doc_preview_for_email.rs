@@ -2,7 +2,7 @@
 //! body.
 //!
 //! Everything above the body comes from ONE server call ([`get_email_envelope`]). It
-//! could have been four — headers, participants, attachments, cluster — but they all
+//! could have been four (headers, participants, attachments, cluster), but they all
 //! describe the same message and four resources on one card is four loading states that
 //! settle in an unpredictable order, which reads as the card rebuilding itself.
 //!
@@ -117,7 +117,7 @@ pub fn DocumentPreviewForEmail(
     // An email whose body was never extracted has no `email_parser` row to ask for, and
     // asking anyway is what put the text endpoint's `document not found!` where the body
     // belongs. Say what is true instead: the headers are here, the body is not. The other
-    // text variants — the raw MIME envelope among them — stay in the source selector.
+    // text variants (the raw MIME envelope among them) stay in the source selector.
     if !source.read().has_body {
         return rsx! {
             div {

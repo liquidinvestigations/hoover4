@@ -2,7 +2,7 @@
 //!
 //! VFS node keys are dataset-scoped by construction (`vfs::make_node_key`), so there is
 //! no such thing as a cross-dataset tree in the structure index. The two levels above a
-//! dataset — the collection and the dataset itself — are therefore composed from the
+//! dataset (the collection and the dataset itself) are therefore composed from the
 //! registry rather than fetched from the index, and these are the types that carry them.
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ pub struct DatasetSummary {
 
 impl DatasetSummary {
     /// What a tree row or a card says: the display name when an admin set one, the
-    /// short name otherwise. Never the composed id — that is the tooltip's job.
+    /// short name otherwise. Never the composed id. That is the tooltip's job.
     pub fn label(&self) -> &str {
         if self.dataset_display_name.is_empty() {
             &self.dataset_name

@@ -423,7 +423,7 @@ fn OperationTableRow(
 /// **The unit is a property of the kind, not of the page.** A purge counts rows still in
 /// the stores, an export counts bytes moved, and everything else counts plans; rendering
 /// one label for all three states the wrong thing about two of them, and a reader has no
-/// way to tell — "606989269 / 606989269 plans" is not a number anyone can question.
+/// way to tell. "606989269 / 606989269 Plans" is not a number anyone can question.
 /// Bytes are rendered human-readable, because nine digits is not a reading.
 fn progress_reading(row: &OperationRow) -> String {
     match row.kind.as_str() {

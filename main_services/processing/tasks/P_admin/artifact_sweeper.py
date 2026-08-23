@@ -11,7 +11,7 @@ So the order is fixed and is the opposite of what feels natural:
 3. **only then** hard-delete the rows.
 
 A crash between 2 and 3 leaves a row pointing at a missing object, which renders as a
-broken artifact — recoverable, and the next sweep finishes the job. A crash the other way
+broken artifact, which is recoverable, and the next sweep finishes the job. A crash the other way
 round leaks bytes permanently.
 
 Step 4 catches what a crash *between the object write and the row insert* leaves behind:
@@ -118,7 +118,7 @@ def _sweep_rows(client, s3, rows, result: SweepResult) -> SweepResult:
     # **A body_key can be shared.** The capture path reuses the previous snapshot when the
     # page has not changed between two actions, so two artifacts can point at one object.
     # Deleting it because the older one expired would silently break the newer one, which
-    # would then render as an artifact whose page will not load — with nothing saying why.
+    # would then render as an artifact whose page will not load, with nothing saying why.
     # So a key any *surviving* row still references is left alone.
     still_referenced = {
         key

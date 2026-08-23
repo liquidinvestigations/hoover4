@@ -23,7 +23,7 @@ class ChunkEmbedResult:
     text_segments: int
     chunks_written: int
     vectors_written: int
-    #: Chunks the non-linguistic filter held back (`tasks.text_quality`) — base64
+    #: Chunks the non-linguistic filter held back (`tasks.text_quality`). Base64
     #: attachment bodies, pixel data. Counted rather than merely logged: a jump here is
     #: how you notice the heuristic has started eating real documents.
     chunks_skipped_non_linguistic: int = 0

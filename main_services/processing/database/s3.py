@@ -2,7 +2,7 @@
 
 The store is Garage; the `minio` pip package is a generic S3 client and is what talks to
 it. Endpoint and credentials come from the environment so that a deployment can move the
-store without a code change — the values here are only the compose defaults restated.
+store without a code change. The values here are only the compose defaults restated.
 
 **There is a bucket per collection and one system bucket, never a single shared one.**
 The key the application holds carries `--create-bucket`, so a collection's bucket is
@@ -26,11 +26,11 @@ S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-
 #:
 #: Its own bucket rather than a prefix inside a collection's, so that "P0 must never walk
 #: derived material" stops being a prefix check somebody has to remember and becomes a
-#: structural property — a scan of a collection's bucket cannot reach it at all.
+#: structural property. A scan of a collection's bucket cannot reach it at all.
 SYSTEM_BUCKET = os.environ.get("S3_SYSTEM_BUCKET", "hoover4-system")
 
-#: Prefix of a collection's own bucket. Per-collection *stores* are impossible — Garage
-#: has one shared metadata database and globally content-addressed data blocks — but
+#: Prefix of a collection's own bucket. Per-collection *stores* are impossible. Garage
+#: has one shared metadata database and globally content-addressed data blocks, but
 #: per-collection buckets are not, and they are what makes a collection's objects
 #: enumerable without prefix filtering and deletable in one call. Block dedup is global,
 #: so the split costs no storage.
@@ -67,7 +67,7 @@ def ensure_collection_storage(collectionname: str) -> str:
     creates only the database ingests fine until the first writer that does not create
     buckets of its own reaches for it: the scan stage makes the bucket before its first
     upload, but a corpus small enough to keep every blob inline in ClickHouse never
-    uploads, so the first thing to touch the bucket is the searchable-PDF builder — which
+    uploads, so the first thing to touch the bucket is the searchable-PDF builder, which
     answers 500 and parks the plan behind an activity that can never succeed.
     """
     from database.clickhouse import migrate_collection

@@ -1,14 +1,14 @@
 //! The Collections pane of the filter modal: a two-level collection → dataset tree.
 //!
-//! The filter itself is unchanged — `facet_filters["collection_dataset"]` is still a flat
+//! The filter itself is unchanged: `facet_filters["collection_dataset"]` is still a flat
 //! set of dataset ids, which is the only thing the backend has ever understood. What is
 //! composed here is the level ABOVE it: the buckets come back per dataset, the dataset
 //! registry says which collection each belongs to, and a collection's hit count is the
 //! sum of its datasets'. A reader picks whole collections first and only expands when
 //! they want one dataset out of one of them.
 //!
-//! **Expanding fetches nothing.** Both halves — the buckets and the collection → dataset
-//! map — are already in hand before a row is drawn, so an expand is a pure render with no
+//! **Expanding fetches nothing.** Both halves (the buckets and the collection → dataset
+//! map) are already in hand before a row is drawn, so an expand is a pure render with no
 //! resource, no suspense and no loading state behind it. Expansion state also lives in a
 //! signal that only the individual rows read, through a `Memo` of their own key, so
 //! opening one collection wakes that one row instead of redrawing the pane.
@@ -83,8 +83,8 @@ impl CollectionGroup {
 
 /// Group the flat buckets into collections, count-descending at both levels.
 ///
-/// A bucket whose dataset is not in the storage tree — permissions changed mid-session, or
-/// the registry row is gone — becomes its own single-dataset collection rather than being
+/// A bucket whose dataset is not in the storage tree (permissions changed mid-session, or
+/// the registry row is gone) becomes its own single-dataset collection rather than being
 /// dropped: dropping it would hide a filter the user can still apply and, worse, one they
 /// may already have applied. For the same reason a selected dataset that came back in no
 /// bucket at all is added with a count of zero, so the tick can always be undone.
@@ -162,7 +162,7 @@ pub fn group_buckets(
 ///
 /// Not `storage_tree::collection_tri_state`: that one answers over VFS node keys, where a
 /// dataset is selected by its root key and a folder inside it makes the dataset partial.
-/// Here the selection is the facet filter itself — plain dataset ids — and a dataset is
+/// Here the selection is the facet filter itself (plain dataset ids), and a dataset is
 /// either in it or not, so only the collection level can be indeterminate.
 pub fn collection_facet_tri_state(dataset_ids: &[String], selected: &BTreeSet<String>) -> TriState {
     if dataset_ids.is_empty() {
@@ -269,7 +269,7 @@ pub fn CollectionsFacetPane(
     let needle_text = needle.read().trim().to_lowercase();
     // Narrowing happens on the labels, which are what is on screen. A collection matches
     // when its own name matches OR one of its datasets does, and in the second case it
-    // opens itself while the box is non-empty — a hidden match is the same as no match.
+    // opens itself while the box is non-empty. A hidden match is the same as no match.
     let visible: Vec<(CollectionGroup, bool)> = if needle_text.is_empty() {
         groups.into_iter().map(|g| (g, false)).collect()
     } else {
@@ -347,7 +347,7 @@ fn CollectionFacetRow(
     let dataset_ids = group.dataset_ids();
 
     // A memo of THIS row's key. `expanded` changing for another collection produces the
-    // same boolean here, so the memo does not fire and this row is not re-rendered — that
+    // same boolean here, so the memo does not fire and this row is not re-rendered. That
     // is the whole reason expansion cannot turn into a redraw of the pane.
     let is_open_key = name.clone();
     let is_open = use_memo(move || expanded.read().contains(&is_open_key));
@@ -365,7 +365,7 @@ fn CollectionFacetRow(
     let toggle_open = move |event: Event<MouseData>| {
         // The chevron and the label are separate hit targets: clicking the row selects,
         // clicking the chevron only expands. Conflating them is the usual way this
-        // pattern goes wrong — every expand would also change the filter.
+        // pattern goes wrong, every expand would also change the filter.
         event.stop_propagation();
         let mut set = expanded.write();
         if !set.remove(&toggle_key) {

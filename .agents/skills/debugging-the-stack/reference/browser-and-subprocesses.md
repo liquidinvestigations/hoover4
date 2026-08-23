@@ -2,7 +2,7 @@
 
 A library that "cannot connect to the browser" may never have launched one. nodriver treats
 an explicitly configured `host` + `port` as *attach to something already running* and
-silently skips the launch — its error then blames your privileges.
+silently skips the launch. Its error then blames your privileges.
 
 Same family: its connect loop allows about 2.7 s, and Chromium with two MV3 extensions needs
 5–6 s.

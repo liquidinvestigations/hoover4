@@ -1,7 +1,7 @@
 //! Equipment identifiers: IMEI and MAC address.
 //!
 //! The two are opposites in what makes them findable. An IMEI is a bare fifteen-digit run with a
-//! Luhn check digit — the arithmetic is a one-in-ten filter and the word beside it is what makes
+//! Luhn check digit. The arithmetic is a one-in-ten filter and the word beside it is what makes
 //! acceptance defensible. A MAC address has no checksum at all, but its separators make it
 //! self-identifying; the bare twelve-hex form is deliberately **not** matched, because it is
 //! indistinguishable from half a hash.

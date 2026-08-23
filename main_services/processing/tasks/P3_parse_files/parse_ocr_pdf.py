@@ -1,6 +1,6 @@
 """OCR'd-PDF activity: one engine, every language pass that engine needs for this dataset.
 
-Shaped exactly like `parse_ocr.py`, and for the same reasons — one activity per *engine*,
+Shaped exactly like `parse_ocr.py`, and for the same reasons, one activity per *engine*,
 languages read inside the activity so an apply job reaches work already in flight, and a
 watermark checked before anything is spent. What differs is what it produces: not text
 rows but a **derived object**, a searchable PDF written under `derived/` by
@@ -51,8 +51,8 @@ class RunOcrPdfParams:
 def _record_skip(params: RunOcrPdfParams, run_time_ms: int, reason: str) -> None:
     """Record a skip in `processing_errors` without failing the activity.
 
-    A skip is a *data* or *deployment* fact — no endpoint, no languages, an unreadable
-    file — and must not consume retries. A configured-but-unreachable service is not a
+    A skip is a *data* or *deployment* fact (no endpoint, no languages, an unreadable
+    file), and must not consume retries. A configured-but-unreachable service is not a
     skip: that raises, so Temporal retries it.
     """
     from tasks.P2_execute_plan.activities import (
@@ -222,7 +222,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
             )
             run_time_ms = max(int((time.time() - started) * 1000), 0)
 
-            # Object first, row second — see the module docstring.
+            # Object first, row second, see the module docstring.
             insert_arrow_idempotent(client, "pdf_ocr_results", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
                 "pdf_hash": pa.array([params.pdf_hash], type=pa.string()),

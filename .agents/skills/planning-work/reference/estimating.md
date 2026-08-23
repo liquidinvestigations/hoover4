@@ -7,7 +7,7 @@ report which follows can contradict.
 
 **Estimate in passes, never in developer days.** A pass is one sub-agent invocation. A
 developer day is a unit nothing here has ever been measured in, and a duration that cannot be
-falsified by the report that follows it is not an estimate — it is decoration.
+falsified by the report that follows it is not an estimate. It is decoration.
 
 The failure this prevents is specific and it has already happened: twenty-one plan headings
 carried a parenthetical day-cost, and not one was ever checked against an outcome, because
@@ -18,7 +18,7 @@ than the last plan's *outcomes*.
 ## The method
 
 Take the **outside view** first: put the item in a class of comparable past work and read the
-distribution. Do not reason forward from the item's parts — that is the inside view, and it is
+distribution. Do not reason forward from the item's parts. That is the inside view, and it is
 where optimism lives. Reasoning about what the items *are* is still judgement; how long each
 takes is arithmetic.
 
@@ -49,18 +49,18 @@ task is the whole of the outside view.
 | **deploy / remote** | 73 | 157 | 184 | 134 | 6 |
 | **documentation** | 7 | 8 | 8 | 41 | 3 |
 
-Minutes of sub-agent wall clock, and this is the script's output rather than a transcription —
-**regenerate it rather than editing it by hand.** The first two buckets can be leaned on; the
+Minutes of sub-agent wall clock, and this is the script's output rather than a transcription.
+**Regenerate it rather than editing it by hand.** The first two buckets can be leaned on; the
 last three are provisional at four, six and three samples, and a bucket with three samples is a
 guess wearing a percentile.
 
 A pass is classified by what it *cost*, not by what it was called: a documentation pass that
 made sixty edits is an implementation pass, and the script buckets it that way. That is why
-the documentation row is as tight as it is — it holds only the passes that really were prose.
+the documentation row is as tight as it is. It holds only the passes that really were prose.
 
 **Two cautions about the two smallest buckets, both learned by getting an estimate wrong.**
 
-**A demonstration is not a browser pass — cost it as implementation.** A pass sent to restart
+**A demonstration is not a browser pass. Cost it as implementation.** A pass sent to restart
 infrastructure, wait for recovery and repeat runs was forecast from the verify/browser row at 30
 minutes and took **50.6**, which is the implementation row plus its adders almost exactly. The
 browser row holds passes that walked a page and took a screenshot; anything that restarts a
@@ -70,12 +70,12 @@ container, waits on it, and repeats belongs in implementation however its delive
 the description first, so a pass whose title happens to avoid the words *verify*, *browser*,
 *acceptance*, *smoke* or *screenshot* falls through to the cost-based default. That is the right
 default and it is why those two rows stay small and stale. **Do not read their percentiles as
-having been confirmed by recent work** — reach for the implementation row when in doubt, because
+having been confirmed by recent work**. Reach for the implementation row when in doubt, because
 being wrong in that direction costs a forecast and being wrong in the other costs a schedule.
 
 How to pick: if it writes source, implementation. If it only reads, review. If its deliverable
 is a screenshot or a driven flow, verify/browser. If it touches a host that is not this one,
-deploy — and that bucket is nearly twice implementation, so the classification is worth getting
+deploy, and that bucket is nearly twice implementation, so the classification is worth getting
 right.
 
 ### 3. Add the verification and rebuild cost
@@ -103,7 +103,7 @@ batching genuinely saves time.
 
 ### 4. Sum, and double for the organizer
 
-`T50 = Σ(bucket p50 + adders)`, `T90` the same at p90. **Report both — never a single figure.**
+`T50 = Σ(bucket p50 + adders)`, `T90` the same at p90. **Report both, never a single figure.**
 The distribution is long-tailed and a mean is a commitment nobody can keep.
 
 Then `S = T × 2`. Measured across sessions running sub-agents strictly one at a time: 1.1, 1.9,
@@ -111,7 +111,7 @@ Then `S = T × 2`. Measured across sessions running sub-agents strictly one at a
 the next work package costs about as much again as the agents do.
 
 **Add half a pass for every item that is not a single mechanical change.** Three of five briefs
-in the last sprint needed a resume, and a resume is cheap — it costs no slot and keeps the
+in the last sprint needed a resume, and a resume is cheap. It costs no slot and keeps the
 agent's context.
 
 ## The block every plan carries
@@ -138,7 +138,7 @@ estimates stayed wrong.
 **An agent cannot measure its own elapsed time, and always overestimates it.** Passes reporting
 they had "roughly doubled" a one-hour box had used twenty-four minutes of it; one reporting a
 "2.5× overrun" had used forty-seven. **A self-timebox is a budget of effort and attention, not
-a clock.** Ask a pass what it did not reach, never how long it took — wall clock comes from
+a clock.** Ask a pass what it did not reach, never how long it took. Wall clock comes from
 outside the agent.
 
 **Duration is not success.** These are durations of passes that ran, not of passes that worked.
@@ -152,12 +152,12 @@ nowhere.
 .agents/skills/planning-work/reference/mine-wall-clock.py ~/.claude/projects/<project>/
 ```
 
-Regenerate rather than remember. If the numbers have moved, move the table with them — and
+Regenerate rather than remember. If the numbers have moved, move the table with them, and
 note that this reference class is **one repository, one harness, one model family**. That
 parochialism is the point, and it is also why none of it transfers.
 
 Two derived facts worth keeping while they hold: **a tool call costs about fourteen seconds**,
-and wall clock correlates with tool-call count at r = 0.76 against only 0.46 for edit count —
+and wall clock correlates with tool-call count at r = 0.76 against only 0.46 for edit count,
 so tool calls are the size unit and edits are not. An agent that reads a lot is as expensive as
 one that writes a lot.
 

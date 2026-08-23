@@ -170,7 +170,7 @@ const TD_SIZE_STYLE: &str = "
 
 /// The mid-row cell holding `View Details`. It carries the row's rule like every other
 /// cell: with `border-collapse: collapse` the rule is drawn per cell, so one styleless
-/// cell punches a hole in it — and under the last row of a listing the remaining segments
+/// cell punches a hole in it, and under the last row of a listing the remaining segments
 /// read as the top edge of an empty row that is not there.
 const TD_DETAILS_STYLE: &str = "
     border-bottom: 1px solid #E5E7EB;
@@ -451,7 +451,7 @@ fn FileBrowserContent(
     doc_viewer_state: ReadSignal<Option<DocViewerState>>,
 ) -> Element {
     // The signals are read OUTSIDE the async block, which is what subscribes the
-    // resource to them — so it already re-runs on every navigation. The `use_effect`
+    // resource to them, so it already re-runs on every navigation. The `use_effect`
     // that used to `clear()` and `restart()` it here fired on mount as well, which meant
     // every folder listing was fetched twice.
     let listing_resource = use_resource(move || {
@@ -502,7 +502,7 @@ fn FileBrowserContent(
 
     // The node the URL is pointing at, as a MEMO over the route signals. Ancestor
     // elision, sibling capping and the highlighted row are all defined relative to it,
-    // and all three have to follow an in-app navigation — which a plain prop does not.
+    // and all three have to follow an in-app navigation, which a plain prop does not.
     let focus_key = use_memo(move || {
         let path = path();
         make_node_key(&collection(), &path.container_hash, &path.path)
@@ -576,7 +576,7 @@ fn FileBrowserContent(
 #[component]
 fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<String>) -> Element {
     // The picker's selection set. Unused by the sidebar skin, which highlights the node
-    // the URL names instead — one row, always the one the URL names.
+    // the URL names instead, one row, always the one the URL names.
     let selected = use_signal(std::collections::BTreeSet::<String>::new);
 
     rsx! {
@@ -602,8 +602,8 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
                                 StorageRow::Dataset(dataset) => {
                                     Route::file_browser_page(dataset, PathDescriptor::root(), None)
                                 }
-                                // A container is a file as well as a folder — a PDF or an
-                                // archive — so entering it selects it too. Without that,
+                                // A container is a file as well as a folder (a PDF or an
+                                // archive), so entering it selects it too. Without that,
                                 // a container whose children are not indexed (most PDFs)
                                 // browsed to an `(empty folder)` and the document the
                                 // row names was nowhere on the page.
@@ -668,9 +668,9 @@ pub(crate) type Crumb = (String, PathDescriptor, bool);
 /// Entering a container produces TWO chain entries with the same destination: the
 /// container file (`/location-1/parent.zip`, kind `container`) and the container's own
 /// root (`/` inside it), because `VfsTreeNode::descriptor` turns a container into
-/// `{container_hash: its own hash, path: "/"}` — which is exactly what that root already
-/// is. Rendering both gives `… › parent.zip › /`: two links to one folder, and — because
-/// the crumbs are keyed by descriptor — a duplicate Dioxus key that drops hops out of the
+/// `{container_hash: its own hash, path: "/"}`, which is exactly what that root already
+/// is. Rendering both gives `… › parent.zip › /`: two links to one folder, and (because
+/// the crumbs are keyed by descriptor) a duplicate Dioxus key that drops hops out of the
 /// bar entirely. The first of the pair is the one worth keeping: it is named after the
 /// archive, the second is named `/`.
 pub(crate) fn collapse_duplicate_crumbs(crumbs: Vec<Crumb>) -> Vec<Crumb> {
@@ -691,7 +691,7 @@ pub(crate) fn collapse_duplicate_crumbs(crumbs: Vec<Crumb>) -> Vec<Crumb> {
 /// used to render as "collection › inner.zip › …" with the outer one missing entirely.
 /// `vfs_tree_path_to` walks `parent_key`, which crosses container boundaries, so the
 /// chain it returns is the real ancestry. It falls back to splitting the descriptor's
-/// path while that round trip is in flight, or if the node is not in the index — a
+/// path while that round trip is in flight, or if the node is not in the index, a
 /// breadcrumb bar that blinks empty on every navigation is worse than one that is briefly
 /// missing a container hop.
 #[component]
@@ -699,7 +699,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>)
     let mut popup_open = use_signal(|| false);
 
     // Signals read INSIDE the closure, which is what subscribes the resource to them.
-    // Component props are not reactive in Dioxus — with `path` as a plain value the bar
+    // Component props are not reactive in Dioxus, with `path` as a plain value the bar
     // kept showing the folder you had navigated away from, while a fresh page load on the
     // same URL rendered perfectly.
     let chain = use_resource(move || {
@@ -1050,7 +1050,7 @@ fn FileRow(
 
 /// The in-row button on a CONTAINER file.
 ///
-/// The row itself now navigates INTO the container — an archive and an email with
+/// The row itself now navigates INTO the container. An archive and an email with
 /// attachments are folders as far as browsing is concerned, and making the user find a
 /// pill to enter one was the odd part of the old design. What the pill used to do
 /// (enter the container) is now the row; what the row used to do for a plain file
@@ -1072,7 +1072,7 @@ fn ViewDetailsButton(
             title: "Show this container in the preview pane",
             onclick: move |event: Event<MouseData>| {
                 // Without this the row's own onclick fires too, and the row now
-                // navigates into the container — so the preview would open and be
+                // navigates into the container, so the preview would open and be
                 // replaced by a folder listing in the same click.
                 event.stop_propagation();
                 on_file_click.call(doc_id.read().clone());
@@ -1188,7 +1188,7 @@ fn FolderToolbar(
 
             // A real link, not a button: middle-click and "open in new tab" still work and
             // the URL is visible on hover. It navigates in place, like every other link
-            // here — a plain left click that only ever opened a background tab read as a
+            // here. A plain left click that only ever opened a background tab read as a
             // control that did nothing.
             Link {
                 to: open_in_search_route(),
@@ -1271,7 +1271,7 @@ fn FolderSearchResults(
                                             if node.kind == VfsNodeKind::Container { {container_icon()} }
                                             else if node.kind == VfsNodeKind::Dir { {folder_icon()} }
                                             // The tree search returns VFS nodes, which carry no
-                                            // canonical type; the generic glyph is the honest answer.
+                                            // canonical type, so the generic glyph is what it gets.
                                             else { {file_icon(String::new())} }
                                         }
                                         span { style: FILE_NAME_STYLE, "{node.display_name()}" }

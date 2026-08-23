@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use crate::api::error_util::to_server_fn_error;
 
 /// Every collection the user may read, with its datasets. ONE call, on mount, for a
-/// tree of any size — the folders below a dataset are fetched only when it is expanded.
+/// tree of any size. The folders below a dataset are fetched only when it is expanded.
 #[server]
 pub async fn list_storage_tree() -> Result<Vec<CollectionNode>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
@@ -33,13 +33,13 @@ pub async fn collection_overview(
 /// The `vfs_node` term ids of a whole selection, in one round trip per dataset.
 ///
 /// The single-key [`crate::api::vfs_api::vfs_node_term_id`] is still what the storage
-/// page's "Open in Search" link uses — it has exactly one key. The picker has as many
+/// page's "Open in Search" link uses. It has exactly one key. The picker has as many
 /// keys as the user has ticked, and ticking a collection row ticks all of its datasets
 /// at once, so resolving them one at a time is a burst of requests per click.
 ///
 /// The dataset of each key is read off the key itself (its first field); a key that
 /// names no dataset, or one the user may not read, is skipped rather than failing the
-/// batch — a stale selection must not make the pane unusable.
+/// batch. A stale selection must not make the pane unusable.
 #[server]
 pub async fn vfs_node_term_ids(node_keys: Vec<String>) -> Result<Vec<u64>, ServerFnError> {
     use common::vfs::dataset_of_node_key;

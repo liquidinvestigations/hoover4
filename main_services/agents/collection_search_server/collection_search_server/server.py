@@ -16,7 +16,7 @@ shards and a vector ranking from the `_vectors` shards are RRF-fused
 (`agent_common.fusion`, the same module metasearch uses), reranked through the same
 cross-encoder client, and put through the per-kind floor so keyword-exact hits cannot
 drown semantic ones. With no probe or a dead GPU the tool degrades to the
-keyword-only path and says so in `note` — a GPU outage must degrade search quality,
+keyword-only path and says so in `note`. A GPU outage must degrade search quality,
 not remove search.
 """
 
@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 #: The default is deliberately most of the cap. Latency here is one provider round trip
 #: per tool call and is almost independent of how much comes back, so a search that has
 #: to be run four times to see what one run could have shown costs four times as much
-#: wall clock for the same answer — the weight of a result set is bounded by
+#: wall clock for the same answer. The weight of a result set is bounded by
 #: `PAYLOAD_BUDGET_CHARS` below, not by counting it. Neither number is a size, and the
 #: budget is what actually decides how many results come back.
 DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "50"))
@@ -76,11 +76,11 @@ SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
 #: Total size of the serialised result, across every hit, envelopes included.
 #:
 #: **A result count is not a size, and neither is a snippet budget.** Bounding only the
-#: snippet text leaves every hit's envelope unbounded — `collection_dataset`,
+#: snippet text leaves every hit's envelope unbounded: `collection_dataset`,
 #: `collectionname`, a 64-character `file_hash`, `match_sources`, `page_id`, `path`,
-#: `score` measure ~250 characters and tokenise badly — so 200 hits carrying 24 000
+#: `score` measure ~250 characters and tokenise badly, so 200 hits carrying 24 000
 #: characters of snippet are a 74 000-character payload: a heavier prompt than the one an
-#: uncapped count produces, which is the trap in bounding a field instead of the message.
+#: uncapped count produces, which is what goes wrong when a field is bounded instead of the message.
 #: What the model receives is the serialised `SearchResponse`, so that is what is
 #: measured and that is what is bounded, by dropping the lowest-ranked hits until it
 #: fits. `max_results` is a ceiling on the count and never a promise.
@@ -107,7 +107,7 @@ FUSION_CANDIDATES = int(os.getenv("COLLECTION_SEARCH_FUSION_CANDIDATES", "60"))
 #:
 #: **The floor must stay well under `max_results`.** A reserved slot outranks the cap by
 #: design (`per_kind_floor` never evicts one), so a floor of 10 over two kinds reserved 20
-#: results and the caller's `max_results=8` did nothing at all — `search_collections` was
+#: results and the caller's `max_results=8` did nothing at all: `search_collections` was
 #: returning 20 hits to a model that asked for 8, at 1200 snippet characters each. Three
 #: is enough to keep a minority ranking visible without overriding the cap.
 #:
@@ -122,7 +122,7 @@ mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_collection_search"),
     # The canonical text lives in `prompts.py`; the env var is a thin override for
     # experiments. This string is what the model reads at tool-discovery time, so the
-    # MATCH syntax has to be in here and not only in the agent's system prompt — the
+    # MATCH syntax has to be in here and not only in the agent's system prompt, the
     # full-research agent has its own prompt and would otherwise never see it.
     instructions=os.getenv("SERVER_INSTRUCTIONS", SERVER_INSTRUCTIONS),
 )
@@ -173,7 +173,7 @@ class SearchHit(BaseModel):
 class _Candidate:
     """One search candidate before fusion: a keyword hit, a vector hit, or both.
 
-    Fused at page granularity — a vector hit knows its chunk, but the answer a hit
+    Fused at page granularity. A vector hit knows its chunk, but the answer a hit
     points at is the page, and the chunk text becomes the snippet (the matched
     passage, more precise than a page excerpt).
     """
@@ -310,7 +310,7 @@ def _caller() -> CallerAcl:
 def _as_collection_list(value: Any) -> list[str] | None:
     """Coerce whatever the model sent for `collections` into a list of names.
 
-    XML-style tool-call parsers — `qwen3_xml`, which Qwen3.5 requires — hand every
+    XML-style tool-call parsers (`qwen3_xml`, which Qwen3.5 requires) hand every
     parameter across as a **string**, so a `list[str]` argument arrives as the literal
     `'["testdata"]'` rather than a list. Pydantic then rejects it, the tool returns a
     validation error, and the model retries the identical call forever: the agent burned
@@ -377,7 +377,7 @@ def list_collections() -> list[CollectionInfo]:
 
         # A collection whose database is not provisioned yet raises rather than
         # returning zero, and one unprovisioned collection must not break the whole
-        # listing — the agent still needs to know the others exist.
+        # listing. The agent still needs to know the others exist.
         try:
             counted = clickhouse_query(
                 "SELECT uniqExact(file_hash) AS n FROM index_state",
@@ -399,8 +399,8 @@ def list_collections() -> list[CollectionInfo]:
 def _envelope_chars(hit: SearchHit) -> int:
     """What one hit costs with no snippet at all: its keys, ids, path and separator.
 
-    Measured on the hit rather than estimated, because it is the part that varies —
-    a deep path and a long dataset name cost several times what a short one does.
+    Measured on the hit rather than estimated, because it is the part that varies.
+    A deep path and a long dataset name cost several times what a short one does.
     """
     return len(hit.model_copy(update={"snippet": ""}).model_dump_json()) + 1
 
@@ -413,7 +413,7 @@ def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
     change which documents come back, not only how much of them does.
 
     The order matters. Snippets are shortened first so a broad survey keeps its breadth,
-    and only when the envelopes alone no longer fit does the tail get dropped — a hit
+    and only when the envelopes alone no longer fit does the tail get dropped. A hit
     that cannot carry `MIN_SNIPPET_CHARS` of text says nothing about why it matched, so
     it is worth less than the room it takes.
     """
@@ -479,8 +479,8 @@ def search_collections(
 ) -> SearchResponse:
     """Search several queries at once, fanning out over every live shard.
 
-    `query` is still accepted, so a transcript replayed from before the batch form — and
-    a model that learned the single-query shape — keeps working. It is folded into
+    `query` is still accepted, so a transcript replayed from before the batch form (and
+    a model that learned the single-query shape) keeps working. It is folded into
     `queries` rather than handled separately: one code path, and the batch of one is not
     a special case.
 
@@ -564,7 +564,7 @@ def search_collections(
         size, extra = _apply_payload_budget(response)
         dropped += extra
     # The one number that says how heavy this tool call was. `chat_messages.tool_output`
-    # cannot answer it — that column is truncated and the model's copy is not — so the
+    # cannot answer it. That column is truncated and the model's copy is not, so the
     # size the model actually received is only observable if it is recorded here.
     log.info(
         "search_collections payload: %d chars, %d quer(ies), %d of %d hit(s), %d dropped",
@@ -574,12 +574,12 @@ def search_collections(
 
 
 #: More angles than this in one call is a model listing synonyms rather than choosing.
-#: The surplus is refused by name — silently running the first few would hide the cost.
+#: The surplus is refused by name. Silently running the first few would hide the cost.
 #:
 #: Eight rather than five because a capable model asks for six unprompted on an ordinary
 #: question, and a limit reached in ordinary use is measuring the limit rather than the
-#: behaviour it was meant to catch. Each angle costs a full hybrid fan-out and a rerank —
-#: about a third of a second each — so eight is still well short of where the search
+#: behaviour it was meant to catch. Each angle costs a full hybrid fan-out and a rerank
+#: (about a third of a second each), so eight is still well short of where the search
 #: dominates the turn.
 MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "8"))
 
@@ -590,7 +590,7 @@ def _fuse_across_queries(
     """Merge each query's ranking into one, recording which queries found each hit.
 
     Reciprocal rank over the per-query positions, which is the same rule the keyword and
-    vector rankings are already fused by one level down — a hit several queries rank
+    vector rankings are already fused by one level down. A hit several queries rank
     highly beats one query's top hit, and no query's scores have to be comparable with
     another's for that to hold. BM25 across two different queries is not comparable at
     all, so summing scores here would be arithmetic on unrelated units.
@@ -607,8 +607,8 @@ def _fuse_across_queries(
             key = (hit.collectionname, hit.file_hash, hit.page_id)
             fused_score[key] = fused_score.get(key, 0.0) + 1.0 / (RRF_K + position + 1)
             # Distinct queries only. One query's ranking can carry the same page more
-            # than once — the shards are searched independently and a page can win a slot
-            # in several — and listing "due date" four times says a page is corroborated
+            # than once (the shards are searched independently and a page can win a slot
+            # in several), and listing "due date" four times says a page is corroborated
             # when only one query found it, which inverts the meaning of the field.
             seen = matched.setdefault(key, [])
             if one not in seen:
@@ -670,7 +670,7 @@ def _search_one(
     candidates: list[_Candidate] = []
     failed_targets: list[str] = []
     #: Manticore's own words about a bad query. Kept so they can be returned rather than
-    #: only logged — a syntax error the model never sees is one it cannot correct.
+    #: only logged. A syntax error the model never sees is one it cannot correct.
     shard_errors: list[str] = []
 
     for collectionname in targets:
@@ -710,7 +710,7 @@ def _search_one(
                 )
 
     # BM25 statistics are per-table, so scores from different shards are only roughly
-    # comparable — the same caveat the website's search fan-out carries.
+    # comparable. The same caveat the website's search fan-out carries.
     candidates.sort(key=lambda c: c.keyword_score, reverse=True)
     keyword_list = candidates
 
@@ -752,7 +752,7 @@ def _search_one(
 
     # Every shard failing on the same query is a query problem, not an infrastructure
     # problem, and the model is the only one who can fix it. Surface Manticore's text
-    # verbatim — `no field 'title' found in schema` tells it exactly what to change.
+    # verbatim: `no field 'title' found in schema` tells it exactly what to change.
     error = None
     if shard_errors and not hits:
         error = f"{sorted(set(shard_errors))[0]}\n\n{MATCH_SYNTAX}"
@@ -772,7 +772,7 @@ def _fused_pipeline(
     """Fuse keyword + vector rankings (RRF), rerank, apply the per-kind floor.
 
     The order is not interchangeable: rerank the whole fused candidate pool, THEN take
-    the best per kind — flooring first would let the reranker reorder an
+    the best per kind. Flooring first would let the reranker reorder an
     already-truncated set. A rerank failure keeps the fused order and says so in the
     notes; a GPU outage must degrade search quality, not remove search.
     """
@@ -781,7 +781,7 @@ def _fused_pipeline(
         by_key.setdefault(c.key(), c)
     vector_candidates: list[_Candidate] = []
     #: Pages whose snippet already came from a chunk. `vector_list` is nearest-first, so
-    #: the first chunk seen for a page is its best one — and assigning unconditionally
+    #: the first chunk seen for a page is its best one, and assigning unconditionally
     #: meant the *last*, i.e. the FARTHEST, chunk of a multi-chunk page won. That text is
     #: also what the reranker scores, so a page was being judged on its least relevant
     #: passage and then shown to the user with it.
@@ -870,8 +870,8 @@ def _attach_paths(hits: list[SearchHit]) -> None:
     for collectionname, group in by_collection.items():
         # The array literal below is assembled by hand (ClickHouse takes Array params as
         # text), so anything that is not a plain content hash is dropped rather than
-        # interpolated. These come back from Manticore, so they should always be hex —
-        # this is the belt to that braces.
+        # interpolated. These come back from Manticore, so they should always be hex.
+        # This is the belt to that braces.
         hashes = sorted({h.file_hash for h in group if _is_hash(h.file_hash)})
         if not hashes:
             continue
@@ -910,8 +910,8 @@ def read_documents(
     """Read a batch of documents, sharing one character budget across them.
 
     The three parameter shapes are all shapes models actually produce: a list of objects
-    (what the description asks for), two parallel lists, and — through
-    `batching.as_list` — a single pair of bare strings, which is the single-document call
+    (what the description asks for), two parallel lists, and (through
+    `batching.as_list`) a single pair of bare strings, which is the single-document call
     this replaced. That last one is why no separate compatibility path is needed.
     """
     pairs, malformed = _document_pairs(documents, collectionname, file_hash)
@@ -1086,7 +1086,7 @@ def list_document_entities(
     """List entities for a batch of documents, sharing one value budget across them.
 
     Same three parameter shapes as `read_documents`, through the same `_document_pairs`:
-    a list of objects, two parallel lists, and a bare pair of strings — which is exactly
+    a list of objects, two parallel lists, and a bare pair of strings, which is exactly
     the single-document call this replaced, so there is no compatibility branch.
     """
     pairs, malformed = _document_pairs(documents, collectionname, file_hash)
@@ -1221,8 +1221,8 @@ STRUCTURED_ENTITY_LIMIT = 200
 def _structured_entities(collectionname: str, file_hash: str) -> list[StructuredEntity]:
     """The rule scanner's values for one document, newest rule set only.
 
-    **The same question the website's document viewer asks, and the same shape of answer**
-    — `get_document_entities` in the website backend runs this query against the same
+    **The same question the website's document viewer asks, and the same shape of answer**,
+    `get_document_entities` in the website backend runs this query against the same
     table. Two different answers to "what identifiers are in this file" would put the
     model and the reader in different conversations about the same document.
 
@@ -1311,7 +1311,7 @@ class CitationResult(BaseModel):
     quote: str = ""
     why: str = ""
     #: The quoted span was found in the document's extracted text. False is not a
-    #: refusal — the citation still stands and the reader sees it marked.
+    #: refusal. The citation still stands and the reader sees it marked.
     quote_verified: bool = False
     error: str | None = None
 
@@ -1325,7 +1325,7 @@ class CitationsResponse(BaseModel):
 
 
 #: Handles live for the life of a chat session, keyed by the session header the website
-#: forwards. It carries no authority — the ACL is a different header — and is an
+#: forwards. It carries no authority (the ACL is a different header), and is an
 #: isolation key only.
 _HANDLES = HandleTable()
 
@@ -1337,7 +1337,7 @@ MAX_CITATIONS_PER_CALL = 12
 def _session_id() -> str:
     """The chat session this call belongs to, or a per-process fallback.
 
-    An absent header means the caller is not the chat surface — a script, a probe — and
+    An absent header means the caller is not the chat surface (a script, a probe), and
     those share one table rather than each minting a session, because the alternative is
     an unbounded map keyed by nothing.
     """

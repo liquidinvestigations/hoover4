@@ -10,7 +10,7 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
   `components/session_gate.rs`: no page renders until `whoami` has answered and the session
   cookie exists, because every other endpoint refuses a request without one. When the
   deployment issues no anonymous session, the gate renders *Sign-in required* as a page
-  rather than raising it into the error boundary — a boundary presents the site as broken
+  rather than raising it into the error boundary. A boundary presents the site as broken
   and offers a retry that cannot work.
 - `src/routes.rs` - Route definitions (search, document view, file browser, AI chat, admin).
 - `src/pages/` - Page-level UI compositions (`ai_chat/`, `admin/`, search, …).
@@ -28,8 +28,8 @@ tabs: `Entities`, `File Locations`, `Metadata`. **Declaration order in
 the tab. The parameter is CBOR by variant NAME, so an old link keeps its meaning when a
 variant is added in the middle.
 
-`File Locations` is `doc_file_locations_panel.rs`: one full path per row — containers
-included, because a file inside a zip has no meaningful path without the archive — with a
+`File Locations` is `doc_file_locations_panel.rs`: one full path per row. Containers
+included, because a file inside a zip has no meaningful path without the archive, with a
 button that opens the containing folder in the file browser (a new tab, hence `<a
 target="_blank">` rather than `Link`) and a button that copies the path. These are
 descriptions of a document rather than renderings of it, which is why neither this nor the
@@ -39,7 +39,7 @@ metadata panel is offered as a preview source in the source dropdown.
 
 `collections_facet_pane.rs` groups the flat `collection_dataset` facet buckets into
 collections using `list_storage_tree()`, sums the counts and sorts both levels
-count-descending. **The filter the backend sees is unchanged** — still a flat set of
+count-descending. **The filter the backend sees is unchanged**, still a flat set of
 dataset ids.
 
 Expanding a collection issues **no request**: the buckets and the collection → dataset map
@@ -56,7 +56,7 @@ properties.
 | `/ai_chat/history` | `AiChatHistoryPage` |
 | `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state` | `AiChatSessionPage` |
 
-Admin route stubs — registered, no body yet:
+Admin route stubs, registered with no body yet:
 
 | Path | Component |
 |---|---|
@@ -75,7 +75,7 @@ event handler fires and `pushState` changes the URL while the view stays put. Th
 build says `Unable to retrieve the hook that was initialized at this index`; the release
 build says only `RuntimeError: unreachable`, naming no file.
 
-The fix is always the same shape — hoist the hook above the conditional and put the
+The fix is always the same shape. Hoist the hook above the conditional and put the
 condition *inside* the closure, reading the resource there so the effect still re-runs when
 it resolves:
 

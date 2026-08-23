@@ -37,13 +37,13 @@ pub struct AdminLlmPage {
     pub summarization_model: String,
     /// The model each agent profile runs on, keyed by the profile's setting key. A
     /// profile absent from this map, or present with an empty value, runs on
-    /// `default_chat_model` — unset means "use the default", so a deployment that never
+    /// `default_chat_model`. Unset means "use the default", so a deployment that never
     /// touches these keys behaves exactly as it did before they existed.
     #[serde(default)]
     pub profile_models: std::collections::BTreeMap<String, String>,
     /// True when a catalog refresh is currently running in-process.
     pub refresh_in_flight: bool,
-    /// True when `LLM_BASE_URL` is unset — chat is disabled.
+    /// True when `LLM_BASE_URL` is unset. Chat is disabled.
     pub llm_configured: bool,
 }
 
@@ -57,11 +57,11 @@ pub struct AiCapabilityStatus {
     pub detail: String,
     /// Circuit open remaining seconds.
     ///
-    /// **Always 0 today — read it as "n/a", not as "closed".** The breakers live in the
+    /// **Always 0 today, read it as "n/a", not as "closed".** The breakers live in the
     /// worker (`tasks/remote.py`) and in each MCP server's own process
     /// (`agent_common/rerank.py`); the website has no channel to any of them, so nothing
     /// can fill this in. It is not rendered for that reason. Wiring it up means exposing
-    /// breaker state on those services' `/health` and aggregating here — until then, a
+    /// breaker state on those services' `/health` and aggregating here, until then, a
     /// zero here says nothing about whether a circuit is open.
     pub circuit_open_remaining_s: u32,
 }

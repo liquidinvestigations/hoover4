@@ -2,13 +2,13 @@
 
 One tool searches the open web, and there must never be a second: a small model faced with
 several near-identical "search the web" descriptions picks badly and inconsistently. Every
-source lives in :mod:`.sources` — `ddg_api`, `ddg_news`, `wikipedia` and the scrapers —
+source lives in :mod:`.sources` (`ddg_api`, `ddg_news`, `wikipedia` and the scrapers)
 selectable through the `sources` argument.
 
 What the model gets back is deliberately richer than before (the old payload was a title,
 a URL and 400 characters, which is not enough to decide what to read): full snippets,
 which sources corroborated each result, both rankings, and the timing table. What it does
-*not* get is the pre-rerank ordering of every candidate — that is bookkeeping, it would
+*not* get is the pre-rerank ordering of every candidate. That is bookkeeping, and it would
 roughly double the token cost, and it goes to the search-detail artifact instead. The tool
 result carries only that artifact's UUID.
 """
@@ -232,7 +232,7 @@ async def web_search(
 
     # `to_thread`: this is an S3 PUT plus a ClickHouse insert, both synchronous. On the
     # event loop they block every *other* in-flight search's source fan-out for the
-    # duration — and the fan-out is the part with a deadline.
+    # duration, and the fan-out is the part with a deadline.
     artifact_id = await asyncio.to_thread(
         artifacts.write_json_detail,
         session_id=_header(SESSION_HEADER),

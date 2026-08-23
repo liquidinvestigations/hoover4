@@ -29,7 +29,7 @@ import unicodedata
 #:
 #: Bounded because this is a process that serves every conversation on the site. Eviction
 #: is oldest-first and whole-session: a session that falls out gets fresh numbering rather
-#: than a table with holes in it, which is the failure mode worth avoiding — `[D3]`
+#: than a table with holes in it, which is the failure mode worth avoiding: `[D3]`
 #: meaning two different documents inside one conversation is worse than `[D1]` starting
 #: over.
 MAX_SESSIONS = 512
@@ -38,7 +38,7 @@ MAX_SESSIONS = 512
 #: the document, without a handle, and says so.
 MAX_HANDLES_PER_SESSION = 200
 
-#: A quote shorter than this cannot be checked usefully — "the" occurs in everything — so
+#: A quote shorter than this cannot be checked usefully ("the" occurs in everything), so
 #: it is treated as unverifiable rather than as verified.
 MIN_QUOTE_CHARS = 12
 
@@ -75,8 +75,8 @@ def quote_occurs_in(quote: str, document_text: str) -> bool:
 class HandleTable:
     """Per-session `[Dn]` allocation, stable for the life of the conversation.
 
-    The same document cited twice keeps its first handle. That is the whole point of
-    allocating per session rather than per call: two paragraphs of one answer citing the
+    The same document cited twice keeps its first handle. That is why the handle is
+    allocated per session rather than per call: two paragraphs of one answer citing the
     same file must point at one card.
     """
 

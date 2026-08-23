@@ -10,7 +10,7 @@ use crate::rules::{is_real_date, Candidate, Rule, Verdict};
 pub struct LeiRule;
 
 /// Twenty characters: four of issuing LOU, two usually zero, thirteen identifying the organisation
-/// and two check digits. Fixed length, fixed alphabet, and the last two positions are digits — a
+/// and two check digits. Fixed length, fixed alphabet, and the last two positions are digits, a
 /// shape common enough to need the checksum, and rare enough that the checksum settles it.
 const LEI_PATTERN: &str = r"[A-Z0-9]{18}\d{2}";
 
@@ -78,7 +78,7 @@ pub struct VatEuRule;
 /// One alternation per member state, because a generic "two letters and a digit run" pattern
 /// proposes a candidate for every capitalised abbreviation in a document. The prefix is the
 /// literal marker that makes the format self-identifying, and the body's length and alphabet are
-/// the state's own — four to thirteen characters, digits except where the state allows letters
+/// the state's own, four to thirteen characters, digits except where the state allows letters
 /// (Austria's `U`, Cyprus's check letter, Spain's entity letter, France's two-character key,
 /// Ireland's check letters and the Netherlands' `B`).
 ///
@@ -273,7 +273,7 @@ fn luhn_check_digit(values: &[u32]) -> u32 {
     (10 - luhn_sum(&extended)) % 10
 }
 
-/// Austria — UID. `U` and eight digits, the last a Luhn-derived check digit.
+/// Austria, UID. `U` and eight digits, the last a Luhn-derived check digit.
 fn at_uid(national: &str) -> bool {
     let Some(rest) = national.strip_prefix('U') else {
         return false;
@@ -287,7 +287,7 @@ fn at_uid(national: &str) -> bool {
     (16 - luhn_sum(&d[..7])) % 10 == d[7]
 }
 
-/// Belgium — ondernemingsnummer. Ten digits opening with 0 or 1, where the last two are the
+/// Belgium, ondernemingsnummer. Ten digits opening with 0 or 1, where the last two are the
 /// remainder of the first eight modulo 97.
 fn be_ondernemingsnummer(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -299,7 +299,7 @@ fn be_ondernemingsnummer(national: &str) -> bool {
     (as_integer(&d[..8]) + as_integer(&d[8..])) % 97 == 0
 }
 
-/// Bulgaria — ДДС. Nine digits for a legal entity; ten for a person, which is then an EGN, a
+/// Bulgaria, ДДС. Nine digits for a legal entity; ten for a person, which is then an EGN, a
 /// foreigner's number or the residual scheme.
 fn bg_ddn(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -318,7 +318,7 @@ fn bg_ddn(national: &str) -> bool {
     }
 }
 
-/// Bulgaria — EGN, the personal number, which opens with a date of birth whose month field is
+/// Bulgaria, EGN, the personal number, which opens with a date of birth whose month field is
 /// offset by twenty or forty to name the century.
 fn bg_egn(d: &[u32]) -> bool {
     let mut year = 1900 + (d[0] * 10 + d[1]) as i32;
@@ -336,18 +336,18 @@ fn bg_egn(d: &[u32]) -> bool {
     weighted_sum(&d[..9], &[2, 4, 8, 5, 10, 9, 7, 3, 6]) % 11 % 10 == d[9]
 }
 
-/// Bulgaria — PNF, the number issued to a foreign resident.
+/// Bulgaria, PNF, the number issued to a foreign resident.
 fn bg_pnf(d: &[u32]) -> bool {
     weighted_sum(&d[..9], &[21, 19, 17, 13, 11, 9, 7, 3, 1]) % 10 == d[9]
 }
 
-/// Bulgaria — the residual ten-digit scheme.
+/// Bulgaria, the residual ten-digit scheme.
 fn bg_other(d: &[u32]) -> bool {
     let sum = weighted_sum(&d[..9], &[4, 3, 2, 7, 6, 5, 4, 3, 2]) % 11;
     (11 - sum) % 11 == d[9]
 }
 
-/// Cyprus — ΦΠΑ. Eight digits and a check letter, where the even positions are read through a
+/// Cyprus, ΦΠΑ. Eight digits and a check letter, where the even positions are read through a
 /// substitution table before the sum selects a letter modulo twenty-six.
 fn cy_tic(national: &str) -> bool {
     /// The value of each digit when it sits in an even position.
@@ -373,7 +373,7 @@ fn cy_tic(national: &str) -> bool {
     b'A' + (sum % 26) as u8 == national.as_bytes()[8]
 }
 
-/// Czechia — DIČ. Eight digits for a legal entity, nine opening with 6 for a person without a
+/// Czechia, DIČ. Eight digits for a legal entity, nine opening with 6 for a person without a
 /// birth number, and otherwise the birth number itself.
 fn cz_dic(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -398,7 +398,7 @@ fn cz_dic(national: &str) -> bool {
     }
 }
 
-/// Czechia and Slovakia — rodné číslo, the birth number, identical in both. Nine digits were
+/// Czechia and Slovakia, rodné číslo, the birth number, identical in both. Nine digits were
 /// issued until 1954 and ten since; the month field carries fifty for a woman and twenty for a
 /// serial that overflowed.
 fn cz_rodne_cislo(d: &[u32]) -> bool {
@@ -421,7 +421,7 @@ fn cz_rodne_cislo(d: &[u32]) -> bool {
     d.len() == 9 || as_integer(&d[..9]) % 11 % 10 == u64::from(d[9])
 }
 
-/// Germany — USt-IdNr. Nine digits under ISO 7064 mod-11-10.
+/// Germany, USt-IdNr. Nine digits under ISO 7064 mod-11-10.
 fn de_ustid(national: &str) -> bool {
     national.len() == 9
         && !national.starts_with('0')
@@ -429,7 +429,7 @@ fn de_ustid(national: &str) -> bool {
         && iso7064::mod_11_10(national)
 }
 
-/// Denmark — CVR. Eight digits under a weighted sum modulo eleven.
+/// Denmark, CVR. Eight digits under a weighted sum modulo eleven.
 fn dk_cvr(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -437,7 +437,7 @@ fn dk_cvr(national: &str) -> bool {
     d.len() == 8 && d[0] != 0 && weighted_mod(&d, &[2, 7, 6, 5, 4, 3, 2, 1], 11) == 0
 }
 
-/// Estonia — KMKR. Nine digits under a repeating 3/7/1 weighting modulo ten.
+/// Estonia, KMKR. Nine digits under a repeating 3/7/1 weighting modulo ten.
 fn ee_kmkr(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -445,7 +445,7 @@ fn ee_kmkr(national: &str) -> bool {
     d.len() == 9 && weighted_mod(&d, &[3, 7, 1], 10) == 0
 }
 
-/// Greece — ΑΦΜ. Nine digits whose checksum is a running doubling rather than fixed weights.
+/// Greece, ΑΦΜ. Nine digits whose checksum is a running doubling rather than fixed weights.
 fn el_afm(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -457,7 +457,7 @@ fn el_afm(national: &str) -> bool {
     sum * 2 % 11 % 10 == d[8]
 }
 
-/// Spain — NIF. Nine characters that are a DNI, an NIE or a CIF depending on the first, so the
+/// Spain, NIF. Nine characters that are a DNI, an NIE or a CIF depending on the first, so the
 /// module delegates to whichever of the three the opening character selects.
 fn es_nif(national: &str) -> bool {
     /// The DNI check alphabet, in the order the modulus selects it.
@@ -499,7 +499,7 @@ fn es_nif(national: &str) -> bool {
     }
 }
 
-/// Finland — ALV nro, the Y-tunnus without its hyphen. Eight digits modulo eleven.
+/// Finland, ALV nro, the Y-tunnus without its hyphen. Eight digits modulo eleven.
 fn fi_alv(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -507,7 +507,7 @@ fn fi_alv(national: &str) -> bool {
     d.len() == 8 && weighted_mod(&d, &[7, 9, 10, 5, 8, 4, 2, 1], 11) == 0
 }
 
-/// France — n° TVA. A two-character key and the nine-digit SIREN. The key is numeric in the old
+/// France, n° TVA. A two-character key and the nine-digit SIREN. The key is numeric in the old
 /// style and has at least one letter in the new, and the two styles check differently.
 fn fr_tva(national: &str) -> bool {
     /// The key alphabet, which omits I and O so that they cannot be read as 1 and 0.
@@ -544,12 +544,12 @@ fn fr_tva(national: &str) -> bool {
     (siren_value + 1 + key / 11) % 11 == key % 11
 }
 
-/// Croatia — OIB. Eleven digits under ISO 7064 mod-11-10.
+/// Croatia, OIB. Eleven digits under ISO 7064 mod-11-10.
 fn hr_oib(national: &str) -> bool {
     national.len() == 11 && digits(national).is_some() && iso7064::mod_11_10(national)
 }
 
-/// Hungary — közösségi adószám. Eight digits under a repeating 9/7/3/1 weighting modulo ten.
+/// Hungary, közösségi adószám. Eight digits under a repeating 9/7/3/1 weighting modulo ten.
 fn hu_anum(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -557,7 +557,7 @@ fn hu_anum(national: &str) -> bool {
     d.len() == 8 && weighted_mod(&d, &[9, 7, 3, 1], 10) == 0
 }
 
-/// Ireland — VAT. Seven digits and one or two check letters in the current form, or the older
+/// Ireland, VAT. Seven digits and one or two check letters in the current form, or the older
 /// form whose second character is a letter, `+` or `*` and which is checked after being rotated
 /// into the current shape.
 fn ie_vat(national: &str) -> bool {
@@ -607,7 +607,7 @@ fn ie_check_letter(head: &[u8], extra: Option<u8>) -> u8 {
     IE_ALPHABET[(sum % 23) as usize]
 }
 
-/// Italy — partita IVA. Eleven digits under Luhn, with three of them naming a province.
+/// Italy, partita IVA. Eleven digits under Luhn, with three of them naming a province.
 fn it_iva(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -621,7 +621,7 @@ fn it_iva(national: &str) -> bool {
     known && luhn(national)
 }
 
-/// Lithuania — PVM. Nine digits for a legal entity or twelve for a temporary registration, with a
+/// Lithuania, PVM. Nine digits for a legal entity or twelve for a temporary registration, with a
 /// fixed 1 in the position before the check digit.
 fn lt_pvm(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -645,7 +645,7 @@ fn lt_pvm(national: &str) -> bool {
     check % 11 % 10 == d[d.len() - 1]
 }
 
-/// Luxembourg — TVA. Eight digits whose last two are the first six modulo eighty-nine.
+/// Luxembourg, TVA. Eight digits whose last two are the first six modulo eighty-nine.
 fn lu_tva(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -657,7 +657,7 @@ fn lu_tva(national: &str) -> bool {
     check == as_integer(&d[6..])
 }
 
-/// Latvia — PVN. Eleven digits: a legal entity when the first is above three, otherwise a personal
+/// Latvia, PVN. Eleven digits: a legal entity when the first is above three, otherwise a personal
 /// code, which since 2017 opens with 32 and before that with a date of birth.
 fn lv_pvn(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -679,7 +679,7 @@ fn lv_pvn(national: &str) -> bool {
     (1 + sum) % 11 % 10 == d[10]
 }
 
-/// Malta — VAT. Eight digits under a weighted sum modulo thirty-seven.
+/// Malta, VAT. Eight digits under a weighted sum modulo thirty-seven.
 fn mt_vat(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -687,7 +687,7 @@ fn mt_vat(national: &str) -> bool {
     d.len() == 8 && d[0] != 0 && weighted_mod(&d, &[3, 4, 6, 7, 8, 9, 10, 1], 37) == 0
 }
 
-/// The Netherlands — btw-nummer. Nine digits, a literal B, and a two-digit sequence. The older
+/// The Netherlands, btw-nummer. Nine digits, a literal B, and a two-digit sequence. The older
 /// form's leading digits are a BSN; the current one checks under ISO 7064 mod-97-10 over the whole
 /// number with its NL prefix.
 fn nl_btw(national: &str) -> bool {
@@ -703,13 +703,13 @@ fn nl_btw(national: &str) -> bool {
     nl_bsn(&head) || iso7064::mod_97_10(&format!("NL{national}"))
 }
 
-/// The Netherlands — BSN, the personal number the older btw-nummer is built on.
+/// The Netherlands, BSN, the personal number the older btw-nummer is built on.
 fn nl_bsn(d: &[u32]) -> bool {
     let sum = weighted_sum(&d[..8], &[9, 8, 7, 6, 5, 4, 3, 2]) as i64 - i64::from(d[8]);
     sum.rem_euclid(11) == 0
 }
 
-/// Poland — NIP. Ten digits under a weighted sum modulo eleven, the check digit weighted by minus
+/// Poland, NIP. Ten digits under a weighted sum modulo eleven, the check digit weighted by minus
 /// one, which is ten in the same modulus.
 fn pl_nip(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -718,7 +718,7 @@ fn pl_nip(national: &str) -> bool {
     d.len() == 10 && weighted_mod(&d, &[6, 5, 7, 2, 3, 4, 5, 6, 7, 10], 11) == 0
 }
 
-/// Portugal — NIF. Nine digits under a descending weighting modulo eleven.
+/// Portugal, NIF. Nine digits under a descending weighting modulo eleven.
 fn pt_nif(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -730,11 +730,11 @@ fn pt_nif(national: &str) -> bool {
     (11 - sum) % 11 % 10 == d[8]
 }
 
-/// Romania — CF. Four to ten digits for a company (the CUI), or thirteen for a personal number.
+/// Romania, CF. Four to ten digits for a company (the CUI), or thirteen for a personal number.
 ///
 /// The register itself allocates CUIs from two digits up, and this is the one member state whose
-/// body can be that short. `RO` and two digits is a token ordinary text produces — a route, a
-/// revision, a room — and one check digit over one information digit accepts nine of the ninety
+/// body can be that short. `RO` and two digits is a token ordinary text produces (a route, a
+/// revision, a room), and one check digit over one information digit accepts nine of the ninety
 /// possible values, so the floor here is four rather than the register's two. The catalogue entry
 /// says so.
 fn ro_cf(national: &str) -> bool {
@@ -755,7 +755,7 @@ fn ro_cf(national: &str) -> bool {
     10 * sum % 11 % 10 == d[d.len() - 1]
 }
 
-/// Romania — CNP, the personal number: a century marker, a date of birth, a county and a check
+/// Romania, CNP, the personal number: a century marker, a date of birth, a county and a check
 /// digit.
 fn ro_cnp(d: &[u32]) -> bool {
     if d[0] == 0 {
@@ -781,7 +781,7 @@ fn ro_cnp(d: &[u32]) -> bool {
     (if check == 10 { 1 } else { check }) == d[12]
 }
 
-/// Sweden — momsregistreringsnummer. The ten-digit organisationsnummer under Luhn, followed by a
+/// Sweden, momsregistreringsnummer. The ten-digit organisationsnummer under Luhn, followed by a
 /// literal 01.
 fn se_momsnr(national: &str) -> bool {
     national.len() == 12
@@ -790,7 +790,7 @@ fn se_momsnr(national: &str) -> bool {
         && luhn(&national[..10])
 }
 
-/// Slovenia — ID za DDV. Eight digits under a descending weighting modulo eleven.
+/// Slovenia, ID za DDV. Eight digits under a descending weighting modulo eleven.
 fn si_ddv(national: &str) -> bool {
     let Some(d) = digits(national) else {
         return false;
@@ -807,7 +807,7 @@ fn si_ddv(national: &str) -> bool {
     }
 }
 
-/// Slovakia — IČ DPH. Ten digits divisible by eleven, with a constrained third digit, or a birth
+/// Slovakia, IČ DPH. Ten digits divisible by eleven, with a constrained third digit, or a birth
 /// number, which the register also accepts.
 fn sk_dph(national: &str) -> bool {
     let Some(d) = digits(national) else {
@@ -831,7 +831,7 @@ pub struct VatNonEuRule;
 /// The VATIN form outside the Union: an ISO 3166-1 alpha-2 country code followed by that
 /// country's own tax number. Only the countries whose check digit is implemented here are
 /// offered, because a prefix without arithmetic behind it is a two-letter string in front of a
-/// digit run — exactly the bare-digit-run problem the prefix is supposed to solve.
+/// digit run. Exactly the bare-digit-run problem the prefix is supposed to solve.
 ///
 /// Longer alternatives for a prefix come first: the engine takes the first alternative that
 /// matches at a position, so the twelve-digit British and Russian bodies have to be offered
@@ -903,7 +903,7 @@ impl Rule for VatNonEuRule {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sweden — organisationsnummer
+// Sweden, organisationsnummer
 // ---------------------------------------------------------------------------------------------
 
 pub struct OrganisationsnummerRule;
@@ -1021,7 +1021,7 @@ fn non_eu_country_check(prefix: &str, body: &str) -> Option<Vec<Flag>> {
     }
 }
 
-/// Switzerland — Mehrwertsteuernummer. The UID, whose own `CHE` prefix doubles as the country
+/// Switzerland, Mehrwertsteuernummer. The UID, whose own `CHE` prefix doubles as the country
 /// code, followed by the tax abbreviation in one of the four national languages. Nine digits
 /// under a weighted sum, the last of them the check digit.
 fn ch_mwst(body: &str) -> Option<Vec<Flag>> {
@@ -1038,7 +1038,7 @@ fn ch_mwst(body: &str) -> Option<Vec<Flag>> {
     (check < 10 && check == d[8]).then(Vec::new)
 }
 
-/// United Kingdom (and the Isle of Man) — VAT registration number. Three shapes: the nine-digit
+/// United Kingdom (and the Isle of Man) VAT registration number. Three shapes: the nine-digit
 /// standard number, optionally carrying a three-digit branch identifier; the five-character
 /// government-department and health-authority form; and the eleven-character form those bodies
 /// use when they are themselves branch-registered.
@@ -1089,7 +1089,7 @@ fn gb_vat(body: &str) -> Option<Vec<Flag>> {
     accepted.contains(&remainder).then(Vec::new)
 }
 
-/// Montenegro — PIB. Eight digits under a descending weighting modulo eleven.
+/// Montenegro, PIB. Eight digits under a descending weighting modulo eleven.
 fn me_pib(body: &str) -> Option<Vec<Flag>> {
     let d = digits(body)?;
     if d.len() != 8 {
@@ -1099,7 +1099,7 @@ fn me_pib(body: &str) -> Option<Vec<Flag>> {
     (check == d[7]).then(Vec::new)
 }
 
-/// North Macedonia — ЕДБ. Thirteen digits under two runs of descending weights.
+/// North Macedonia, ЕДБ. Thirteen digits under two runs of descending weights.
 fn mk_edb(body: &str) -> Option<Vec<Flag>> {
     let d = digits(body)?;
     if d.len() != 13 {
@@ -1109,7 +1109,7 @@ fn mk_edb(body: &str) -> Option<Vec<Flag>> {
     ((11 - sum % 11) % 11 % 10 == d[12]).then(Vec::new)
 }
 
-/// Norway — MVA. The nine-digit organisasjonsnummer with the tax suffix after it.
+/// Norway, MVA. The nine-digit organisasjonsnummer with the tax suffix after it.
 fn no_mva(body: &str) -> Option<Vec<Flag>> {
     let d = digits(body.strip_suffix("MVA")?)?;
     if d.len() != 9 {
@@ -1118,12 +1118,12 @@ fn no_mva(body: &str) -> Option<Vec<Flag>> {
     (weighted_sum(&d, &[3, 2, 7, 6, 5, 4, 3, 2, 1]) % 11 == 0).then(Vec::new)
 }
 
-/// Serbia — PIB. Nine digits under ISO 7064 mod 11, 10.
+/// Serbia, PIB. Nine digits under ISO 7064 mod 11, 10.
 fn rs_pib(body: &str) -> Option<Vec<Flag>> {
     (body.len() == 9 && digits(body).is_some() && iso7064::mod_11_10(body)).then(Vec::new)
 }
 
-/// Russia — ИНН. Ten digits for an organisation, twelve for a person, each with its own weights.
+/// Russia, ИНН. Ten digits for an organisation, twelve for a person, each with its own weights.
 fn ru_inn(body: &str) -> Option<Vec<Flag>> {
     let d = digits(body)?;
     match d.len() {
@@ -1146,7 +1146,7 @@ fn ru_inn(body: &str) -> Option<Vec<Flag>> {
     }
 }
 
-/// Türkiye — VKN. Ten digits, where each of the first nine contributes a value that depends on
+/// Türkiye, VKN. Ten digits, where each of the first nine contributes a value that depends on
 /// its position through a doubling ladder rather than a fixed weight.
 fn tr_vkn(body: &str) -> Option<Vec<Flag>> {
     let d = digits(body)?;

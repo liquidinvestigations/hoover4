@@ -1,7 +1,7 @@
 //! Shared model picker for the chat composer.
 //!
 //! Grouped by provider, with context / vision / tools badges and median latency from
-//! `llm_call_events`. Guests never see this — the parent hides it.
+//! `llm_call_events`. Guests never see this. The parent hides it.
 
 use common::llm_types::ChatModelChoice;
 use dioxus::prelude::*;

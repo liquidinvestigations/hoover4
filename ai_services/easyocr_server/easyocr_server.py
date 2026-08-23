@@ -1,4 +1,4 @@
-"""EasyOCR over HTTP — the GPU half of the OCR tier.
+"""EasyOCR over HTTP, the GPU half of the OCR tier.
 
 Contract
 --------
@@ -16,10 +16,10 @@ always sends would make the two engines un-substitutable at the call site for no
 Why the concurrency is one, and why it is enforced here
 ------------------------------------------------------
 Two concurrent ``readtext`` calls in a single process park every thread in
-``futex_wait`` while heartbeats keep flowing — a live process making no progress, which
+``futex_wait`` while heartbeats keep flowing. A live process making no progress, which
 is the one failure a heartbeat pump cannot see. That is why OCR is a service and not a
 subprocess in the worker, and it is equally true inside this service: the bounded pool
-below is the thing that makes the deadlock unreachable, not an optimisation. Raising
+below is what makes the deadlock unreachable rather than an optimisation. Raising
 ``OCR_CONCURRENCY`` above 1 reintroduces it.
 
 Backpressure is explicit: a bounded pool, a capped queue, and `503` + `Retry-After` when
@@ -31,7 +31,7 @@ Readers are cached per language set
 Building an EasyOCR ``Reader`` loads a detection and a recognition network onto the GPU
 and costs seconds. A dataset OCRs thousands of pages against the same language set, so
 the readers are cached; the cache is bounded because each entry holds GPU memory, and
-`languages` is caller-supplied — an unbounded map keyed on it is a memory leak with a
+`languages` is caller-supplied. An unbounded map keyed on it is a memory leak with a
 remote trigger.
 """
 
@@ -128,7 +128,7 @@ def _get_reader(codes: List[str]):
 class OcrRequest(BaseModel):
     image_b64: str = Field(..., description="Base64 of the image bytes, any format Pillow reads")
     languages: str = Field("en", description="+-joined EasyOCR language codes, e.g. en+ro")
-    #: Accepted and ignored — Tesseract's page segmentation mode has no EasyOCR
+    #: Accepted and ignored. Tesseract's page segmentation mode has no EasyOCR
     #: equivalent. Present so both engines take the one request shape ocr_client sends.
     psm: int = Field(3, ge=0, le=13)
 
@@ -155,8 +155,8 @@ def _run_easyocr(image_bytes: bytes, codes: List[str]) -> tuple:
     """Return ``(text, mean_confidence, words)`` for one image.
 
     EasyOCR reports one box per recognised *line*, not per word, and gives it a free
-    quadrilateral rather than a rectangle. Both are normalised here — the box is reduced
-    to its bounding rectangle and the line is emitted as a single ``words`` entry — so
+    quadrilateral rather than a rectangle. Both are normalised here (the box is reduced
+    to its bounding rectangle and the line is emitted as a single ``words`` entry), so
     that a consumer can score an EasyOCR variant against a Tesseract one without knowing
     which engine produced it.
     """
@@ -227,7 +227,7 @@ def health():
 def ocr(request: OcrRequest, response: Response):
     if not _inflight.acquire(blocking=False):
         # Shed load rather than queue without bound. The client turns this into a
-        # retryable Temporal error, so the work is not lost -- it is rescheduled.
+        # retryable Temporal error, so the work is rescheduled rather than lost.
         raise HTTPException(
             status_code=503,
             detail="OCR queue is full",

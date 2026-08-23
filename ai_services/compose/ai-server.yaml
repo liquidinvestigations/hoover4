@@ -5,12 +5,12 @@ services:
   # Embeddings, reranking and NER. The processing pipeline's P4 stage calls this too
   # (NER_URL in main_services), so when the GPU tier is enabled it is not optional
   # infrastructure. It lives on the private `ai_services` network and is reached
-  # cross-host on AI_SERVER_PORT — never by container name from the main stack.
+  # cross-host on AI_SERVER_PORT, never by container name from the main stack.
   hoover4-ai-server:
     build:
       # Context is ai_services/, NOT this folder: the Dockerfile's COPY paths are
       # ./hoover4_ai_server/... (it predates the overlay split). Pointing the context
-      # at the subdirectory builds nothing — and `up -d` would never tell you, because
+      # at the subdirectory builds nothing, and `up -d` would never tell you, because
       # it reuses the stale image.
       context: ${HOOVER4_REPO_ROOT}/ai_services
       dockerfile: hoover4_ai_server/Dockerfile

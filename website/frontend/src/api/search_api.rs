@@ -98,7 +98,7 @@ pub async fn explain_entity(
 /// Document counts per file-size bucket, for the File size filter pane.
 ///
 /// A separate endpoint from `search_string_facet` because the bucket keys are computed
-/// by Manticore at query time (`INTERVAL()`) rather than stored — buckets are a
+/// by Manticore at query time (`INTERVAL()`) rather than stored. Buckets are a
 /// presentation choice, and pre-baking them would make adding one a re-index.
 #[server]
 pub async fn search_numeric_facet(input: SearchQuery) -> Result<SearchResultFacets, ServerFnError> {
@@ -112,7 +112,7 @@ pub async fn search_numeric_facet(input: SearchQuery) -> Result<SearchResultFace
 ///
 /// The inverse direction as well as the forward one: the folder picker seeds its ticks
 /// by resolving the `vfs_node` ids already in `file_paths` back into node keys, which is
-/// the only way a reopened pane can know what is selected — the query stores ids, and a
+/// the only way a reopened pane can know what is selected. The query stores ids, and a
 /// node key is not derivable from one.
 #[server]
 pub async fn fetch_db_terms_for_ints(

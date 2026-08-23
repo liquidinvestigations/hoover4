@@ -1,20 +1,20 @@
 """Mirror a streaming research-agent run into `chat_message_stream`.
 
-The Python twin of the website's streaming turn (`website/backend/src/api/chat/mod.rs`
-— `TurnState`, `handle_stream_event`). The two must agree: a transcript should read
+The Python twin of the website's streaming turn (`website/backend/src/api/chat/mod.rs`,
+`TurnState`, `handle_stream_event`). The two must agree: a transcript should read
 identically whether the turn ran inline or as a Temporal research task, and the poll
 endpoint makes no distinction.
 
 The rules copied from the Rust side, kept in the same words:
 
-  * content before a tool call is narration about the call, not the answer — it moves
+  * content before a tool call is narration about the call, not the answer. It moves
     to `reasoning` as each tool starts;
   * the assistant partial always sits one `seq` after the last tool row;
   * a stream row is rewritten as content grows (ReplacingMergeTree on `updated_at`),
     never appended;
   * a keepalive rewrite every KEEPALIVE_SECONDS bumps `updated_at` even when the model
     is quiet, or the website's stall detector would mark a healthy research run
-    "interrupted" — research turns have no live-runs entry, so staleness is the only
+    "interrupted". Research turns have no live-runs entry, so staleness is the only
     signal the poll has.
 """
 
@@ -42,7 +42,7 @@ PLAN_FIRST_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
 def _tool_name(content: Any) -> str:
     """Tool name out of a LangGraph tool event, whichever shape it arrives in.
 
-    A start event carries it at the top level (the agent puts it there — the raw
+    A start event carries it at the top level (the agent puts it there, the raw
     `event["data"]` has only `input`); an end event carries it under `output.name`.
     """
     if not isinstance(content, dict):
@@ -66,13 +66,13 @@ def _tool_call_id(content: Any) -> str | None:
 def _chat_model() -> str:
     """The model a research turn runs on, and the one its transcript row records.
 
-    `server_settings.llm_default_chat_model` — the same key the website resolves against,
+    `server_settings.llm_default_chat_model`, the same key the website resolves against,
     so a deep-research answer and an inline one in the same conversation say the same
     thing. The worker used to write `os.getenv("LLM_MODEL")` into the row instead: unset
     in this container, so every research row recorded an empty model, while the agent
     quietly answered with whatever *its* container's env said.
 
-    Empty means "no admin default configured" and is passed through as such — the agent
+    Empty means "no admin default configured" and is passed through as such. The agent
     then falls back to its own, which is the pre-existing behaviour and better than
     refusing the turn.
     """
@@ -206,7 +206,7 @@ class ResearchStreamWriter:
         #: Started-but-not-ended tool calls, oldest first, as
         #: (seq, tool_call_index, name, summary, tool_call_id). A list rather than a
         #: single "currently running" slot because a graph node may run several tools at
-        #: once, and one slot lets the second start overwrite the first — finalising the
+        #: once, and one slot lets the second start overwrite the first, finalising the
         #: wrong row when its end arrives.
         self.pending_tools: list[tuple[int, int, str, str, str | None]] = []
         self.assistant_row_started = False
@@ -319,7 +319,7 @@ class ResearchStreamWriter:
     def run(self) -> dict[str, Any]:
         """Stream the agent run; return the `/chat`-shaped payload."""
         # Take over the placeholder row the website wrote when it accepted the task,
-        # before the first event arrives. Two reasons, both load-bearing: the keepalive
+        # before the first event arrives. Two reasons, and neither can be dropped: the keepalive
         # only refreshes rows it knows are open, and a model that thinks for longer than
         # CHAT_STREAM_STALL_SECONDS before saying anything would otherwise let that
         # placeholder go stale and the page would call a healthy run interrupted.
@@ -475,7 +475,7 @@ class ResearchStreamWriter:
         return self.in_plan_first_opening
 
     def _take_pending(self, tool_call_id):
-        """Pop the start this end belongs to — by tool_call_id when it has one, else the
+        """Pop the start this end belongs to, by tool_call_id when it has one, else the
         oldest unmatched start. Same rules as `trajectory.pair_tool_calls`."""
         if tool_call_id:
             for i, entry in enumerate(self.pending_tools):

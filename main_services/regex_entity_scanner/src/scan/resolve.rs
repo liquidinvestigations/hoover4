@@ -7,12 +7,12 @@
 //! The order is: structural strength first, then length, then position. Strength before length
 //! because a match that had to satisfy a checksum or a calendar is the less accidental reading even
 //! when it is the shorter one; length after that because within one type the longer match is the
-//! more completely parsed one — a full timestamp beats the bare date inside it.
+//! more completely parsed one. A full timestamp beats the bare date inside it.
 //!
 //! Overlap is decided by dropping, so this stage is where one false positive costs two entities.
 //! An angle-bracketed address read as a message id outranks the address reading and is longer, so
 //! the address is deleted and the fragment reports one wrong entity in place of one right one. The
-//! ladder is not the thing to change when that happens — on a real `Message-ID:` line the
+//! ladder is not the thing to change when that happens, on a real `Message-ID:` line the
 //! message-id reading is correct and the address reading must lose, and the two are mutually
 //! exclusive claims about the same bytes. What has to change is the rule that proposed a reading it
 //! could not justify.

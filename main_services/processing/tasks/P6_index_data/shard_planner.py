@@ -8,7 +8,7 @@ alone exceeds a budget gets its own shard (the same rule ``P1_compute_plans`` us
 oversized blobs).
 
 **Two budgets, whichever binds first.** Bytes per row vary by two orders of magnitude
-across a mixed corpus — an email page averages ~1.5 kB and a document page ~57 kB — while
+across a mixed corpus (an email page averages ~1.5 kB and a document page ~57 kB) while
 the cost of a facet or a group-by is per ROW and independent of how much text each row
 holds. A byte-only budget therefore produces shards whose query cost differs by a factor
 of 35, and the largest-by-rows shard is the straggler every broad query waits for. The
@@ -16,21 +16,21 @@ byte cap is what binds for document corpora and the row cap for mail.
 
 The durable state lives in the collection database:
 
-* ``manticore_shards`` — the ledger: one row per shard with its fill level
+* ``manticore_shards``, the ledger: one row per shard with its fill level
   (``text_bytes`` / ``row_count`` / ``doc_count``) and ``is_open`` flag.
   ReplacingMergeTree keyed on ``shard_name`` versioned by ``updated_at``: always read
   with ``FINAL`` and always write complete rows, never partial ones.
-* ``manticore_shard_assignments`` — ``(collection_dataset, file_hash) -> shard_name``.
+* ``manticore_shard_assignments``, ``(collection_dataset, file_hash) -> shard_name``.
   The shard *reservation*: a re-indexed document goes back to its existing shard (the
   writers overwrite in place with ``REPLACE INTO``); it is never duplicated across
   shards. Rows are written at planning time, before the writers run.
-* ``index_state`` — ``(collection_dataset, file_hash) -> shard_name, indexed_at``.
+* ``index_state``, ``(collection_dataset, file_hash) -> shard_name, indexed_at``.
   Written only *after* a document's writers committed, so it is the record of what
   actually reached a shard. The ledger's fill levels are recomputed from this table,
   never from the reservations.
 
 **Identity contract:** the whole indexing pipeline is keyed on
-``(collection_dataset, file_hash)`` — Manticore row ids, the pages rows, the
+``(collection_dataset, file_hash)``: Manticore row ids, the pages rows, and the
 purge path. A (dataset, document) pair therefore lives in exactly one shard, and the
 same content ingested into two datasets of one collection is indexed twice (once per
 dataset). Never assume ``file_hash`` alone identifies a document.
@@ -67,12 +67,12 @@ log = logging.getLogger(__name__)
 # `main.py reindex-collection` to redistribute existing shards.
 #
 # 4 GB of raw text is ~6.9 GB on disk at the measured 1.73x, which keeps a single
-# shard's worst-case unfiltered facet scan around 3.6 s — well inside the 30 s search
-# budget — and an OPTIMIZE merge down to minutes. Smaller shards are not free: Manticore
+# shard's worst-case unfiltered facet scan around 3.6 s (well inside the 30 s search
+# budget), and an OPTIMIZE merge down to minutes. Smaller shards are not free: Manticore
 # parallelises one table's query across worker threads by itself (`pseudo_sharding`), its
 # own benchmarks put the sweet spot at 4-8 physical shards on a 16-core box, and
 # throughput falls BELOW the unsharded baseline by 32. So shard size is an operational
-# choice — rebuild granularity, merge cost, straggler bound — not a parallelism one.
+# choice (rebuild granularity, merge cost, straggler bound), not a parallelism one.
 MAX_SHARD_TEXT_BYTES = 4_000_000_000
 
 # 2.5 M rows is where the row cost of a facet scan is comparable to the byte budget's
@@ -80,7 +80,7 @@ MAX_SHARD_TEXT_BYTES = 4_000_000_000
 MAX_SHARD_ROWS = 2_500_000
 
 #: Rows a document adds to a shard when its page count is unknown: its filename row.
-#: Never 0 — a document with no text still occupies a row and still costs a group-by.
+#: Never 0, a document with no text still occupies a row and still costs a group-by.
 MIN_DOCUMENT_ROWS = 1
 
 
@@ -115,10 +115,10 @@ def pack_into_shards(
 ) -> tuple[list[ShardAssignment], list[ShardState]]:
     """Pure shard packing. Returns ``(assignments, new_ledger)``; inputs are not mutated.
 
-    * ``ledger`` — current shard states (from ``manticore_shards FINAL``).
-    * ``candidates`` — ``(file_hash, text_bytes, row_count)`` for documents with no
+    * ``ledger``, current shard states (from ``manticore_shards FINAL``).
+    * ``candidates``: ``(file_hash, text_bytes, row_count)`` for documents with no
       assignment yet.
-    * ``existing_assignments`` — ``file_hash -> shard_name`` for documents that already
+    * ``existing_assignments``, ``file_hash -> shard_name`` for documents that already
       have a shard: they keep it, and their bytes and rows are already in the ledger
       (they are not counted again).
 
@@ -231,9 +231,9 @@ def merge_ledger_stats(
 ) -> list[ShardState]:
     """Pure join of the ledger skeleton with per-shard fill statistics.
 
-    * ``ledger_rows`` — ``(shard_name, shard_index, is_open)`` from ``manticore_shards
+    * ``ledger_rows``, ``(shard_name, shard_index, is_open)`` from ``manticore_shards
       FINAL``; every ledger shard appears in the output, stats or no stats.
-    * ``stats_rows`` — ``(shard_name, text_bytes, row_count, doc_count)``; shards
+    * ``stats_rows``, ``(shard_name, text_bytes, row_count, doc_count)``; shards
       missing here get zeros (nothing indexed into them yet).
 
     ``is_open`` is preserved as-is: recomputation never re-opens a sealed shard and
@@ -260,7 +260,7 @@ def recompute_shard_ledger(collectionname: str) -> None:
     """Rebuild ledger ``text_bytes``/``row_count``/``doc_count`` from ``index_state``.
 
     Single source of truth for fill levels: what actually reached a shard, not the
-    reservations — a permanently failed writer chunk must not inflate the ledger.
+    reservations. A permanently failed writer chunk must not inflate the ledger.
     ``text_bytes`` and ``row_count`` are taken from the assignments row of each indexed
     document (the planner's own estimate at reservation time). Used by
     ``finalize_index_batch`` after the writers finish and by the dataset purge, where it
@@ -313,7 +313,7 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
         rows_by_hash: dict[str, int] = {}
         if unassigned:
             # Manticore rows the document will occupy: one per text segment plus its
-            # filename row. Counted rather than derived from bytes — the ratio between
+            # filename row, counted rather than derived from bytes. The ratio between
             # the two is exactly what varies across the corpus, which is why there are
             # two budgets.
             rows_by_hash = {
@@ -336,7 +336,7 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
                     parameters={"cd": collection_dataset, "hashes": unassigned},
                 ).result_rows
             }
-            # Raw text length, computed for EVERY unassigned hash — not only for
+            # Raw text length, computed for EVERY unassigned hash, not only for
             # those with no nlp_processed row at all. A partially-processed document
             # (NER succeeded on page 0, failed on pages 1..n) has a watermark that
             # covers only some of its pages, so neither sum alone is safe; the
@@ -396,7 +396,7 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
 
     # The read above and the write below are deliberately separate client blocks
     # with the pure packing in between. Correctness relies on the single planner
-    # worker serialising this activity (see the module docstring) — do not
+    # worker serialising this activity (see the module docstring). Do not
     # "optimise" the two blocks into one.
     with get_collection_client(collectionname) as client:
         _write_ledger_rows(client, new_ledger)

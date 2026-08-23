@@ -2,7 +2,7 @@
 
 These three settings -- GPU_CONNECT_TIMEOUT_MS, GPU_FALLBACK and
 GPU_CIRCUIT_BREAK_SECONDS -- are rendered into the worker's environment by
-deploy.py. A knob that is rendered and read by nothing is how a dead GPU host
+deploy.py. A setting that is rendered and read by nothing is how a dead GPU host
 stalls the pipeline for tens of minutes instead of degrading it, so each one
 gets a test here to keep it from becoming decorative.
 """

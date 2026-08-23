@@ -11,7 +11,7 @@ subtitle and a body for the reader who clicked the match.
 
 ## Why the catalogue is static Rust
 
-It is knowledge about the rule, not about any match — the standard that defines the format, the
+It is knowledge about the rule, not about any match, the standard that defines the format, the
 authority that runs the register, the boundary of what validation proves. Keeping it beside the rule
 is what stops it going stale, exactly as with a doc comment. Loading it from a data file would move
 it away from the code it describes and gain nothing, because it changes when the rule changes.
@@ -24,7 +24,7 @@ country-code top-level domain to a country the reader recognises. Static knowled
 Only `rule_id` is required on the way in, and `value` is read as raw JSON rather than typed. An
 entity a client kept from an older rule set must still explain itself, so a value shape this build
 has never seen thins the card instead of failing it. This is also why the endpoint sidesteps the
-`Value` round-trip question entirely — it never deserialises into the typed enum.
+`Value` round-trip question entirely. It never deserialises into the typed enum.
 
 ## The FollowTheMoney mapping and the confidence note
 

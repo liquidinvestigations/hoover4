@@ -24,13 +24,13 @@ This stage parses downloaded files by type and writes structured content and met
   `table_readers.py` and the delimited-text sniff in `sniff_table.py`
 - Helpers: `parse_common.py` for text page/segment writing and error recording
 
-## How text is stored — `page_id` is a page number
+## How text is stored: `page_id` is a page number
 
 `text_content.page_id` is a **1-based page number** for paged formats and a **1-based
 ~256 KB segment ordinal** for everything else. It is never 0.
 
 - `insert_text_pages(...)` is the paged path. Callers pass the real page numbers.
-  **Call it once per `(file, extracted_by)` with the complete page list** — it deletes
+  **Call it once per `(file, extracted_by)` with the complete page list**. It deletes
   rows above the highest page it writes, which is what stops a shorter re-OCR from
   leaving the previous run's tail behind, and which also means a second call for the
   same variant would delete the first call's pages. Each stored row carries
@@ -43,8 +43,8 @@ This stage parses downloaded files by type and writes structured content and met
 **A page whose stripped text is under two characters is not stored**, so a variant can be
 absent rather than empty. Mail is where that shows: `parse_email.py` writes
 `email_headers` whenever the file parses, but writes no `email_parser` row at all when the
-message's whole `text/plain` part is a single `,` — which Enron's export produces by the
-dozen — or when the only body part is HTML. Every reader must treat the variant as
+message's whole `text/plain` part is a single `,` (which Enron's export produces by the
+dozen) or when the only body part is HTML. Every reader must treat the variant as
 optional; the document viewer carries an explicit "this email has no parsed body" flag for
 exactly this, and NER falls back to the `raw_text` envelope for these files rather than
 losing their entities (`tasks/text_sources.ner_reads_variant`).
@@ -57,7 +57,7 @@ every page, so per-page storage costs no extra subprocesses. The label is
 
 `parse_ocr_pdf.py` produces a *file*, not rows of text: a PDF with the page images and an
 invisible OCR text layer, written to Garage under `derived/ocr-pdf/…` by the
-`hoover4-ocr-pdf` service. It gets **no `blobs` row and no `vfs_files` row** — the only
+`hoover4-ocr-pdf` service. It gets **no `blobs` row and no `vfs_files` row**, the only
 index of its existence is `pdf_ocr_results`.
 
 That is not tidiness. If the ingest walker could see the object it would ingest it, OCR
@@ -72,8 +72,8 @@ scan, a row with no object is a broken link nothing can repair.
 ## Technical Details
 
 `email_headers.raw_headers_json` stores a **list of `[name, value]` pairs in header order**,
-not an object. A message repeats headers — `Received:` five to ten times on a normal
-message, and it is the delivery path — and a name-keyed object keeps only the last of them.
+not an object. A message repeats headers: `Received:` five to ten times on a normal
+message, and it is the delivery path, and a name-keyed object keeps only the last of them.
 Readers go through `parse_email.header_pairs_from_json`, which also accepts the older
 object shape, because a document only gets the list shape when it is re-parsed.
 
@@ -81,8 +81,8 @@ Parsing uses type-based routing derived from detector results. Archives, PDFs, e
 
 Magika is constructed once per worker process: building the detector is several times
 the cost of `identify_path`, and every file paid that construction when it lived inside
-the activity. Extractous still runs in a subprocess — a wedged native call cannot be
-interrupted in-process — but the helpers are a pool of long-lived interpreters (sized to
+the activity. Extractous still runs in a subprocess (a wedged native call cannot be
+interrupted in-process), but the helpers are a pool of long-lived interpreters (sized to
 the tika worker's activity slots) that read one JSON path per line and write one JSON
 object back. A timeout kills that helper, raises a non-retryable `ApplicationError`, and
 the next file gets a fresh one. Stderr is drained so a noisy child cannot fill a pipe
@@ -91,7 +91,7 @@ and stall.
 Every parser output here skips the ClickHouse async-insert wait
 (`insert_arrow_idempotent`): these writers are re-runnable and a lost buffer converges on
 the next pass, while the wait itself costs ~60 ms per insert against ~1 ms without. The
-scan tables P0 writes are the exception and stay durable — nothing rescans a disk, so a
+scan tables P0 writes are the exception and stay durable. Nothing rescans a disk, so a
 lost `blobs` row is a file that is never planned. See
 [`../../database/Readme.md`](../../database/Readme.md).
 
@@ -111,7 +111,7 @@ lost `blobs` row is a file that is never planned. See
 
 Five detectors run on every file and each writes its own `file_types` row: `file`, Tika,
 Magika, the filename (`extension`) and the content sniff (`content_sniff`). They are
-allowed to disagree — processing is attempted on the union of what they say, which is how
+allowed to disagree. Processing is attempted on the union of what they say, which is how
 a `.docx` gets its office text extracted out of a file libmagic calls a zip, and how a
 mail file gets both its headers parsed and its body extracted as text.
 
@@ -121,7 +121,7 @@ writes all four rows in a single insert. Each of them costs tens of milliseconds
 Temporal activity per detector spent several times more on the round trip than on the
 detection. Failure is still per detector: one that raises contributes no row and reports
 under its own name in the result's `errors`, which is what the caller records in
-`processing_errors` — exactly what a failed activity in the old fan-out produced.
+`processing_errors`. Exactly what a failed activity in the old fan-out produced.
 
 `run_tika_and_store` stays a separate activity on `processing-tika-queue`, because it
 holds an extractous helper and that helper belongs to that tier, not to the common
@@ -135,7 +135,7 @@ an RFC 822 header block is a rectangular two-column table to any sniff that acce
 as a delimiter, so `:` is excluded from the candidate set permanently and a message the
 email sniff accepted is never offered to the table sniff at all.
 `tests/integration/test_table_sniff_corpus.py` is the measurement that keeps both rules
-honest — zero acceptances across the 21 291 messages of `enron-kaminski-v`.
+honest. Zero acceptances across the 21 291 messages of `enron-kaminski-v`.
 
 `sniff_email.py`
 recognises an RFC 822 message from its header block, which is the only way to classify an
@@ -147,7 +147,7 @@ The sniff runs behind a cheap gate, so it never touches a file another detector 
 confidently named.
 
 The disagreement is resolved once, at the end, by `resolve_canonical_file_type` in
-`P6_index_data` — that is where a document gets the single type the search index and the
+`P6_index_data`. That is where a document gets the single type the search index and the
 filter pane use. Nothing here picks a winner.
 
 ## A container that extracted nothing is not scanned
@@ -161,13 +161,13 @@ The case this exists for is the ordinary one: most messages in a mail corpus car
 attachment, so the old unconditional scan spent a child workflow, a `list_disk_folder`
 and a `cleanup_temp_dir` per message to discover an empty folder. On a maildir that was
 roughly a third of every Temporal execution the whole ingest made, and Temporal
-executions — not the work inside them — are what this pipeline's throughput is made of.
+executions, not the work inside them, are what this pipeline's throughput is made of.
 
 ## A tabular document is read twice: as text, and as a grid
 
 A `.xlsx` gets its office-XML flattening, its Tika text **and** `parse_table_and_store`.
 Nothing is replaced: a search for a value inside cell G4713 still finds the file through
-the text path. What the table reader adds is structure — which columns exist, what type
+the text path. What the table reader adds is structure, which columns exist, what type
 each one is, and a grid that can be sorted, filtered and paged without loading the
 document.
 
@@ -185,19 +185,19 @@ manifest row is invisible to the permission check and to `sweep_orphan_table_cel
 Two rules decide whether something is a table at all, and the asymmetry is the point. A
 binary spreadsheet is a table on the strength of its format, so one non-empty cell is
 enough. Delimited text has to be at least 2 rows by 2 columns, because its bytes are also
-the bytes of prose, of mail and of a log file — a single-column list is a text file and a
+the bytes of prose, of mail and of a log file. A single-column list is a text file and a
 single-line file is a text file. Below the threshold no manifest row is written and the
 outcome is recorded as `table_not_a_table` in `processing_errors`, which means no
 evidence, no `table` canonical type, no glyph and no grid.
 
 Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
-manifest row — the limit's stable name, its maximum and the sheet it fired on — so the
+manifest row (the limit's stable name, its maximum and the sheet it fired on), so the
 grid can say what was dropped. A cap that is invisible in the UI reads as "this file has
 300 columns", which is a lie about the corpus.
 
 `python_calamine` is a Rust extension and fails by **panicking** rather than raising: a
 `PanicException` derives from `BaseException` and an ordinary `except Exception` does not
-see it. A workbook with one blank sheet — a pivot-table template, entirely ordinary — is
+see it. A workbook with one blank sheet (a pivot-table template, entirely ordinary) is
 enough to trigger it. `parse_table.py` therefore catches `BaseException` and re-raises
 only the interpreter's own, and the calamine reader skips a sheet with no used range.
 

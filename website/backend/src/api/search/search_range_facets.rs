@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `INTERVAL(x, a, b, c)` returns 0 for `x < a`, 1 for `a <= x < b`, and so on, so N
 /// edges give N+1 buckets. The labels live next to the edges because they have to agree
-/// exactly — a mislabelled bucket is a filter that returns the wrong documents and
+/// exactly. A mislabelled bucket is a filter that returns the wrong documents and
 /// looks right.
 pub const SIZE_BUCKET_EDGES: [i64; 3] = [1_048_576, 10_485_760, 104_857_600];
 pub const SIZE_BUCKET_LABELS: [&str; 4] = [
@@ -60,7 +60,7 @@ fn empty(query: SearchQuery, field: &str) -> SearchResultFacets {
 
 /// Document counts per file-size bucket.
 ///
-/// The `file_size_bytes >= 0` guard is load-bearing: a document with no `vfs_files` row
+/// The `file_size_bytes >= 0` guard decides correctness here. A document with no `vfs_files` row
 /// carries `SIZE_UNKNOWN` (-1), and `INTERVAL()` would put it in bucket 0 next to the
 /// genuinely tiny files.
 pub async fn search_numeric_facet(

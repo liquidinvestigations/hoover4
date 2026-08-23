@@ -4,7 +4,7 @@ Modelled on `MikeLuu99/metasearch-rust`: several engines scraped in parallel, re
 deduplicated on a normalised URL, then merged with RRF so a result several engines agree
 on outranks one only a single engine returned.
 
-No API keys anywhere. The cost of that is fragility — **assume at least one of these
+There are no API keys anywhere, and the cost of that is fragility. **Assume at least one of these
 selectors will break within months**. Three things make that failure visible instead of
 silent: an engine returning zero results is reported in the response's `degraded` list
 rather than swallowed, that report carries the *reason* (see :func:`_fetch_engine`), and
@@ -12,15 +12,15 @@ the engine set is env-configurable so a rotted scraper can be turned off without
 rebuild.
 
 Reporting rot is not the same as tolerating it. An engine that returns zero for every
-query is not degraded, it is gone, and leaving it registered inflates the source count
-the tool advertises. Startpage was removed on exactly that evidence — see :data:`ENGINES`.
+query is gone rather than degraded, and leaving it registered inflates the source count
+the tool advertises. Startpage was removed on exactly that evidence. See :data:`ENGINES`.
 
 This module is now the `kind = "web"` half of a wider set. :mod:`.sources` wraps each
 engine here as a *source* alongside the `ddgs`-library and Wikipedia sources that used to
 be their own MCP servers, and :mod:`.pipeline` is what orders the merged set.
 
 The fusion machinery itself (`SearchResult`, `normalise_url`, `dedupe_within_source`,
-`reciprocal_rank_fusion`, `RRF_K`) lives in `agent_common.fusion`, not here — collection
+`reciprocal_rank_fusion`, `RRF_K`) lives in `agent_common.fusion`, not here. Collection
 search fuses with the same code, and a second copy would drift. The names are re-exported
 here so both import paths work.
 """
@@ -77,7 +77,7 @@ def _title_of(row, link, *selectors: str) -> str:
     Yahoo nests the site name and a URL breadcrumb inside the same `<a>` as the title, so
     taking the link's text yields `eiffeltowertravel.comhttps://eiffeltowertravel.com ›
     height-and-factsEiffel Tower Height: …`. That mash is what the user reads, what the
-    model cites — and, worst, what the **cross-encoder scores**, so a page with a
+    model cites, and, worst, what the **cross-encoder scores**, so a page with a
     keyword-stuffed breadcrumb outranks a clean title. Take the title element when the row
     has one; the link is only the fallback for engines whose anchor *is* the title.
     """
@@ -99,7 +99,7 @@ def unwrap_tracking_url(url: str) -> str:
     Every engine here can hand back its own redirector instead of the page, and a wrapped
     URL is worse than ugly: it does not normalise to the same key as the direct URL, so
     :func:`dedupe_within_source` cannot merge the two and the fused list carries the same
-    page twice — once cited to `r.search.yahoo.com/_ylt=…`, which is what the model then
+    page twice, once cited to `r.search.yahoo.com/_ylt=…`, which is what the model then
     quotes at the user.
 
     The HTML parsers unwrap inline because they know their own engine's shape. This is the
@@ -199,7 +199,7 @@ def _parse_yahoo(html: str) -> list[SearchResult]:
 #: **Startpage was removed, not disabled.** It serves a Gatsby single-page app with a
 #: `<noscript>` wall and a captcha field: there are no results in the HTML for any query,
 #: on the first request from a cold container, so there is no selector to repair. Left
-#: enabled it returns zero on every live query while still being counted as a source — a
+#: enabled it returns zero on every live query while still being counted as a source. A
 #: facade is worse than a gap, because the `degraded` list is only informative if a name
 #: on it can come off.
 ENGINES = {
@@ -235,7 +235,7 @@ async def _fetch_engine(
 
     The reason is the point of the second element. "brave returned nothing" is reported
     identically whether the selectors rotted, the engine answered `429 Too Many Requests`,
-    or the host was unreachable — and those need three different responses from whoever
+    or the host was unreachable, and those need three different responses from whoever
     reads it. Conflating them is how startpage stayed in the source list for a whole phase
     while returning zero on every query.
     """
@@ -262,5 +262,5 @@ async def _fetch_engine(
         return [], "answered with no results (selector rot?)"
     # One page listed by both an outer and an inner selector, or repeated by the engine
     # itself, must not take two RRF slots. Fusion dedupes too, but only after ranks are
-    # assigned per source — doing it here is what makes those ranks mean anything.
+    # assigned per source. Doing it here is what makes those ranks mean anything.
     return dedupe_within_source(results), ""

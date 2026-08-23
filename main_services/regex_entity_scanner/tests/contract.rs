@@ -167,7 +167,7 @@ const EVERY_TYPE: &[EntityType] = &[
 
 /// Precedence is a ladder of bands, not a per-type ranking: types that had the same evidence
 /// available to them share a number and let length and position break the tie. So the interesting
-/// property is that the bands are distinct — a band that collided with its neighbour would silently
+/// property is that the bands are distinct, a band that collided with its neighbour would silently
 /// stop deciding anything.
 #[test]
 fn the_precedence_ladder_has_one_value_per_band() {

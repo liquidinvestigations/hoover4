@@ -2,7 +2,7 @@
 //!
 //! Each of these earns its precision from a literal marker rather than from arithmetic, so the
 //! subset here is chosen for the two ways that can fail: a marker with an implausible payload
-//! behind it, and a shape that carries the marker but means something else — an angle-bracketed
+//! behind it, and a shape that carries the marker but means something else, an angle-bracketed
 //! address in a `From` line rather than a message id.
 
 mod support;
@@ -119,8 +119,8 @@ fn an_angle_bracketed_address_without_a_header_name_stays_an_address() {
 }
 
 /// RFC 5322 §3.6.4 admits a bare `dot-atom-text` on the right, and an internal mail system emits
-/// exactly that. A registered top-level domain is the wrong guard here — it turns away well-formed
-/// identifiers — and the header label is the one that carries the precision.
+/// exactly that. A registered top-level domain is the wrong guard here (it turns away well-formed
+/// identifiers), and the header label is the one that carries the precision.
 #[test]
 fn accepts_a_message_id_whose_right_side_is_not_a_domain() {
     assert_eq!(
@@ -277,7 +277,7 @@ fn rejects_plus_codes_outside_the_alphabet_or_the_range() {
 }
 
 /// EIP-55 hides the checksum in the capitalisation, so a mixed-case address is verified and a
-/// single-case one is only structurally valid — which is what the confidence and the flag say.
+/// single-case one is only structurally valid, which is what the confidence and the flag say.
 #[test]
 fn a_mixed_case_ethereum_address_is_verified_and_a_lower_case_one_is_not() {
     let scanner = support::scanner();

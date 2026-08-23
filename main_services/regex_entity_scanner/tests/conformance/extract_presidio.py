@@ -4,7 +4,7 @@
 ``vendored/reference/presidio/tests/`` holds one test module per predefined recogniser, and each is
 a ``pytest.mark.parametrize`` list of ``(text, expected_len, expected_positions, ...)`` rows: a
 fragment, how many spans upstream asserts are in it, and where. That is the shape of the question
-this service is asked — an identifier sitting inside a sentence — rather than a validator called on
+this service is asked (an identifier sitting inside a sentence) rather than a validator called on
 a bare token, which is why this origin is the one that measures the rules whose subjects only ever
 appear in prose.
 
@@ -16,11 +16,11 @@ Three things follow from the corpus rather than from a choice:
 * **A row asserting zero spans is an invalid case** whose token is the whole fragment. Upstream
   names no span to point at, and the scorer's overlap test then asks upstream's own question: did
   anything of this kind fire in a fragment upstream says holds none of it.
-* **A row that names no span at all** — the modules parametrised on ``text, expected_len`` alone —
+* **A row that names no span at all** (the modules parametrised on ``text, expected_len`` alone)
   is recorded with the whole fragment as the token, which asks the same weaker question in the
   valid direction: did the right type fire anywhere in it.
 
-Presidio recognises far more entity types than this rule set implements — driver's licences,
+Presidio recognises far more entity types than this rule set implements. Driver's licences,
 passports, medical and tax numbers for two dozen countries, US SSNs. Those are excluded for the
 plainest reason there is, the absence of a rule, and the exclusion count is printed beside the
 score so the coverage figure cannot be mistaken for a recall figure.
@@ -79,7 +79,7 @@ SCORED = {
 }
 
 # The cue a rule requires before it will look at a token at all. Supplied only into a carrier
-# sentence, and only for the rule that requires it — supplying one to a rule that needs none would
+# sentence, and only for the rule that requires it. Supplying one to a rule that needs none would
 # measure a rule that does not run in production.
 CUES = {
     "aba_routing": "routing number",
@@ -112,7 +112,7 @@ PHONE_SCHEMES = (
 
 RESERVED_MAC = re.compile(r"(?:FF[:-]){5}FF|(?:00[:-]){5}00", re.IGNORECASE)
 
-# A dotted run with a fifth component behind it — `192.168.1.1.1`. The address rule refuses a
+# A dotted run with a fifth component behind it: `192.168.1.1.1`. The address rule refuses a
 # slice of one, so upstream naming the first four as the address is a disagreement about a
 # documented guard rather than about the address format.
 LONGER_DOTTED_RUN = re.compile(r"^\.\d")
@@ -196,7 +196,7 @@ def parametrized_rows(path: str):
     """Every `parametrize` row in the module that carries a fragment and a span count.
 
     Read with `ast`: a row is a literal tuple, and a decorator's own argument names say which
-    element is which. Rows that are not literals — the ones built from a helper call — are skipped
+    element is which. Rows that are not literals (the ones built from a helper call) are skipped
     rather than guessed at.
     """
     with open(path, encoding="utf-8") as handle:
@@ -219,8 +219,8 @@ def parametrized_rows(path: str):
                 names = [name.strip() for name in names.split(",")]
             if "expected_len" not in names:
                 continue
-            # A handful of modules name the fragment after what is in it — `iban, expected_len,
-            # expected_res` — rather than `text`. The first column is the fragment either way.
+            # A handful of modules name the fragment after what is in it: `iban, expected_len,
+            # expected_res`, rather than `text`. The first column is the fragment either way.
             if "text" not in names:
                 names = ["text"] + list(names[1:])
             for row in rows:
@@ -270,7 +270,7 @@ def asserted_score(row):
 def documented_exclusion(scheme: str, token: str, tail: str, valid: bool, function: str, score):
     """The limit written in the tracked tree that keeps a case out of the scores, or `None`.
 
-    Out-of-scope is a category, not a failure — but only when the limit is written down, either in
+    Out-of-scope is a category, not a failure, but only when the limit is written down, either in
     this rule set's cards and docs or in upstream's own assertion. Every branch names one.
     """
     if scheme not in SCORED:
@@ -339,7 +339,7 @@ def case(index, scheme, text, token, start, end, valid, cue, exclusion):
         "valid": valid,
         "rule_id": rule,
         "entity_type": entity_type,
-        # Presidio asserts a span, never a canonical value — it redacts rather than normalises — so
+        # Presidio asserts a span, never a canonical value (it redacts rather than normalises), so
         # there is no upstream value to compare against and every scored case is type-only.
         "expect_value": None,
         "exclusion": exclusion,
@@ -350,7 +350,7 @@ def housed(text: str, token: str, start: int, end: int, scheme: str):
     """Where the case is scanned: upstream's own fragment, or the carrier around a bare token.
 
     A row whose fragment is one unbroken token has no sentence in it, and scanning a bare token measures
-    the pattern rather than the rule — the guards that make a rule trustworthy are all about what
+    the pattern rather than the rule, the guards that make a rule trustworthy are all about what
     stands next to a match. Those rows go into the same neutral carrier the bare-token origins use,
     and it is the only place a cue word is ever supplied.
     """
@@ -378,7 +378,7 @@ def module_cases(path: str, scheme: str):
             pairs = [(text[start:end], start, end) for start, end in spans]
         else:
             # Upstream names no span: the whole fragment is the token, which asks "did anything of
-            # this kind fire in here" — exactly the assertion upstream makes in that form.
+            # this kind fire in here". Exactly the assertion upstream makes in that form.
             pairs = [(text, 0, len(text))]
         for token, start, end in pairs:
             if not token.strip():

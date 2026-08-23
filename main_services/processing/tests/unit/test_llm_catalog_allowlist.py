@@ -3,7 +3,7 @@
 `llm_models` is a `ReplacingMergeTree(updated_at, is_deleted)` and every reader takes
 `argMax(is_allowed, updated_at)`. `is_allowed` also defaults to 1. Put together, an insert
 that omits the column writes a *fresher* "allowed" version than the admin's "disallowed"
-one, so the disallow evaporates the next time the catalog refreshes — and the allowlist is
+one, so the disallow evaporates the next time the catalog refreshes, and the allowlist is
 enforced server-side against forged model ids, so this was a security control being reset
 on a timer rather than a dropdown being repopulated.
 

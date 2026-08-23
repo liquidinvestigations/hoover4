@@ -1,10 +1,10 @@
 """The drift test for the server's `instructions`.
 
 `instructions` is read by whichever agent connects, at tool-discovery time, before it has
-written a single query. It names the tools in the order they are used — and a name that no
+written a single query. It names the tools in the order they are used, and a name that no
 longer exists is worse than no instruction at all, because the model tries it.
 
-Two checks, and the first is the one that matters: the tool list the prose renders from is
+Two checks, and the first is the one that fails silently: the tool list the prose renders from is
 compared to the tools `server.py` has actually registered with `@mcp.tool`. A rename that
 touches only one of the two fails here.
 """

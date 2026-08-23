@@ -11,7 +11,7 @@ services:
     container_name: hoover4-regex-entity-scanner
     build:
       # Narrow context on purpose, like the other overlays. `.dockerignore` in that
-      # directory keeps the Rust build tree — tens of gigabytes — and the vendored
+      # directory keeps the Rust build tree (tens of gigabytes), and the vendored
       # reference corpora out of the context; without it the context alone is longer
       # than the build.
       context: ${HOOVER4_REPO_ROOT}/main_services/regex_entity_scanner
@@ -40,8 +40,8 @@ services:
       - RES_LOG=${LOG_LEVEL:-info}
     healthcheck:
       # The image carries no Python and no curl; the binary's own probe is what is there.
-      # /health stays answerable at full load because scanning runs off the event loop —
-      # a health check that a busy service cannot answer reports the wrong thing at
+      # /health stays answerable at full load because scanning runs off the event loop.
+      # A health check that a busy service cannot answer reports the wrong thing at
       # exactly the moment the answer matters.
       test: ["CMD", "/usr/local/bin/regex-entity-scanner", "--health-check"]
       interval: 30s

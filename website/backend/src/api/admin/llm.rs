@@ -1,4 +1,4 @@
-//! `/admin/llm` — catalog, defaults, allowlist, background refresh.
+//! `/admin/llm`, catalog, defaults, allowlist, background refresh.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -140,7 +140,7 @@ pub async fn resolve_chat_model(
     profile: ChatProfile,
 ) -> anyhow::Result<String> {
     // The profile's model IS the default for this turn. A user who picked a model in the
-    // composer still gets what they picked — the per-profile key configures the
+    // composer still gets what they picked. The per-profile key configures the
     // deployment, not the conversation.
     let default = model_for_profile(profile).await;
     if default.trim().is_empty() {
@@ -165,7 +165,7 @@ pub async fn resolve_chat_model(
         .query(
             // `is_deleted` is filtered in HAVING, not WHERE: this is a
             // ReplacingMergeTree and every version of the row is still in the part, so a
-            // WHERE drops the *tombstone version* and leaves the live one — a deleted
+            // WHERE drops the *tombstone version* and leaves the live one. A deleted
             // model would read back as present. Only the argMax'd value means anything.
             "SELECT argMax(is_allowed, updated_at) AS is_allowed \
              FROM llm_models \
@@ -270,7 +270,7 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
         });
     }
 
-    // If no catalog rows exist but LLM_BASE_URL is set, surface the provider as
+    // If no catalog rows exist but LLM_BASE_URL is set, report the provider as
     // present-but-empty so the admin page can trigger a refresh.
     if providers_map.is_empty() && llm_configured() {
         let name = provider_name_from_url(&std::env::var("LLM_BASE_URL").unwrap_or_default());
@@ -340,7 +340,7 @@ pub async fn admin_set_summarization_model(
 /// Point one agent profile at a model, or clear it back to the default.
 ///
 /// An empty `model_id` CLEARS the key rather than being an error, because "use the
-/// default" has to be reachable from the admin page — a picker that can only ever be set
+/// default" has to be reachable from the admin page, a picker that can only ever be set
 /// is a one-way door.
 pub async fn admin_set_profile_model(
     user: &CurrentUser,
@@ -468,7 +468,7 @@ pub async fn admin_refresh_catalog(user: &CurrentUser) -> anyhow::Result<bool> {
 ///
 /// A refresh knows nothing but the ids `/models` returned. Everything else in the table
 /// was put there by an admin or by the Python catalog task, and re-deriving it as zero
-/// would destroy it — which is exactly what the allowlist bug was. Failure here is
+/// would destroy it, which is exactly what the allowlist bug was. Failure here is
 /// deliberately non-fatal but not silent: an empty map means the refresh falls back to
 /// "everything allowed", so it is logged loudly rather than swallowed.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
@@ -603,9 +603,9 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
             0
         };
         // Everything the provider's `/models` does not tell us is carried forward from
-        // the row already stored. `is_allowed` is the one that matters: this table is a
+        // the row already stored. `is_allowed` is the column this guards: this table is a
         // ReplacingMergeTree read through `argMax(…, updated_at)`, so a refresh that
-        // wrote a fresher `is_allowed = 1` silently un-did the admin's disallow — and the
+        // wrote a fresher `is_allowed = 1` silently un-did the admin's disallow, and the
         // allowlist is a server-side security control, not a dropdown filter.
         // Prices and capability flags are carried for the same reason in miniature: a
         // refresh should not blank what another writer discovered.
@@ -641,7 +641,7 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
     // The tombstone the migration comment promises. A model the provider has stopped
     // listing gets one `is_deleted = 1` version; every reader filters on
     // `argMax(is_deleted, updated_at)`, so it disappears from the picker and from the
-    // allowlist check without any row being deleted — and comes back with its admin state
+    // allowlist check without any row being deleted, and comes back with its admin state
     // intact if the provider lists it again. Written on the same insert as the live rows
     // so a refresh is one atomic-enough batch rather than two.
     let listed: std::collections::HashSet<&str> = models.iter().map(String::as_str).collect();
@@ -760,7 +760,7 @@ fn simple_match(pattern: &str, haystack: &str) -> bool {
 
 /// A short, stable name for the endpoint a base URL points at.
 ///
-/// A registrable domain is named by its second-to-last label — `api.moonshot.ai` is
+/// A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
 /// `moonshot`. An address literal has no such label, and taking one anyway names the
 /// provider after an octet of its IP (`192.0.2.10:21960` becomes `2`), so the host and
 /// its port are kept whole. Every place that names a provider goes through this,
@@ -802,8 +802,8 @@ fn provider_name_from_url(base: &str) -> String {
 /// `max_model_len` is vLLM's; `context_length` is what most OpenAI-compatible gateways
 /// use; `context_window` is the name the table itself uses and some providers echo it.
 ///
-/// Mirrors `_CONTEXT_WINDOW_KEYS` in `main_services/processing/tasks/llm_catalog.py` —
-/// the two writers of `llm_models` must read the same keys or a refresh from one blanks
+/// Mirrors `_CONTEXT_WINDOW_KEYS` in `main_services/processing/tasks/llm_catalog.py`.
+/// The two writers of `llm_models` must read the same keys or a refresh from one blanks
 /// what the other discovered.
 const CONTEXT_WINDOW_KEYS: [&str; 3] = ["max_model_len", "context_length", "context_window"];
 
@@ -933,7 +933,7 @@ mod tests {
 
     /// An endpoint reached by IP must not be named after one of its octets, and the
     /// placeholder row for an empty catalog must spell the provider the same way the
-    /// refresh will — otherwise one endpoint renders as two providers.
+    /// refresh will, otherwise one endpoint renders as two providers.
     #[test]
     fn a_provider_name_survives_an_address_literal() {
         for (base, expected) in [
@@ -993,7 +993,7 @@ mod tests {
         );
     }
 
-    /// Every profile has a key of its own, and no two share one — a collision would make
+    /// Every profile has a key of its own, and no two share one. A collision would make
     /// setting one profile's model change another's.
     #[test]
     fn every_profile_has_its_own_setting_key() {

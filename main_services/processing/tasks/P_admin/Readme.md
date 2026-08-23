@@ -18,7 +18,7 @@ singleton, rather than as part of ingestion.
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
 - Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
-  the change dropped — from ClickHouse, then Manticore, then Garage. The order is the
+  the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
   point; `ocr_languages.py`'s module docstring says why each step cannot move.
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has
@@ -33,14 +33,14 @@ exactly one source of truth in Python.
   `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
 - OCR languages: `ocr_languages.py` (the variant diff, the purge, and the stage reports
   it merges into the operation row the admin form polls)
-- ETA logic: `eta_collector.py` (SQL, rates, throttle — documented in its module docstring)
+- ETA logic: `eta_collector.py` (SQL, rates and throttle, documented in its module docstring)
 - File-level retry: `failed_file_retry.py` (which re-run recovers which task, and the
   ClickHouse reads and deletes it needs)
 - Queue: `processing-common-queue`
 - CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
   <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
   <collectionname> [--dataset X] [--task T] [--apply]`
-- Website: every workflow here is reached as the child of an operation —
+- Website: every workflow here is reached as the child of an operation:
   `EnsureCollectionDatabase` and `DropCollectionDatabase` under the collection-lifecycle
   kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
   under `change_ocr_languages`. Each run therefore carries the operation's timestamped id,
@@ -60,9 +60,9 @@ plans would purge each other's variants. Cancelling is what releases the lock ea
 `CollectEtaSamples` is a singleton workflow (id `collect-eta-samples`, started at worker
 bootstrap with `USE_EXISTING`). Each pass writes one row per (collection, dataset, stage)
 into the global `processing_eta_samples` table (migration `00013`); the website only ever
-*reads* that table — the expensive `uniqExact` scans never run in a request path.
+*reads* that table. The expensive `uniqExact` scans never run in a request path.
 
-- One rate per stage — P1 plan, P2/P3 execute, P4 NLP, P6 index — measured over the
+- One rate per stage (P1 plan, P2/P3 execute, P4 NLP, P6 index) measured over the
   trailing **100 watermark events** (plans created, plans finished, segments
   NLP-processed, documents indexed), not over a wall-clock window.
 - Each stage's rate is measured in every unit the schema offers: items/s (blobs, plans,
@@ -70,7 +70,7 @@ into the global `processing_eta_samples` table (migration `00013`); the website 
   `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`,
   `text_content.text_bytes`). P6 has no byte
   watermark, so documents/s is its only measure; P0 is not sampled at all (no timestamps,
-  no knowable denominator — the live count stays on the stage bar).
+  no knowable denominator. The live count stays on the stage bar).
 - The remaining-time projections from the two units are combined by taking the **more
   pessimistic** (larger) one. A defensible simple rule: the units disagree most when item
   sizes are uneven, and an optimistic ETA hurts an admin more than a pessimistic one.
@@ -84,7 +84,7 @@ into the global `processing_eta_samples` table (migration `00013`); the website 
   poll would put the pipeline's own storage under load to report on the pipeline.
   `continue_as_new` resets `passes` to 0 before carrying state into the next run, so the
   sleep remains reachable after the history bound.
-- A collection whose every stage is complete is skipped entirely — no queries, no sample
+- A collection whose every stage is complete is skipped entirely, no queries, no sample
   rows. It is re-validated once every 5 minutes so a rescan of a "finished" collection
   gets fresh estimates again.
 - NLP byte totals come from `text_content.text_bytes` (and `nlp_processed.text_bytes` for
@@ -101,9 +101,9 @@ converging estimate reads as a flattening line, a sawtooth means it is wandering
 
 Retrying failed work **reopens the plans containing the failed documents** (deletes
 their `processing_plan_finished` rows), clears the matching `processing_errors`, then
-restarts `ExecutePlans`. The trap this avoids: a bare `ExecutePlans` restart is a no-op,
+restarts `ExecutePlans`. The failure this avoids: a bare `ExecutePlans` restart is a no-op,
 because a stage can record an error *without* failing the plan (P4 entity extraction is
-the common case) — the plan still finishes and is then skipped as done. Any future retry
+the common case). The plan still finishes and is then skipped as done. Any future retry
 path must reopen the plan first. Reprocessing a whole plan to fix one document is coarse,
 but the plan is the pipeline's unit of work and every stage is idempotent.
 
@@ -119,7 +119,7 @@ reason P4 skips a page it has seen) and re-runs P4 + P6 for their plans, so the 
 touches the failed documents and nothing else; index failures re-run P6; embedding
 failures re-run P5 + P6; parse failures still need the whole plan, because they have no
 per-file entry point that does not start by downloading the plan's blobs. Deletion order
-is watermarks, then rows — a crash between the two leaves a page that is simply
+is watermarks, then rows. A crash between the two leaves a page that is simply
 re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
 for the documents it can show are fixed.
 
@@ -138,7 +138,7 @@ that recorded a new failure is never counted as recovered.
 `processing_plan_finished` records that a plan's stages ran, not that every document
 survived them. The admin processing page therefore counts failed documents per stage
 (`api/admin/processing.rs::stage_for_task`) and a stage with any failures never renders
-as complete — otherwise 4 792 documents can lose their entities to an NER outage while
+as complete, otherwise 4 792 documents can lose their entities to an NER outage while
 every bar reads done.
 
 ## Technical Details

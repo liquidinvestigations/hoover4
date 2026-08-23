@@ -1,6 +1,6 @@
 """The VFS ancestor closure: what a folder filter is allowed to find.
 
-Pure — no stack. Every case here is one the testdata corpus actually contains, and none
+Pure, no stack. Every case here is one the testdata corpus actually contains, and none
 of them is visible from the outside: a closure that misses a parent means a folder filter
 quietly returns fewer documents, and a closure that loops means a worker that never
 finishes one plan.
@@ -103,7 +103,7 @@ def test_a_document_inside_an_archive_reaches_the_folder_holding_the_archive():
 
 
 def test_nested_containers_chain_all_the_way_out():
-    """`a.docx` inside `a.zip` inside `b.zip` inside `/data` — the design's own example."""
+    """`a.docx` inside `a.zip` inside `b.zip` inside `/data`, the design's own example."""
     keys, truncated = ancestor_node_keys(
         DS,
         [("azip", "/a.docx")],
@@ -119,7 +119,7 @@ def test_a_container_at_two_paths_contributes_both_ancestries():
     """`zip-in-multiple-locations`: ONE content hash, TWO locations.
 
     A single-parent model would pick one and make the other location's folder filter
-    return nothing — the regression this fixture exists to catch.
+    return nothing. The regression this fixture exists to catch.
     """
     keys, _ = ancestor_node_keys(
         DS,
@@ -271,7 +271,7 @@ def test_container_parents_from_nodes_collects_every_location():
         file_rows=[
             ("", "/location-1/parent.zip", "ziphash", 100),
             ("", "/location-2/parent.zip", "ziphash", 100),
-            # The member is what makes the two copies containers at all — a hash nothing
+            # The member is what makes the two copies containers at all, a hash nothing
             # is inside is a plain file, and a plain file is nobody's parent.
             ("ziphash", "/child.txt", "childhash", 10),
         ],
@@ -300,7 +300,7 @@ def test_kind_survives_the_round_trip_through_clickhouse():
 
     Comparing that int against `'container'` is always false and never raises, so every
     container silently becomes a directory. The only visible symptom was a folder filter
-    finding one document where two were reachable — caught on the live stack, not by any
+    finding one document where two were reachable. Caught on the live stack, not by any
     test, which is why this one exists.
     """
     assert kind_from_wire("container") == KIND_CONTAINER
@@ -398,7 +398,7 @@ def test_build_node_rows_membership(
     """Detection proposes, membership decides.
 
     Every email in the demo corpus is detected as an archive-like thing, and 100% of them
-    had nothing inside — so 543 195 emails rendered as folders that expand to nothing.
+    had nothing inside, so 543 195 emails rendered as folders that expand to nothing.
     A file with no members is a FILE, whatever the sniff said.
     """
     nodes = nodes_by_key(build_node_rows(DS, dir_rows, file_rows, detected))
@@ -449,7 +449,7 @@ def test_ancestor_closure_unchanged():
     )
     assert not truncated
     assert keys == {
-        # Inside the container, the `/` KEY is still an ancestor of the path — it is a
+        # Inside the container, the `/` KEY is still an ancestor of the path. It is a
         # term, not a node, and the two were never the same thing.
         key("ziphash", "/"),
         key("ziphash", "/inner"),

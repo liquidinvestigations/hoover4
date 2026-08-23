@@ -8,8 +8,8 @@
 //! Picking an order applies it: the control edits the pending query and then runs the
 //! search, so the results are in the order the button names by the time the menu closes.
 //!
-//! This is safe only because every other non-text control in the toolbar does the same —
-//! the filter chips commit on removal too. The apply path pushes the WHOLE pending query,
+//! This is safe only because every other non-text control in the toolbar does the same.
+//! The filter chips commit on removal too. The apply path pushes the WHOLE pending query,
 //! so while filters still batched behind `Apply Filters` a sort click would have silently
 //! committed filter edits the user had not confirmed. If filter editing is ever put back
 //! behind an explicit apply, this must go back with it.
@@ -75,7 +75,7 @@ const BUTTON_STYLE: &str = "
 
 #[component]
 pub fn SortControl(
-    /// The applied query — the order the results on screen are in.
+    /// The applied query. The order the results on screen are in.
     original_query: ReadSignal<SearchQuery>,
     /// The pending query every control in this toolbar edits.
     query: Signal<SearchQuery>,

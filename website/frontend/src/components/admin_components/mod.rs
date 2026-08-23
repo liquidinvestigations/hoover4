@@ -1,4 +1,4 @@
-//! Admin section components — Django-admin-inspired chrome and shared styles.
+//! Admin section components, with Django-admin-inspired chrome and shared styles.
 
 mod admin_guard;
 mod admin_shell;

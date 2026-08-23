@@ -71,7 +71,7 @@ async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Result<Vec<Datas
 ///
 /// The tree is lazy below this point: a dataset's folders are fetched when its row is
 /// expanded, never on mount. This call must therefore stay a single round trip however
-/// many collections and datasets exist — the tree is on every storage surface and in the
+/// many collections and datasets exist. The tree is on every storage surface and in the
 /// filter modal, and one call per row was the shape of the viewer defect that wedged
 /// ClickHouse with 41 queries per page load.
 pub async fn list_permitted_collection_tree(

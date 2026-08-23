@@ -35,7 +35,7 @@ pub enum TextSource {
 
 impl TextSource {
     /// Parse an `extracted_by` value. Anything that does not match the OCR shape exactly
-    /// is treated as a native extractor rather than guessed at — a half-recognised label
+    /// is treated as a native extractor rather than guessed at, a half-recognised label
     /// rendered as a broken OCR chip is worse than one rendered verbatim.
     pub fn parse(extracted_by: &str) -> Self {
         if let Some(rest) = extracted_by.strip_prefix(OCR_PREFIX) {
@@ -252,7 +252,7 @@ pub struct DocumentTextSourceHitCount {
 /// One PDF the viewer can show for a document: the original, or a derived searchable one.
 ///
 /// `engine` empty means the original file. A non-empty `engine`/`languages` pair names a
-/// row in `pdf_ocr_results`, and those two fields *are* the storage key — the same pair
+/// row in `pdf_ocr_results`, and those two fields *are* the storage key, the same pair
 /// that keys the blob-store object and the `/_download_ocr_pdf/` route. They are carried here
 /// rather than a ready-made url so the selector can label the source properly and the
 /// viewer can build the url one way, in one place.
@@ -319,7 +319,7 @@ pub struct DocumentEmailSourceItem {
     /// matches nothing at all. Defaulted for URL-encoded viewer state written without it,
     /// and every reader floors it at 1 rather than trusting the default.
     ///
-    /// Meaningless when [`DocumentEmailSourceItem::has_body`] is false — there is no row
+    /// Meaningless when [`DocumentEmailSourceItem::has_body`] is false, there is no row
     /// to name a page of.
     #[serde(default)]
     pub min_page: u32,
@@ -330,7 +330,7 @@ pub struct DocumentEmailSourceItem {
     /// A mail file gets an `emails` row for its headers and a separate `email_parser`
     /// text variant for its body, and the second is not implied by the first: the text
     /// writer drops a page whose stripped text is shorter than two characters, so mail
-    /// whose whole `text/plain` part is a single `,` — Enron's export is full of them —
+    /// whose whole `text/plain` part is a single `,` (Enron's export is full of them)
     /// stores headers and no body, exactly like mail whose only body part is HTML.
     /// Without this flag the viewer offers the Email source, asks for a body page that
     /// does not exist, and renders the text endpoint's 404 where the body belongs.
@@ -351,7 +351,7 @@ fn email_body_present_by_default() -> bool {
 /// `date_sent` as it arrives for an email whose `Date:` header never parsed.
 ///
 /// `email_headers.date_sent` is a `DateTime` whose fallback is the epoch, so the epoch
-/// and "no date" are the same value in storage — `date_sent_known` is the column that
+/// and "no date" are the same value in storage: `date_sent_known` is the column that
 /// separates them.
 pub const EMAIL_DATE_UNKNOWN: &str = "1970-01-01T00:00:00Z";
 
@@ -433,12 +433,12 @@ pub enum DocumentSourceItem {
     Video(DocumentVideoSourceItem),
     Audio(DocumentAudioSourceItem),
     Text(DocumentTextSourceItem),
-    /// Not offered as a preview source — the viewer's File Locations tab is where a
+    /// Not offered as a preview source. The viewer's File Locations tab is where a
     /// document's paths live. Kept because it is part of the URL-encoded viewer state and
     /// dropping the variant would turn every bookmark carrying it into a parse failure,
     /// which the router shows as "Page not found".
     FileLocations,
-    /// Not offered as a preview source — the viewer's Metadata tab is the metadata
+    /// Not offered as a preview source. The viewer's Metadata tab is the metadata
     /// surface. Kept for the same reason as the variant above.
     Metadata,
 }

@@ -4,7 +4,7 @@
 Two corpora come out of ``vendored/reference/libphonenumber/``:
 
 ``PhoneNumberMetadata.xml``
-    Every region carries an ``<exampleNumber>`` for every line type it issues — fixed line,
+    Every region carries an ``<exampleNumber>`` for every line type it issues. Fixed line,
     mobile, toll free, premium rate, shared cost, personal number, VoIP, UAN, voicemail, pager.
     That is a labelled corpus of over a thousand numbers written by the people who maintain the
     numbering plans, each already tagged with the region and the line type our ``Value::Phone``
@@ -24,7 +24,7 @@ measuring the documented absence of a national-format rule a thousand times over
 The matcher's leniency corpus is scored against libphonenumber's *fabricated* test metadata
 (``PhoneNumberMetadataForTesting.xml``, which we do not vendor: "US numbers cannot start with 7 in
 the test metadata to be valid"), so the ranges it asserts are not the ranges our rule validates
-against. Only the two parts that survive that gap are scored — see ``main``.
+against. Only the two parts that survive that gap are scored. See ``main``.
 
 The script emits one JSON object per line on stdout, in the shape the Rust runner reads. It runs
 inside the dev container and needs no network; the case file it writes is checked in.
@@ -57,7 +57,7 @@ CARRIER_SUFFIX = " on the form."
 # The line types that carry an example number, in the metadata's own element names, mapped to the
 # snake-case names `Value::Phone::number_type` reports. `fixedLine` and `mobile` are also the two
 # that a region may merge into `fixed_line_or_mobile`, which is why the scheme is the metadata's
-# element rather than our reported type — the scheme has to name what upstream asserted.
+# element rather than our reported type. The scheme has to name what upstream asserted.
 LINE_TYPES = {
     "fixedLine": "fixed_line",
     "mobile": "mobile",
@@ -215,8 +215,8 @@ def context_cases(cases):
 
     ``doTestFindInContext`` asserts that a match is found for the number in fifty surrounding
     contexts. Where the number is written with a leading plus, the assertion needs no region and
-    survives into real metadata: these are the punctuation spellings — brackets, dots, slashes,
-    extension suffixes, full-width digits — that a scanner meets in prose. Upstream documents no
+    survives into real metadata: these are the punctuation spellings (brackets, dots, slashes,
+    extension suffixes, full-width digits) that a scanner meets in prose. Upstream documents no
     canonical form for them, so they are scored on entity type alone.
     """
     seen = set()

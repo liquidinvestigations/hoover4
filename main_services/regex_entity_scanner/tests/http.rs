@@ -105,7 +105,7 @@ async fn health_rules_and_scan() {
     assert_eq!(entities[1]["value"]["kind"], "email");
     assert_eq!(entities[1]["value"]["address"], "ops@example.org");
 
-    // The entity goes back exactly as it arrived — this is the whole ergonomics of the endpoint.
+    // The entity goes back exactly as it arrived. This is the whole ergonomics of the endpoint.
     let card: serde_json::Value = client
         .post(format!("{base}/explain"))
         .json(&entities[1])
@@ -133,7 +133,7 @@ async fn health_rules_and_scan() {
 }
 
 /// The limit is refused before the body is buffered, so the fixture is kilobytes rather than the
-/// production ten mebibytes — a test that allocates the real limit to prove the limit works is the
+/// production ten mebibytes, a test that allocates the real limit to prove the limit works is the
 /// kind of test that eats the battery's budget.
 #[tokio::test]
 async fn an_oversized_body_is_refused() {
@@ -178,7 +178,7 @@ async fn an_oversized_fragment_inside_a_legal_body_is_refused() {
         .contains("3000"));
 }
 
-/// A vendored table that loaded empty does not stop a rule from compiling — it stops it from ever
+/// A vendored table that loaded empty does not stop a rule from compiling. It stops it from ever
 /// matching. The health check is the only place that difference is visible from outside, so a
 /// scanner holding one is not `ok` and does not answer 200.
 #[tokio::test]

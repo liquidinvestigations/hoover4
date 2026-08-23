@@ -6,15 +6,15 @@ agree with the tools this server exposes, and prose that only *claims* to agree 
 the first time a tool is renamed.
 
 So the text lives in the `.md.j2` files beside this module and this loader renders them
-with named parameters, of which one matters more than the rest: **`tools`, the names this
+with named parameters, of which `tools` decides the rendered prose: **`tools`, the names this
 server registers**. `SERVER_TOOLS` is that list, and `tests/test_prompts.py` fails when it
-stops matching what `server.py` has actually decorated with `@mcp.tool` — which is what
+stops matching what `server.py` has actually decorated with `@mcp.tool`, which is what
 makes a renamed tool a test failure rather than a sentence nobody corrected.
 
 `SERVER_INSTRUCTIONS` env var still overrides the whole thing, for experiments.
 
 Everything the syntax block claims was verified against a live shard, not taken from
-Manticore's documentation — several documented spellings are a hard 500 on this
+Manticore's documentation. Several documented spellings are a hard 500 on this
 deployment. See `main_services/agents/README.md` for the full battery.
 """
 

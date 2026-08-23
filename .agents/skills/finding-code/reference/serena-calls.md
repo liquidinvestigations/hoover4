@@ -24,9 +24,9 @@ cheap way to decide which method matters.
 
 Anchoring forms:
 
-- `insert_text_pages` — matches anywhere in the project.
-- `ClickHouseClient/query` — the `query` member of `ClickHouseClient`.
-- `/format_extracted_by` — a top-level symbol only.
+- `insert_text_pages`, matches anywhere in the project.
+- `ClickHouseClient/query`, the `query` member of `ClickHouseClient`.
+- `/format_extracted_by`, a top-level symbol only.
 
 ## Callers and implementations
 
@@ -44,5 +44,5 @@ the tree.
 
 The first call against a language can be slow while the server indexes. It is still faster
 than the reads it replaces. If a call returns nothing for a symbol you can see in the file,
-the file is probably not in the indexed project root — fall back to a scoped grep for that
+the file is probably not in the indexed project root. Fall back to a scoped grep for that
 one lookup and say so, rather than abandoning the tool for the session.

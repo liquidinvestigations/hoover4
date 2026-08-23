@@ -19,7 +19,7 @@ from mysql.connector.conversion import MySQLConverter
 from database.manticore import bind_manticore_sql, manticore_execute
 
 #: Every one of these appears in the corpus. MediaWiki writes bold as three quotes, and
-#: the same help pages use the word `delimiter` — `mediawiki_bold` and `the_delimiter_word`
+#: the same help pages use the word `delimiter`: `mediawiki_bold` and `the_delimiter_word`
 #: are that pair, and one page carrying them takes its whole indexing batch down.
 ADVERSARIAL = {
     "mediawiki_bold": "These pages are found in the '''Template:''' namespace",
@@ -57,8 +57,8 @@ class _CextConnection:
 class _PureConnection:
     """The pure-Python flavour: a `converter` and no `prepare_for_mysql`.
 
-    Both exist in this worker — which one `mysql.connector.connect` hands back depends on
-    import order — so the binder is tested against both and neither may be assumed.
+    Both exist in this worker (which one `mysql.connector.connect` hands back depends on
+    import order), so the binder is tested against both and neither may be assumed.
     """
 
     sql_mode = None
@@ -129,7 +129,7 @@ def test_a_placeholder_count_mismatch_is_refused():
 
 def test_the_drivers_script_splitter_would_destroy_these_statements():
     """The reason `manticore_execute` exists. `has_delimiter` is what `cursor.execute`
-    consults, and it says yes to a correctly escaped statement carrying this text — after
+    consults, and it says yes to a correctly escaped statement carrying this text, after
     which the cursor either refuses to send it or rewrites it into something Manticore
     answers with a syntax error."""
     from mysql.connector._scripting import MySQLScriptSplitter

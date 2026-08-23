@@ -1,6 +1,6 @@
 # Running the checks
 
-What each check proves, what it costs, and — the part that matters — what it does **not**
+What each check proves, what it costs, and (the part that matters) what it does **not**
 cover. A check whose scope is misread is worse than no check, because it is quoted as
 evidence for something it never examined.
 
@@ -32,6 +32,7 @@ are easy to get wrong.
 | "a worker restart loses nothing" | `main_services/verify-stack.sh --restart-resilience`, per-document assertions read |
 | "it is deployed" | the container is up *and* answering, checked from inside the network |
 | "the bug is fixed" | the failing case reproduced before, and not reproducible after |
+| "the prose obeys the register" | `.agents/check-prose-style.py` over the changed paths, exit 0 |
 
 Nothing on the left may be claimed on the strength of reading code.
 
@@ -39,15 +40,15 @@ Nothing on the left may be claimed on the strength of reading code.
 
 Rust is not on `$PATH` in the website container; it lives under the container's cargo
 directory. The check runs offline against the workspace and type-checks both halves in about
-ninety seconds cold and ten seconds warm — far cheaper than finding the same error by waiting
-for a dev-server rebuild.
+ninety seconds cold and ten seconds warm, far cheaper than finding the same error by
+waiting for a dev-server rebuild.
 
 **It does not cover**: server-function bodies compiled only by the dev server, and any hook
 ordering problem.
 
 **And it does not build test targets unless you ask it to.** A plain `cargo check` leaves a
 signature change that was updated everywhere in `src/` looking clean while the test binaries
-no longer compile — the tests do not fail, they are never built, so a broken integration-test
+no longer compile. The tests do not fail, because they are never built, so a broken integration-test
 binary can sit unnoticed indefinitely. Pass `--workspace --tests` (or `--all-targets`, which
 the check script uses); it is the cheap closer.
 
@@ -72,13 +73,13 @@ Every test in the backend's stack integration suite needs a live stack, so the i
 attribute cannot also mean "slow". Slowness is carried in the test **name** instead: the ones
 that wait on something with its own clock carry a prefix and are skipped by default. Every
 other test asserts its own wall time against a budget, which is what notices an endpoint that
-quietly starts doing a full scan — without it, a test that grows from a third of a second to
-nine seconds still passes.
+quietly starts doing a full scan. Without that budget, a test that grows from a third of a
+second to nine seconds still passes.
 
 ## Whole-stack verification
 
 `main_services/verify-stack.sh` drives real ingestion from disk to index and asserts the
-invariants that only appear end to end — including that no blob row references derived
+invariants that only appear end to end, including that no blob row references derived
 storage.
 
 It runs for tens of minutes. **Any deploy restarts the worker it runs inside and kills it.**
@@ -87,8 +88,8 @@ Check what is in flight before deploying, and batch fixes so one restart serves 
 On a host whose fixtures sit at a different depth, the ingest-root environment overrides are
 mandatory.
 
-**Both fixture-driven suites are welded to the corpus this run ingests** — the screenshot page
-list and the stack integration tests. Away from that corpus they fail by naming a dataset that
+**Both fixture-driven suites are welded to the corpus this run ingests**: the screenshot
+page list and the stack integration tests. Away from that corpus they fail by naming a dataset that
 does not exist, which reads as a broken site and is not. Check the fixtures before concluding
 anything from a wall of red lines.
 
@@ -99,19 +100,19 @@ before them. It ingests one fixture dataset, stops and starts the worker in the 
 and then asserts what the workflow status does not: that every document ends up with chunks,
 with vectors, and with an index row.
 
-**That last part is the whole point.** A plan is marked finished when its stages *ran*, not
+**That last part is what the assertion exists for.** A plan is marked finished when its stages *ran*, not
 when every document succeeded, so workflow status reports success over documents whose
 embeddings were lost. Only a per-document assertion tells the two apart.
 
 It is **deliberately not on the per-deploy or per-commit path.** It costs a worker restart and
 several minutes, and a gate that expensive stops being run. Run it when the worker's process
-lifecycle changes — `tasks/run_worker.py`, `tasks/heartbeat.py`, the graceful shutdown
+lifecycle changes: `tasks/run_worker.py`, `tasks/heartbeat.py`, the graceful shutdown
 configuration, or the worker's stop grace period. It purges its own fixture dataset first, so
 it is repeatable; without that a second run would pass over the first run's data having tested
 nothing.
 
 Two things it prints that are not failures. The re-drive after the restart can fail with
-`WorkflowAlreadyStartedError`: that is durable execution working — the workflows survived and
+`WorkflowAlreadyStartedError`: that is durable execution working. The workflows survived and
 the client that died was only sequencing them. And `INGEST_ROOT_RESTART` selects the fixture,
 defaulting to the same testdata root the normal run uses.
 
@@ -131,6 +132,6 @@ and the home box submits on key press, so Enter must be a real key event.
 
 ## Waiting without disturbing
 
-Background a long check and watch for failure signatures rather than polling for progress —
+Background a long check and watch for failure signatures rather than polling for progress,
 but make sure the filter would fire on a crash, because silence must not be indistinguishable
 from success. Never deploy over a live verification.

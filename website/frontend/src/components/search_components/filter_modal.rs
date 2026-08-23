@@ -1,11 +1,11 @@
 //! The "All filters" modal and the chip row that summarises it.
 //!
 //! Replaces the pill strip. The strip put one button per facet in the top bar, which
-//! worked for four facets and does not for eleven — and there was nowhere to put a
+//! worked for four facets and does not for eleven, and there was nowhere to put a
 //! filter that is not a checkbox list (a size range, a date range, a folder tree).
 //!
 //! Three things carried over from the strip deliberately, because a rewrite loses them
-//! by default and each one is load-bearing:
+//! by default and each one is needed:
 //!
 //! * **Hit counts** on every row. The mockups drop them; without them a filter list is a
 //!   guess.
@@ -72,7 +72,7 @@ const ACCENT: &str = "rgba(243,140,104,0.95)";
 /// The flag is bit 0 of a bitfield and Manticore's `IN` cannot mask, so the filter
 /// enumerates the values that have the bit set. Two bits exist today
 /// (`email_has_attachments`, `truncated_ancestry`), so the set is {1, 3}. **Adding a
-/// third flag means extending this list** — which is why it is one named constant with
+/// third flag means extending this list**, which is why it is one named constant with
 /// this comment rather than a literal at the call site.
 const STRUCT_FLAGS_WITH_ATTACHMENTS: [u64; 2] = [1, 3];
 
@@ -160,13 +160,13 @@ impl FilterCategory {
 /// when they are not term ids at all.
 ///
 /// One table rather than a literal at each call site, because the same string is needed
-/// twice for every facet — once by the pane that resolves ids into checkbox labels, once
-/// by the chip row that resolves the same ids into its summary — and the two disagreeing
+/// twice for every facet (once by the pane that resolves ids into checkbox labels, once
+/// by the chip row that resolves the same ids into its summary), and the two disagreeing
 /// is a chip that says `#229645745` next to a list that says `enron`.
 ///
 /// Facets with no term field: `collection_dataset` values are already text,
 /// `struct_flags` is a bitfield (see [`STRUCT_FLAGS_WITH_ATTACHMENTS`]), and
-/// `mentioned_dates` holds timestamps rather than terms — it is a range field, like
+/// `mentioned_dates` holds timestamps rather than terms. It is a range field, like
 /// `dates`.
 ///
 /// The scanner's fields are never `ner`. The website applies the entity stop-list to
@@ -211,7 +211,7 @@ pub fn FilterChips(
 ) -> Element {
     // Every term id the chips need text for, grouped by term field. A memo in front of
     // the resource, so the round trip happens when the SELECTION changes and not when
-    // anything else in the query does — a resource reading `query` itself would resolve
+    // anything else in the query does. A resource reading `query` itself would resolve
     // the same ids again on every keystroke in the search box.
     let wanted = use_memo(move || term_ids_to_resolve(&query.read()));
     let texts = use_resource(move || {
@@ -235,7 +235,7 @@ pub fn FilterChips(
                     rsx! {
                         div {
                             key: "{chip.label}",
-                            // The width budget. `min(320px, 28ch)` — the character half
+                            // The width budget. `min(320px, 28ch)`, the character half
                             // is applied to the text by the summariser, this is the
                             // pixel half.
                             style: "
@@ -345,7 +345,7 @@ async fn resolve_term_texts(
 
 /// One chip per active category, summarised inside the budget.
 ///
-/// `texts` is `None` while the term lookup is in flight — the chips render then too, and
+/// `texts` is `None` while the term lookup is in flight. The chips render then too, and
 /// a value that has no text yet says so rather than flashing a raw id first.
 fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec<Chip> {
     let mut chips = Vec::new();
@@ -389,7 +389,7 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
                         continue;
                     }
                     // `struct_flags` is a bitfield whose selected set is the enumeration
-                    // of the values carrying one bit — one label covers all of them, and
+                    // of the values carrying one bit, one label covers all of them, and
                     // there is no term dictionary to look them up in.
                     if *field == "struct_flags" {
                         short.push("Has attachments".to_string());
@@ -415,10 +415,10 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
 
 /// A facet value as `(chip text, tooltip text)`.
 ///
-/// The query stores term IDS, so the text comes from `texts` — the batch the chip row
+/// The query stores term IDS, so the text comes from `texts`, the batch the chip row
 /// resolved for the whole selection. `None` means that batch is still in flight; a
 /// resolved batch missing an id means the term row is gone (a purged dataset) or its
-/// collection is unreadable, and then the raw id is the honest answer: it still says a
+/// collection is unreadable, and then the raw id is what the row shows: it still says a
 /// filter exists and still lets it be removed.
 fn display_value(
     field: &str,
@@ -464,7 +464,7 @@ pub fn epoch_to_iso_date(epoch_seconds: i64) -> String {
 }
 
 /// The inverse: `YYYY-MM-DD` to epoch seconds at midnight UTC. `None` for anything that
-/// is not a complete date — a half-typed `2013-` must not become a filter.
+/// is not a complete date. A half-typed `2013-` must not become a filter.
 pub fn iso_date_to_epoch(text: &str) -> Option<i64> {
     let mut parts = text.split('-');
     let y: i64 = parts.next()?.parse().ok()?;
@@ -750,7 +750,7 @@ fn FilterModalFooter(
 /// `file_types` narrows CLIENT-SIDE, because it has a handful of buckets and every one of
 /// them is already on screen. Everything else asks the corpus: a facet pane holds the top
 /// twenty-one buckets of one query, so narrowing those answers "nothing matches" for a
-/// value that is present and merely unpopular — which on a corpus with tens of thousands
+/// value that is present and merely unpopular, which on a corpus with tens of thousands
 /// of distinct addresses is nearly every value anybody types.
 ///
 /// The corpus-wide path resolves the needle to term ids (`search_entity_terms`), hands
@@ -760,12 +760,12 @@ fn FilterModalFooter(
 fn SearchableFacetPane(
     original_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
-    /// A SIGNAL, not a `String`, and that is load-bearing. The Entities rail renders one
+    /// A SIGNAL rather than a `String`, and the difference decides correctness. The Entities rail renders one
     /// instance of this pane for eleven of its twelve children, so switching child hands
     /// the SAME component a different field. A plain prop is read once into the hooks
     /// below and never again: the corpus-wide term search would keep asking about the
     /// column the reader left, and answer the column they are looking at with its term
-    /// ids — which renders as "nothing matches" for a value the facet plainly holds.
+    /// ids, which renders as "nothing matches" for a value the facet plainly holds.
     field: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
     placeholder: String,
@@ -833,8 +833,8 @@ fn SearchableFacetPane(
 /// Resolve a debounced needle to term ids, or `None` while there is no needle.
 ///
 /// Debounced at the same 300 ms the footer's hit count uses, because the alternative is
-/// one Manticore fan-out per keystroke. The result is `None` — not an empty list — when
-/// the box is empty, and the difference is load-bearing all the way down: `None` means
+/// one Manticore fan-out per keystroke. The result is `None`, not an empty list, when
+/// the box is empty, and the difference is carried all the way down: `None` means
 /// "show the whole facet", `Some([])` means "the needle matched nothing".
 fn use_entity_term_search(
     original_query: ReadSignal<SearchQuery>,
@@ -1025,8 +1025,8 @@ fn bucket_range(bucket: usize) -> (Option<i64>, Option<i64>) {
 /// Five mutually exclusive states, because they are five different questions: no filter,
 /// a low-pass, a high-pass, a band-pass, and "documents we could not date at all".
 ///
-/// All three range modes were already expressible on the wire — `RangeFilter`'s bounds
-/// are `Option`s and `range_predicate` has always turned a missing one into an open end —
+/// All three range modes were already expressible on the wire: `RangeFilter`'s bounds
+/// are `Option`s and `range_predicate` has always turned a missing one into an open end,
 /// but the pane offered one "Custom range…" row with two boxes, so the only way to ask
 /// for "everything after 2016" was to know that leaving a box blank meant that.
 #[component]
@@ -1037,8 +1037,8 @@ fn DatePane(
     /// `mentioned_dates` for the days its text names.
     ///
     /// One component over two fields rather than two components. Everything visible here
-    /// — the five modes, the ISO parsing, the inverted-range error, the histogram
-    /// brushing, the unknown-only toggle — is identical for both, and a copy would drift
+    /// (the five modes, the ISO parsing, the inverted-range error, the histogram
+    /// brushing, the unknown-only toggle) is identical for both, and a copy would drift
     /// until the two date panes behaved differently for no reason a user could see.
     #[props(default = "dates".to_string())]
     field: String,
@@ -1062,7 +1062,7 @@ fn DatePane(
     let mode = use_memo(move || date_mode(&current(), sticky()));
 
     // The histogram's bin edges depend on the cutoffs, so it is the pending query that
-    // goes over the wire — debounced for the same reason the footer count is, or dragging
+    // goes over the wire. Debounced for the same reason the footer count is, or dragging
     // a date field fires one fan-out per keystroke.
     let mut debounced = use_signal(move || pending.peek().clone());
     use_effect(move || {
@@ -1131,7 +1131,7 @@ fn DatePane(
 
     let on_bucket = Callback::new(move |bucket: DateHistogramBucket| {
         // A click means whatever the mode says it means. In the two modes with no cutoff
-        // to move — no filtering, and unknown-only — it means "this bin", which is the
+        // to move (no filtering, and unknown-only), the click means "this bin", which is the
         // only reading available and is what the tooltip promises.
         match mode() {
             DateMode::Before => set_filter(None, Some(bucket.end - 1)),
@@ -1351,9 +1351,9 @@ enum DateMode {
 /// Which radio is lit, given the filter and the row the reader last clicked.
 ///
 /// A picked mode wins over the bounds. Deriving the mode from the bounds alone makes
-/// "Between" collapse the instant one of its two boxes is filled — one bound and no other
+/// "Between" collapse the instant one of its two boxes is filled (one bound and no other
 /// reads as "After" or "Before", and the box the reader has not typed into yet leaves the
-/// screen — so a closed range cannot be entered through the boxes at all. With nothing
+/// screen), so a closed range cannot be entered through the boxes at all. With nothing
 /// picked, which is the state a URL-borne filter arrives in, the bounds name the mode.
 fn date_mode(filter: &RangeFilter, picked: Option<DateMode>) -> DateMode {
     if !filter.is_active() {
@@ -1389,7 +1389,7 @@ impl DateMode {
 
     /// What clicking a bar will do, in words, for the bar's tooltip. The answer depends
     /// on the mode, so the tooltip is the only place a user can find it out before
-    /// committing — which is why every mode has a sentence here rather than a default.
+    /// committing, which is why every mode has a sentence here rather than a default.
     fn click_action(&self, bucket: &DateHistogramBucket) -> String {
         let from = epoch_to_iso_date(bucket.start);
         let to = epoch_to_iso_date(bucket.end - 1);
@@ -1421,7 +1421,7 @@ fn FileLocationPane(pending: Signal<SearchQuery>) -> Element {
 
     // Seed the ticks from the filter that is already active.
     //
-    // `file_paths` holds TERM IDS, and a node key cannot be derived from one — the id is
+    // `file_paths` holds TERM IDS, and a node key cannot be derived from one. The id is
     // a truncated hash. So the seed is a reverse lookup through the term dictionary,
     // which is the same table the forward direction mints ids in. Without it, reopening
     // the pane showed an empty tree over a live filter, and the only way to change the
@@ -1574,11 +1574,11 @@ fn EmailPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
 /// The children of the Entities category.
 ///
 /// One list at a time rather than four stacked panes. Stacking was already cramped with
-/// the four NER types; eleven value lists plus a date pane in one column is not a list of
-/// anything, it is a scroll.
+/// the four NER types, and eleven value lists plus a date pane in one column is a scroll
+/// rather than a list of anything.
 ///
 /// Two of the twelve are not facets. `All` is a synthetic merge of the ten value lists,
-/// and `MentionedDate` is a range with a histogram — mentions are POINTS in time and the
+/// and `MentionedDate` is a range with a histogram. Mentions are POINTS in time and the
 /// pane that filters them is the date pane, not a checkbox list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntitySub {
@@ -1789,7 +1789,7 @@ fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
 ///
 /// Ticking a row writes into that row's OWN facet field, so the merged view produces
 /// exactly the query its sub-list would. The ten fetches are the sub-lists' own queries
-/// verbatim, and identical queries hit the backend's Manticore result cache — switching
+/// verbatim, and identical queries hit the backend's Manticore result cache, switching
 /// between All and a child is not ten fresh fan-outs.
 #[component]
 fn EntitiesAllPane(
@@ -2118,7 +2118,7 @@ mod tests {
 
         let chips = build_chips(&query, Some(&texts));
         assert_eq!(chips.len(), 1);
-        // Node keys are machine text — two unit separators and a container hash. Neither
+        // Node keys are machine text, two unit separators and a container hash. Neither
         // form of them belongs on screen.
         assert!(!chips[0].summary.contains('\u{1f}') && !chips[0].full.contains('\u{1f}'));
         assert_eq!(chips[0].summary, "enron, other_emails");
@@ -2135,7 +2135,7 @@ mod tests {
 
     #[test]
     fn the_attachment_filter_is_one_label_not_two_bitfield_values() {
-        // `struct_flags` has no term dictionary — {1, 3} is an enumeration of the values
+        // `struct_flags` has no term dictionary. {1, 3} Is an enumeration of the values
         // carrying one bit, and "Has attachments, Has attachments" is not a summary.
         let mut query = SearchQuery::default();
         query.facet_filters.insert(
@@ -2149,8 +2149,8 @@ mod tests {
     #[test]
     fn every_facet_that_stores_term_ids_has_a_term_field() {
         // The failure this guards: a facet pane added with a `map_string_terms` string at
-        // the call site, and a chip row that knows nothing about it — a list of names next
-        // to a chip of `#229645745`.
+        // the call site, and a chip row that knows nothing about it, giving a list of names
+        // next to a chip of `#229645745`.
         for field in FilterCategory::ALL.iter().flat_map(|c| c.facet_fields()) {
             let expected = !matches!(*field, "collection_dataset" | "struct_flags");
             assert_eq!(

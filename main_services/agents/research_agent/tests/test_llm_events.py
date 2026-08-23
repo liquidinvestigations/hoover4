@@ -62,7 +62,7 @@ def test_the_row_goes_in_the_body_not_in_the_sql(monkeypatch):
     for params, content in sent:
         query = params["query"]
         assert query.endswith("FORMAT JSONEachRow")
-        # The whole point: no value of any kind reaches the statement.
+        # What this asserts: no value of any kind reaches the statement.
         assert "o'brien" not in query and "DROP TABLE" not in query
         row = json.loads(content.decode("utf-8"))
         assert row["username"] == "o'brien"

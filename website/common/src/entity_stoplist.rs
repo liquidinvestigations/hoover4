@@ -12,9 +12,9 @@
 //! depend on the other being right. The rules and the canonical cases below mirror the
 //! Python module value for value; a case added on one side belongs on the other.
 //!
-//! Rules reject on **shape** where a shape exists — an `X-` header name, a token ending
+//! Rules reject on **shape** where a shape exists (an `X-` header name, a token ending
 //! in the quoted-printable soft break `=`, a long case-shuffled run of base64 characters,
-//! four or more single-character tokens (letter-spaced PDF text) — and fall back to a
+//! four or more single-character tokens from letter-spaced PDF text), and fall back to a
 //! named set only for things with no shape: the standard mail headers, the day and month
 //! names, a handful of SMTP/MIME protocol words. Every rule matches the **whole value**,
 //! so `May` goes and `May Chen` stays.
@@ -121,7 +121,7 @@ const BLOB_MIN_CHARS: usize = 24;
 const BLOB_MIN_CASE_SWITCHES: usize = 4;
 /// Letter-spaced headings arrive as one entity per heading. The threshold cannot simply
 /// be lowered: `J F Kennedy` carries two single-character tokens and is a name. What
-/// separates them is that letter-spacing leaves nothing but single characters — see
+/// separates them is that letter-spacing leaves nothing but single characters. See
 /// `is_entirely_single_characters`.
 const MAX_SINGLE_CHAR_TOKENS: usize = 3;
 const MAX_TOKENS: usize = 12;
@@ -193,7 +193,7 @@ fn is_entirely_single_characters(tokens: &[&str]) -> bool {
 /// True for `<name> Subject`, `<name> Cc`, `<name> Sent: Monday`, `<name> To:`.
 ///
 /// A mail body's reply block puts the header keyword on the line under the name, and the
-/// model returns the pair as one entity — which the whole-value rules never see, because
+/// model returns the pair as one entity, which the whole-value rules never see, because
 /// the value is not the keyword, it merely ends with it.
 ///
 /// Deliberately narrow on two axes. By position: matching a header keyword anywhere in a
@@ -434,7 +434,7 @@ mod tests {
     fn a_header_keyword_that_is_also_an_english_word_needs_its_colon() {
         // `Cc` and `Subject` end nothing but a reply block, so a bare one is enough.
         // `Date` and `To` end real names, so they are debris only with the colon still
-        // attached — and a value that really is a header line is caught by the
+        // attached, and a value that really is a header line is caught by the
         // whole-value rule long before this one is reached.
         assert!(!is_stopped_entity("Blind Date") && !is_stopped_entity("Tokyo To"));
         assert!(is_stopped_entity("Sara Shackleton To:") && is_stopped_entity("Steven Kean Date:"));

@@ -2,7 +2,7 @@
 
 This is the failure mode that produces no error at all: with last-wins, half the
 entities never reach Manticore and the only symptom is facet counts that look "a bit
-low" — on a stage whose output nobody diffs against a previous run.
+low", on a stage whose output nobody diffs against a previous run.
 """
 
 from tasks.P6_index_data.activities import union_entities_by_segment

@@ -10,8 +10,8 @@
 //! The candidate pattern is deliberately loose about punctuation and says nothing about lengths.
 //! Everything that decides truth comes from libphonenumber's metadata, reached through the
 //! `phonenumber` crate: which country calling codes exist, which national numbers those countries
-//! actually issue, and what kind of line a number is. The guards around it — the characters that
-//! may touch the match, the bracket balance, page ranges and timestamps — are the checks
+//! actually issue, and what kind of line a number is. The guards around it (the characters that
+//! may touch the match, the bracket balance, page ranges and timestamps) are the checks
 //! libphonenumber's own text matcher applies before it trusts a span it found in prose.
 
 use phonenumber::metadata::DATABASE;
@@ -28,7 +28,7 @@ use crate::rules::{Candidate, Rule, Verdict};
 const PHONE_PATTERN: &str = r"(?:\+|00)[ ]?[(]?[0-9][0-9 ().\-]{4,22}[0-9]";
 
 /// What the validator can claim when the metadata says the country issues numbers of this shape.
-/// No arithmetic confirms a telephone number — nothing in it is redundant — so what it has is the
+/// No arithmetic confirms a telephone number (nothing in it is redundant), so what it has is the
 /// number's structure and its membership of a numbering plan the country publishes, which is the
 /// ladder's own description of this row.
 const METADATA_VALID: f32 = 0.95;
@@ -124,7 +124,7 @@ fn matches_general_pattern(number: &PhoneNumber) -> bool {
     let national = number.national().to_string();
     // The whole national number has to be the match, not its first nine digits. The metadata's
     // patterns are unanchored, so a prefix test would accept every longer digit run that happens
-    // to start with a real number — which is exactly the run this rule must refuse.
+    // to start with a real number, which is exactly the run this rule must refuse.
     metadata
         .descriptors()
         .general()
@@ -136,8 +136,8 @@ fn matches_general_pattern(number: &PhoneNumber) -> bool {
 fn value_of(number: &PhoneNumber) -> Value {
     Value::Phone {
         e164: number.format().mode(Mode::E164).to_string(),
-        // `001` is the region libphonenumber gives the global services — +800 freephone, +870
-        // Inmarsat — which belong to no country.
+        // `001` is the region libphonenumber gives the global services (+800 freephone, +870
+        // Inmarsat) which belong to no country.
         country: number
             .country()
             .id()
@@ -185,7 +185,7 @@ fn starts_cleanly(candidate: &Candidate<'_>) -> bool {
         || CURRENCY_SIGNS.contains(&previous))
 }
 
-/// The right edge, where the scan loop's recovery makes the check load-bearing: a candidate that
+/// The right edge, where the scan loop's recovery makes this check decide the result. A candidate that
 /// failed as a whole is re-run over its interior, and a shortened run must not be accepted while
 /// the rest of the token continues past it.
 fn ends_cleanly(candidate: &Candidate<'_>) -> bool {
@@ -249,7 +249,7 @@ fn brackets_balance(text: &str) -> bool {
     !open && pairs <= 3
 }
 
-/// A citation's page range and year — `211-227 (2003)` — is punctuated exactly like a number with
+/// A citation's page range and year (`211-227 (2003)`) is punctuated exactly like a number with
 /// an area code. libphonenumber refuses the shape outright, and so does this.
 fn looks_like_page_range(text: &str) -> bool {
     let bytes = text.as_bytes();
@@ -283,7 +283,7 @@ fn looks_like_page_range(text: &str) -> bool {
     false
 }
 
-/// A timestamp's date and hour — `2012-01-02 08` — followed by the minutes that complete it. The
+/// A timestamp's date and hour (`2012-01-02 08`) followed by the minutes that complete it. The
 /// minutes are outside the span, so the check has to look past its right edge to know that what it
 /// is holding is the front of a clock reading rather than the back of a number.
 fn looks_like_timestamp(candidate: &Candidate<'_>) -> bool {

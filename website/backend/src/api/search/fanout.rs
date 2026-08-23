@@ -1,7 +1,7 @@
 //! Bounded fan-out of search queries across Manticore shard tables, with merging.
 //!
 //! Manticore 14.1.0 cannot run the website's stored-field/FACET query shape over
-//! distributed tables — measured, and it fails by crashing the daemon or returning
+//! distributed tables. Measured, and it fails by crashing the daemon or returning
 //! NULL stored fields rather than by erroring cleanly. So the
 //! backend fans out over **shards**: each permitted collection contributes one query
 //! target per entry of its `manticore_shards` ledger (`<collectionname>_<n>_pages`, one
@@ -13,11 +13,11 @@
 //! with a dozen worker threads, and a shard query that costs 13 s alone measured 100 s
 //! under that load. One global gate and no second per-call cap: two nested limits make
 //! the effective parallelism impossible to reason about. This is a fairness fix rather
-//! than a throughput one — the total work is unchanged, but no single panel can starve
+//! than a throughput one. The total work is unchanged, but no single panel can starve
 //! the others. Serialising the panes in the frontend instead would be strictly worse:
 //! it makes the tab as slow as the sum of its parts even when the daemon is idle.
 //!
-//! **Partial-failure policy — a dropped shard and a truncated shard are different.**
+//! **Partial-failure policy, a dropped shard and a truncated shard are different.**
 //! One broken shard must not blank the whole result page: per-target errors are logged
 //! as warnings and dropped, callers mark the response as partial, and an error is
 //! propagated only when *every* target failed. A shard that ran out of its time budget
@@ -29,7 +29,7 @@
 //! from different shards/collections are not strictly comparable and cross-shard
 //! ranking is approximate. This is inherent to sharded full-text search without a
 //! global IDF, and is accepted. Do not "fix" it with a
-//! normalisation hack — an unprincipled rescale is worse than this honest note.
+//! normalisation hack. An unprincipled rescale is worse than this honest note.
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -48,7 +48,7 @@ use crate::db_utils::manticore_utils::{RawSarchResult, is_search_timeout};
 
 /// Default cap on concurrent Manticore queries across the whole process.
 ///
-/// Size it to the DAEMON — roughly its worker-thread count — not to the shard count:
+/// Size it to the DAEMON (roughly its worker-thread count), not to the shard count:
 /// more in-flight queries than Manticore has threads only deepens its queue. Override
 /// with `HOOVER4_SEARCH_MAX_PARALLELISM` (clamped to 1..=64), which is what a box with
 /// many more cores than this default assumes should set.
@@ -88,7 +88,7 @@ fn query_permits() -> &'static Semaphore {
 /// another would be truncated away before the merge if every shard only returned
 /// the display limit, so each shard over-fetches proportional to the shard count.
 /// Facet counts remain approximate when a shard has more distinct values than this
-/// limit — documented in `docs/architecture/Search_Architecture.md`.
+/// limit, as documented in `docs/architecture/Search_Architecture.md`.
 pub fn per_shard_facet_limit(n_shards: usize) -> u64 {
     (FACET_DISPLAY_LIMIT as u64 * n_shards.max(1) as u64).clamp(FACET_DISPLAY_LIMIT as u64, MAX_PER_SHARD_FACET_BUCKETS)
 }
@@ -184,7 +184,7 @@ pub struct FanoutOutcome<T> {
 }
 
 impl<T> FanoutOutcome<T> {
-    /// Whether at least one target failed — callers surface this as a
+    /// Whether at least one target failed. Callers surface this as a
     /// partial-results notice.
     pub fn is_partial(&self) -> bool {
         !self.failed.is_empty()
@@ -238,7 +238,7 @@ where
                 }
                 // A query the caller malformed fails identically on every target, so it
                 // is one 400 and not N broken shards. Logged at WARN it produced a burst
-                // of shard-failure lines per keystroke — the exact signal this level is
+                // of shard-failure lines per keystroke. The exact signal this level is
                 // reserved for, spent on a normal outcome.
                 if crate::auth::guard::is_bad_request(&e) {
                     tracing::debug!("fan_out: target {} cannot run this query: {e:#}", target.label());
@@ -267,7 +267,7 @@ where
 /// `sort_value` is what makes the merge sort-aware: each shard has already ordered its
 /// own rows by the same key, and the merge has to reproduce that order across shards.
 /// It returns the value of the ACTIVE sort key, which the per-shard SELECT is required
-/// to include — a merge sorting on a column the query did not select would silently
+/// to include. A merge sorting on a column the query did not select would silently
 /// order everything by the default and produce pages that overlap.
 pub trait HitIdentity {
     fn collection_dataset(&self) -> &str;
@@ -277,8 +277,8 @@ pub trait HitIdentity {
     /// is the Relevance case and the only one the unsorted merge handles.
     ///
     /// Takes the whole `SortSpec`, not just the key, because `Date` compares a
-    /// different column per direction (`date_min` ascending, `date_max` descending) —
-    /// exactly as `search_sql::sort_column` builds it. Handing the implementor only the
+    /// different column per direction (`date_min` ascending, `date_max` descending).
+    /// Exactly as `search_sql::sort_column` builds it. Handing the implementor only the
     /// key would let the merge compare one end while the SQL ordered by the other.
     fn sort_value(&self, _sort: SortSpec) -> Option<SortValue> {
         None
@@ -297,7 +297,7 @@ pub enum SortValue {
 /// Text compares WITHOUT case, because Manticore's `collation_connection` is `libc_ci`
 /// and the per-shard `ORDER BY` already ran under it. `primary_filename` keeps the
 /// filesystem's own case, so a byte-wise merge would sort `README` before `alpha.pdf`
-/// while every shard sorted it after — and a document at a shard's truncation boundary
+/// while every shard sorted it after, and a document at a shard's truncation boundary
 /// would land on two pages or on none.
 impl Ord for SortValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -323,7 +323,7 @@ impl PartialOrd for SortValue {
 ///
 /// Ordering: `_score` descending, tie-broken on `(collection_dataset, file_hash)`
 /// so pagination is stable across requests. Cross-shard scores are only
-/// approximately comparable (see the module doc) — the tie-break exists for
+/// approximately comparable (see the module doc). The tie-break exists for
 /// stability, not for ranking quality.
 ///
 /// Every source must have been queried with `LIMIT offset+limit OFFSET 0` (deep
@@ -376,7 +376,7 @@ pub fn merge_hits_sorted<T: HitIdentity>(
 /// deterministic), and truncate to `limit`.
 ///
 /// Counts remain approximate when a shard had more distinct values than its
-/// per-shard bucket limit — those values never reached the merge.
+/// per-shard bucket limit. Those values never reached the merge.
 pub fn merge_facet_pairs(
     sources: impl IntoIterator<Item = Vec<(serde_json::Value, u64)>>,
     limit: usize,
@@ -454,7 +454,7 @@ fn intersect_permitted_with_selection(
 
 /// The collections a search should fan out to: the user's permitted collections
 /// (with `PermissionSet::All` materialised), intersected with the user's
-/// `collection_dataset` facet selection — every selected dataset maps to its
+/// `collection_dataset` facet selection, every selected dataset maps to its
 /// collection, and collections with no selected dataset are pruned. That pruning
 /// is the main performance win of this design: filtering by dataset skips whole
 /// indexes.
@@ -795,7 +795,7 @@ mod tests {
         assert_eq!(order, vec!["h2", "h3", "h1", "h4"], "apple, Banana, README, zebra");
     }
 
-    /// Pages must be disjoint and complete under every key — the property the acceptance
+    /// Pages must be disjoint and complete under every key, the property the acceptance
     /// checklist calls "no skipped or duplicated results at page boundaries".
     #[test]
     fn merge_hits_sorted_pages_are_disjoint_and_complete() {
@@ -904,7 +904,7 @@ mod tests {
 
     /// A shard that ran out of time fails the request even though the others answered.
     /// Dropping it would render three shards' worth of counts as if they were all of
-    /// them — the failure mode this policy exists to prevent.
+    /// them. The failure mode this policy exists to prevent.
     #[tokio::test]
     async fn fan_out_propagates_a_timeout_instead_of_dropping_it() {
         let targets = vec![
@@ -977,7 +977,7 @@ mod tests {
     fn merge_hits_keeps_same_file_hash_from_two_shards() {
         // The same content ingested into two datasets (or two collections) indexes
         // the same file_hash into two shards. The merged page currently shows such a
-        // document twice — once per (collection_dataset, file_hash) identity. This
+        // document twice, once per (collection_dataset, file_hash) identity. This
         // pins that behaviour; changing it must be a deliberate decision.
         let sources = vec![
             source("testdata", "testdata_1", vec![hit("td_a", "same", 10)]),

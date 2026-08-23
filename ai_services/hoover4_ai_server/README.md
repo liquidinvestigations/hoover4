@@ -7,7 +7,7 @@ A high-performance FastAPI-based server that provides OpenAI-compatible APIs for
 
  **Performance Optimized**: Batch processing, GPU acceleration, and hardware-adaptive configurations for maximum throughput.
 
-> ** Project Overview**: Part of the Hoover4 [ai_services tier](../README.md) — the optional GPU stack. This server provides the embeddings, NER and reranking used by the processing pipeline and the agents.
+> ** Project Overview**: Part of the Hoover4 [ai_services tier](../README.md), the optional GPU stack. This server provides the embeddings, NER and reranking used by the processing pipeline and the agents.
 
 ## Quick Start
 
@@ -110,7 +110,7 @@ You can configure the server using these environment variables:
 - Python 3.11+
 - Poetry for dependency management
 - PyTorch with CUDA support, from the CUDA 13 wheel index (see
-  [CUDA and GPU architecture](../README.md#cuda-and-gpu-architecture) — it is what
+  [CUDA and GPU architecture](../README.md#cuda-and-gpu-architecture), it is what
   makes the image work on both x86_64 and aarch64, and on Blackwell cards)
 - Required Python packages (automatically installed with Poetry):
   - `sentence-transformers` - for embeddings and reranking
@@ -214,7 +214,7 @@ environment and skip themselves when nothing answers, so they check the deployed
 than the code in isolation.
 
 **The runtime image carries neither the tests nor a test runner.** Only the server modules
-are copied in, so there is nothing to run inside the container — run them from a checkout,
+are copied in, so there is nothing to run inside the container. Run them from a checkout,
 against a reachable server:
 
 ```bash
@@ -232,8 +232,8 @@ than assertions: they measure and print, and they take as long as the hardware t
 
 ##  Related Components
 
-- **[ai_services tier](../README.md)**: the optional GPU tier this server belongs to —
-  deployment, overlays, security posture
+- **[ai_services tier](../README.md)**: the optional GPU tier this server belongs to.
+  Deployment, overlays, security posture
 - **[main_services/agents](../../main_services/agents/README.md)**: the MCP servers and
   research agents, which run on the main stack
 - **Processing pipeline**: the P4 NER stage calls this server via `NER_URL`

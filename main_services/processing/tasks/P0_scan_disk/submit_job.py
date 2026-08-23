@@ -48,8 +48,8 @@ def prepare_disk_dataset(collectionname: str, dataset_name: str, path: str) -> s
 
     Everything a dispatch needs to do BEFORE any workflow exists: check the names,
     check the collection, provision the collection's storage, and write the registry
-    row if it is missing. Separate from starting the work because both entry points —
-    the direct workflow start and the operation — need exactly this and nothing more,
+    row if it is missing. Separate from starting the work because both entry points
+    (the direct workflow start and the operation) need exactly this and nothing more,
     and because a caller must learn that a path does not exist from the command it
     typed rather than from a workflow that fails a minute later.
     """

@@ -77,7 +77,7 @@ EXPECTED_EMBEDDINGS_DIM = int(os.getenv("EMBEDDINGS_DIM", "384"))
 
 # Capability switches (hoover4.ini ner_enabled / embeddings_enabled / reranker_enabled).
 # A disabled capability is not loaded, and /health reports it as "disabled" rather than
-# "unhealthy" — off on purpose is not a failure.
+# "unhealthy". Off on purpose is not a failure.
 ENABLE_NER = os.getenv("AI_SERVER_ENABLE_NER", "true").lower() == "true"
 ENABLE_EMBEDDINGS = os.getenv("AI_SERVER_ENABLE_EMBEDDINGS", "true").lower() == "true"
 ENABLE_RERANKER = os.getenv("AI_SERVER_ENABLE_RERANKER", "true").lower() == "true"
@@ -140,7 +140,7 @@ class EmbeddingRequest(BaseModel):
     user: Optional[str] = Field(default=None, description="User identifier")
     # Prefix convention is owned by the CALLER, not the server. e5-small wants
     # "query: "/"passage: ", e5-large-instruct wants "Instruct: {task}\nQuery: {q}" for
-    # queries and bare text for passages — one server flag cannot express both, and a
+    # queries and bare text for passages, one server flag cannot express both, and a
     # server that silently wraps every input in the instruct template embeds passages
     # wrong. Pass task_description only when the serving model is an instruct model and
     # the input is a query; otherwise the text is embedded exactly as sent.
@@ -434,8 +434,8 @@ def create_embeddings(request: EmbeddingRequest):
         # and the whole pipeline is built on that field being the truth: the worker
         # compares `data.model` against the probed serving model and refuses a mismatch
         # (P5), because vectors written under the wrong name are re-embedded forever and
-        # may carry the wrong e5 prefix convention. An echo defeats that check silently —
-        # it can only ever agree.
+        # may carry the wrong e5 prefix convention. An echo defeats that check silently.
+        # It can only ever agree.
         if request.model and request.model != model_name:
             raise HTTPException(
                 status_code=400,

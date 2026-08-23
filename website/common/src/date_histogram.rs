@@ -23,7 +23,7 @@ impl DateHistogramBucket {
     /// The bin is covered when it lies wholly inside the filter. A bin only partly
     /// covered reads as unselected, which is honest: the filter's cutoffs are bin edges
     /// by construction, so a partly covered bin means the cutoff came from somewhere
-    /// else — a typed date, or a histogram computed before the last edit.
+    /// else, such as a typed date, or a histogram computed before the last edit.
     pub fn is_covered(&self, min: Option<i64>, max: Option<i64>) -> bool {
         min.is_none_or(|lo| self.start >= lo) && max.is_none_or(|hi| self.end - 1 <= hi)
     }
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn an_unfiltered_histogram_covers_nothing_and_everything() {
-        // No cutoffs at all means no selection to draw, so every bin is "covered" —
+        // No cutoffs at all means no selection to draw, so every bin is "covered",
         // which is exactly right: the whole axis is in scope.
         assert!(bucket(0, 10).is_covered(None, None));
     }

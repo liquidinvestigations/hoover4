@@ -3,11 +3,11 @@
 The twin of `main_services/agents/agent_common/agent_common/telemetry.py`. Two copies on
 purpose: they run in different images, the worker already holds a ClickHouse client and
 the agents do not, and neither runtime may depend on the other being present. Same table,
-same column meanings — keep them agreeing.
+same column meanings. Keep them agreeing.
 
 `/admin/ai_status` builds its use% strip and recent-traffic table from this table alone.
-Until the worker wrote to it, OCR and NER — the two capabilities that do the most work in
-this stack — rendered as "no traffic", which is indistinguishable from "broken".
+Until the worker wrote to it, OCR and NER (the two capabilities that do the most work in
+this stack) rendered as "no traffic", which is indistinguishable from "broken".
 
 Rows go through the same in-process buffer as `processing_task_runs` (`task_timing.py`):
 a synchronous one-row insert on the activity path would add a ClickHouse round trip to

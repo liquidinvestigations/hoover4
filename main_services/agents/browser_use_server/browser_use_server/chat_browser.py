@@ -39,7 +39,7 @@ a redirect: :mod:`.urlcheck` inspects tool arguments, and the sidecar's
 Loaded through nodriver's `Config.add_extension()`, which supplies
 `--disable-features=…DisableLoadExtensionCommandLineSwitch` and
 `--enable-unsafe-extension-debugging`. Hand-rolling `--load-extension` appears to work and
-loads nothing — Chromium has disabled that switch for MV3 by default.
+loads nothing. Chromium has disabled that switch for MV3 by default.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ log = logging.getLogger(__name__)
 PLAYWRIGHT_MCP_BIN = os.getenv("PLAYWRIGHT_MCP_BIN", "/opt/playwright-mcp/node_modules/.bin/playwright-mcp")
 
 #: Directory holding the unpacked extensions, one subdirectory each. Empty or missing
-#: means the browser runs without them — degraded (ads and consent walls come back), never
+#: means the browser runs without them. Degraded (ads and consent walls come back), never
 #: fatal.
 EXTENSIONS_DIR = os.getenv("BROWSER_EXTENSIONS_DIR", "/opt/browser-extensions")
 
@@ -85,7 +85,7 @@ CHROMIUM_START_TIMEOUT = float(os.getenv("BROWSER_CHROMIUM_START_TIMEOUT", "45")
 #: is the first line for tool arguments and :mod:`.netfilter`'s PAC script is the one that
 #: survives a redirect; Playwright documents `--blocked-origins` as neither a security
 #: boundary nor redirect-aware, so it is exactly a third opinion. Default comes from
-#: urlcheck's own deny-list — a second literal list here is what let the two drift.
+#: urlcheck's own deny-list. A second literal list here is what let the two drift.
 BLOCKED_ORIGIN_HOSTS = os.getenv("BROWSER_BLOCKED_ORIGINS", netfilter.DEFAULT_BLOCKED_HOSTS)
 
 
@@ -126,7 +126,7 @@ class ChatBrowser:
     session_id: str
     profile_dir: str = ""
     browser: object | None = None
-    #: The browser process. Ours, not nodriver's — see `start()`.
+    #: The browser process. Ours, not nodriver's. See `start()`.
     chromium: asyncio.subprocess.Process | None = None
     sidecar: asyncio.subprocess.Process | None = None
     sidecar_port: int = 0
@@ -135,7 +135,7 @@ class ChatBrowser:
     last_used: float = field(default_factory=time.monotonic)
     calls: int = 0
     sidecar_restarts: int = 0
-    #: One chat's calls are serialised. The old global lock is gone — with one browser per
+    #: One chat's calls are serialised. The old global lock is gone, with one browser per
     #: chat, a global lock would make eight conversations queue behind each other for no
     #: safety benefit.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -168,7 +168,7 @@ async def start(session_id: str) -> ChatBrowser:
     way:
 
     * nodriver treats an explicitly configured `host`+`port` as *"attach to a browser that
-      is already running"* and skips the launch entirely — and the port has to be
+      is already running"* and skips the launch entirely, and the port has to be
       configured, because the sidecar must be told it. The symptom is a confident
       "Failed to connect to browser / you may be running as root" against a Chromium that
       was never started.
@@ -176,7 +176,7 @@ async def start(session_id: str) -> ChatBrowser:
       Chromium with two MV3 extensions takes 5-6 s in this image, so even without the
       first problem it would have raced.
 
-    `Config` is still what builds the argument list — it owns the extension flags — but
+    `Config` is still what builds the argument list (it owns the extension flags), but
     the process and its pipes are ours.
     """
     import nodriver
@@ -203,7 +203,7 @@ async def start(session_id: str) -> ChatBrowser:
     config.add_argument("--disable-gpu")
     config.add_argument(f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}")
     # The line that survives a redirect. Consulted by Chromium for every request in every
-    # tab, before a connection is opened — which is the coverage a tool-argument check
+    # tab, before a connection is opened, which is the coverage a tool-argument check
     # cannot have. See :mod:`.netfilter`.
     config.add_argument(f"--proxy-pac-url={netfilter.pac_data_url()}")
     extensions = extension_paths()
@@ -249,7 +249,7 @@ async def _launch_chromium(chat: ChatBrowser, config) -> None:
         stdout=asyncio.subprocess.DEVNULL,
         # Chromium in a container writes a continuous stream of D-Bus and GCM errors to
         # stderr. Left on a pipe with nobody reading, that pipe fills and the browser
-        # blocks on write — a wedge that looks exactly like a hung page. DEVNULL is the
+        # blocks on write, a wedge that looks exactly like a hung page. DEVNULL is the
         # cheap correct answer; the messages are noise, and a browser that will not start
         # is caught by the port probe below rather than by reading its log.
         stderr=asyncio.subprocess.DEVNULL,
@@ -324,7 +324,7 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
         "--port", str(chat.sidecar_port),
         "--host", "127.0.0.1",
         # NOTE: no `--allowed-hosts`. The sidecar's default is "the host the server is
-        # bound to" — spelled `localhost`, WITH the port, and compared against the request's
+        # bound to", spelled `localhost`, WITH the port, and compared against the request's
         # Host header. Which is why the client URL below says `localhost` and not
         # `127.0.0.1`: the same address by IP comes back `403 Access is only allowed at
         # localhost:<port>`.
@@ -355,7 +355,7 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
 
     from fastmcp import Client
 
-    # `localhost`, not `127.0.0.1` — see the note on --allowed-hosts above.
+    # `localhost`, not `127.0.0.1`, see the note on --allowed-hosts above.
     chat.client = Client(f"http://localhost:{chat.sidecar_port}/mcp")
     await chat.client.__aenter__()
 
@@ -364,7 +364,7 @@ async def _drain(chat: ChatBrowser) -> None:
     """Forward the sidecar's output into our log.
 
     Without this the pipe fills, the node process blocks on write, and the whole chat
-    wedges with no error anywhere — a failure mode that looks exactly like a hung page.
+    wedges with no error anywhere, in a failure mode that looks exactly like a hung page.
     """
     proc = chat.sidecar
     if proc is None or proc.stdout is None:
@@ -451,11 +451,11 @@ async def enforce_tab_cap(chat: ChatBrowser, max_tabs: int) -> int:
     """Close this chat's oldest page tabs past `max_tabs`. Returns how many went.
 
     A model that opens a tab per search result would otherwise exhaust the container
-    through a single conversation — and unlike the browser cap, nothing else would notice:
+    through a single conversation, and unlike the browser cap, nothing else would notice:
     the tabs are inside one Chromium the router already counts as one session.
 
     The **oldest** go, not the newest: the tab the agent is looking at is the one it just
-    opened. Never raises — a tab that will not close is not worth failing a tool call for.
+    opened. Never raises, a tab that will not close is not worth failing a tool call for.
     """
     browser = chat.browser
     if browser is None or max_tabs < 1:

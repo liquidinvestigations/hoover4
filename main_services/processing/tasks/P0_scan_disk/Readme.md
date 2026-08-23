@@ -22,7 +22,7 @@ The workflow starts at the dataset root and recursively enumerates folders in ba
 
 ## A rescan detects change, and it detects deletion
 
-`vfs_files` is keyed on `(collection_dataset, container_hash, path)` — no `hash` — so a
+`vfs_files` is keyed on `(collection_dataset, container_hash, path)` (no `hash`), so a
 path has exactly one current row and an edited file replaces its predecessor in place.
 That is what makes the rest of this possible; with `hash` in the sort key a changed file
 inserts a second row beside the old one and the VFS holds two versions of one path with
@@ -32,27 +32,27 @@ Per file, from the size and mtime the scan already collected:
 
 | observation | what happens |
 |---|---|
-| no row | new file — hash and ingest |
-| same size **and** same mtime | unchanged — no read, no hash, `updated_at` touched |
-| size differs | changed — settled without reading the file |
+| no row | new file, hash and ingest |
+| same size **and** same mtime | unchanged, no read, no hash, `updated_at` touched |
+| size differs | changed, settled without reading the file |
 | mtime differs, size same | rehash; a different hash is a change, the same hash is a touch |
-| row present, path not found by the scan | deleted — tombstoned and de-indexed |
+| row present, path not found by the scan | deleted, tombstoned and de-indexed |
 
-Comparing paths alone — which is what a rescan did before there was anything else to
-compare — is wrong in the direction that loses data: a file whose *content* changed at
+Comparing paths alone (which is what a rescan did before there was anything else to
+compare) is wrong in the direction that loses data: a file whose *content* changed at
 the same path was skipped for ever, with no new blob, no new plan, and nothing
 downstream noticing.
 
 **Deletion is decided by timestamp, not by a second traversal.** Every path the walk
 confirmed carries an `updated_at` later than the walk's start, so `reconcile_deleted_files`
 tombstones exactly the top-level rows older than that. *Confirmed* means every path the
-walk saw, including the ones that matched on size and mtime and were never read — those
+walk saw, including the ones that matched on size and mtime and were never read. Those
 are the overwhelming majority, and touching only the rehashed subset makes the second
 scan of a dataset tombstone and de-index every unmodified file in it, which presents as
 the corpus deleting itself. It runs **only after a complete
 walk**: a scan that failed part-way through has confirmed nothing about the paths it
 never reached, and reconciling on it would delete them. Only `container_hash = ''` rows
-are considered — an archive member is not a path on disk and disappears with its
+are considered. An archive member is not a path on disk and disappears with its
 container.
 
 Subtree skipping by directory mtime is deliberately not done: a directory's mtime does
@@ -62,7 +62,7 @@ invisible.
 **A deleted document's blob is kept; only its index rows go.** Search stops answering
 with content that is no longer in the corpus immediately, while the blob, its extracted
 text and its derived work stay where they are. A hash still reachable from a surviving
-path is not de-indexed at all — the same content at two paths losing one of them must not
+path is not de-indexed at all. The same content at two paths losing one of them must not
 vanish from search. Reclaiming the orphaned bytes is a separate decision about storage,
 and one that cannot be undone.
 
@@ -76,7 +76,7 @@ blob, `ComputePlans` picks up any blob with no plan, and P2-P6 run only over it.
   before the walk, so refusing on it made any interrupted ingest a dataset that could
   never be added again and could only be purged. The scan is idempotent, so re-running it
   over the same root is how an edited or deleted file is picked up. Each run gets its own
-  Temporal workflow id — an id derived from the dataset alone can be started exactly once,
+  Temporal workflow id. An id derived from the dataset alone can be started exactly once,
   and every later rescan either collides with it or silently attaches to the finished run.
 - The worker queue is `processing-common-queue` (see `tasks/run_worker.py`).
 

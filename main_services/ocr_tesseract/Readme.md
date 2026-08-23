@@ -1,4 +1,4 @@
-# ocr_tesseract — Tesseract OCR over HTTP (CPU)
+# ocr_tesseract: Tesseract OCR over HTTP (CPU)
 
 The CPU half of the OCR tier. Its GPU twin is `ai_services/easyocr_server`, and both
 speak the same contract so `tasks/remote.py` can fall back from one to the other
@@ -9,8 +9,8 @@ without the call site branching.
 Two failure modes put it here:
 
 1. **EasyOCR in-process deadlocked the worker.** Two concurrent `readtext` calls parked
-   all 91 threads of the worker process in `futex_wait`, with heartbeats still flowing —
-   a live thread making no forward progress, which is precisely the case a heartbeat
+   all 91 threads of the worker process in `futex_wait`, with heartbeats still flowing.
+   A live thread making no forward progress, which is precisely the case a heartbeat
    pump cannot detect. Nothing would ever have retried it. A bounded pool behind an HTTP
    boundary makes that arrangement impossible.
 2. **`tesseract-ocr-eng` in the worker image made Tika OCR scanned PDFs implicitly**,

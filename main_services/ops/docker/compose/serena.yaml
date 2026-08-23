@@ -1,7 +1,7 @@
 # Optional overlay: Serena MCP server (dev tooling).
 #
 # NOT part of the deployed stack. It can read and write the whole repository, so it
-# is published on 127.0.0.1 only — never reachable off the box. Enabled via
+# is published on 127.0.0.1 only, never reachable off the box. Enabled via
 # [main_services] serena_enabled = true in hoover4.ini.
 services:
   serena:
@@ -43,7 +43,7 @@ services:
       start_period: 900s
     # Deliberately NOT on the hoover4 network. Serena talks to exactly two things: the
     # repo on disk, and the agent on 127.0.0.1:21940. Attaching it to the main stack's
-    # network bought nothing and cost a real coupling — the shared network could not be
+    # network bought nothing and cost a real coupling. The shared network could not be
     # torn down while Serena held it, so every `--reset` ended on 'network "hoover4" has
     # associated containers with it', and a cold start could not bring Serena up before
     # the main stack had created the network. It gets the project's own default network.

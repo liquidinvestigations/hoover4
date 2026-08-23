@@ -6,7 +6,7 @@ versioned on an update counter. Four operations write it -- `write` replaces the
 `read` returns the current snapshot. Each is a distinct argument shape on purpose: a
 model calls a typed tool correctly far more often than it fills a dispatch envelope.
 
-Two rules here are load-bearing and neither is obvious from the schema:
+Two rules here must hold, and neither is obvious from the schema:
 
 * **`cancelled` requires a note.** An item abandoned with a stated reason counts as
   resolved, so an over-ambitious plan does not earn two nags for nothing. The note is

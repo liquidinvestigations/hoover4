@@ -5,12 +5,12 @@ plane. Three Rust crates in one workspace.
 
 ## Components
 
-- `frontend/` — the Dioxus UI compiled to WASM: routed pages for search, the document view,
+- `frontend/`, the Dioxus UI compiled to WASM: routed pages for search, the document view,
   the file browser and chat, with components under `frontend/src/components/`.
-- `backend/` — the server: API modules by feature under `backend/src/api/`, authentication
+- `backend/`, the server: API modules by feature under `backend/src/api/`, authentication
   under `backend/src/auth/`, database helpers under `backend/src/db_utils/`,
   `backend/src/db_chat/` and `backend/src/db_auth/`.
-- `common/` — types and constants shared by both halves. **Anything mirrored across the
+- `common/`, types and constants shared by both halves. **Anything mirrored across the
   language boundary belongs here**, including the stage identifiers the pipeline stores and
   the extractor-key formatter.
 
@@ -37,15 +37,15 @@ The explanations live in `docs/`, because they outlive any one change here:
 
 | what | how |
 |---|---|
-| unit (Rust) | `cargo test --offline` inside `hoover4-website` — Rust is at `/usr/local/cargo/bin` there and is not on `$PATH` |
-| type check, test targets included | `cargo check --workspace --tests --offline` — a plain `cargo check` does not build test binaries, so it cannot see a broken one |
+| unit (Rust) | `cargo test --offline` inside `hoover4-website`, Rust is at `/usr/local/cargo/bin` there and is not on `$PATH` |
+| type check, test targets included | `cargo check --workspace --tests --offline`, a plain `cargo check` does not build test binaries, so it cannot see a broken one |
 | hook order | `dx check --package frontend`; `run-stack-tests.sh` and `development.sh` both run it first |
 | live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
 | whole stack | `main_services/verify-stack.sh` |
 | screenshots | `./take-screenshots.sh` |
 
 **Both fixture-driven suites are welded to the corpus `main_services/verify-stack.sh`
-ingests** — `screenshots.ini`'s routes and `stack_integration.rs`'s fixtures. On any other
+ingests**: `screenshots.ini`'s routes and `stack_integration.rs`'s fixtures. On any other
 corpus they fail by naming a dataset that does not exist, which reads as a broken page and is
 neither. Run the stack verification first, or read their failures as a missing precondition.
 
@@ -53,7 +53,7 @@ neither. Run the stack verification first, or read their failures as a missing p
 
 Bring up `main_services` (and `ai_services` if the accelerated tier is wanted) first, then
 configure the service URLs in `.env.development` from `.env.development.example`.
-`website_release_mode` in `hoover4.ini` picks between the dev server and a release build —
+`website_release_mode` in `hoover4.ini` picks between the dev server and a release build:
 `main_services/ops/Readme.md` has the comparison.
 
 ## Navigation

@@ -1,6 +1,6 @@
 //! Chat composer: textarea, Deep Research / Internet tools checkboxes, submit arrow.
 //!
-//! Deliberately has **no** file-attachment / paperclip control — documents enter through
+//! Deliberately has **no** file-attachment / paperclip control. Documents enter through
 //! the processing pipeline, not the chat UI.
 //!
 //! The two checkboxes disappear from here once the conversation has a turn in it: they
@@ -113,7 +113,7 @@ pub fn ChatComposer(
                             // a cancelled run contributes nothing to the conversation:
                             // the partial stays on screen as a leftover stream row and is
                             // gone the moment the next question takes its seq. It is
-                            // deliberately not promoted — an unmarked fragment in the
+                            // deliberately not promoted. An unmarked fragment in the
                             // conversation's permanent memory is read back by a later
                             // turn as though the assistant had said it.
                             title: "Stop the answer (the partial is not saved to the conversation)",
@@ -121,7 +121,7 @@ pub fn ChatComposer(
                             Icon { icon: MdStop, style: "width: 20px; height: 20px; color: white;" }
                         }
                     } else {
-                        // No `on_stop` means there is nothing to stop yet — the homepage
+                        // No `on_stop` means there is nothing to stop yet. The homepage
                         // is still creating the conversation. It used to render the same
                         // red stop button anyway, wired to a handler that did nothing:
                         // a control that looks live, is the obvious thing to press, and

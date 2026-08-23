@@ -56,7 +56,7 @@ pub async fn chat_set_collections(
 
 /// Send a message and get the transcript back with the message in it.
 ///
-/// Returns as soon as the turn has been accepted and dispatched — the answer arrives
+/// Returns as soon as the turn has been accepted and dispatched. The answer arrives
 /// through `chat_poll`, not through this call. The UI shows a pending state until the
 /// poll says the turn is no longer active.
 ///
@@ -156,7 +156,7 @@ pub async fn chat_dismiss_interrupted(session_id: String) -> Result<(), ServerFn
 
 /// The search-detail JSON behind a `web_search` card's popup.
 ///
-/// Fetched lazily on first open — it holds both orderings of every candidate, which is
+/// Fetched lazily on first open. It holds both orderings of every candidate, which is
 /// far more than the card needs collapsed and more than `TOOL_PAYLOAD_CHARS` could carry
 /// in the tool result at all.
 #[server]

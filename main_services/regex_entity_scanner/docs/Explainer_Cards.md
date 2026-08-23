@@ -29,7 +29,7 @@ so a client can explain one it has kept for months, and the endpoint stays as st
 scanner.
 
 Only `rule_id` is required. Every other field is used if present and ignored if absent, and unknown
-fields are accepted silently — an entity produced by a different rule-set version must still explain
+fields are accepted silently. An entity produced by a different rule-set version must still explain
 itself rather than fail. The `value` is read as raw JSON for the same reason: a shape this build has
 never seen produces a thinner card, not an error.
 
@@ -39,7 +39,7 @@ An undocumented `rule_id` returns 404, so a client shows no card rather than an 
 
 | Field | What goes in it |
 |---|---|
-| `title` | The human-readable name of what was matched — "ISO 8601 timestamp", never `date.iso8601`. Rules whose meaning varies by match specialise it: a date is a "date" or a "timestamp" depending on its precision. |
+| `title` | The human-readable name of what was matched, "ISO 8601 timestamp", never `date.iso8601`. Rules whose meaning varies by match specialise it: a date is a "date" or a "timestamp" depending on its precision. |
 | `subtitle` | One line of what **this** match is, from what the entity already carries: the country behind its top-level domain, the register that issued it, the precision and time zone of a date, the bank behind an IBAN. |
 | `body` | Markdown. What the format is, what this particular value means, what the validator checked, what acceptance does not prove, who defines the format, and where to read more. |
 
@@ -54,7 +54,7 @@ references. It is static because it is knowledge about the **rule**, not about a
 lives next to the rule for the same reason a doc comment does.
 
 `src/explain/cards.rs` holds the per-rule shapers, which add what only this particular match can
-say — its country, its weekday, the register entry for its own identifier — and may sharpen the
+say (its country, its weekday, the register entry for its own identifier), and may sharpen the
 title. A rule with a catalogue entry and no shaper still produces a usable card, so writing the
 entry is the requirement and the shaper is the refinement.
 
@@ -75,7 +75,7 @@ verified quietly overstates it.
 
 | Route | |
 |---|---|
-| `GET /rules` | Every documented rule: identifier, type, human-readable title, and whether this build has it compiled — plus the rule-set version and the confidence note, once for the whole set. |
+| `GET /rules` | Every documented rule: identifier, type, human-readable title, and whether this build has it compiled, plus the rule-set version and the confidence note, once for the whole set. |
 | `GET /rules/{rule_id}` | The full static entry, with no match in hand. |
 | `POST /explain` | The card for one entity. |
 
@@ -84,13 +84,13 @@ catalogue is the repository's knowledge; a binary is one deployment of it.
 
 ## Documenting a new rule
 
-A rule is not finished until it has a catalogue entry — the test suite asserts that every compiled
+A rule is not finished until it has a catalogue entry. The test suite asserts that every compiled
 rule has one, because a reader who clicks a match and gets nothing is a worse outcome than a rule
 that does not exist.
 
 1. Add the `RuleDoc`: title, what it matches, standards, checks, `not_checked`, authorities,
    references.
-2. Add a shaper if the match carries anything worth saying that the catalogue cannot know — country,
+2. Add a shaper if the match carries anything worth saying that the catalogue cannot know. Country,
    issuer, precision, a register link built from the value itself.
 3. Add a test that pins the fact a reader would actually be looking for.
 
@@ -116,7 +116,7 @@ control.
 One string, one place, no per-rule variation. A single threshold across the whole rule set only
 works if the number means one thing across the whole rule set, and a reader can only believe that if
 the explanation beside it does not change from card to card either. What it says is that the number
-is about whether the text was read correctly — not whether the identifier was ever issued, whether
+is about whether the text was read correctly, not whether the identifier was ever issued, whether
 the address receives mail, or whether the value is true.
 
 ## Cards are English
@@ -124,4 +124,4 @@ the address receives mail, or whether the value is true.
 The catalogue is static `&'static str` throughout and the cards it produces are English only. There
 is no content negotiation on `Accept-Language`, and a client asking for another language gets the
 same card. Translating them means a keyed catalogue, a negotiated request, and translated copy for
-every rule — a different kind of change from writing an entry.
+every rule. A different kind of change from writing an entry.

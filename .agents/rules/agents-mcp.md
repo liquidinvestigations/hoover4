@@ -37,7 +37,7 @@ output either drained by a task or sent to the null device.
 
 **Before believing a "cannot connect to the browser" error, prove the thing you are
 connecting to exists.** A library given an explicit host and port may treat that as *attach
-to something already running* and silently skip launching anything — its error then blames
+to something already running* and silently skip launching anything. Its error then blames
 your privileges. Ask the endpoint for its version from inside the container. In this area an
 error message routinely names the wrong half of the problem.
 

@@ -1,7 +1,7 @@
 """The source registry and its selection rules.
 
 No network: the fetch functions are exercised elsewhere (and against the live web only by
-the live-tool checks). What matters here is that a bad `sources` argument from a model
+the live-tool checks). This asserts that a bad `sources` argument from a model
 degrades gracefully rather than costing a search.
 """
 
@@ -55,8 +55,8 @@ class TestConfiguration:
         assert sources_mod.configured_sources() == list(sources_mod.SOURCES)
 
     def test_the_legacy_engines_variable_still_narrows_the_scrapers(self, monkeypatch):
-        """An existing deployment's METASEARCH_ENGINES must keep meaning what it meant —
-        it names the HTML scrapers, and every non-scraper source comes along."""
+        """An existing deployment's METASEARCH_ENGINES must keep meaning what it meant.
+        It names the HTML scrapers, and every non-scraper source comes along."""
         monkeypatch.delenv("METASEARCH_SOURCES", raising=False)
         monkeypatch.setenv("METASEARCH_ENGINES", "brave,yahoo")
         assert sources_mod.configured_sources() == [
@@ -92,7 +92,7 @@ class TestResolveSources:
 
     def test_a_request_may_name_a_source_the_deployment_has_disabled(self, monkeypatch):
         """`sources` is the model's choice within what exists, not within what is on by
-        default — narrowing to news must work even if news is not in the default set."""
+        default. Narrowing to news must work even if news is not in the default set."""
         monkeypatch.setenv("METASEARCH_SOURCES", "ddg")
         used, unknown = sources_mod.resolve_sources(["ddg_news"])
         assert used == ["ddg_news"] and unknown == []
@@ -179,7 +179,7 @@ class TestKeyGating:
     def test_an_unregistered_source_is_named_nowhere(self):
         """Registration happens at import, and this suite runs without a key mounted, so
         the source must be missing from the registry, the default set and the description
-        the model reads — all three, because absent from one of them is still a source a
+        the model reads, all three, because absent from one of them is still a source a
         model can be told about or asked for."""
         assert "factcheck" not in sources_mod.SOURCES
         assert "factcheck" not in sources_mod.DEFAULT_SOURCES.split(",")
@@ -191,7 +191,7 @@ class TestKeyGating:
 
     def test_an_empty_mounted_file_is_no_key(self, monkeypatch, tmp_path):
         """The compose file mounts /dev/null when no key is configured, so "the file
-        exists" is not the question — "the file has a key in it" is."""
+        exists" is not the question. "The file has a key in it" is."""
         empty = tmp_path / "key"
         empty.write_text("   \n")
         monkeypatch.setenv("FACTCHECK_API_KEY_FILE", str(empty))

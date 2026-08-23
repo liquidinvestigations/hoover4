@@ -74,7 +74,7 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
 
-    # `LIMIT 1 BY h.item_hash` is load-bearing, not tidiness. `blobs` is a
+    # `LIMIT 1 BY h.item_hash` decides correctness here. `blobs` is a
     # ReplacingMergeTree and this join does not read it FINAL, so a hash whose rows have
     # not merged yet joins more than once and the same item comes back twice. The
     # caller turns each item into a child workflow keyed by that hash, and two of them

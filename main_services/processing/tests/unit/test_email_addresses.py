@@ -35,7 +35,7 @@ def test_addresses_are_lower_cased_but_display_names_are_not():
 
 
 def test_a_quoted_display_name_containing_a_comma_is_not_split():
-    """The comma inside the quotes is not a separator — a naive split makes two
+    """The comma inside the quotes is not a separator. A naive split makes two
     recipients out of one, and neither of them has a valid address."""
     result = extract_email_addresses({
         "to": ['"Doe, John" <john@example.com>, jane@example.com'],

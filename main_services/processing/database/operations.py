@@ -220,7 +220,7 @@ def create_operation(kind: str, collectionname: str = "", collection_dataset: st
     """Take the lock and write the `pending` row. Returns the row.
 
     Raises `OperationLocked` if the target is already held. The check and the insert are
-    not atomic — ClickHouse offers no way to make them so — and that is acceptable
+    not atomic (ClickHouse offers no way to make them so), and that is acceptable
     because the workflow id is the second guard: two dispatches that pass the check in
     the same second still mint different ids, and the underlying pipeline stages are
     idempotent.

@@ -69,7 +69,7 @@ def test_pump_is_inert_outside_an_activity(monkeypatch):
 
 def test_pump_survives_a_heartbeat_that_raises(monkeypatch):
     """A cancelled or completed activity makes heartbeat() raise; the pump must
-    stop quietly rather than surface a spurious error from a daemon thread."""
+    stop quietly rather than report a spurious error from a daemon thread."""
     monkeypatch.setattr(activity, "in_activity", lambda: True)
 
     def boom(*_details):

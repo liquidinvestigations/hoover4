@@ -152,7 +152,7 @@ def alphanumeric(value: str) -> str:
 def documented_exclusion(scheme: str, token: str):
     """Formats a rule's explainer card states it does not match.
 
-    Out-of-scope is a category, not a failure — but only when the limit is written down in the
+    Out-of-scope is a category, not a failure, but only when the limit is written down in the
     tracked tree. Every branch here quotes one, so the exclusion can be checked without trusting
     this script.
     """
@@ -244,8 +244,8 @@ def case(index, key, scheme, rule, entity_type, cue, token, valid, expect, exclu
     """One line of the case file."""
     carrier = CARRIER_PREFIX + (cue + " " if cue else "")
     text = carrier + token + CARRIER_SUFFIX
-    # Sorted ids group a scheme's cases together, which is what makes the sampling rule — take the
-    # first N of a scheme — keep whole modules rather than slicing across them.
+    # Sorted ids group a scheme's cases together, which is what makes the sampling rule (take the
+    # first N of a scheme) keep whole modules rather than slicing across them.
     name = key if scheme == key else "%s:%s" % (scheme, key)
     return {
         "id": "stdnum:%s:%03d" % (name, index),

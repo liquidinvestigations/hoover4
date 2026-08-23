@@ -12,7 +12,7 @@
 //! predicate, so it costs the same whether the query matches everything or nothing: it
 //! made an unfiltered entity facet on the largest shard take 13 s on its own and 100 s
 //! under the four-pane concurrency of the Entities tab, which is an HTTP 504. It is
-//! also silently WRONG — Manticore's `LEFT JOIN` drops left rows with no match, 0.28 %
+//! also silently WRONG. Manticore's `LEFT JOIN` drops left rows with no match, 0.28 %
 //! of documents on the corpus it was measured against, so every facet count served
 //! through it was short by that margin. The duplicated metadata costs ~15 % on disk
 //! because the columnar engine picks a storage scheme per block and a block of pages
@@ -51,7 +51,7 @@ pub const EXCLUDE_FILENAME_ROW: &str = "extracted_by != 'filename_index'";
 /// qualifying and none is ambiguous.
 ///
 /// Facet field names arrive over the wire and are interpolated into SQL, so the
-/// whitelist is the only thing between a request and the query text — hence the
+/// whitelist is the only thing between a request and the query text, hence the
 /// `&'static str` return: what reaches the SQL is this constant, never the caller's
 /// string.
 const SEARCH_FIELDS: &[&str] = &[
@@ -91,7 +91,7 @@ const SEARCH_FIELDS: &[&str] = &[
 /// table name, `<shard>_pages`.
 ///
 /// Shard names reach this crate from the `manticore_shards` ledger and from the
-/// search fan-out — never from user input — but they end up interpolated into SQL,
+/// search fan-out (never from user input), but they end up interpolated into SQL,
 /// so re-validate anyway.
 pub fn shard_table_name(shard_name: &str) -> anyhow::Result<String> {
     let (collectionname, index) = shard_name
@@ -106,7 +106,7 @@ pub fn shard_table_name(shard_name: &str) -> anyhow::Result<String> {
     Ok(format!("{shard_name}_pages"))
 }
 
-/// FROM clause for one shard. One table, no join — see the module doc.
+/// FROM clause for one shard. One table, no join, see the module doc.
 pub fn sql_from_clause(shard_name: &str) -> anyhow::Result<String> {
     let pages = shard_table_name(shard_name)?;
     Ok(format!(
@@ -132,7 +132,7 @@ pub fn search_field_name(field_name: &str) -> anyhow::Result<&'static str> {
 /// result sets at `max_matches` (default 1000), which would corrupt deep pagination and
 /// large facet merges.
 ///
-/// The budget is [`search_timeout_ms`] and is uniform — the MVA facet path once emitted
+/// The budget is [`search_timeout_ms`] and is uniform. The MVA facet path once emitted
 /// no `OPTION` clause at all, which is how a query the proxy had already given up on
 /// went on burning daemon CPU. `max_query_time` is Manticore's own best-effort limit and
 /// does not cover a connect or read stall, so the client applies the same budget again
@@ -169,7 +169,7 @@ pub fn sort_column(sort: &SortSpec) -> &'static str {
 
 /// The full `ORDER BY` for a per-shard query.
 ///
-/// The tie-break on `(collection_dataset, file_hash)` is load-bearing and must match
+/// The tie-break on `(collection_dataset, file_hash)` decides the order and must match
 /// `fanout::merge_hits` exactly: Manticore's order among equal keys is not stable across
 /// queries with different `LIMIT`, and `fetch_limit` grows with the requested page, so
 /// without a total order a document tied at the truncation boundary appears on two pages
@@ -188,8 +188,8 @@ pub fn sort_order_by(sort: &SortSpec) -> String {
 /// construction.
 ///
 /// The predicate is `date_min <= hi AND date_max >= lo`: the document's date SPAN
-/// overlaps the requested range. For the ordinary document — one date, or several within
-/// a few days — this is exactly "any date in range". It differs only for a document whose
+/// overlaps the requested range. For the ordinary document (one date, or several within
+/// a few days) this is exactly "any date in range". It differs only for a document whose
 /// dates STRADDLE the range with none inside it: a file created in 2007 and modified in
 /// 2020 matches a 2013–2016 filter. The error is one-sided (a superset, never a subset),
 /// which is the right direction for a search filter: a user can see and dismiss an extra
@@ -210,7 +210,7 @@ fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Opt
             filter.max
         );
     }
-    // Every bound is an i64 — see `RangeFilter`. Nothing here is user-supplied text.
+    // Every bound is an i64. See `RangeFilter`. Nothing here is user-supplied text.
     let (lo, hi) = (filter.min.unwrap_or(i64::MIN + 1), filter.max.unwrap_or(i64::MAX));
     let ranged = match field_name {
         // Interval overlap; see the doc comment for why this is not `ANY(dates)`.
@@ -256,7 +256,7 @@ fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Opt
 /// An EMPTY query is `MATCH('')` on purpose: that is how the site browses a collection
 /// with no search term, and Manticore reads it as "every row". Every non-empty query
 /// goes through [`prepare_match_query`], which repairs the shapes the parser rejects and
-/// returns an error for the two it cannot — never a string that 500s at Manticore.
+/// returns an error for the two it cannot, never a string that 500s at Manticore.
 fn match_argument(query_string: &str) -> anyhow::Result<String> {
     // automatically quote all @ symbols in the query string to avoid problems with FIELD SELECTOR manticore operator
     let query_string = query_string.trim().replace("@", "\\@");
@@ -392,7 +392,7 @@ mod tests {
         // A single quote is escaped with a BACKSLASH. Manticore's parser rejects the
         // SQL-standard doubling outright (`P01: syntax error`), so an assertion on the
         // doubled form passes in the test suite while every such search 500s in
-        // production — which is exactly how this reached a live site.
+        // production, which is exactly how this reached a live site.
         let q = query("  it's a test  ", &[]);
         let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
         assert_eq!(normalize(&sql), "WHERE MATCH('it\\'s a test', testdata_1_pages)");
@@ -428,7 +428,7 @@ mod tests {
     }
 
     /// The empty query is how the site browses without a search term, and it must stay
-    /// `MATCH('')` — every row — rather than becoming an error.
+    /// `MATCH('')` (every row), rather than becoming an error.
     #[test]
     fn where_clause_keeps_the_empty_query_matching_everything() {
         let sql =
@@ -473,7 +473,7 @@ mod tests {
         );
     }
 
-    /// Every facet field the frontend can send must be accepted — a whitelist that
+    /// Every facet field the frontend can send must be accepted, a whitelist that
     /// drifts from its caller list is a runtime 500. Keep in sync with the facet
     /// list in `frontend/src/components/search_components/search_facets.rs`.
     #[test]
@@ -541,7 +541,7 @@ mod tests {
     /// Three documents, verified against a live Manticore table: doc 1 mentions 1936 and
     /// 2020, doc 2 mentions 2005, doc 3 mentions 1900 and 1936. Filtering for calendar
     /// 2005, interval overlap matches docs 1 and 2; `ANY(...) BETWEEN` matches only doc 2,
-    /// which is the right answer — doc 1 says nothing about 2005. Copying the `dates` arm
+    /// which is the right answer. Doc 1 says nothing about 2005. Copying the `dates` arm
     /// here is the single most likely way to get this feature wrong, so the shape is
     /// pinned.
     #[test]
@@ -580,7 +580,7 @@ mod tests {
         );
         assert!(sql.contains(&format!("AND mentioned_date_min = {DATE_UNKNOWN}")), "{sql}");
         // The document-date sentinel is a different column, and `mentioned_date_min`
-        // contains its name as a substring — hence the leading `AND `.
+        // contains its name as a substring, hence the leading `AND `.
         assert!(!sql.contains("AND date_min = "), "it must not read the document-date sentinel: {sql}");
     }
 
@@ -677,7 +677,7 @@ mod tests {
     ///
     /// It is carried by the error's TYPE. Restating it as `anyhow!("{e}")` anywhere along
     /// the way leaves a bare string, every such query is reported as a 500, and a rejected
-    /// keystroke reads as the site falling over — while the telemetry counts it as
+    /// keystroke reads as the site falling over, while the telemetry counts it as
     /// breakage.
     #[test]
     fn a_query_with_only_negations_is_a_bad_request_all_the_way_out() {

@@ -137,7 +137,7 @@ def format_whois_data(domain_data) -> WhoisData:
     
     # Clean up list fields.
     #
-    # A registry that holds one value returns a bare STRING here, not a one-element list —
+    # A registry that holds one value returns a bare STRING here, not a one-element list:
     # `example.org` and `enron.com` both do for `admin_email`. Returning it unchanged makes
     # pydantic reject the whole `WhoisData`, so a domain with exactly one abuse contact
     # fails its lookup entirely with a validation error in place of its registration.
@@ -193,7 +193,7 @@ async def whois_lookup(
     `domain` is still accepted and is folded into `domains` rather than handled on its own
     path: a model that learned the single-domain shape keeps working, and a batch of one is
     then not a special case. Both arrive through `agent_common.batching.as_list`, so a bare
-    string, a comma-separated string and a JSON-encoded list all work — models produce all
+    string, a comma-separated string and a JSON-encoded list all work. Models produce all
     three.
     """
     asked = [_clean_domain(d) for d in as_list(domains) + as_list(domain)]
@@ -230,7 +230,7 @@ async def whois_lookup(
 
 
 def _clean_domain(value: str) -> str:
-    """A bare hostname out of whatever the model wrote — a URL, a `www.` prefix, a path."""
+    """A bare hostname out of whatever the model wrote, a URL, a `www.` prefix, a path."""
     text = (value or "").strip().lower()
     text = text.replace("http://", "").replace("https://", "")
     text = text.replace("www.", "")
@@ -270,7 +270,7 @@ async def _lookup_one(domain: str) -> WhoisLookupResponse:
     try:
         logger.info(f"Performing WHOIS lookup for: {domain}")
 
-        # Already a bare hostname — the caller cleaned it, and cleaning it twice here is
+        # Already a bare hostname, the caller cleaned it, and cleaning it twice here is
         # how the two rules drift apart.
         clean_domain = domain
 

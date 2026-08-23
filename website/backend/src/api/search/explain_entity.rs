@@ -1,8 +1,8 @@
 //! The explainer proxy: one card for one matched value, fetched from the scanner.
 //!
-//! The card is not written here and must not be. The scanner owns the rule catalogue —
-//! which standard defines a format, which authority administers it, what its validator
-//! checked and what acceptance does *not* prove — and a second copy of that knowledge in
+//! The card is not written here and must not be. The scanner owns the rule catalogue
+//! (which standard defines a format, which authority administers it, what its validator
+//! checked and what acceptance does *not* prove), and a second copy of that knowledge in
 //! the website would drift from the rules with nothing to notice it had.
 //!
 //! Two properties this proxy has to preserve:
@@ -56,7 +56,7 @@ fn scanner_url() -> Option<String> {
 /// The scanner's base URL, or `None` when there is not one.
 ///
 /// The compose file renders `${REGEX_SCANNER_URL:-…}`, which is an EMPTY STRING when the
-/// variable is unset rather than an absent variable — so "set" is not the same question
+/// variable is unset rather than an absent variable, so "set" is not the same question
 /// as "usable", and treating an empty value as a host produces a request with no
 /// authority and an error that names the wrong thing.
 fn normalise_scanner_url(raw: Option<&str>) -> Option<String> {
@@ -71,8 +71,8 @@ fn normalise_scanner_url(raw: Option<&str>) -> Option<String> {
 /// this build has never seen is passed through untouched, which is what lets an entity
 /// from an older rule set still explain itself.
 ///
-/// `None` covers every reason a card is absent — an undocumented rule, an unreachable
-/// scanner, a timeout — because the caller does the same thing in all of them.
+/// `None` covers every reason a card is absent (an undocumented rule, an unreachable
+/// scanner, a timeout), because the caller does the same thing in all of them.
 pub async fn explain_entity(
     user: &CurrentUser,
     rule_id: String,

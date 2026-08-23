@@ -1,4 +1,4 @@
-//! AI Chat UI building blocks — composer, transcript, tool disclosure, doc cards.
+//! AI Chat UI building blocks: composer, transcript, tool disclosure, doc cards.
 //!
 //! Document cards reuse [`SearchResultItemCard`](crate::components::search_components::search_result_item_card::SearchResultItemCard)
 //! via a `SearchResultsState` context provided by the session page. The document pane

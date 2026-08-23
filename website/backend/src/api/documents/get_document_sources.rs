@@ -155,7 +155,7 @@ async fn get_email_sources(
 ///
 /// **Absence is the ordinary answer here, not a failure.** Most documents are not images,
 /// so returning an error for "no `image` row" puts an ERROR line in the log on a large
-/// fraction of document opens with nothing wrong — enough to make the log useless as a
+/// fraction of document opens with nothing wrong. Enough to make the log useless as a
 /// signal, because every real error is buried among them. `err(Debug)` on the instrument
 /// attribute logs at ERROR level by default, which is what turns that last resort into
 /// the common case.
@@ -262,7 +262,7 @@ async fn get_audio_sources(
 ///
 /// One `table_documents` lookup and nothing else: the variant carries identity only, so
 /// the sheets and columns are not needed until the explorer asks for them. `None` is the
-/// ordinary answer — most documents are not tables.
+/// ordinary answer. Most documents are not tables.
 async fn get_table_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -304,7 +304,7 @@ pub async fn get_document_sources(
     // page that exists; `page_id` is 1-based, so 1 is the floor and 0 is never valid.
     //
     // The variant's ABSENCE is reported just as carefully. Headers and body are stored
-    // independently, and a mail file can have the first without the second — a body of
+    // independently, and a mail file can have the first without the second. A body of
     // one character after stripping is dropped by the text writer, as is a message whose
     // only body part is HTML. Guessing a range for a variant that has no rows is what
     // makes the viewer render `document not found!` where the body belongs.

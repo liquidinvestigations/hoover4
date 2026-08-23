@@ -34,7 +34,7 @@ from the `auto-setup` image sized for a single-workflow demo.
 their number caps every workflow-history write in the deployment regardless of how many
 cores or worker processes exist. At the image default of 4 the pipeline dispatches about
 a dozen activities a second while the workers consume a fraction of one core, and every
-task type's queue wait shares the same p99 — the signature of a fleet that is waiting on
+task type's queue wait shares the same p99. The signature of a fleet that is waiting on
 the server rather than on itself. **The count is fixed for the life of the persistence
 store**: the server refuses to open a keyspace initialised with a different one.
 `deploy.py` preflights the running cluster against the ini and names both numbers rather
@@ -47,7 +47,7 @@ touches no other volume.
 whose `docker.yaml` the image ships as a zero-byte file. The DIRECTORY is mounted, not
 the file: a single-file bind mount follows the inode it was created with, so any editor
 that writes-and-renames leaves the container silently reading the old contents. The file
-is deliberately near-empty — measured against this pipeline, raising the task-queue
+is deliberately near-empty. Measured against this pipeline, raising the task-queue
 partition counts above their default of 4 made a fan-out across many concurrent
 workflows slower, and `history.persistenceMaxQPS` already defaults above anything worth
 writing there, so setting it would throttle rather than lift.
@@ -58,15 +58,15 @@ A duplicate mapping key is the one that bites: podman-compose takes the file and
 Docker Compose refuses it with `mapping key "driver" already defined`. The usual way to
 create one is an edit that removes a volume's or service's name line and leaves the
 indented line under it to attach to whatever came before. `deploy.py` preflights every
-compose file it is about to use with a loader that rejects duplicates — note that
-PyYAML's own `safe_load` does not, it silently keeps the last one — so the failure is
+compose file it is about to use with a loader that rejects duplicates. Note that
+PyYAML's own `safe_load` does not, and it silently keeps the last one, so the failure is
 named on both hosts instead of only on the Docker one.
 
 ### `memswap_limit` is not the total here
 
 Every service in this file sets `mem_limit` and `memswap_limit` to the same value.
 Under Docker that spells "this much memory and no swap"; under podman-compose it does
-not — the rendered container gets `MemorySwap = 2 x Memory`, i.e. that much RAM *plus*
+not. The rendered container gets `MemorySwap = 2 x Memory`, i.e. that much RAM *plus*
 that much swap. Nothing depends on the stricter reading today, but do not add something
 that does without checking the container rather than the file:
 
@@ -75,7 +75,7 @@ docker inspect <container> --format '{{.HostConfig.Memory}} {{.HostConfig.Memory
 ```
 
 `deploy.resources.limits`, which six services in this file still use, is ignored
-entirely by the v2 compose spec outside Swarm — those services have no limit at all.
+entirely by the v2 compose spec outside Swarm. Those services have no limit at all.
 
 ### Reading memory on the JVM services
 
@@ -94,7 +94,7 @@ docker exec temporal-cassandra nodetool tpstats   # dropped messages, per stage
 
 A healthy node uses a small fraction of its heap, spends well under 1% of wall time in
 GC, and drops nothing. If a container-side figure is wanted, read `anon` from
-`/sys/fs/cgroup/memory.stat` — the `docker stats` total counts reclaimable page cache as
+`/sys/fs/cgroup/memory.stat`. The `docker stats` total counts reclaimable page cache as
 usage.
 
 ## Endpoints (local defaults)
@@ -116,11 +116,11 @@ defaults. The website stays on `12345`, which is the one port a human types.
 | Manticore SQL | `localhost:21902` | search engine, MySQL protocol |
 | Manticore HTTP | `http://localhost:21903` | search engine, HTTP API |
 | Garage S3 API | `http://localhost:21904` | the blob store |
-| Garage admin API | `http://127.0.0.1:21905` | cluster status over curl; there is no console — see `docker/garage/Readme.md` |
+| Garage admin API | `http://127.0.0.1:21905` | cluster status over curl; there is no console, see `docker/garage/Readme.md` |
 | Redis | `tcp://localhost:21906` | caches and locks; TCP, not HTTP |
 | pdf-to-html | `http://localhost:21920` | the PDF renderer the document viewer calls |
 | tesseract-cpu | `localhost:21921` | the CPU OCR twin; `/health` lists the languages the image can actually serve |
-| ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row (`main_services/ocr_pdf/Readme.md` explains why that absence is load-bearing) |
+| ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row (`main_services/ocr_pdf/Readme.md` explains what that absence prevents) |
 | ner-spacy | `localhost:21923` | the CPU NER twin, only when `[main_services] ner_spacy_enabled = true` (off by default) |
 | regex-entity-scanner | `localhost:21925` | the pattern scanner the P4 stage calls |
 | serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
@@ -134,7 +134,7 @@ this file.
 This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, Garage, Redis, and supporting UIs.
 
 Configuration lives in `hoover4.ini` at the repository root (see `hoover4.ini.example`);
-`deploy.py` renders it into a generated `.env` in this directory — never edit that file
+`deploy.py` renders it into a generated `.env` in this directory, never edit that file
 by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); the base
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
@@ -142,7 +142,7 @@ selected by ini flags.
 [deployment.md](deployment.md) is the runbook for a host reachable from the internet: the
 `website_bind_ip` / `infra_bind_ip` keys and what each protects, a `hoover4.ini` for a host
 with no accelerator, the reset order, the staged ingest and the assertions to run before
-ingesting anything. It uses placeholder addresses throughout — what a particular deployment
+ingesting anything. It uses placeholder addresses throughout. What a particular deployment
 uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
 gitignored.
 
@@ -152,7 +152,7 @@ Every logical shard has a third table, `<collection>_<n>_vectors`: the disposabl
 copy of ClickHouse `text_chunk_vectors` (the durable store). Two operational facts:
 
 - **HNSW is RAM-resident.** 384 floats × 4 bytes ≈ 1.5 KB per chunk plus the graph
-  overhead — call it ~2 KB per chunk. Budget a ceiling of a few million chunks per
+  overhead, call it ~2 KB per chunk. Budget a ceiling of a few million chunks per
   Manticore container: ten million chunks is well over 10 GB of Manticore memory, and
   the OOM killer does not ask which table. When memory gets tight, drop `_vectors`
   tables and rebuild them later from ClickHouse (`main.py reindex-collection
@@ -160,8 +160,8 @@ copy of ClickHouse `text_chunk_vectors` (the durable store). Two operational fac
 - **`knn_dims` is fixed at table creation and cannot be altered.** Tables are created
   from the probed serving dimension (`server_settings.embeddings_serving_dim`), never
   the ini. Changing `embeddings_model` means dropping and rebuilding every `_vectors`
-  shard (same `reindex-collection` path), and the P6 vector indexer refuses loudly —
-  the activity fails and every affected document gets a `processing_errors` row — when
+  shard (same `reindex-collection` path), and the P6 vector indexer refuses loudly
+  (the activity fails and every affected document gets a `processing_errors` row) when
   the rows' dimension does not match a shard's `knn_dims`.
 
 The shard byte budget (`MAX_SHARD_TEXT_BYTES`, 1 GB) counts **text bytes only**. With
@@ -169,12 +169,12 @@ per-variant fan-out a shard's real footprint is several times its budgeted size:
 OCR variant adds its own pages rows (Manticore disk), its own chunk rows (~1× the
 corpus text, ClickHouse) and its own vectors (~2 KB per ~1.2 KB chunk, Manticore RAM).
 Expect roughly 3–5× the ledger's `text_bytes` in total storage for a dataset with one
-native and one OCR variant, more with more variants — do not be surprised by the shard
+native and one OCR variant, more with more variants. Do not be surprised by the shard
 count.
 
 KNN query shape, verified live against Manticore 14.1.0: attribute
 filters in `WHERE` are applied **before** k selection (no over-fetch needed), and
-`knn(embedding, K, (...))` bounds nothing by itself — the working shape is
+`knn(embedding, K, (...))` bounds nothing by itself. The working shape is
 `WHERE knn(embedding, K, (...)) ORDER BY <knn_dist alias> ASC LIMIT K`.
 
 ## Two facts about taking a Manticore table off this container
@@ -189,8 +189,8 @@ Both cost time the first time and neither is discoverable from the error.
 
 - **`DROP TABLE` leaves the table's directory and a stale `.lock` behind.** It
   unregisters the table; it does not clean up after it. The data directory accumulates
-  orphaned directories from every dropped table — the stack tests alone leave dozens of
-  `test_x*` — and, more importantly, `IMPORT TABLE` refuses to import over one. Anything
+  orphaned directories from every dropped table (the stack tests alone leave dozens of
+  `test_x*`), and `IMPORT TABLE` refuses to import over one. Anything
   restoring a table has to remove the leftover directory first, or the restore fails
   naming a path that, as far as `SHOW TABLES` is concerned, belongs to nothing.
 
@@ -198,7 +198,7 @@ Both cost time the first time and neither is discoverable from the error.
 
 The website rate limiter (`website/backend/src/api/rate_limit.rs`) defaults every knob
 in Rust, so the stack runs unconfigured. These are the same names and values, ready to
-paste into `docker/docker-compose.yaml` for the integrator to tune — **the block is not
+paste into `docker/docker-compose.yaml` for the integrator to tune. **The block is not
 in the compose file**, deliberately, so the Rust defaults stay the single source of truth
 until someone needs to override them.
 
@@ -231,7 +231,7 @@ until someone needs to override them.
       HOOVER4_RATE_API_W24H_FACTOR: "0.20"
 ```
 
-`HOOVER4_RATE_CHAT_POLL_*` exists too, and its ladder is **flat** — every window factor
+`HOOVER4_RATE_CHAT_POLL_*` exists too, and its ladder is **flat**, every window factor
 defaults to `1.00` rather than decaying. Polling is machine-paced: a tab watching a
 streaming answer polls at the 500 ms floor for as long as the model generates, so for
 that limiter "sustained" is simply "working". Under the decaying ladder one tab sat
@@ -242,7 +242,7 @@ half of a poll, the held request, has its own separate cap.
 The counters are **in-process** (a `Mutex<HashMap>` in the website, pruned on access),
 correct only while the website is a single container. Redis was considered and rejected
 for now: the container runs with `--maxmemory-policy allkeys-lru`, which would silently
-evict counters under memory pressure — a limiter that quietly stops limiting is worse
+evict counters under memory pressure, a limiter that quietly stops limiting is worse
 than none. Scaling the website out needs a shared store, and that is the point at which
 Redis gets its own database index and eviction policy.
 
@@ -261,7 +261,7 @@ above was measured this way (scripted flood, 1380 calls / 5 min).
 
 `website_release_mode` in `hoover4.ini` picks between the two. It is `false` by default.
 
-| | `false` — `dx serve` | `true` — `compose/website-release.yaml` |
+| | `false`, `dx serve` | `true`, `compose/website-release.yaml` |
 |---|---|---|
 | build | on start, and again on every source change | once, at boot |
 | dev overlay | "Your app is being rebuilt." on every page | none |
@@ -269,8 +269,8 @@ above was measured this way (scripted flood, 1380 calls / 5 min).
 | after a container recreate | every route 500s until the build finishes | same wait, then a clean site |
 | editing code | hot rebuild | needs a restart |
 
-**This is not a preference, it is a demo-versus-development split.** `dx serve` is a
-development server and behaves like one in front of visitors — the toast is baked into
+**This is a demo-versus-development split rather than a preference.** `dx serve` is a
+development server and behaves like one in front of visitors. The toast is baked into
 the served HTML for every fresh profile, not a session-local nag, and the boot rebuild
 was observed 500ing `/admin/ai_status` for about five minutes. A visitor should get the
 release build; whoever is writing the code should not.
@@ -283,7 +283,7 @@ Two related fixes landed with it:
 * **The build-cache volume was mounted one directory too deep**
   (`/app/frontend/target`, while the workspace manifest is at `/app`, so cargo writes to
   `/app/target`). The named volume held nothing and the 3 GB build tree lived in the
-  container's writable layer — which is precisely why recreating the container cost a
+  container's writable layer, which is precisely why recreating the container cost a
   multi-minute cold rebuild. Now mounted at `/app/target`.
 
 ### Known: the first release boot is a cold build

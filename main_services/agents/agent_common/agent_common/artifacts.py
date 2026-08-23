@@ -4,9 +4,9 @@ An artifact is a blob a tool produced that is too big to put in the model's cont
 that the *user* should be able to see: the full before/after ordering of a web search,
 the captured HTML and screenshot of a page the agent visited.
 
-The contract, and every part of it is load-bearing:
+The contract, and every part of it decides where the object lands:
 
-* The model receives **only the `artifact_id`** — a UUID, ~36 characters. It is a lookup
+* The model receives **only the `artifact_id`**, a UUID of about 36 characters. It is a lookup
   key, never a capability: the website resolves it back to `session_id`/`username` and
   enforces owner-or-admin before serving a single byte.
 * Bytes go under `derived/chat-artifacts/…` (see :mod:`.s3_store`), which the ingest
@@ -91,7 +91,7 @@ class ArtifactRequest:
     username: str
     kind: str
     tool_name: str
-    #: `(filename, bytes, content_type)` for the main document — JSON detail or HTML page.
+    #: `(filename, bytes, content_type)` for the main document, JSON detail or HTML page.
     body: tuple[str, bytes, str] | None = None
     #: Same shape, for the WebP thumbnail.
     thumb: tuple[str, bytes, str] | None = None
@@ -104,7 +104,7 @@ class ArtifactRequest:
     #: **No caller sets this any more.** It existed for the implicit-capture path, which
     #: re-captured after every browser action and skipped the second MHTML serialisation
     #: when `(url, document.lastModified)` had not moved. Implicit captures are gone
-    #: so nothing new shares a body key — but the *sweeper* still has to handle
+    #: so nothing new shares a body key, but the *sweeper* still has to handle
     #: rows written while it did, which is why the field and its handling stay rather than
     #: being deleted. Do not reach for it: two artifacts pointing at one object means
     #: deleting either one can strand the other.
@@ -129,8 +129,8 @@ def enabled() -> bool:
 def write(request: ArtifactRequest, artifact_id: str | None = None) -> str | None:
     """Store an artifact and return its id, or `None` if it could not be stored.
 
-    Never raises. See the module docstring: the tool result matters more than its
-    bookkeeping.
+    Never raises. See the module docstring: the tool result is worth more to the caller than
+    its bookkeeping.
     """
     if not enabled():
         return None

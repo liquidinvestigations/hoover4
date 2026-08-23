@@ -15,7 +15,7 @@ use crate::api::error_util::to_server_fn_error;
 ///
 /// `folders_only` is what the tree skins pass and the file-browser content pane does not:
 /// the tree draws only what can be opened, so counting files into its `total` promised
-/// rows it was never going to render. Paging is by `offset` — the caller appends pages
+/// rows it was never going to render. Paging is by `offset`. The caller appends pages
 /// rather than re-asking with a bigger `limit`.
 #[server]
 pub async fn vfs_tree_children(
@@ -51,8 +51,8 @@ pub async fn vfs_tree_path_to(
         .map_err(to_server_fn_error)
 }
 
-/// Names matching a pattern anywhere under a node — through containers, not just in the
-/// current listing.
+/// Names matching a pattern anywhere under a node, through containers and not only in
+/// the current listing.
 #[server]
 pub async fn vfs_search_in_folder(
     collection_dataset: String,

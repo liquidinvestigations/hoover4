@@ -41,7 +41,7 @@ impl EntityType {
     ///
     /// Precedence is by structural strength, not by usefulness: a type whose acceptance depended on
     /// a checksum or a calendar check is far less likely to be the accidental reading of the two,
-    /// so it outranks a type that only had to look right. The bands are shared — types that had the
+    /// so it outranks a type that only had to look right. The bands are shared. Types that had the
     /// same evidence available to them get the same number, and length then position break the tie.
     ///
     /// `date` sitting below every identifier is deliberate: an eight-digit run inside a longer
@@ -112,7 +112,7 @@ pub enum Value {
         tz_known: bool,
     },
     Email {
-        /// Local part unchanged, domain lowercased — the RFC-correct normalisation.
+        /// Local part unchanged, domain lowercased, the RFC-correct normalisation.
         address: String,
         local: String,
         domain: String,
@@ -120,8 +120,8 @@ pub enum Value {
     Phone {
         /// E.164 form, `+` then country calling code then the national number.
         e164: String,
-        /// ISO 3166-1 alpha-2 region the number belongs to, or `001` for the global services —
-        /// freephone, satellite — that the ITU allocates to no country.
+        /// ISO 3166-1 alpha-2 region the number belongs to, or `001` for the global services
+        /// (freephone, satellite) that the ITU allocates to no country.
         country: String,
         /// The national significant number, without the country calling code.
         national: String,
@@ -149,7 +149,7 @@ pub enum Value {
         /// because it is cross-scheme and maps to a FollowTheMoney property of its own.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         country: Option<String>,
-        /// Scheme-specific components sliced out of the identifier — bank code, check digits,
+        /// Scheme-specific components sliced out of the identifier: bank code, check digits,
         /// issuer. A named field per scheme across two dozen schemes would force a model change
         /// for every new one.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -207,7 +207,7 @@ impl Value {
     ///
     /// One string per value, chosen so that two surface forms of the same fact collapse: a phone
     /// number written three ways is one `+44…`, an IBAN with and without spaces is one compact
-    /// form. Money keeps its full precision here — the magnitude bucketing a facet needs is a
+    /// form. Money keeps its full precision here. The magnitude bucketing a facet needs is a
     /// consumer's decision, and a value that arrives already bucketed cannot be un-bucketed.
     pub fn facet_key(&self) -> String {
         match self {

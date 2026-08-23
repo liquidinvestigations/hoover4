@@ -7,7 +7,7 @@ one served (`RemoteResult.provider`). OCR deliberately does not, because the pro
 part of the storage key: a variant is `ocr_easyocr_en` or `ocr_tesseract_eng`, and
 serving an EasyOCR request from Tesseract would file Tesseract's output under EasyOCR's
 name. Worse, Tesseract has already run as its own variant, so the result would be the
-same text stored twice under two labels — the fan-out exists to let variants
+same text stored twice under two labels. The fan-out exists to let variants
 be *compared*, and this would quietly make two of them identical.
 
 So: an engine that is not configured produces no variant at all, and an engine that is
@@ -15,7 +15,7 @@ configured but unreachable raises, is retried by Temporal, and eventually lands 
 `processing_errors` where it is visible and re-runnable. Both are honest; substituting is
 not.
 
-Within one engine, `tasks.remote` still applies in full — connect timeout, circuit
+Within one engine, `tasks.remote` still applies in full, connect timeout, circuit
 breaker, and a second endpoint for that same engine if one is ever configured.
 """
 
@@ -71,7 +71,7 @@ def run_ocr(engine: str, languages: str, image_bytes: bytes,
     """OCR one image with one engine and one language set.
 
     Raises :class:`tasks.remote.RemoteUnavailable` when the engine is configured but no
-    endpoint answered — a retryable condition, deliberately distinct from
+    endpoint answered, a retryable condition, deliberately distinct from
     "engine not configured", which callers check with :func:`engine_configured` first.
     """
     import json

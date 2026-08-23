@@ -89,7 +89,7 @@ def test_table_format_is_the_readers_answer_not_the_detectors():
 
 
 def test_only_delimited_text_has_to_clear_the_shape_threshold():
-    """The whole point of the 2x2 rule: a spreadsheet is a table because it is one."""
+    """What the 2x2 rule is for: a spreadsheet is a table because it is one."""
     assert is_delimited_reader(READER_CSV)
     assert not is_delimited_reader(READER_XLSX_STREAM)
     assert not is_delimited_reader(READER_CALAMINE)

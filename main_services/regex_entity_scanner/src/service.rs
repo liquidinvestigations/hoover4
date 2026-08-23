@@ -40,8 +40,8 @@ pub struct AppState {
 /// Scanning is synchronous and CPU-bound. Without a bound every request that arrives is another
 /// blocking thread, and the process degrades into thrashing while still accepting work; without a
 /// queue bound the backlog grows until callers time out on requests the server is still going to
-/// serve. Refusing with 503 is the honest answer, and it is the contract a client already
-/// understands as retryable — the alternative is a request that succeeds after the caller has
+/// serve. Refusing with 503 states that, and it is the contract a client already
+/// understands as retryable. The alternative is a request that succeeds after the caller has
 /// given up on it.
 pub struct Admission {
     permits: Arc<Semaphore>,
@@ -64,7 +64,7 @@ impl Admission {
     }
 
     /// Takes a slot, or returns `None` when the queue is already full. The guard releases the slot
-    /// on drop, so a handler that returns early — or panics — cannot leak one.
+    /// on drop, so a handler that returns early (or panics) cannot leak one.
     async fn admit(&self) -> Option<AdmissionGuard<'_>> {
         let capacity = self.scan_threads + self.queue_depth;
         let mut occupancy = self.occupancy.load(Ordering::Acquire);
@@ -237,7 +237,7 @@ async fn rules(State(state): State<Arc<AppState>>) -> Json<RulesResponse> {
     })
 }
 
-/// The static documentation for one rule, with no match in hand — the same knowledge the explainer
+/// The static documentation for one rule, with no match in hand, the same knowledge the explainer
 /// builds a card from.
 async fn rule(
     Path(rule_id): Path<String>,
@@ -277,8 +277,8 @@ async fn explain_entity(
 /// client parses one thing.
 ///
 /// The scan itself runs on a blocking thread. Calling it inline would put a synchronous CPU-bound
-/// call on every async worker under load, and `/health` — the thing a runtime uses to decide
-/// whether this process is alive — would be the first casualty.
+/// call on every async worker under load, and `/health` (the thing a runtime uses to decide
+/// whether this process is alive) would be the first casualty.
 async fn scan(
     State(state): State<Arc<AppState>>,
     request: Result<Json<ScanRequest>, JsonRejection>,
@@ -350,8 +350,8 @@ pub struct ScanBatchValue {
     /// The canonical value object, which is what `/explain` is posted back to build a card.
     pub value_json: crate::model::Value,
     /// The surface form of the first occurrence. A normalised value is frequently not a string the
-    /// document contains — `+442075623419` never appears in a document that wrote
-    /// `+44 (0)20 7562 3419` — so a caller offering find-in-page needs the text that is there.
+    /// document contains: `+442075623419` never appears in a document that wrote
+    /// `+44 (0)20 7562 3419`, so a caller offering find-in-page needs the text that is there.
     pub text: String,
 }
 

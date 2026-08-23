@@ -4,7 +4,7 @@ The accelerated tier is a **separate stack**: its own compose project, its own p
 network, and no dependency on the main stack in either direction. Nothing in it calls back
 into the pipeline; the pipeline reaches it over published ports only.
 
-`ai_services/README.md` is the operator's document for that tier — overlays, flags, the GPU
+`ai_services/README.md` is the operator's document for that tier: overlays, flags and the GPU
 preflight. This page is the shape and the reason.
 
 ## Contents
@@ -31,7 +31,7 @@ provider serves the chat, and the CPU twins serve the rest.
 ## The CPU twins live on the main side
 
 `main_services/ocr_tesseract/` and `main_services/ner_spacy/` are the CPU counterparts of the
-accelerated OCR and entity services. **They are on the main side deliberately — that is the
+accelerated OCR and entity services. **They are on the main side deliberately. That is the
 whole point of a twin.** A fallback that lives with the thing it is a fallback for is not a
 fallback.
 
@@ -43,8 +43,8 @@ Two properties make them usable as one:
   to come up is not a fallback either; whatever the network is doing when the accelerated
   tier is unreachable is likely to be doing it to the download too.
 
-Each twin's health endpoint reports what it can actually serve — which languages the OCR
-image carries, which model the entity service loaded — so a caller can tell a service that
+Each twin's health endpoint reports what it can actually serve (which languages the OCR
+image carries, which model the entity service loaded), so a caller can tell a service that
 is up from a service that is up and useless.
 
 ## How a caller falls back without branching
@@ -69,7 +69,7 @@ two hosts share a private network. An exposed local model server is a free accel
 anyone who finds it; an exposed OCR endpoint is a free denial-of-service surface.
 
 The bind address is a configuration key, not a literal. Which address a given deployment uses
-is in `INFRASTRUCTURE_INVENTORY.md` at the repository root — local and gitignored — and never
+is in `INFRASTRUCTURE_INVENTORY.md` at the repository root (local and gitignored), and never
 in this tree.
 
 ## Where the accelerated work actually goes
@@ -78,8 +78,8 @@ Two facts worth having before sizing anything:
 
 **Embedding is the largest single cost.** Chunking and embedding run **per text variant**: a
 file with native text and two OCR variants is three chunk sets and three vector sets. That is
-the accepted cost of complete attribution — a search hit can be traced to the extractor that
-produced the text it matched — and it is why the embedding stage dominates the tier's load.
+the accepted cost of complete attribution (a search hit can be traced to the extractor that
+produced the text it matched), and it is why the embedding stage dominates the tier's load.
 
 **Throughput is bandwidth-bound rather than compute-bound at small batch sizes.** Per-stream
 decode stays flat out to sixteen concurrent streams, so batching several requests together is

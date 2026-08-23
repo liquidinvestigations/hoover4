@@ -21,7 +21,7 @@ ADDRESS_ROLES = ("from", "to", "cc", "bcc")
 def header_pairs(msg) -> list[list[str]]:
     """Every header of a message as ``[name, value]`` pairs, in the order it carried them.
 
-    A LIST, not a dict, and this is the whole point: ``dict(msg.items())`` keeps only the
+    A LIST rather than a dict, and that is what makes this correct. ``dict(msg.items())`` keeps only the
     LAST value of a repeated header, and the header repeated most is ``Received:`` -- five
     to ten lines on a normal message, the delivery path, and the single most useful
     forensic header a mail file has. Collapsing it to one line is not a lossy display, it
@@ -115,7 +115,7 @@ def extract_email_addresses(
 def _message_bytes(file_path: str) -> bytes:
     """The RFC 822 message, with anything wrapped around it removed.
 
-    Two wrappers reach this code. A UTF-8 BOM, and Apple Mail's `.emlx` byte-count line —
+    Two wrappers reach this code. A UTF-8 BOM, and Apple Mail's `.emlx` byte-count line,
     a decimal number on its own first line, which `email`'s parser has never heard of and
     reads as the start of a body, losing every header in the file.
     """

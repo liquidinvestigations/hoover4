@@ -20,7 +20,7 @@ import tasks
 # Empty, because OCR runs behind HTTP and no module here loads a model at import. The
 # set stays because the hazard it documents is structural: a module that builds something
 # like an `easyocr.Reader` at import downloads its weights the first time any worker
-# process touches it, which breaks this walk and, more importantly, does that work inside
+# process touches it, which breaks this walk and does that work inside
 # an activity's first call.
 _SKIP_MODULES: set[str] = set()
 

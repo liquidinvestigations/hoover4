@@ -1,4 +1,4 @@
-# `agent_common` — shared code for the MCP servers
+# `agent_common`: shared code for the MCP servers
 
 Three things live here because more than one server needs them and a second copy would
 drift.
@@ -34,9 +34,9 @@ anything:
 
 ## The artifact contract
 
-Every part of this is load-bearing:
+Every part of this decides whether the write lands in the right place:
 
-* The model receives **only the `artifact_id`** — a UUID, ~36 characters. It is a lookup
+* The model receives **only the `artifact_id`**, a UUID of about 36 characters. It is a lookup
   key, never a capability: the website resolves it back to `session_id`/`username` and
   enforces owner-or-admin before serving a single byte.
 * Bytes go under `derived/chat-artifacts/<session>/<id>/`, the one prefix `P0_scan_disk`
@@ -51,14 +51,14 @@ Every part of this is load-bearing:
 
 Path components are sanitised in `s3_store._safe`: the session id arrives in an HTTP
 header, and a header carrying `../../blobs` would otherwise write outside the prefix that
-is the whole point of this module.
+this module exists to enforce.
 
 ## The rerank client
 
 Two rules that read identically to their wrong versions:
 
 * **A rerank timeout is an error, not a silent skip.** 25 s hard cap. If reranking is slow,
-  the answer is a smaller cross-encoder — not a degradation the transcript cannot show. The
+  the answer is a smaller cross-encoder, not a degradation the transcript cannot show. The
   *caller* decides what to do with the error; what it must not do is pretend the reranked
   order is the RRF order.
 * **The breaker counts connect failures only.** A model returning 500 is a different problem
@@ -69,7 +69,7 @@ Two rules that read identically to their wrong versions:
 Latency is logged on every call, successful or not. `breaker_state()` is exposed on the
 consuming servers' `/health` so an open circuit is visible without reading logs.
 
-## `telemetry` — one `ai_service_telemetry` row per outbound call
+## `telemetry`: one `ai_service_telemetry` row per outbound call
 
 `/admin/ai_status` builds its use% strip and traffic table from that table alone, and until
 this sweep only the LLM path wrote to it: embeddings, rerank, NER, OCR and the browser all
@@ -79,17 +79,17 @@ rendered as "no traffic", which reads as *idle* and is indistinguishable from *b
 `requests` inside async servers and `asyncio.to_thread` is not available at the call site.
 A dropped row at shutdown is the right trade for never delaying an answer.
 
-**Every outcome is recorded, not only the successes** — a capability that writes rows only
+**Every outcome is recorded, not only the successes**, a capability that writes rows only
 when it works shows as idle exactly while it is failing.
 
 The worker keeps its own copy at `main_services/processing/tasks/ai_telemetry.py`: different
 image, and it already holds a ClickHouse client. Same table, same column meanings; the two
 are duplicated on purpose and must agree. Their one deliberate difference is the default
-`username` — `guest` for a request with no user, `pipeline` for work that is on nobody's
+`username`: `guest` for a request with no user, `pipeline` for work that is on nobody's
 behalf.
 
 ## Tests
 
 The behaviour lives in the consumers' suites, where it can be exercised against real call
-sites — `metasearch_server/tests/test_pipeline.py` covers the rerank fallback and the
+sites: `metasearch_server/tests/test_pipeline.py` covers the rerank fallback and the
 payload/artifact split. There is no separate suite here.

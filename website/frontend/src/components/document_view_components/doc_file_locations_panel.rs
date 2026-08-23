@@ -76,7 +76,7 @@ const ICON_BUTTON_STYLE: &str = "
 /// The path a reader would write down, built from the resolved chain when there is one.
 ///
 /// The chain is the only thing that knows an archive was crossed, so a file inside a zip
-/// reads `/folder/archive.zip/inner/file.txt` — one path, containers included — instead of
+/// reads `/folder/archive.zip/inner/file.txt` (one path, containers included), instead of
 /// the bare in-container path, which on its own says nothing about where the archive is.
 fn display_path(location: &VfsFileLocation) -> String {
     if location.chain.len() > 1 {
@@ -185,7 +185,7 @@ fn LocationRow(location: VfsFileLocation, document_identifier: DocumentIdentifie
                 let promise = window.navigator().clipboard().write_text(&text);
                 // The promise is AWAITED, not dropped: `writeText` rejects when the
                 // document is not focused, and a dropped rejected promise is an
-                // "Uncaught (in promise) NotAllowedError" in the console — a real error
+                // "Uncaught (in promise) NotAllowedError" in the console, a real error
                 // in the release build, from a button that otherwise worked.
                 wasm_bindgen_futures::spawn_local(async move {
                     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;

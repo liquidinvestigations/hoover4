@@ -1,7 +1,7 @@
 //! National identity numbers, detection only.
 //!
 //! The fixtures are the documented examples from `stdnum/it/codicefiscale.py`, `stdnum/es/dni.py`,
-//! `stdnum/es/nie.py`, `stdnum/mx/curp.py` and `stdnum/in_/pan.py` — each module's valid number
+//! `stdnum/es/nie.py`, `stdnum/mx/curp.py` and `stdnum/in_/pan.py`, each module's valid number
 //! and the counterpart that differs only in its check character. The subset covers what each
 //! scheme claims: the codice fiscale's two-table check character, the Spanish modulo-23 letter in
 //! both its resident and its foreign-national spelling, the CURP's weighted check digit and state
@@ -87,7 +87,7 @@ fn rejects_curps_with_a_bad_check_digit_or_an_unknown_state() {
 }
 
 /// The check character's algorithm has never been published, so structure plus a word nearby is
-/// the whole precision story — and the flag and the confidence say exactly that.
+/// the whole precision story, and the flag and the confidence say exactly that.
 #[test]
 fn a_pan_needs_a_word_beside_it_and_reports_no_checksum() {
     let scanner = support::scanner();
@@ -187,7 +187,7 @@ fn a_personnummer_keeps_the_separator_that_says_which_century() {
 
 #[test]
 fn rejects_personnummer_shaped_runs_that_do_not_check_out() {
-    // The checksum disagrees — `stdnum/se/personnummer.py` and Presidio's invalid fixtures.
+    // The checksum disagrees: `stdnum/se/personnummer.py` and Presidio's invalid fixtures.
     rejects("personnummer 880320-0018 in the register");
     rejects("personnummer 19000309-3393 in the register");
     // Month 13 and day 44 are days nobody was born on.

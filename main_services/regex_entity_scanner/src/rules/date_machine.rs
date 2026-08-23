@@ -232,7 +232,7 @@ impl Rule for IsoWeekRule {
             return None;
         }
         // ISO numbers weekdays 1..=7 from Monday, and week 53 exists only in the years that have
-        // one — which is the arithmetic that makes this a real check rather than a range test.
+        // one, which is the arithmetic that makes this a real check rather than a range test.
         let weekday = Weekday::from_monday_one_offset(weekday).ok()?;
         let week_date = jiff::civil::ISOWeekDate::new(year, week, weekday).ok()?;
         let date = week_date.date();

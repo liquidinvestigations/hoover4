@@ -3,7 +3,7 @@
 //! `whoami` is the only endpoint the backend lets an unidentified caller reach, and the
 //! only one that writes a `set-cookie`. Every other server function and every custom byte
 //! route answers `401` without a session. So the app must establish one *before* it
-//! renders anything that calls the API — which is what this wrapper is: it sits between
+//! renders anything that calls the API, which is what this wrapper is: it sits between
 //! the router and the rest of the tree, and children do not exist until the resource
 //! resolves.
 //!
@@ -12,7 +12,7 @@
 //! paint, on every visit.
 //!
 //! **The refusal is a page, not an error.** With `HOOVER4_DEMO_MODE` off the backend
-//! provisions nobody, so an unauthenticated visitor gets `Err` from `whoami` — the
+//! provisions nobody, so an unauthenticated visitor gets `Err` from `whoami`. The
 //! intended outcome of an access-controlled deployment, and it has to read as one. It is
 //! rendered as prose, not raised into the error boundary, because a boundary presents the
 //! site as broken and offers a retry that cannot work.
@@ -27,7 +27,7 @@ use crate::components::suspend_boundary::LoadingIndicator;
 /// The one `whoami` the app runs, shared with everything under the gate.
 ///
 /// Handed down as a context rather than fetched again wherever the identity is needed.
-/// `whoami` is the mint route — the only endpoint that writes a session — so a component
+/// `whoami` is the mint route (the only endpoint that writes a session), so a component
 /// that calls it for itself puts another request on the one endpoint the whole app is
 /// gated behind, once per page load, and the count becomes "how many identity-aware
 /// components does this route mount" rather than one.
@@ -38,7 +38,7 @@ pub struct SessionResource(pub Resource<Result<CurrentUser, ServerFnError>>);
 ///
 /// `None` means "not known yet", never "guest": a component that defaults an unknown
 /// identity to a concrete answer draws the wrong control on first paint and then takes it
-/// away, which reads as a bug. There is no error case here — a refused sign-in never
+/// away, which reads as a bug. There is no error case here. A refused sign-in never
 /// renders children at all.
 pub fn use_session_user() -> Option<CurrentUser> {
     let session = try_consume_context::<SessionResource>()?;

@@ -29,7 +29,7 @@ MIN_EMAIL_RECALL = 0.999
 
 #: The mixed corpus holds PDFs, zips, images, office documents, HTML, GPG keys and shell
 #: scripts alongside its mail fixtures. Exactly 22 of its 991 files are email, and the
-#: sniff must find those 22 and nothing else — an exact set, not a count, so a swap of
+#: sniff must find those 22 and nothing else. An exact set, not a count, so a swap of
 #: one false positive for one false negative cannot pass.
 EXPECTED_MIXED_HITS = {
     "eml-1-promotional/Introducing Mapbox Android Services - Mapbox Team <newsletter@mapbox.com> - 2016-04-20 1603.eml",

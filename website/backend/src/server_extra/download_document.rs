@@ -108,7 +108,7 @@ pub async fn download_document(
             // A hash that is in no `vfs_files` row is a question with a complete answer,
             // not a failure: a stale bookmark, a purged dataset or a crawler guessing
             // hashes all land here. Answering 500 makes the site look like it is throwing
-            // and — because `is_error` is derived from the status — counts every one of
+            // and (because `is_error` is derived from the status) counts every one of
             // them as breakage on the admin metrics page.
             if guard::is_not_found(&e) {
                 return (StatusCode::NOT_FOUND, Body::from(e.to_string())).into_response();

@@ -1,8 +1,8 @@
 //! Cryptocurrency addresses: Bitcoin and Ethereum.
 //!
 //! Both formats are checksummed, and the two rules differ in how much of that checksum a document
-//! actually gives you. A Bitcoin address always carries one — base58check's truncated double
-//! SHA-256 for the legacy forms, bech32's own for native segwit — so acceptance is arithmetic. An
+//! actually gives you. A Bitcoin address always carries one, from Base58check's truncated double
+//! SHA-256 for the legacy forms and bech32's own for native segwit, so acceptance is arithmetic. An
 //! Ethereum address carries one only when it is written in mixed case: EIP-55 hides the check in
 //! the capitalisation, so an address typed entirely in lower case is structurally valid and
 //! **unverifiable**, and saying so is the difference between a confidence that means something and
@@ -63,7 +63,7 @@ impl Rule for EthereumRule {
             }
             (0.99, Vec::new(), text.to_string())
         } else {
-            // Nothing was verified, so nothing is claimed beyond the shape — and the address is
+            // Nothing was verified, so nothing is claimed beyond the shape, and the address is
             // reported in the lower-case form, which is the one spelling that carries no claim.
             (
                 0.85,

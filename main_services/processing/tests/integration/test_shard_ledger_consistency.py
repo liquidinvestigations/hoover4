@@ -4,8 +4,8 @@ Two phases on one ingested temp collection:
 
 1. the ledger, the assignments and the actual Manticore shard tables agree with
    each other (sum of per-shard docs == assigned docs == indexed docs);
-2. re-planning with a tiny ``MAX_SHARD_TEXT_BYTES`` (monkeypatched in-process —
-   the planner is invoked directly, not via the worker) splits the documents over
+2. re-planning with a tiny ``MAX_SHARD_TEXT_BYTES`` (monkeypatched in-process.
+   The planner is invoked directly, not via the worker) splits the documents over
    >=2 shards, never exceeds the budget except for single-document shards, and
    keeps every ``file_hash`` in exactly one shard.
 
@@ -86,7 +86,7 @@ def test_shard_ledger_consistency(temp_collection, tiny_dataset, monkeypatch):
     assert sum(manticore_counts.values()) == len(pairs)
 
     # Step 2: re-plan with a tiny budget, in-process (monkeypatch only affects
-    # this process — that is exactly why the planner is called directly here).
+    # this process. That is exactly why the planner is called directly here).
     small_budget = 200
     monkeypatch.setattr(shard_planner, "MAX_SHARD_TEXT_BYTES", small_budget)
     with get_collection_client(collectionname) as client:

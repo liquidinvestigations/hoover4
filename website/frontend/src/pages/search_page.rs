@@ -95,7 +95,7 @@ fn SearchPageRootComponent(
             div {
                 id: "x-search-input-top-bar",
                 // `min-height`, never `height`. The bar holds the control row and, once a
-                // filter is active, a chip row under it — about 82px of content in a 76px
+                // filter is active, a chip row under it, about 82px of content in a 76px
                 // box. A fixed height plus `align-items: center` does not clip the
                 // overflow at the bottom; it splits it, so the search box and the
                 // Filter/Sort buttons were pushed to a negative `y` and lost their tops.

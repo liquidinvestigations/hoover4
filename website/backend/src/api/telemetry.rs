@@ -3,12 +3,12 @@
 //! Two ClickHouse tables, both in the global database, both self-deleting after
 //! 24 h (migrations `00014` / `00015`):
 //!
-//! * `usage_events` — who did roughly what, when. **PRIVACY RULE, do not
+//! * `usage_events`, who did roughly what, when. **PRIVACY RULE, do not
 //!   "improve" away:** record only the username, the broad route *class*
 //!   ([`EVENT_*`] constants), and the timestamp. Never a URL, never a query
-//!   string, never a document hash, never a result count — a metrics table
+//!   string, never a document hash, never a result count. A metrics table
 //!   that accumulates search queries is a surveillance log.
-//! * `api_events` — per-call timings and sizes: the Rust handler /
+//! * `api_events`, per-call timings and sizes: the Rust handler /
 //!   server-function name (a bounded, low-cardinality set, never derived from
 //!   the request path), error flag, duration, bytes in/out. Still no URLs and
 //!   no query text.
@@ -33,8 +33,8 @@ pub const EVENT_LLM_MCP_TOOL_CALL: &str = "llm_mcp_tool_call";
 
 /// Insert batch size; the buffer flushes early once it holds this many events.
 const BATCH_SIZE: usize = 64;
-/// Buffer cap. Beyond it events are dropped (and counted in the debug log) —
-/// telemetry must never apply backpressure to the site.
+/// Buffer cap. Beyond it events are dropped (and counted in the debug log).
+/// Telemetry must never apply backpressure to the site.
 const MAX_BUFFERED: usize = 4096;
 /// Longest an event may sit in the buffer before a flush is triggered by the
 /// next recorded event.
@@ -101,7 +101,7 @@ pub fn record_event(username: &str, event_type: &str, metadata: &str) {
 }
 
 /// Record an API call event (`api_events`). `function_name` is the Rust handler
-/// or server-function name from a fixed allowlist — never the request path.
+/// or server-function name from a fixed allowlist, never the request path.
 #[allow(clippy::too_many_arguments)]
 pub fn record_api_event(
     username: &str,
@@ -159,7 +159,7 @@ fn push(add: impl FnOnce(&mut EventBuffer)) {
 }
 
 /// Move the buffered rows out and batch-insert them. Any failure is logged at
-/// debug and the rows are dropped — telemetry loss is acceptable, request
+/// debug and the rows are dropped. Telemetry loss is acceptable, request
 /// failure is not.
 async fn flush() {
     let (usage, api, dropped) = {
@@ -237,11 +237,11 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
 
 /// Every other server-function name we know. Anything under `/api/` that is not
 /// in this list or the two classes above still records an `api_events` row,
-/// bucketed under the constant `other_server_fn` — never under its path.
-/// The list is the whole classification: a server function missing from it is not a
-/// missing row, it is a row bucketed under `other_server_fn`, which is invisible unless
+/// bucketed under the constant `other_server_fn`, never under its path.
+/// The list is the whole classification. A server function missing from it produces a row
+/// bucketed under `other_server_fn` rather than a missing row, which is invisible unless
 /// somebody counts. Every `#[server]` function in the frontend belongs in exactly one of
-/// these three lists — the two above only if its own handler records the event.
+/// these three lists. The two above only if its own handler records the event.
 const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_add_member",
     "admin_cancel_operation",
@@ -329,7 +329,7 @@ pub enum RouteClass {
 /// Match a `/api/` path segment against an allowlist of server-function names.
 ///
 /// Dioxus server functions mount at `/api/<name><hash>`, where the hash is a
-/// decimal content hash appended to the function name — so a match is exact
+/// decimal content hash appended to the function name, so a match is exact
 /// equality or `name` followed by digits only. The returned name is always the
 /// allowlist constant, never a slice of the URL.
 fn match_function<'a>(segment: &str, allowlist: &[&'a str]) -> Option<&'a str> {
@@ -349,7 +349,7 @@ fn match_function<'a>(segment: &str, allowlist: &[&'a str]) -> Option<&'a str> {
 /// server-function name.
 ///
 /// The function name comes from matching the path's single server-function
-/// segment against the fixed allowlists above — a bounded, low-cardinality set.
+/// segment against the fixed allowlists above, which is a bounded, low-cardinality set.
 /// It is never a free-form slice of the URL: an unmatched path yields the
 /// constant `other_server_fn`, so this cannot become a URL log by another
 /// route.

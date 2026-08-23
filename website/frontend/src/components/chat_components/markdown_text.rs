@@ -1,6 +1,6 @@
 //! Markdown rendering for assistant turns.
 //!
-//! The model writes markdown — headings, bold, tables, fenced code, links — and showing
+//! The model writes markdown (headings, bold, tables, fenced code, links), and showing
 //! that as plain text is why answers looked like source. This parses it to a block tree
 //! and renders Dioxus nodes.
 //!
@@ -137,7 +137,7 @@ fn BlockView(block: Block) -> Element {
 
 /// `(font-size px, weight, margin-top px)` for a heading level.
 ///
-/// Levels 4-6 all land on body size and are distinguished by weight alone — the model
+/// Levels 4-6 all land on body size and are distinguished by weight alone, the model
 /// reaches for `####` freely and three more distinct sizes would be noise.
 fn heading_style(level: u8) -> (f32, u16, f32) {
     match level {
@@ -215,7 +215,7 @@ pub enum Span {
     ///
     /// Rendered as a chip that scrolls to the document's card in the Sources strip and
     /// highlights it. Recognised before the link syntax so `[D3](http://…)` is still a
-    /// link — a handle is `[D` followed by digits and a `]` and nothing else.
+    /// link. A handle is `[D` followed by digits and a `]` and nothing else.
     Handle(String),
 }
 
@@ -259,7 +259,7 @@ pub fn parse_blocks(text: &str) -> Vec<Block> {
         let trimmed = raw.trim();
 
         // Fenced code. An unterminated fence runs to the end of the message rather than
-        // being abandoned — a truncated answer should still show its code.
+        // being abandoned. A truncated answer should still show its code.
         if let Some(language) = fence_language(trimmed) {
             flush!();
             let mut body: Vec<&str> = Vec::new();

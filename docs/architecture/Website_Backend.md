@@ -20,7 +20,7 @@ The search fan-out and everything downstream of it is
 
 ## Sessions: one route mints, every other endpoint requires
 
-`/api/whoami` is the only route that creates a session — a `web_sessions` row, a `guest-*`
+`/api/whoami` is the only route that creates a session: a `web_sessions` row, a `guest-*`
 user, a `user_login` event and the `hoover4_session` cookie. Every other server function
 and every custom route (`/_download_document/…`, `/_download_ocr_pdf/…`,
 `/_chat_artifact/…`) answers **401** when nothing resolved an identity. The policy is one
@@ -28,7 +28,7 @@ file, `website/backend/src/auth/route_policy.rs`, and its tests enumerate the cu
 literally so a route added to `main.rs` and forgotten there fails a test rather than
 shipping open.
 
-The app shell — page routes, `/assets/…`, the wasm bundle — stays open, because the browser
+The app shell (page routes, `/assets/…`, the wasm bundle) stays open, because the browser
 has to load the code that signs in. It carries no collection data; everything it renders
 arrives through a checked route.
 
@@ -37,24 +37,25 @@ renders until `whoami` resolves. Rendering pages first and letting each page's r
 race the sign-in would hand every one of them a 401 to display on first paint.
 
 **And it calls it once.** The gate publishes what it resolved as a context; anything under
-it that needs the identity — the admin shell, the admin guard, both chat pages — reads it
+it that needs the identity (the admin shell, the admin guard, both chat pages) reads it
 with `use_session_user()` instead of running its own `use_resource(whoami)`. A component
 that fetches for itself puts another request on the single endpoint that *writes* sessions,
-once per page load — the count becomes "how many identity-aware components does this route
+once per page load. The count becomes "how many identity-aware components does this route
 mount" rather than one.
 `use_session_user()` answers `None` while the gate's call is in flight, which means "not
-known yet" and never "guest" — a component that defaults an unknown identity to a concrete
+known yet" and never "guest", a component that defaults an unknown identity to a concrete
 answer draws the wrong control on first paint and then takes it away.
 
 **Why it matters that only one route mints.** A response that attaches a fresh
-`set-cookie` on any route lets every client that stores no cookies — a crawler, a `curl`
-loop, a link checker — create a `guest-<hex>` user and a `user_login` row *per request*,
+`set-cookie` on any route lets every client that stores no cookies (a crawler, a `curl`
+loop, a link checker) create a `guest-<hex>` user and a `user_login` row *per request*,
 so the user list and the metrics page grow without bound and stop being readable. A guest name is derived
 from the session id rather than randomised, so a browser holding a cookie whose session row
 has expired re-anchors to the identity it already had instead of becoming a second user.
 
 **`HOOVER4_DEMO_MODE` decides whether anonymous visitors exist at all.** With it on, the
-mint route provisions a guest and treats them as an administrator — the public demo. With
+mint route provisions a guest and treats them as an administrator, which is what the
+public demo runs. With
 it off, nothing is provisioned: `whoami` refuses, the session gate renders *Sign-in
 required*, and the only way in is a reverse proxy setting `X-Forwarded-User`. A
 proxy-authenticated identity is honoured on every route, because the proxy is what
@@ -62,9 +63,9 @@ authenticated it; what is confined to the mint route is writing a session for it
 
 That elevation is applied to the request and never written to the account, so a guest's
 `users` row keeps `is_admin = false` while `whoami` reports true for the same session.
-The disagreement is the design — the grant belongs to the deployment and lasts exactly as
+The disagreement is the design (the grant belongs to the deployment and lasts exactly as
 long as the switch does, where a persisted flag would leave real administrators behind the
-day it is turned off — and `/admin/users` states it on the page, because that is the one
+day it is turned off), and `/admin/users` states it on the page, because that is the one
 screen where the stored flag and the live grant sit side by side.
 
 A non-browser client must therefore hold a cookie jar and call `whoami` first. That is what
@@ -87,7 +88,7 @@ errors, term dictionaries). The backend picks the database per query in
   `permissions::assert_can_read`, so an unauthorised dataset never reaches a database
   name.
 
-A dataset's collection is **fixed when the dataset is created** and cannot be changed —
+A dataset's collection is **fixed when the dataset is created** and cannot be changed,
 there is no assign/unassign/move in the admin UI; creating a collection provisions its
 database, deleting one (only allowed when it has no datasets) drops it.
 
@@ -101,13 +102,13 @@ QuotedData` gets both wrong for this database and **must never be used to build 
 `MATCH()` argument**:
 
 - It escapes `'` by SQL-standard **doubling**. Manticore's parser wants a backslash and
-  rejects the doubled form outright — `MATCH('it''s')` is `P01: syntax error`, while
+  rejects the doubled form outright: `MATCH('it''s')` is `P01: syntax error`, while
   `MATCH('it\'s')` returns hits. `escape_manticore_string` does the backslash pass first
   and the quote pass second; the other order double-escapes the backslashes the quote
   pass introduces.
 - It does nothing about the text *inside* the literal, which is a query expression.
   A dangling `"`, an unbalanced `(`, a bare `/` or `~`, and a query made only of
-  negations are each a parser error rather than an empty result — `3/4` and `say"hi` are
+  negations are each a parser error rather than an empty result: `3/4` and `say"hi` are
   ordinary things to type into a search box. `prepare_match_query` repairs the first
   three, passes the real operators (`"exact phrase"`, `-exclude`, `term*`, `a | b`,
   `NEAR/3`) through untouched, and returns a typed error for the two shapes with no
@@ -122,15 +123,15 @@ doubled form, so it passed while every search containing an apostrophe failed. T
 this helper assert against the character set measured to break a live Manticore, and a
 change here is not verified until the query has run against a real one.
 
-Non-`MATCH()` uses of `QuotedData` — attribute comparisons against hashes, dataset ids
-and facet values — carry the same wrong quoting rule and are not yet converted.
+Non-`MATCH()` uses of `QuotedData` (attribute comparisons against hashes, dataset ids
+and facet values) carry the same wrong quoting rule and are not yet converted.
 
 ## Showing a failed server call
 
 `ServerFnError` never reaches the DOM. `api::error_util::user_facing_message` extracts the
-`message` the backend wrote for a person — both derived renderings are unusable, `Debug`
+`message` the backend wrote for a person, both derived renderings are unusable, `Debug`
 prints the struct and `Display` wraps the message in *error running server function: …
-(details: …)* — and the `ServerErrorDisplay` component is the one place that renders it.
+(details: …)*, and the `ServerErrorDisplay` component is the one place that renders it.
 Formatting the error at the call site instead is how a Rust struct ends up printed across
 a search page's pagination.
 
@@ -151,20 +152,20 @@ PDF. The sidecar is `backend/pdf-viewer/_server/server-search.js`, a node proces
 server starts and supervises (`server_extra::run_pdf_search_server`) rather than a service
 of its own, which is why `PDF_SEARCH_ENDPOINT` is loopback.
 
-**The sidecar is handed the PDF's bytes** — `POST` the document as the body, keywords as a
-`?keywords=<json array>` parameter — and never a URL. It cannot reach back into anything.
+**The sidecar is handed the PDF's bytes**: `POST` the document as the body, keywords as a
+`?keywords=<json array>` parameter, and never a URL. It cannot reach back into anything.
 A sidecar told to fetch `http://127.0.0.1:<PORT>/_download_document/…` is this server
 asking itself for a document it already knows how to read, over a request that carries no
 session cookie; requiring a session on the download route kills it silently. The bytes are
 read straight out of the blob store instead
 (`api::documents::download_document::read_blob_bytes`), which also bounds the document by
-its registered size before a byte is fetched — the whole PDF is buffered here, on the wire
+its registered size before a byte is fetched. The whole PDF is buffered here, on the wire
 and inside pdfium's wasm heap. Over that ceiling, the document still opens, downloads and
 searches by text; only the in-page highlight overlay is unavailable.
 
 That blob read runs on the server's multi-threaded runtime through
 `startup::on_multi_thread_runtime`. The S3 SDK blocks internally while collecting the body,
-and Dioxus server functions do not run on the runtime the axum routes do — a bare
+and Dioxus server functions do not run on the runtime the axum routes do. A bare
 `tokio::spawn` inherits the same context rather than escaping it.
 
 Its directory is found by walking **up** from the working directory, never joined to it:
@@ -173,8 +174,8 @@ resolves inside the build output, the spawn fails with `No such file or director
 in-PDF search is dead for the whole deployment while every other route looks healthy.
 `PDF_SEARCH_SERVER_DIR` overrides the search outright.
 
-The pid file at `/tmp/pdf-search-server.pid` outlives the process it names — it is on the
-container's filesystem and a restart does not clear it — and pids are handed out from a
+The pid file at `/tmp/pdf-search-server.pid` outlives the process it names. It is on the
+container's filesystem and a restart does not clear it, and pids are handed out from a
 small range at boot. So "a process exists at this number" is never evidence that it is the
 sidecar, and the supervisor reads `/proc/<pid>/cmdline` before signalling anything. Killing
 on liveness alone SIGKILLs a stranger: it has killed *this server's own binary* seconds
@@ -189,7 +190,7 @@ separate container that takes a POST of raw PDF bytes and returns HTML; it answe
 The viewer's own bundle is vendored under `frontend/assets/embed-pdf/_viewer/` and is
 pulled into the build by a `#[used] static … asset!(…folder…)` in
 `website/frontend/src/components/pdf_viewer/mod.rs`. Nothing reads that binding, and the `<script>` tag loads
-the entry point by literal URL — so the `with_hash_suffix(false)` option and the
+the entry point by literal URL, so the `with_hash_suffix(false)` option and the
 `/assets/_viewer/…` path in the tag have to be changed together, and dropping the
 declaration silently ships a site with no PDF viewer.
 
@@ -220,29 +221,29 @@ Three more rules those functions share:
   `MAX_TABLE_VISIBLE_COLUMNS` 60) and the clamp is **reported back** in `TablePage.clamps`.
   A grid that quietly returns 200 of the 5 000 rows it was asked for looks exactly like a
   grid whose document ends at row 200.
-* every column id — visible, sorted, filtered — is validated against the sheet's own
+* every column id (visible, sorted, filtered) is validated against the sheet's own
   columns before it reaches SQL.
 * every reader-supplied string is a bound parameter. This is ClickHouse, not Manticore:
   `website/backend/src/db_utils/manticore_match.rs`'s escaping exists because Manticore has nothing to bind,
   and copying it here would be a second, worse escaping layer.
 
-Sorting is two phases. Phase 1 orders one contiguous primary-key range — the sort column
-of one sheet — and returns `row_id`s; phase 2 fetches those rows' cells by `row_id IN (…)`
+Sorting is two phases. Phase 1 orders one contiguous primary-key range (the sort column
+of one sheet) and returns `row_id`s; phase 2 fetches those rows' cells by `row_id IN (…)`
 and re-orders them into phase 1's order in Rust, so the two phases cannot disagree about
 the comparator. Rows with **no cell in the sort column** are not in phase 1's range at all
 and are appended after the sorted rows in `row_id` order, in both directions.
 
 **The header row is not a data row.** The reader writes the first row that produces cells
 into `table_columns.header`, records its `row_id` as `table_sheets.header_row`, and leaves
-it out of every column statistic — but it is also stored as ordinary cells. So every read
+it out of every column statistic, but it is also stored as ordinary cells. So every read
 here starts *after* `header_row`, and every row count a reader sees subtracts it: otherwise
 the grid draws that row twice, once as its column labels and once as row 1, and disagrees
 with the statistics the filter popovers and column type marks come from. `header_row = 0`
 is a sheet with no header row and nothing is skipped. For a genuinely headerless file the
-first data row becomes the column labels — its values are still on screen, and it is what
+first data row becomes the column labels. Its values are still on screen, and it is what
 a spreadsheet application shows too.
 
-The grid draws `source_row`, the row number the file itself gives, in its `#` column —
+The grid draws `source_row`, the row number the file itself gives, in its `#` column,
 not the dense `row_id`, which is pagination arithmetic and would be off by every empty row
 above. Sheet ordinals are the workbook's own and are not contiguous, so the sheet picker is
 built from the stored sheet rows and never from a range.
@@ -259,6 +260,6 @@ on every click.
 `website/frontend/src/components/file_type_icon.rs` maps that one enum to one icon. Five sites draw it: the
 search result card, the storage browser's file rows, the viewer's title bar, an email's
 attachment cards and the preview source selector. `SearchResultDocumentItem.file_type` and
-`VfsFileEntry.file_type` are filled from `file_type_canonical` — one ClickHouse read per
-dataset on the page — rather than decoded from Manticore's `file_types` term ids, because
+`VfsFileEntry.file_type` are filled from `file_type_canonical` (one ClickHouse read per
+dataset on the page) rather than decoded from Manticore's `file_types` term ids, because
 the viewer draws its glyph from that same table and a symbol must not disagree with itself.

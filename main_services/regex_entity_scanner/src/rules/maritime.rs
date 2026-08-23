@@ -4,7 +4,7 @@
 //! four-letter owner code whose last letter is drawn from a four-character alphabet, which makes it
 //! self-identifying, and it is checksummed. An IMO number is a bare seven-digit run with a check
 //! digit, so the literal `IMO` marker or a word beside it is what makes acceptance defensible. An
-//! MMSI has **no check digit at all** — a valid Maritime Identification Digit triple plus a cue
+//! MMSI has **no check digit at all**, a valid Maritime Identification Digit triple plus a cue
 //! word is the whole precision story, and the flag state falls out of the same lookup.
 
 use std::collections::BTreeMap;
@@ -40,7 +40,7 @@ fn is_standalone(candidate: &Candidate<'_>) -> bool {
 pub struct ImoRule;
 
 /// The literal marker is optional in the pattern and mandatory in the validator unless a cue word
-/// stands in for it — the separator is only allowed when the marker is present, so a bare digit run
+/// stands in for it. The separator is only allowed when the marker is present, so a bare digit run
 /// can never acquire a leading space.
 const IMO_PATTERN: &str = r"(?:IMO[ :]{0,3})?\d{7}";
 

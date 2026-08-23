@@ -62,6 +62,11 @@ if [ -f "$h/deny-unscoped-search.py" ]; then
     [[ "$b2" == DENY* && "$g2" == allow ]] \
         && ok "commit hook denies the long message and allows the short one" \
         || no "commit hook verdicts wrong: bad=$b2 good=$g2"
+    b3=$(python3 "$h/deny-claudisms.py" --test 'The guard is load-bearing here.')
+    g3=$(python3 "$h/deny-claudisms.py" --test 'The guard stops a second row being written.')
+    [[ "$b3" == DENY* && "$g3" == allow ]] \
+        && ok "register hook denies a banned phrase and allows plain prose" \
+        || no "register hook verdicts wrong: bad=$b3 good=$g3"
 else
     no "hook scripts are missing from .agents/hooks"
 fi
@@ -92,6 +97,16 @@ printf '# probe\n\n## Key\n\n| tag | what | where |\n|---|---|---|\n| X3 | the c
 if ! "$REPO_ROOT/.agents/check-doc-ids.py" "$tagdir/plans/probe/bad.md" >/dev/null 2>&1 \
    && "$REPO_ROOT/.agents/check-doc-ids.py" "$tagdir/plans/probe/good.md" >/dev/null 2>&1; then
     ok "tag checker denies an undeclared tag and allows one with a Key entry"
+    prose="$tagdir/probe.md"
+    printf 'The guard is load-bearing here.\n' > "$prose"
+    if ! "$REPO_ROOT/.agents/check-prose-style.py" "$prose" >/dev/null 2>&1; then
+        printf 'The guard stops a second row being written.\n' > "$prose"
+        "$REPO_ROOT/.agents/check-prose-style.py" "$prose" >/dev/null 2>&1 \
+            && ok "prose checker denies a banned phrase and allows plain prose" \
+            || no "prose checker rejects a clean sentence"
+    else
+        no "prose checker does not report a banned phrase"
+    fi
 else
     no "tag checker does not decide correctly on its own probe documents"
 fi

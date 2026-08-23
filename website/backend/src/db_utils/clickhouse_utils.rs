@@ -3,9 +3,9 @@
 //! Two families of databases exist since the collections split:
 //!
 //! - the global database `Hoover4_Processing` (users, groups, collections, the dataset
-//!   registry, sessions, settings, search cache) — [`get_global_client`];
+//!   registry, sessions, settings, search cache). [`get_global_client`];
 //! - one database per collection, `Hoover4_Collection_<collectionname>` (blobs, VFS,
-//!   parsed content, plans, errors, term dictionaries) — [`get_collection_client`] and
+//!   parsed content, plans, errors, term dictionaries). [`get_collection_client`] and
 //!   [`get_client_for_dataset`].
 //!
 //! Callers that hold a `collection_dataset` must resolve it to a collection first
@@ -76,7 +76,7 @@ pub async fn collectionname_of_dataset(collection_dataset: &str) -> anyhow::Resu
 
 /// Client bound to the collection's own database.
 ///
-/// Panics on an invalid collectionname — callers that cannot panic (request handlers)
+/// Panics on an invalid collectionname. Callers that cannot panic (request handlers)
 /// should go through [`get_client_for_dataset`] or validate with [`collection_db_name`]
 /// first and propagate the error instead.
 pub fn get_collection_client(collectionname: &str) -> clickhouse::Client {
@@ -89,7 +89,7 @@ pub fn get_collection_client(collectionname: &str) -> clickhouse::Client {
 ///
 /// The mapping is immutable once the dataset exists (a dataset's
 /// collection is fixed at creation), so positive entries never expire. Misses and
-/// negative lookups are not cached — a dataset created after this process started must
+/// negative lookups are not cached. A dataset created after this process started must
 /// resolve on the next attempt.
 #[derive(Default)]
 struct CollectionResolver {
@@ -143,7 +143,7 @@ pub async fn resolve_collection(collection_dataset: &str) -> anyhow::Result<Stri
     let Some(collectionname) = rows.into_iter().next() else {
         // Carries the `not found` marker (`auth::guard::NOT_FOUND`) on purpose: a dataset
         // that is not in the registry is a complete answer about something that is not
-        // there — a stale bookmark, a purged dataset, a crawler guessing names — and the
+        // there (a stale bookmark, a purged dataset, a crawler guessing names), and the
         // routes above it turn the marker into a 404. Without it every such request is a
         // 500, which reads as the site falling over and is counted as breakage.
         anyhow::bail!("unknown collection_dataset, not found: {collection_dataset}");
@@ -351,8 +351,8 @@ pub async fn list_permitted_collections(user: &CurrentUser) -> anyhow::Result<Ve
 /// database can't be reached, so callers can fail loudly instead of silently
 /// degrading. Used by the startup health check and available for readiness probes.
 ///
-/// Also reports every collection whose database is not provisioned yet as a WARNING —
-/// that is the expected "provisioning" state right after a collection is created, not
+/// Also reports every collection whose database is not provisioned yet as a WARNING.
+/// That is the expected "provisioning" state right after a collection is created, not
 /// an error, so it never fails the check.
 pub async fn check_clickhouse_health() -> anyhow::Result<()> {
     let url = clickhouse_url();
@@ -391,7 +391,7 @@ pub async fn check_clickhouse_health() -> anyhow::Result<()> {
 /// The canonical file type of each of a page's documents, keyed by
 /// `(collection_dataset, hash)`.
 ///
-/// One query per dataset present on the page — a search result page spans at most a
+/// One query per dataset present on the page, a search result page spans at most a
 /// handful, and a storage listing spans exactly one. `file_type_canonical` is the only
 /// table that holds ONE type per document; the per-detector `file_types` rows disagree
 /// with each other by design, and Manticore's `file_types` term ids would have to be

@@ -3,7 +3,7 @@
 //! The four sit at opposite ends of how much a pattern can carry on its own. An IBAN names its
 //! country in its first two characters and closes with mod-97 over up to thirty-four of them, so it
 //! is findable in bare text. A card number and a routing number are digit runs and nothing else,
-//! and the arithmetic on them — Luhn, and a weighted mod-10 over nine digits — is a one-in-ten
+//! and the arithmetic on them (Luhn, and a weighted mod-10 over nine digits) is a one-in-ten
 //! filter that every long reference number in a document passes at that rate. Both are therefore
 //! **cue-gated**: a run with a valid check digit and no word beside it saying what it is stays
 //! silent, and if the cue requirement is ever dropped the rule goes with it.
@@ -28,7 +28,7 @@ pub struct IbanRule;
 /// The upper repetition bound is arithmetic and not policy. The longest registered IBAN is 34
 /// characters, so 30 follow the four-character prefix; written in groups of four they carry up to
 /// eight separators. A bound of 34 truncates a grouped candidate, the exact registry length then
-/// fails, and the retry loop only ever shrinks a candidate — it can never grow one back.
+/// fails, and the retry loop only ever shrinks a candidate. It can never grow one back.
 const IBAN_PATTERN: &str = r"[A-Z]{2}\d{2}[A-Z0-9 -]{10,42}";
 
 /// The separators a printed IBAN is grouped with. They are stripped from the value, because the
@@ -50,7 +50,7 @@ impl Rule for IbanRule {
 
     fn validate(&self, candidate: &Candidate<'_>) -> Option<Verdict> {
         // Stripped `(?<![A-Z0-9])`: an IBAN growing out of a longer token is part of that token.
-        // There is no matching guard on the right, and that is deliberate — the registry length is
+        // There is no matching guard on the right, and that is deliberate. The registry length is
         // exact, so a candidate whose tail is a page number is rejected on length and the scan
         // loop then finds the IBAN inside it.
         if candidate
@@ -107,7 +107,7 @@ impl Rule for IbanRule {
     }
 }
 
-/// Whether a BBAN satisfies a registry structure string — a run of `<length>!<class>` groups where
+/// Whether a BBAN satisfies a registry structure string. A run of `<length>!<class>` groups where
 /// `n` is digits, `a` letters and `c` alphanumerics.
 ///
 /// This is the half of IBAN validation that mod-97 does not do: the checksum accepts about one
@@ -160,7 +160,7 @@ pub struct BicRule;
 const BIC_PATTERN: &str = r"[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?";
 
 /// A BIC is eight or eleven uppercase characters with no checksum, which is a shape ordinary
-/// English words in a heading also have — `DOCUMENT` and `CUSTOMER` both carry a valid ISO 3166-1
+/// English words in a heading also have: `DOCUMENT` and `CUSTOMER` both carry a valid ISO 3166-1
 /// country code in positions five and six. The label beside the code is what separates a bank
 /// identifier from a capitalised word, so it is required.
 const BIC_CUES: &[&str] = &[
@@ -252,7 +252,7 @@ pub struct PaymentCardRule;
 const PAYMENT_CARD_PATTERN: &str = r"[0-9](?:[0-9 -]{11,21})[0-9]";
 
 /// The words that admit a card number. Presidio's own recogniser context list, narrowed to the
-/// forms that survive a word-boundary test — its bare `credit` and `debit` are dropped, because a
+/// forms that survive a word-boundary test. Its bare `credit` and `debit` are dropped, because a
 /// credit note and a debit balance are ordinary invoice words and `card` already covers the two
 /// phrases that matter.
 const PAYMENT_CARD_CUES: &[&str] = &[
@@ -276,7 +276,7 @@ const PAYMENT_CARD_CUES: &[&str] = &[
 /// that issuer's cards. Measured on a page of invoice-like text, the two together still leave
 /// several article and tracking numbers standing, which is why the cue is required on top of them.
 ///
-/// The airline range — major industry identifier 1 — is not here. Fifteen digits beginning with a
+/// The airline range (major industry identifier 1) is not here. Fifteen digits beginning with a
 /// 1 is the shape of half the reference numbers in a logistics document, and a travel-agency card
 /// is not what an investigative corpus is looking for.
 type IssuerRange = (

@@ -5,7 +5,7 @@
 //! Every entry point is admin-gated.
 //!
 //! The TTL on both tables is applied by background merges, so rows can outlive
-//! 24 h briefly — every query here filters `event_ts >= now() - INTERVAL 24
+//! 24 h briefly, every query here filters `event_ts >= now() - INTERVAL 24
 //! HOUR` itself rather than trusting the TTL.
 
 use common::current_user::CurrentUser;
@@ -157,7 +157,7 @@ struct SessionStatsRow {
 /// Per-user LLM usage for `/admin/users/:username/llm`: chat sessions, message
 /// and tool-call counts, summed agent time, and current rate-limit usage.
 ///
-/// Reads `chat_messages` / `chat_sessions` only — they are owned by the chat
+/// Reads `chat_messages` / `chat_sessions` only. They are owned by the chat
 /// feature and are never modified here.
 pub async fn admin_get_user_llm(
     user: &CurrentUser,

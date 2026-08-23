@@ -25,7 +25,7 @@ pub async fn get_raw_metadata(
 /// Every requested table for one document, in the order asked for.
 ///
 /// The metadata panel wants a dozen tables at once. One request per table meant a dozen
-/// permission checks, a dozen telemetry events and — the part that matters — a dozen
+/// permission checks, a dozen telemetry events and (the part that matters) a dozen
 /// ClickHouse queries opened simultaneously per document view. Here they share the
 /// preamble and run one after another, so a page view costs ClickHouse one query at a
 /// time instead of a burst.

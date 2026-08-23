@@ -1,7 +1,7 @@
 """Router lifetime: the LRU cap, the idle reaper, idempotent close.
 
 `chat_browser.start` and `chat_browser.stop` are stubbed, so none of this needs Chromium
-or Node — the same approach the retired `test_sessions.py` took with the disposer, moved
+or Node. The same approach the retired `test_sessions.py` took with the disposer, moved
 up one level now that a session owns two processes instead of a context id.
 """
 
@@ -84,7 +84,7 @@ class TestEviction:
 
         revived = asyncio.run(run())
         # chat-1 was the least recently used when chat-3 arrived, so it went first.
-        # Reviving it then evicts the *next* least recently used, chat-2 — the cap is a
+        # Reviving it then evicts the *next* least recently used, chat-2. The cap is a
         # memory ceiling, so coming back always costs somebody their browser.
         assert stopped == ["chat-1", "chat-2"]
         assert revived.session_id == "chat-1"
@@ -182,7 +182,7 @@ class TestSpawnDoesNotBlockOtherChats:
 
     A cold Chromium plus its Node sidecar takes 45–90 seconds. Holding the router's single
     lock for that long made every other chat's tool call queue behind one chat's first
-    browse — an eight-context router behaving like a one-context one, and the symptom is
+    browse. An eight-context router behaving like a one-context one, and the symptom is
     "the site is slow", never "the browser router is serialising".
     """
 
@@ -203,7 +203,7 @@ class TestSpawnDoesNotBlockOtherChats:
         async def run():
             slow = asyncio.create_task(router.get("slow"))
             await asyncio.sleep(0)  # let it reach the spawn
-            # The whole point: this must complete while `slow` is still in `start`.
+            # What this asserts: this must complete while `slow` is still in `start`.
             fast = await asyncio.wait_for(router.get("fast"), timeout=1.0)
             release_slow.set()
             return await slow, fast
@@ -294,8 +294,8 @@ class TestHealth:
 
 
 class TestTabCap:
-    """`BROWSER_MAX_TABS_PER_CHAT` was rendered into the environment and read by nothing —
-    exactly the config-that-is-a-lie trap AGENTS.md names. These pin the enforcement."""
+    """`BROWSER_MAX_TABS_PER_CHAT` was rendered into the environment and read by nothing.
+    Exactly the config-that-is-a-lie trap AGENTS.md names. These pin the enforcement."""
 
     class _Tab:
         def __init__(self, name, kind="page"):

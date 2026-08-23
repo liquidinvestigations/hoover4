@@ -100,8 +100,8 @@ pub fn DocSourceDispatch(
                 }
             },
         },
-        // A source this build has no viewer for. It is not an error — an older bookmark
-        // or a newer indexer can both produce one — so it says so plainly and carries no
+        // A source this build has no viewer for. It is not an error (an older bookmark
+        // or a newer indexer can both produce one), so it says so plainly and carries no
         // error marker, and in particular it never prints the variant at a reader.
         _ => rsx! {
             PreviewWrapper {

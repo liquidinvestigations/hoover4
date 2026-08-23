@@ -2,8 +2,8 @@
 //!
 //! Two shapes, and they answer different questions:
 //!
-//! * [`EmailEnvelope`] is everything above the message body in the viewer — the parent
-//!   banner, the participant lines, the attachment cards — assembled in ONE round trip
+//! * [`EmailEnvelope`] is everything above the message body in the viewer (the parent
+//!   banner, the participant lines, the attachment cards) assembled in ONE round trip
 //!   because they all describe the same message and four resources would mean four
 //!   loading states on one card.
 //! * [`EmailGraph`] is a bounded neighbourhood of one message: the nodes a page can draw
@@ -11,7 +11,7 @@
 //!
 //! Both carry provenance rather than a verdict. An edge keeps its `kind` and its
 //! `confidence` all the way to the browser, because the interface has to draw a guess
-//! differently from a fact — an interface that draws wrong connections confidently is
+//! differently from a fact, an interface that draws wrong connections confidently is
 //! worse than no interface.
 
 use serde::{Deserialize, Serialize};
@@ -156,7 +156,7 @@ impl EmailEnvelope {
         }
     }
 
-    /// `cc 1, bcc 2` — counts for the non-empty secondary roles only, so a message with
+    /// `cc 1, bcc 2`, counts for the non-empty secondary roles only, so a message with
     /// no Cc does not render `cc 0`.
     pub fn secondary_counts(&self) -> String {
         let mut parts = Vec::new();

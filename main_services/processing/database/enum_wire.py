@@ -2,7 +2,7 @@
 
 ClickHouse accepts the NAME on insert (``'from'``, ``'container'``) and the schema shows
 names, so the natural thing to write is ``row['role'] == 'from'``. Reading the column
-back through ``client.query_arrow(...).to_pylist()`` yields the ORDINAL — an ``int8``.
+back through ``client.query_arrow(...).to_pylist()`` yields the ORDINAL. An ``int8``.
 ``1 == 'from'`` is False, it does not raise, and the feature quietly does nothing: the
 symptom is an empty column or a filter that matches nothing, days later, with no error
 anywhere to point at it.

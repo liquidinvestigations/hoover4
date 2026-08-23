@@ -4,7 +4,7 @@ Every entry here has cost hours at least once. They are written as standing prop
 system and the failure each prevents, so a person reading cold can route from a symptom to a
 mechanism without knowing the history.
 
-The procedural half — the same ground as a checklist an agent loads mid-task — is
+The procedural half (the same ground as a checklist an agent loads mid-task) is
 `.agents/skills/debugging-the-stack/`.
 
 ## Contents
@@ -21,7 +21,7 @@ The procedural half — the same ground as a checklist an agent loads mid-task �
 - [Migrations](#migrations)
 - [A change that did not take effect](#a-change-that-did-not-take-effect)
 - [The host itself is unresponsive](#the-host-itself-is-unresponsive)
-- [Cause or workaround — say which](#cause-or-workaround--say-which)
+- [Cause or workaround. Say which](#cause-or-workaround--say-which)
 
 ## Two rules that come before any symptom
 
@@ -46,7 +46,7 @@ server disagree about what went wrong, **the server is the one describing the me
 
 **Reproduce from inside the container, never from the host.** "The service is up" on the host
 proves nothing. Containers on separate networks cannot address each other by name, and a
-rootless container cannot reach its host's LAN address at all — it hangs rather than refuses,
+rootless container cannot reach its host's LAN address at all. It hangs rather than refuses,
 which reads as the remote service being slow. The only test that counts is a request made
 from inside the container that has the problem. `host.containers.internal` is the routable
 name for the host.
@@ -65,14 +65,14 @@ name for the host.
 | a migration fails naming neither file nor line | [the statement splitter](#migrations) |
 | a change did not take effect after a restart | [the old image was reused](#a-change-that-did-not-take-effect) |
 | a browser will not start, or "cannot connect" | [subprocesses](#failures-that-produce-silence-rather-than-errors) |
-| ingestion is slow rather than broken | the pipeline's shape, not the fleet's size — `.agents/skills/tuning-the-pipeline/` |
+| ingestion is slow rather than broken | the pipeline's shape, not the fleet's size, `.agents/skills/tuning-the-pipeline/` |
 | the machine itself is unresponsive | [host load](#the-host-itself-is-unresponsive) |
 
 ## DNS before the application
 
 "One container cannot reach the internet" is a DNS question before it is an application
 question. A container network created without upstream resolvers forwards to the host's local
-resolver stub, which stops answering external queries — while **internal container-name
+resolver stub, which stops answering external queries, while **internal container-name
 resolution keeps working**. The pipeline therefore looks healthy and only internet-facing
 work hangs: fetching dependencies, the web-search tools.
 
@@ -100,13 +100,13 @@ unreachable.
 
 ## A hang is a question about who is blocked
 
-Check the runtime's view and the process's view **separately** and compare — they routinely
+Check the runtime's view and the process's view **separately** and compare. They routinely
 disagree. A workflow service reporting an activity as started does not mean the worker is
 running anything. Low CPU means blocked on I/O or a lock, not slow work.
 
 To see Python stacks, the profiler needs a capability these containers drop; attach from a
 sidecar sharing the target's pod and process namespace with that capability added. **A thread
-dump ends the guessing immediately — reach for it earlier than feels justified.**
+dump ends the guessing immediately. Reach for it earlier than feels justified.**
 
 A synchronous call on the event-loop thread stalls an activity indefinitely **while
 heartbeats keep flowing**, so it is never retried and never fails. The dump is the only thing
@@ -146,7 +146,7 @@ collection time against uptime, and dropped messages per stage. **A healthy node
 heap fraction, collection well under one per cent of wall time, and zero drops.**
 
 The container-side number worth reading is the anonymous-memory figure in the cgroup's own
-memory statistics, never the runtime's headline total — that counts reclaimable page cache as
+memory statistics, never the runtime's headline total. That counts reclaimable page cache as
 usage.
 
 ## Failures that produce silence rather than errors
@@ -169,7 +169,7 @@ feature quietly does nothing. And an enum column takes the **name** on insert an
 nothing.
 
 **A result row binds by column name**, an alias shadows the column it derives from, and an
-aggregate returns a row even over an empty match — so "there is a row" is not "there is
+aggregate returns a row even over an empty match, so "there is a row" is not "there is
 data".
 
 **A child process on an undrained pipe wedges, and it looks like a hang in your code.** A
@@ -205,7 +205,7 @@ break it, all failing with an error that names neither the file nor the line:
 
 1. a separator inside a comment literal attached to a column or table;
 2. a separator inside a line comment;
-3. **prose after the final statement terminator** — which contains no stray separator at all,
+3. **prose after the final statement terminator**, which contains no stray separator at all,
    becomes a comment-only fragment, and reaches the server as an empty query.
 
 Put explanatory comments **above** the statement they describe. The parity test covers all
@@ -215,7 +215,7 @@ three.
 
 Bringing containers up reuses existing images and containers. A change to a `Dockerfile`, a
 build context, an ignore file, or anything the image copies in rather than mounts, needs a
-rebuild — and the build output read in full, not tailed.
+rebuild, and the build output read in full, not tailed.
 
 A generated environment file hand-edited is overwritten by the next deploy, and looks like it
 worked until then.
@@ -228,7 +228,7 @@ Each of these presented as something other than what it was.
 supervisor that kills by the pid in a pid file, having only checked that *something* is alive
 at that pid, will eventually kill the wrong process: pid files survive restarts and pids are
 recycled. It killed the website's own binary seconds after launch, and each restart repeated
-it. A supervisor must confirm the process is the one it means — `/proc/<pid>/cmdline`, not
+it. A supervisor must confirm the process is the one it means: `/proc/<pid>/cmdline`, not
 liveness alone.
 
 **A 502 immediately after a deploy is expected, not a fault.** The deploy command returns
@@ -259,7 +259,7 @@ that are easy to get wrong:
 - **Load average lags the fix**, because it counts runnable tasks. Judge by the top
   processes' CPU share and by whether the machine responds, not by the number.
 
-## Cause or workaround — say which
+## Cause or workaround: say which
 
 A stalled workflow activity can be cleared by failing it explicitly, and that is a
 **workaround**: it proves the retry path works and says nothing about why the task was lost.

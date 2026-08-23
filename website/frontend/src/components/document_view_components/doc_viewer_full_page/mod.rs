@@ -142,8 +142,8 @@ pub fn DocViewerRoot(
     // resource answers, `doc_sources` is `None` and the viewer is genuinely loading; once
     // it answers with an empty list there is no source and never will be, so a spinner
     // would run forever. Every source is a piece of extracted content, so a document
-    // whose extraction produced nothing — or an identifier that resolves to no document
-    // at all — lands here, and it still gets the title bar and the right-hand tabs:
+    // whose extraction produced nothing (or an identifier that resolves to no document
+    // at all) lands here, and it still gets the title bar and the right-hand tabs:
     // the name and the metadata are exactly what someone looking at an empty document
     // came for.
     let sources_answered = use_memo(move || doc_sources.read().is_some());

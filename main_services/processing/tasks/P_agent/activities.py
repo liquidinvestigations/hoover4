@@ -1,12 +1,12 @@
 """Activities for durable AI agent turns.
 
-**Every turn runs here** — an ordinary chat message and an exhaustive research run alike.
+**Every turn runs here**. An ordinary chat message and an exhaustive research run alike.
 They differ in which agent they reach, how long they are allowed to take and which queue
 they wait on, not in what they do. The website holds nothing open, so a browser reload, a
 website restart and a worker crash all cost the turn nothing.
 
-The ACL travels with the task. These activities never resolve permissions themselves —
-the website resolved them against the caller's identity when the turn was submitted and
+The ACL travels with the task. These activities never resolve permissions themselves.
+The website resolved them against the caller's identity when the turn was submitted and
 passed the resulting collection list in. The same goes for the model id: a forged one has
 to be refused where the user is known, which is not here.
 """

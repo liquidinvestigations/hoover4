@@ -120,7 +120,7 @@ def _response(todo: dict, error: str | None = None) -> TodoResponse:
 # the model then retries the identical call until its turn budget is gone -- the failure
 # `agent_common.batching` exists to prevent. `Any` moves the refusal to the store, which
 # answers in words the model can act on. The four separate tools are what carry the
-# typing that matters here: no `mode` argument to get wrong.
+# typing this relies on: no `mode` argument to get wrong.
 
 
 def _refused(caller: Caller | None, message: str) -> TodoResponse:

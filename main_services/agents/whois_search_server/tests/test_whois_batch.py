@@ -1,8 +1,8 @@
 """The batch shapes `whois_lookup` accepts, and the notes it sends back.
 
 No network: the lookup itself is one library call, and what this suite protects is
-everything around it — the coercion of whatever the model sent, the de-duplication, the
-cap, and the corrective note that tells the model what happened to its call.
+everything around it, meaning the coercion of whatever the model sent, the
+de-duplication, the cap, and the corrective note that tells the model what happened to its call.
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from whois_server import server as whois_srv
 
 def _call(**kwargs):
     # This server is on the low-level SDK's FastMCP, whose `@tool` returns the plain
-    # function rather than wrapping it — unlike the other three servers, where the tool is
+    # function rather than wrapping it. Unlike the other three servers, where the tool is
     # an object carrying the callable as `.fn`. Accept either, so the day this server is
     # moved onto the same library the suite does not silently stop calling anything.
     tool = getattr(whois_srv.whois_lookup, "fn", whois_srv.whois_lookup)

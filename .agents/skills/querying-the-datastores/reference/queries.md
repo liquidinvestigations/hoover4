@@ -39,17 +39,17 @@ Each answers one stage's "did it happen".
 | errors | `processing_errors` | the stage's own record of what it could not do |
 
 `vfs_files` is a replacing table keyed on collection, container and path, with a deletion
-flag. Counting it without accounting for that counts tombstones as files — filter them out
+flag. Counting it without accounting for that counts tombstones as files, filter them out
 or use the final-state form.
 
 ## Tracing one document
 
 Three entry points, all in the collection database:
 
-- **by path** — `vfs_files` on the path column gives the container hash and the blob hash;
-- **by blob hash** — `blobs` gives the stored object path and size, `text_content` gives its
+- **by path**: `vfs_files` on the path column gives the container hash and the blob hash;
+- **by blob hash**: `blobs` gives the stored object path and size, `text_content` gives its
   pages per extractor, `regex_entity_hit` gives its pattern hits;
-- **by id** — whatever id you have came from the search engine, which carries the hash beside
+- **by id**. Whatever id you have came from the search engine, which carries the hash beside
   it.
 
 The stored object path in `blobs` is the authority for **which bucket** the bytes are in.
@@ -58,12 +58,12 @@ Rebuilding that from configuration works on one collection and fails on the next
 ## Progress and timing
 
 Stage timing samples live in the global database's `processing_eta_samples`. Its stage
-identifiers are stored strings that are mirrored as constants in the shared Rust types — the
+identifiers are stored strings that are mirrored as constants in the shared Rust types. The
 admin processing view reads the same values, so a stage identifier that exists on one side
 only makes a bar disappear with no error.
 
 `processing_task_runs` carries per-task durations, which is what answers "where is the time
-going" before any tuning decision — `tuning-the-pipeline`.
+going" before any tuning decision: `tuning-the-pipeline`.
 
 ## Search engine
 
@@ -87,8 +87,8 @@ garage.sh bucket info <bucket>
 garage.sh status
 ```
 
-A bucket per collection plus a system bucket. Derived output — searchable PDFs, chat
-artefacts — lives under a prefix that the disk-scan stage must never walk, and the
+A bucket per collection plus a system bucket. Derived output (searchable PDFs, chat
+artefacts) lives under a prefix that the disk-scan stage must never walk, and the
 end-to-end verification asserts that no blob row references it.
 
 ## Reading a result honestly

@@ -2,7 +2,7 @@
 
 The two things worth pinning are the derived-prefix guard (the cheapest possible defence
 against the infinite-ingest loop) and the geometry of the invisible text
-layer — a text layer that is off by a page height is invisible in both senses, and no
+layer. A text layer that is off by a page height is invisible in both senses, and no
 integration test would notice because the PDF still opens.
 """
 
@@ -131,7 +131,7 @@ class TestInvisibleWords:
 class TestHealth:
     def test_reports_the_renderer_it_can_actually_load(self):
         """The version came off a module attribute that pypdfium2 5.x removed, so
-        `/health` said `unavailable` on a perfectly working renderer — a health check
+        `/health` said `unavailable` on a perfectly working renderer, which is a health check
         reporting on its own guess rather than on the thing it checks."""
         body = ocr_pdf.health()
         assert body["status"] == "healthy"

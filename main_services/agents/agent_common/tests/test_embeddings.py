@@ -30,8 +30,8 @@ class TestEmbeddingInput:
     def test_parity_with_the_processing_half(self):
         # The indexing-side copy lives in
         # main_services/processing/tasks/P5_chunk_embed/embedding_prefix.py and must
-        # agree exactly. If you change one, change the other — this test is the
-        # tripwire on this side.
+        # agree exactly. If you change one, change the other. This test is the
+        # check on this side.
         for kind in ("passage", "query"):
             for model in ("intfloat/multilingual-e5-small",
                           "intfloat/multilingual-e5-large-instruct"):

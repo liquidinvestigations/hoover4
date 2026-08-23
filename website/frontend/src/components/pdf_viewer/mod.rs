@@ -11,7 +11,7 @@ use wasm_bindgen::{JsValue, prelude::Closure};
 /// `#[used]` because nothing reads the binding: the viewer loads its entry point by
 /// literal URL from a `<script>` tag, and without the attribute the constant is dropped
 /// and the folder never reaches the bundle. `with_hash_suffix(false)` is what keeps the
-/// served path `/assets/_viewer/…`, which [`PdfViewerJsScriptTag`] hardcodes — the two
+/// served path `/assets/_viewer/…`, which [`PdfViewerJsScriptTag`] hardcodes, the two
 /// have to be changed together.
 #[used]
 static EMBED_PDF_FOLDER: Asset = asset!(

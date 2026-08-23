@@ -94,8 +94,8 @@ def regex_facets_by_segment(regex_rows):
     """Group `regex_entity_hit` rows into the two things the index needs.
 
     Returns ``({(hash, extracted_by, page_id): {term_field: [value, ...]}}, {key:
-    [day, ...]})`` — the facet values per term field, and the distinct days each segment
-    mentions.
+    [day, ...]})``, which is the facet values per term field and the distinct days each
+    segment mentions.
 
     Money is bucketed here rather than stored bucketed: 2 419 distinct amounts across
     twenty-five documents is not a facet and ten magnitude buckets per currency is, and
@@ -137,7 +137,7 @@ def regex_facets_by_segment(regex_rows):
 
 #: The MVA columns of a pages row, in the order :func:`pages_replace_sql` writes them.
 #: Manticore cannot bind an MVA, so each one is interpolated as a literal tuple built by
-#: :func:`repr_manticore_tuple` — which is why they are listed apart from the scalars.
+#: :func:`repr_manticore_tuple`, which is why they are listed apart from the scalars.
 _MVA_COLUMNS = (
     'ner_per', 'ner_org', 'ner_loc', 'ner_misc',
     'file_types', 'file_mime_types', 'file_extensions', 'file_paths', 'dates',
@@ -284,7 +284,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     """Index the chunk's documents into the shard's table: text rows and filename rows.
 
     Every row carries its document's metadata (:func:`document_metadata`), so the
-    metadata is read once per chunk and both row kinds are written by one writer — see
+    metadata is read once per chunk and both row kinds are written by one writer. See
     the module docstring.
 
     Rows are inserted grouped by ``(collection_dataset, file_hash, page_id)``. That
@@ -294,7 +294,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     several times as much on disk.
 
     Returns the file_hashes actually written (committed). ``IndexDatasetPlan``
-    records exactly these in ``index_state`` — a document whose writer failed
+    records exactly these in ``index_state``, a document whose writer failed
     must never be counted by the shard ledger.
     """
     collection_dataset: str = params.collection_dataset
@@ -309,7 +309,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         # FINAL: `text_content` is a ReplacingMergeTree, so a re-parse leaves two rows for
         # the same segment until the background merge runs. The Manticore row id is
         # deterministic, so the duplicate REPLACEs into the same row rather than corrupting
-        # the index — but it doubles the work of the whole activity, and the page text is
+        # the index, but it doubles the work of the whole activity, and the page text is
         # then non-deterministically whichever copy came back last.
         text_content = client.query_arrow("""
             SELECT collection_dataset, file_hash, extracted_by, page_id, text
@@ -340,7 +340,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         }).to_pylist()
         # The regex scanner's values. `argMax(..., rule_set_version)` rather than FINAL:
         # two rule sets' rows for one segment coexist by design, and only the newest is
-        # indexed — indexing both would put a value the current rules no longer accept
+        # indexed: indexing both would put a value the current rules no longer accept
         # into the facet beside one they do.
         regex_rows = client.query_arrow("""
             SELECT file_hash, extracted_by, page_id, entity_type,
@@ -368,7 +368,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
 
     regex_facets, mentioned_by_segment = regex_facets_by_segment(regex_rows)
     # One dictionary per facet field, so a term id resolves to text meaningful for its
-    # own facet — and so money's ids resolve to bucket labels rather than to amounts.
+    # own facet: and so money's ids resolve to bucket labels rather than to amounts.
     # Cache hits: the scan stage populated the same fields with the same values.
     regex_ids = {
         field.term_field: get_string_term_ids(
@@ -513,8 +513,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     per document, N `vfs_files` rows, M `document_dates` rows, K `email_addresses` rows)
     and joining them server-side multiplies the rows before it groups them.
 
-    Each value is a ready-to-write row fragment — MVAs already rendered as Manticore
-    tuples — plus ``basenames``, which is not a column: it is the text of the document's
+    Each value is a ready-to-write row fragment (MVAs already rendered as Manticore
+    tuples) plus ``basenames``, which is the text of the document's
     ``filename_index`` row. Documents are keyed by hash and NOT restricted to those with
     a `file_types` row, because a document known only to `vfs_files` still has a
     filename, a size and a folder to be filtered by.
@@ -565,8 +565,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         }).to_pylist()
 
         # The fallback for a document with no canonical row. Without it such a document
-        # produces no metadata row at all and is indexed with `empty_document_metadata()`
-        # — losing its file type, its MIME and its extensions together, which is what an
+        # produces no metadata row at all and is indexed with `empty_document_metadata()`,
+        # losing its file type, its MIME and its extensions together, which is what an
         # empty File types facet looks like from the outside.
         #
         # The union is the pre-canonical behaviour and puts a document under every type a
@@ -681,7 +681,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         # says `toString`. Both belts are done up here: the SELECT above asks for the
         # name, and this normalises whatever arrives. Comparing the raw value to `'from'`
         # is always false for an ordinal, does not raise, and files every sender as a
-        # recipient — which is how the whole corpus ended up with an empty sender field.
+        # recipient: which is how the whole corpus ended up with an empty sender field.
         role = enum_from_wire(row['role'], ROLE_ORDINALS, ROLE_DEFAULT)
         bucket = from_by_hash if role == 'from' else to_by_hash
         bucket.setdefault(row['email_hash'], set()).add(row['address'])
@@ -813,19 +813,19 @@ def should_optimize(status: dict) -> bool:
 def optimize_shard_tables(params: OptimizeShardsParams) -> str:
     """Compact the shards this plan wrote to, when they have accumulated enough waste.
 
-    **A storage win, not a latency win** — say so rather than selling it as a speedup.
+    **A storage win, not a latency win**. Say so rather than selling it as a speedup.
     Killed rows are cheap to skip at query time; what compaction buys is the disk back,
     plus a small consistent gain from merging chunks.
 
     ``OPTION cutoff=1`` is what actually compacts: `optimize_cutoff` defaults to 24, so a
     plain OPTIMIZE barely moves a table sitting at 20 chunks. Never ``sync=1`` from an
-    activity — it blocks for the whole merge and Temporal times the activity out on a
+    activity, it blocks for the whole merge and Temporal times the activity out on a
     large shard; the statement returns immediately and the daemon merges in the
     background.
 
     Skipped entirely while another plan of the same collection is still in flight: a
     merge competing with a write batch for I/O is how a 2 GB table takes minutes instead
-    of seconds. The plan this activity belongs to is not counted — its own row reaches
+    of seconds. The plan this activity belongs to is not counted. Its own row reaches
     `processing_plan_finished` only after indexing returns.
     """
     from database.manticore import get_manticore_client, shard_table_from_name
@@ -872,7 +872,7 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
 
     Dataset-scoped and idempotent: it rebuilds the whole tree and REPLACEs it, because a
     plan only ever holds a slice of the dataset and a tree assembled slice by slice has
-    holes wherever a parent arrived in a later plan than its child. It is cheap — one
+    holes wherever a parent arrived in a later plan than its child. It is cheap, one
     small row per node, no text.
 
     Runs before the per-shard writers: `document_metadata` reads this table to build
@@ -919,8 +919,8 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
         # Everything written below carries an `updated_at` of at least this instant, so
         # anything for this dataset still older afterwards is a node the rebuild did not
         # produce. A ReplacingMergeTree replaces rows that came back and keeps rows that
-        # did not: without this sweep a node that stopped existing — a file that stopped
-        # being a container, the `/` that used to sit inside every archive — would stay
+        # did not: without this sweep a node that stopped existing: a file that stopped
+        # being a container, the `/` that used to sit inside every archive: would stay
         # in the tree forever, because nothing overwrites a key that is never written
         # again. Read from the server rather than from Python: the comparison is against
         # ClickHouse's own clock.
@@ -1220,7 +1220,7 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
 #: Everything except `filetype`: that facet has a handful of buckets, all of them on
 #: screen at once, so a search box over it would answer a question nobody has. `date`,
 #: `message_id` and the scanner's other unindexed types are stored in ClickHouse and get
-#: no rows here — there is no facet for them to search.
+#: no rows here, there is no facet for them to search.
 SEARCHABLE_TERM_FIELDS = (
     'ner',
     'email_address',
@@ -1236,8 +1236,8 @@ SEARCHABLE_TERM_FIELDS = (
 def entity_term_row_id(term_field: str, term_id: int) -> int:
     """Deterministic id for one `<coll>_entities` row, so REPLACE upserts in place.
 
-    The field is part of the key: one value can be a term in two fields — an address is
-    both an envelope sender and something the body mentions — and those are two rows,
+    The field is part of the key: one value can be a term in two fields (an address is
+    both an envelope sender and something the body mentions), and those are two rows,
     because ticking them applies different filters.
     """
     return hash_string_to_uint63(f"{term_field}|{term_id}")
@@ -1359,7 +1359,7 @@ def repr_manticore_tuple(values: List[int]) -> str:
 def repr_manticore_vector(values: List[float]) -> str:
     """A float_vector literal for interpolation into a REPLACE (it cannot be bound).
 
-    ``repr(float(v))`` is the shortest string that round-trips the value — a trimmed
+    ``repr(float(v))`` is the shortest string that round-trips the value. A trimmed
     format would quantise the embedding the probe just verified.
     """
     return "(" + ",".join(repr(float(v)) for v in values) + ")"
@@ -1386,7 +1386,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
     disposable, RAM-resident query copy. Returns the file_hashes actually written
     (committed), for ``index_state`` (see ``index_text_pages``).
 
-    Loud refusals (non-retryable — retrying cannot fix a config lie):
+    Loud refusals (non-retryable, because retrying cannot fix a config lie):
 
     * vectors exist but the probe never ran, or the shard's ``_vectors`` table is
       missing (a stale deploy: the planner creates it from the probed dimension);

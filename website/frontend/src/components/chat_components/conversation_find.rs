@@ -1,4 +1,4 @@
-//! "Search in conversation" bar — mirrors the find-box chrome of the document preview.
+//! "Search in conversation" bar, mirrors the find-box chrome of the document preview.
 
 use dioxus::prelude::*;
 

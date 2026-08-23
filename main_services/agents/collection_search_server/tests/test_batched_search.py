@@ -1,7 +1,7 @@
 """Cross-query fusion and the batched document read.
 
 The search itself needs Manticore and ClickHouse; what is tested here is the part that
-can be wrong without either — how several queries' rankings become one, and how the three
+can be wrong without either. How several queries' rankings become one, and how the three
 argument shapes a model sends for a batch of documents are read.
 """
 
@@ -141,7 +141,7 @@ class TestBatchedEntityListing:
         return srv
 
     def test_the_budget_divides_across_the_batch(self, monkeypatch):
-        """Two documents share one budget, so each gets half — and both say they were cut
+        """Two documents share one budget, so each gets half, and both say they were cut
         rather than returning a full-looking list that is not one."""
         srv = self._stub(monkeypatch, structured_count=0, ner_count=2000)
         monkeypatch.setattr(srv, "LIST_ENTITIES_TOTAL_CHARS", 2000)
@@ -186,7 +186,7 @@ class TestBatchedEntityListing:
 
     def test_the_single_document_call_still_works(self, monkeypatch):
         """The shape this tool took before it was batched. It must not be a special
-        case — `_document_pairs` reads it as a batch of one."""
+        case: `_document_pairs` reads it as a batch of one."""
         srv = self._stub(monkeypatch, structured_count=1, ner_count=1)
         out = srv.list_document_entities.fn(collectionname="testdata", file_hash=HASH_A)
         assert [d.file_hash for d in out.documents] == [HASH_A]

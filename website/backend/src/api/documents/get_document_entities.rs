@@ -9,7 +9,7 @@
 //! The two halves are counted differently, on purpose. A model-found value is re-counted
 //! against the document's own text, because the stored count comes from a variant of the
 //! text the viewer may not be showing. A rule-found value is NOT: its normalised form is
-//! frequently not what the document wrote — `+442075623419` for `+44 (0)20 7562 3419` —
+//! frequently not what the document wrote (`+442075623419` for `+44 (0)20 7562 3419`)
 //! so a full-text count of it would be zero and would drop every phone number in the
 //! corpus. The scanner already counted occurrences in the text it read, and that count
 //! is the one that is true.
@@ -186,7 +186,7 @@ async fn _get_document_entities(
 ///   by side, so that bumping the version makes a rescan possible without destroying what
 ///   the previous version found. Reading them all would list a value once per version.
 /// * **Counts are summed across segments and MAXed across text variants.** A document
-///   parsed twice — `raw_text` and `email_parser` — carries the same occurrences under
+///   parsed twice (`raw_text` and `email_parser`) carries the same occurrences under
 ///   both, so adding the variants would double every count.
 /// * **The five value arrays are parallel**, and `ARRAY JOIN` over all of them at once is
 ///   what keeps a value with its own rule, its own canonical object, its own count and
@@ -278,7 +278,7 @@ fn regex_item(row: RegexEntityRow) -> DocumentEntityItem {
 /// Turn the stored rows into one item per `(type, value)`, dropping debris.
 ///
 /// The grouping key is the whitespace-folded value, which is what merges the two rows a
-/// pre-existing email carries — see [`normalize_entity_whitespace`]. The hit count is
+/// pre-existing email carries. See [`normalize_entity_whitespace`]. The hit count is
 /// *not* summed: each row already counts the same occurrences in a different variant of
 /// the same text, and adding them would double the number. It is replaced outright by a
 /// full-text count of the document before it reaches the panel anyway.

@@ -1,6 +1,6 @@
 """The activity-timing interceptor: what it records, and that it never gets in the way.
 
-Two properties matter more than the happy path here:
+Two properties matter more here than the case where nothing fails:
 
 * an instrumentation failure must not fail an ingest, and
 * it must never fail *silently* -- the O2 defect this plan fixed was a bare
@@ -135,7 +135,7 @@ def test_a_successful_execution_is_recorded_and_its_result_passed_through(record
 
 
 def test_a_failed_execution_is_recorded_in_the_same_table_and_still_raises(recorder):
-    """Failures live in the aggregate, not beside it -- that is the whole point.
+    """Failures live in the aggregate rather than beside it, which is what this asserts.
 
     `processing_errors` keeps the stack trace, `processing_task_runs` keeps the time,
     and a report of "where did the time go" that dropped failures would understate

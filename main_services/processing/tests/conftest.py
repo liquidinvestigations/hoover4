@@ -2,9 +2,9 @@
 
 Layout:
 
-- ``tests/unit/`` — pure-function tests; must pass with no services running
+- ``tests/unit/``. Pure-function tests; must pass with no services running
   (``uv run pytest tests/unit -q`` on a bare laptop).
-- ``tests/integration/`` — tests against the live docker stack; marked
+- ``tests/integration/``. Tests against the live docker stack; marked
   ``integration`` and skipped unless ``--integration`` (or
   ``HOOVER4_INTEGRATION=1``) is given. Run them inside the worker container:
   ``docker exec -it hoover4-worker uv run pytest tests --integration -q``.

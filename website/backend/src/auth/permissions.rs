@@ -142,8 +142,8 @@ pub async fn resolve_permissions(user: &CurrentUser) -> anyhow::Result<Permissio
 
 /// The set of collectionnames the user may read.
 ///
-/// `PermissionSet::All` (admins, and guests in `all` mode) means "all collections" —
-/// callers that fan out per collection must resolve it to the concrete list with
+/// `PermissionSet::All` (admins, and guests in `all` mode) means "all collections".
+/// Callers that fan out per collection must resolve it to the concrete list with
 /// `clickhouse_utils::list_collections()` at the point of use (see
 /// `list_permitted_collections`), not leave it unbounded.
 pub async fn resolve_permitted_collections(user: &CurrentUser) -> anyhow::Result<PermissionSet> {

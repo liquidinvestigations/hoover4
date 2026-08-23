@@ -3,13 +3,13 @@
 The tool servers the research agents connect to, and the agents themselves. These live
 in **main_services**, not the GPU tier: they read
 ClickHouse and Manticore directly and serve the website's chat, and the one-way
-dependency rule — `ai_services` never calls into `main_services` — is what makes the
+dependency rule (`ai_services` never calls into `main_services`) is what makes the
 GPU tier optional.
 
 Each MCP server is a standalone FastMCP server in its own container, published on
 `127.0.0.1` and joined to the `hoover4` podman network. The agents discover tools over
 HTTP at `/mcp`. All of them come up with the main stack via the always-on overlay
-[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml) — `./deploy`
+[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml): `./deploy`
 from the repo root, no separate tier to start.
 
 | Server | Directory | Port | Used by | What it does |
@@ -24,8 +24,8 @@ from the repo root, no separate tier to start.
 three overlapping "search the web" tools is something a small model does badly and
 inconsistently, so every open-web source lives behind `web_search` in
 [`metasearch_server/metasearch_server/sources.py`](metasearch_server/metasearch_server/sources.py)
-— the scrapers, `ddg_api`, `ddg_news`, `gdelt`, `wikipedia`, `wikidata`, `crossref`,
-`wayback`, `archive_today` and a key-gated fact-check source — selectable through
+ (the scrapers, `ddg_api`, `ddg_news`, `gdelt`, `wikipedia`, `wikidata`, `crossref`,
+`wayback`, `archive_today` and a key-gated fact-check source), selectable through
 `web_search(sources=[…])`. The `hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` directories
 are still in the tree but nothing builds or deploys them, and `hoover4.ini` has no
 `mcp_ddg_port` / `mcp_wikipedia_port`. Do not revive them.
@@ -39,7 +39,7 @@ rerank client with its circuit breaker.
 **It is vendored, not installed from an index.** The server Dockerfiles build with
 `main_services/agents` as their **build context** and `COPY ./agent_common/`. If you move
 one, move its `context:` in
-[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml) with it — a
+[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml) with it. A
 Docker build cannot reach outside its context, and the failure is a missing-module
 traceback at container start, not at build time.
 
@@ -54,14 +54,14 @@ A tool that produces something too big for the model's context but worth showing
 *user* writes a **chat artifact**: bytes to S3 under
 `derived/chat-artifacts/<session>/<id>/`, one index row in `Hoover4_Processing.chat_artifacts`.
 
-* `web_search` writes a `search_detail` — every candidate in both orderings, with
+* `web_search` writes a `search_detail`, every candidate in both orderings, with
   per-source ranks and the timing table. The tool result carries only the UUID.
 * The browser router writes a `page_capture` after every action that can change the
   screen, **including when the call failed**: a 1280x720 WebP screenshot plus the page
   archived as self-contained HTML.
 
 The model receives only the id, under a reserved `_hoover4_artifacts` key. **It is a
-lookup key, never a capability** — the website resolves it to `session_id`/`username` and
+lookup key, never a capability**. The website resolves it to `session_id`/`username` and
 enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`), and the
 card refuses any id that is not a UUID before it builds that URL.
 
@@ -73,7 +73,7 @@ Written down in
 so it is a known gap rather than an assumption.
 
 Because the structured key does not survive LangGraph, the browser router also appends a
-`[hoover4:artifacts] {"artifacts": [...]}` line to the result text — **always**, even when
+`[hoover4:artifacts] {"artifacts": [...]}` line to the result text, **always**, even when
 it captured nothing, and always as the last block. That position is what the card
 authenticates the marker by: a browser tool's text is the fetched page, so a hostile page
 that plants the marker in its own body would otherwise get attacker-chosen titles and URLs
@@ -83,7 +83,7 @@ The payload is an object, and the card also accepts a bare array because transcr
 rows in that shape. The object carries one thing the card cannot work out for itself:
 `"failed": true` when the sidecar reported `is_error`. Playwright says a call failed in
 prose, and by the time the result reaches the website that prose is indistinguishable from
-the page it was trying to fetch — without the flag the card renders "opened
+the page it was trying to fetch, without the flag the card renders "opened
 http://clickhouse:8123" for a navigation that never happened. The flag is written only
 when true.
 
@@ -101,11 +101,11 @@ The two research agents share one image built from [`research_agent/`](research_
 
 | Agent | Port | Profile | Callers |
 |---|---|---|---|
-| `hoover4-internal-search-agent` | 21936 | `internal_search` | AI Chat with **Internet tools off** — the collection server only, because a chat about the user's own documents must not quietly turn into a web search |
+| `hoover4-internal-search-agent` | 21936 | `internal_search` | AI Chat with **Internet tools off**, the collection server only, because a chat about the user's own documents must not quietly turn into a web search |
 | `hoover4-full-research-agent` | 21937 | `full_research` | AI Chat with **Internet tools on**, and the Temporal `ResearchTask` (`RESEARCH_AGENT_URL` on the worker) |
 
 > The published ports are for host-side debugging. Anything running *inside* the
-> `hoover4` network must address these by container name —
+> `hoover4` network must address these by container name.
 > `http://hoover4-full-research-agent:8000`, not `http://localhost:21937`. The website
 > needs **both** `HOOVER4_AGENT_URL` and `HOOVER4_FULL_AGENT_URL` set (the compose file
 > does this); leaving the second unset is what made every internet-tools chat turn fail
@@ -118,7 +118,7 @@ An agent answering for a user must only reach collections that user could read i
 search UI. The chain is:
 
 1. The **website backend** resolves the user's permitted collections (group grants union
-   public collections). It is the only component that can — it owns the auth tables.
+   public collections). It is the only component that can. It owns the auth tables.
 2. It passes that list to the agent as `allowed_collections`.
 3. The agent opens its MCP connections with `X-Hoover4-Collections: <list>` and
    `Authorization: Bearer <MCP_SHARED_SECRET>`, and caches one graph **per ACL** so a
@@ -135,7 +135,7 @@ and logs a warning (the ports are bound to 127.0.0.1, which is the only reason t
 survivable locally).
 
 A third header, `X-Hoover4-Chat-Session`, travels alongside those two but grants no
-authority — it is an **isolation key**, used only by the browser server to give each
+authority. It is an **isolation key**, used only by the browser server to give each
 conversation its own Chromium context. Do not make anything an access decision on it: it
 is a conversation id, and unlike the ACL headers nothing verifies who it belongs to.
 
@@ -145,26 +145,26 @@ Not in compose. A multi-paragraph prompt inlined as a YAML default was unreadabl
 drifted from the tool descriptions it was supposed to agree with. There are two template
 folders, each with a loader that is the only thing that renders them:
 
-* [`collection_search_server/collection_search_server/prompts/`](collection_search_server/collection_search_server/prompts/)
-  — the MATCH syntax reference and search strategy. Reaches the model as the MCP server's
+* [`collection_search_server/collection_search_server/prompts/`](collection_search_server/collection_search_server/prompts/).
+  The MATCH syntax reference and search strategy. Reaches the model as the MCP server's
   FastMCP `instructions`, i.e. at tool-discovery time, for **whichever** agent connects,
   and is appended to the error text when a query is rejected.
-* [`research_agent/research_agent/prompts/`](research_agent/research_agent/prompts/)
-  — one template per agent profile, selected by `AGENT_PROFILE`, plus the blocks they share.
+* [`research_agent/research_agent/prompts/`](research_agent/research_agent/prompts/),
+  one template per agent profile, selected by `AGENT_PROFILE`, plus the blocks they share.
 
 **A prompt is rendered from what the deployment binds, not written as a constant.** The
 tool section of every profile is generated from the tool names on the graph, and the
 tool-turn budget comes from the constant the graph enforces, so a prompt cannot claim a
 tool the model does not have, cannot omit one it does, and cannot promise a budget the
 code contradicts. Each package's `tests/test_prompts.py` is what turns a drifted sentence
-into a failing test — which is the whole reason the text is not a string literal.
+into a failing test, which is the whole reason the text is not a string literal.
 
 `SYSTEM_PROMPT` / `SERVER_INSTRUCTIONS` remain as thin env overrides for experiments;
 empty means "render the templates". `SYSTEM_PROMPT` changes only the words: the profile
 name still decides which tools are bound.
 
 **Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
-of it forever — an earlier five-step draft made it search, search again, then re-run a
+of it forever. An earlier five-step draft made it search, search again, then re-run a
 query it had already run until the request died. Detail belongs in tool descriptions,
 which the model reads in context at the moment it picks a tool. Re-measure before
 lengthening.
@@ -172,13 +172,13 @@ lengthening.
 ## Why search goes through Manticore, and where Milvus went
 
 The ingestion pipeline writes extracted text to ClickHouse and search documents to
-Manticore shards. It **never wrote vectors**, so the whole Milvus tier — three containers
+Manticore shards. It **never wrote vectors**, so the whole Milvus tier, three containers
 (`milvus-standalone`, `milvus-etcd`, `milvus-minio`) holding ~39 GB of memory limit, an
 MCP server that would have searched an empty index, a `pymilvus` dependency in three
-packages, and the legacy `hoover4_rag` ingestion CLI — is gone.
+packages, and the legacy `hoover4_rag` ingestion CLI, is gone.
 
 The `text_chunks_milvus`, `entity_hits_milvus` and `entity_hits_milvus_unique` ClickHouse
-tables do not exist, and no migration creates them — the collapsed migration set carries
+tables do not exist, and no migration creates them. The collapsed migration set carries
 no trace of them. `test_no_migration_recreates_a_removed_table` in
 `tests/unit/test_migrations_parity.py` keeps them from coming back.
 
@@ -187,7 +187,7 @@ collection tables, and three pieces make it work:
 
 1. A **chunk-and-embed stage (`P5_chunk_embed`)**: `text_content` split per page into
    chunks and embedded, with the vectors written durably to `text_chunk_vectors`.
-2. The vector store is **Manticore's own KNN index** — a `_vectors` shard table per
+2. The vector store is **Manticore's own KNN index**: a `_vectors` shard table per
    collection, HNSW, RAM-resident and disposable. ClickHouse is the store of record, so
    the index can be dropped and rebuilt at will (and must be, if the embedding model
    changes: `knn_dims` cannot be altered).
@@ -204,8 +204,8 @@ podman volume rm milvus_etcd milvus_minio milvus_standalone
 
 ## Manticore `MATCH()` syntax
 
-Verified against the live `testdata_1_pages` shard, not taken from documentation —
-several documented spellings are a hard 500 on this deployment.
+Verified against the live `testdata_1_pages` shard, not taken from documentation.
+Several documented spellings are a hard 500 on this deployment.
 
 | Syntax | Result | Notes |
 |---|---|---|
@@ -228,7 +228,7 @@ several documented spellings are a hard 500 on this deployment.
 | `=test` | works | exact form |
 | `"test` / `(test` | 500 | `syntax error, unexpected $end` |
 | `""` (empty) | works, **matches every row** | dangerous default |
-| `docum*`, `*ocument*` | **works now** | see below — was silently wrong |
+| `docum*`, `*ocument*` | **works now** | see below, was silently wrong |
 
 Two facts worth keeping:
 
@@ -236,7 +236,7 @@ Two facts worth keeping:
   (`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
   and belongs in `WHERE`, not `MATCH()`.
 * **Wildcards fail silently without infix indexing.** The star is dropped during
-  tokenisation and the query becomes an exact search for a truncated word — `doc*` returns
+  tokenisation and the query becomes an exact search for a truncated word: `doc*` returns
   **7** where `document` returns 16. Not zero. Wrong. This is why `min_infix_len` is set
   on the shard DDLs, and why removing it breaks search without breaking any query.
 
@@ -261,11 +261,11 @@ every collection. Behaviour on the real `testdata` shard (156 pages, 26 MB of te
 | `te*t` | **3 (wrong)** | 28 |
 | `wat*` | 0 | 14 |
 
-**The storage cost could not be measured reliably**, and that is worth stating plainly
-rather than quoting a number that does not reproduce. `SHOW TABLE ... STATUS` `disk_bytes`
+**The storage cost could not be measured reliably**, so this page states that rather than
+quoting a number that does not reproduce. `SHOW TABLE ... STATUS` `disk_bytes`
 on an RT table depends on chunk-merge state: the same no-infix configuration measured
 16.6 MB, 33.6 MB and 65.4 MB at different points in the same session. Under *identical*
-treatment — pipeline reindex, then `FLUSH` + `OPTIMIZE` — the numbers were:
+treatment (pipeline reindex, then `FLUSH` + `OPTIMIZE`), the numbers were:
 
 | configuration | disk_bytes | ram_bytes |
 |---|---|---|
@@ -276,8 +276,8 @@ i.e. the infix build measured **smaller**, which is not a credible causal effect
 better read as "the metric is noisy at this corpus size". A controlled probe (two tables,
 same 156 pages inserted row by row, same flush/optimise) put the difference at **+0.8%**
 on disk. Whatever the true figure, it is not a cost worth trading the wrong answers for.
-`min_infix_len` 2, 3 and 4 are identical in size and behaviour in this Manticore version —
-it is an on/off switch, not a threshold, so do not spend time tuning the number.
+`min_infix_len` 2, 3 and 4 are identical in size and behaviour in this Manticore version.
+It is an on/off switch, not a threshold, so do not spend time tuning the number.
 
 **`ALTER TABLE` does not reindex.** It updates metadata only: `SHOW TABLE ... SETTINGS`
 will report the new value while queries keep returning the old, wrong answers. Changing
@@ -338,4 +338,4 @@ the sweeper's prefix scan collects them.
 
 **`hoover4-mcp-collections` is deliberately absent.** Its every tool requires
 `X-Hoover4-Collections` naming the caller's permitted collections, and only the website
-backend can resolve that — an entry here would be a server whose tools always deny.
+backend can resolve that. An entry here would be a server whose tools always deny.

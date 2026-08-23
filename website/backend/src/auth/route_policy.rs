@@ -1,8 +1,8 @@
 //! Which HTTP paths require a session, and the single path allowed to create one.
 //!
 //! The rule this file exists to make checkable: **exactly one route may mint a session.**
-//! A fresh `set-cookie` on every response lets any client that does not store cookies — a
-//! crawler, a `curl` loop, a link checker — create a `guest-<hex>` user and a `user_login`
+//! A fresh `set-cookie` on every response lets any client that does not store cookies (a
+//! crawler, a `curl` loop, a link checker) create a `guest-<hex>` user and a `user_login`
 //! event per request, so the user table and the metrics page grow without bound and stop
 //! being readable.
 //!
@@ -13,11 +13,11 @@
 //!   whole app on it (`components::session_gate`), so it always runs first.
 //! * every other server function and every custom byte-serving route **requires** an
 //!   already-resolved session and answers `401` without one.
-//! * the app shell — page routes, `/assets/…`, the wasm bundle — stays open, because the
+//! * the app shell (page routes, `/assets/…`, the wasm bundle) stays open, because the
 //!   browser has to be able to load the code that calls the mint route. The shell contains
 //!   no collection data; everything it renders arrives through a route that is checked.
 //!
-//! Nothing here decides *what* a resolved user may read — that is
+//! Nothing here decides *what* a resolved user may read. That is
 //! [`crate::auth::permissions`]. This is only the question of whether anyone is asking.
 
 /// Custom (non-server-function) routes mounted in `main.rs`.

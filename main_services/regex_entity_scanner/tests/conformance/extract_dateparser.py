@@ -4,15 +4,15 @@
 ``vendored/reference/dateparser/tests/test_date_parser.py`` is one long parametrised list of date
 strings with the datetime each is expected to parse to, across every locale and format that project
 supports. It is the widest labelled date corpus available under a permissive license, and it is
-where the machine formats our four rules claim — ISO 8601, RFC 3339 with an offset, the mail-header
-date, the week date — sit beside the several hundred human-written forms we deliberately do not
+where the machine formats our four rules claim (ISO 8601, RFC 3339 with an offset, the mail-header
+date, the week date) sit beside the several hundred human-written forms we deliberately do not
 match. Both halves are the measurement: one gives recall, the other gives the size of the limit.
 
 The file is read with ``ast``, not with a regular expression: every ``param(...)`` call inside a
 ``@parameterized.expand`` decorator is a case, and the decorated function's name is what says
 whether upstream considers the string parseable. ``test_dates_not_parsed`` and the too-large-day
-test are upstream declaring a string invalid, and those become the invalid half of the corpus —
-the only place in this origin where precision is measured.
+test are upstream declaring a string invalid, and those become the invalid half of the corpus.
+The only place in this origin where precision is measured.
 
 Tokens here are bare date strings rather than sentences, so the carrier sentence the identifier
 extractors build is used, exactly as for python-stdnum: the fragment scanned is

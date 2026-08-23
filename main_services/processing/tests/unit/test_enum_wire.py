@@ -1,6 +1,6 @@
 """Reading a ClickHouse ``Enum8`` back: names, ordinals, and the comparison that lies.
 
-Pure — no stack. The failure this pins does not raise and does not log. An arrow read of
+Pure, no stack. The failure this pins does not raise and does not log. An arrow read of
 an ``Enum8`` column yields the ORDINAL, so ``row['role'] == 'from'`` is ``1 == 'from'``,
 which is False for every row ever read. It cost the corpus its entire sender field
 (``email_from`` empty on 2.28 M documents while ``email_to`` held sender, recipient, cc

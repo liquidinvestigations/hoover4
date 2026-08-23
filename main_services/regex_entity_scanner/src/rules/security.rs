@@ -3,7 +3,7 @@
 //! The three sit at different points on the same trade-off. An ISIN carries a country prefix and a
 //! fixed twelve-character length, so its checksum is enough. A CUSIP and a SEDOL are bare
 //! alphanumeric tokens of nine and seven characters, which is the shape of every part number and
-//! internal reference code in existence — their check digit is a one-in-ten filter and the word
+//! internal reference code in existence. Their check digit is a one-in-ten filter and the word
 //! beside them is what makes acceptance defensible.
 
 use std::collections::BTreeMap;

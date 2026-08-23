@@ -5,15 +5,15 @@
 diagnosis upstream's validator returns for it. The categories are what make it more than a
 valid/invalid split, and they line up with the three things this origin measures:
 
-* ``ISEMAIL_ERR`` — wrong under any reading. These are the precision cases, and they are the largest
+* ``ISEMAIL_ERR``, wrong under any reading. These are the precision cases, and they are the largest
   body of email precision evidence available anywhere under a permissive licence.
-* ``ISEMAIL_VALID_CATEGORY`` — right under every reading. These are the recall cases.
-* everything between — upstream saying "legal under RFC 5322 and a bad idea": quoted local parts,
+* ``ISEMAIL_VALID_CATEGORY``, right under every reading. These are the recall cases.
+* everything between, upstream saying "legal under RFC 5322 and a bad idea": quoted local parts,
   comments, folding whitespace, IP-literal domains, obsolete forms. That is one exclusion class, and
   it rests on the email card's own scope.
 
 Two things about the corpus are decided by the file rather than here. XML cannot carry an ASCII
-control character, so upstream writes each one as the U+2400-block symbol for it — ``␇`` for BEL —
+control character, so upstream writes each one as the U+2400-block symbol for it (``␇`` for BEL)
 and says so in its own header comment; decoding those back is what makes the token upstream's own
 rather than a picture of it. And an upstream-invalid address is scanned **as the whole fragment**,
 because upstream's assertion is about the whole string rather than about a span inside it: the

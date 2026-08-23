@@ -12,7 +12,7 @@ use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 /// the ingest that produced it, and the title bar's job when the identifier resolves to
 /// nothing is to say so quietly. An `Err` here reached the user as
 /// `error running server function: File path not found` on a page that was otherwise
-/// fine. Genuine failures — permissions, an unreachable ClickHouse — are still errors.
+/// fine. Genuine failures (permissions, an unreachable ClickHouse) are still errors.
 pub async fn get_file_path(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -33,7 +33,7 @@ pub async fn get_file_path(
 ///
 /// Each chain is its own walk up `parent_key`, so the cost of this endpoint is
 /// `locations × depth` small queries. A hash at every path of a wide fixture is a real
-/// thing — the shapes corpus has one at 668 — and a panel is not a place to spend 2000
+/// thing (the shapes corpus has one at 668), and a panel is not a place to spend 2000
 /// round trips. The rest are reported as a count.
 pub const MAX_FILE_LOCATIONS: u64 = 25;
 
@@ -42,7 +42,7 @@ pub const MAX_FILE_LOCATIONS: u64 = 25;
 /// Not `get_file_path` with the `LIMIT 1` raised: that one answers "what do I call this
 /// document" for the title bar and wants exactly one name. This one exists because the
 /// answer is usually more than one, and because each answer is only useful with the
-/// containers above it — a member of `parent.zip` is at `/location-1/parent.zip/child.txt`
+/// containers above it. A member of `parent.zip` is at `/location-1/parent.zip/child.txt`
 /// and at `/location-2/parent.zip/child.txt`, and neither path string says so on its own.
 pub async fn get_file_locations(
     user: &CurrentUser,
@@ -85,7 +85,7 @@ pub async fn get_file_locations(
         let node_key = make_node_key(&dataset, container_hash, path);
         async move {
             // A location the structure index has not caught up with still belongs in the
-            // list — with its raw path instead of a chain.
+            // list, with its raw path instead of a chain.
             crate::api::vfs::vfs_tree_path_to(user, dataset, node_key)
                 .await
                 .unwrap_or_default()
@@ -109,8 +109,8 @@ pub async fn get_file_locations(
 
 /// The document's canonical file type, for the title bar's glyph.
 ///
-/// `""` for a document `file_type_canonical` has no row for — a file indexed before the
-/// type resolver ran, or one still being processed. The glyph draws that as the generic
+/// `""` for a document `file_type_canonical` has no row for, such as a file indexed before
+/// the type resolver ran, or one still being processed. The glyph draws that as the generic
 /// file icon, which is what the title bar drew for everything before.
 pub async fn get_canonical_file_type(
     user: &CurrentUser,

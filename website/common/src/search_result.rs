@@ -12,7 +12,7 @@ pub struct SearchResultDocuments {
     pub next_hash: Option<DocumentIdentifier>,
     pub page_number: u64,
     /// True when at least one shard could not be searched (see the fan-out
-    /// partial-failure policy) — the result list may be missing documents and the
+    /// partial-failure policy). The result list may be missing documents and the
     /// UI shows a notice.
     #[serde(default)]
     pub partial: bool,
@@ -44,7 +44,7 @@ pub struct SearchResultDocumentItem {
     /// The query matched this document's FILENAME and nothing in its text.
     ///
     /// The filename is searchable through a synthetic pages row, and when that row is the
-    /// only one that matched, the body snippet is `HIGHLIGHT()` over the filename — the
+    /// only one that matched, the body snippet is `HIGHLIGHT()` over the filename. The
     /// title again, in the place a reader reads as "here is where it says that". The card
     /// says what happened instead of echoing the title.
     #[serde(default)]
@@ -73,7 +73,7 @@ pub struct SearchResultFacets {
     pub facet_field: String,
     pub facet_values: Vec<SearchResultFacetItem>,
     /// True when at least one shard could not be searched (see the fan-out
-    /// partial-failure policy) — buckets from the failed shard are missing, so
+    /// partial-failure policy). Buckets from the failed shard are missing, so
     /// counts may be lower than the real ones.
     #[serde(default)]
     pub partial: bool,

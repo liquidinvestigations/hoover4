@@ -11,7 +11,7 @@ def hash_string_to_uint63(string_value: str) -> int:
 
     blake2b truncated to 63 bits. This decides Manticore REPLACE INTO row identity
     (pages/metadata row ids) and string-term ids, so a collision silently
-    overwrites a different document's row — the previous crc32|adler32
+    overwrites a different document's row. The previous crc32|adler32
     construction was far too weak for that job (Adler-32 especially so on short
     inputs).
 
@@ -45,7 +45,7 @@ def _chunk_by_bytes(values, budget=_TERM_LOOKUP_BYTE_BUDGET):
 
     Sized by BYTES rather than by count: term values are arbitrary text, so a fixed
     count is only ever right for one corpus. A single value larger than the budget still
-    goes out on its own — nothing here can make that one fit, and splitting it would
+    goes out on its own, nothing here can make that one fit, and splitting it would
     change what is being looked up.
     """
     chunk, size = [], 0

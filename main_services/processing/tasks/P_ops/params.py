@@ -129,8 +129,8 @@ class ImportParams:
 class ExportStoreResult:
     """What one store contributed to a backup.
 
-    `detail` is per store and goes into the manifest as it is — the artifact names, their
-    sizes and their checksums — because what a restore needs to know differs by store and
+    `detail` is per store and goes into the manifest as it is (the artifact names, their
+    sizes and their checksums), because what a restore needs to know differs by store and
     flattening it here would lose the parts only one of them has.
     """
 

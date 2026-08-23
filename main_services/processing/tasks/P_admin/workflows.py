@@ -181,7 +181,7 @@ class ChangeOcrLanguages:
         await progress("reopened plans", {"plans": reopened})
 
         if reopened:
-            # The re-run carries the whole downstream chain with it — parse, OCR, NER,
+            # The re-run carries the whole downstream chain with it. Parse, OCR, NER,
             # chunk+embed and index are all stages of ExecutePlans, so "re-run" and
             # "reindex" in the spec are one call, not two.
             await progress("reprocessing")
@@ -242,7 +242,7 @@ class CollectEtaSamples:
     """Self-scheduling ETA sampler for the admin processing page.
 
     Runs one sampling pass (the ``collect_eta_samples`` activity), then sleeps
-    for ``20 x mean(last 10 pass durations)`` — see ``eta_collector`` for the
+    for ``20 x mean(last 10 pass durations)``. See ``eta_collector`` for the
     estimate and throttle rules. A singleton: started once at worker bootstrap
     with workflow id ``collect-eta-samples`` and ``USE_EXISTING`` conflict
     policy, so worker restarts never duplicate it.

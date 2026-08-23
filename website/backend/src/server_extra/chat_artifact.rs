@@ -1,7 +1,7 @@
 //! Serving chat artifacts: the thumbnail, the archived page, the search detail.
 //!
 //! Three routes, one ACL. An `artifact_id` reaches the browser through a tool payload
-//! that an MCP server — driven by an LLM — wrote, so it is **never** treated as a
+//! that an MCP server (driven by an LLM) wrote, so it is **never** treated as a
 //! capability. Each request resolves the id back to a `chat_artifacts` row and requires
 //! the caller to be the owner or an admin. Unknown id is a 404; someone else's id is a
 //! **403**, not a 404: collapsing the two would hide a real permission failure behind an
@@ -21,7 +21,7 @@
 //!
 //! * the **sandbox** gives the document an opaque origin with scripting disabled, so it
 //!   cannot reach cookies, `localStorage` or the parent frame;
-//! * the **CSP** forbids every network fetch, so a capture cannot phone home — the CSP
+//! * the **CSP** forbids every network fetch, so a capture cannot phone home. The CSP
 //!   without the sandbox still allows scripts, and the sandbox without the CSP still lets
 //!   a stylesheet fetch leak the fact that the capture was viewed.
 //!
@@ -82,7 +82,7 @@ impl Asset {
     }
 }
 
-/// Owner or admin. A **403** rather than a 404 — see the module docstring.
+/// Owner or admin. A **403** rather than a 404, see the module docstring.
 ///
 /// A pure function so the rule itself is testable. It cannot be exercised end to end on a
 /// deployment with `HOOVER4_DEMO_MODE=true`, where every anonymous guest is an
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn another_user_may_not() {
-        // The whole point: an artifact_id arrives from an LLM-driven tool payload, so it
+        // What this asserts: an artifact_id arrives from an LLM-driven tool payload, so it
         // is a lookup key and never a capability.
         assert!(!may_read("bob", false, "alice"));
     }
@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(Asset::parse("thumb.webp"), Some(Asset::Thumb));
         assert_eq!(Asset::parse("page.html"), Some(Asset::Page));
         assert_eq!(Asset::parse("detail.json"), Some(Asset::Detail));
-        // The object key comes from the row, so a caller can never name an object —
+        // The object key comes from the row, so a caller can never name an object,
         // only choose between the files this artifact has.
         assert_eq!(Asset::parse("../../etc/passwd"), None);
         assert_eq!(Asset::parse("page.html/../secret"), None);
@@ -236,7 +236,7 @@ mod tests {
         assert!(CSP.contains("default-src 'none'"));
         assert!(CSP.contains("frame-ancestors 'self'"));
         assert!(CSP.contains("form-action 'none'"));
-        // Only data: URIs — the inliner has already turned every subresource into one.
+        // Only data: URIs. The inliner has already turned every subresource into one.
         assert!(CSP.contains("img-src data:"));
         assert!(!CSP.contains("script-src"));
     }

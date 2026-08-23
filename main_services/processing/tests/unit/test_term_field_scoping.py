@@ -1,13 +1,13 @@
 """Every term field must be scoped to a dataset, or explicitly declared global.
 
 A term id is `blake2b(term_value)` truncated to 63 bits, and `string_term_text_to_id` is
-keyed by `(collection_dataset, term_field, term_value)` — but the ID itself is derived
+keyed by `(collection_dataset, term_field, term_value)`, but the ID itself is derived
 from the VALUE alone. So two datasets that mint a term from the same string get the same
 integer, and a Manticore filter on that integer matches BOTH datasets' documents.
 
 For `filetype` that is correct and wanted: `pdf` means the same thing everywhere, and
 sharing the id is what makes one facet list work across collections. For anything
-positional — a path, a folder — it is a silent cross-dataset leak: filtering on one
+positional (a path, a folder), the result is a silent cross-dataset leak: filtering on one
 dataset's `/data` folder also returns the other's.
 
 The rule this module enforces: a term field is either on the GLOBAL allowlist, with a
@@ -19,10 +19,10 @@ import pathlib
 
 from tasks.P6_index_data.vfs_nodes import UNIT_SEP, dataset_root_key, make_node_key
 
-#: Term fields whose values are legitimately global — the same string means the same
+#: Term fields whose values are legitimately global. The same string means the same
 #: thing in every dataset, and sharing the id is the point.
 GLOBAL_TERM_FIELDS = {
-    "filetype",      # "pdf", "document" — a type is a type.
+    "filetype",      # "pdf", "document", a type is a type.
     "mime_type",     # "application/pdf".
     "extension",     # "pdf".
     "ner",           # a person's name is the same person across datasets.
@@ -43,7 +43,7 @@ def _term_fields_used_in_source() -> set[str]:
     """Every literal term-field name passed to `get_string_term_ids`.
 
     An AST walk rather than a grep: the third positional argument is the field name, and
-    only a literal can be checked here — a computed one would need a runtime test and is
+    only a literal can be checked here. A computed one would need a runtime test and is
     itself a smell worth failing on.
     """
     found: set[str] = set()

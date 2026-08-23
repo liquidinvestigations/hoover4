@@ -8,7 +8,7 @@ ORCID, because an arbitrary day's author records carry one only a few times in a
 Both schemes measure **recall only, and that is a property of the source rather than a choice**:
 Crossref publishes registered identifiers, so there are no malformed ones in it to stay silent
 about. `publication.orcid` has an ISO 7064 check digit, which makes the invalid examples the
-interesting ones, and mutating a digit here would manufacture a token that nobody wrote — so those
+interesting ones, and mutating a digit here would manufacture a token that nobody wrote, so those
 negatives live in the rule's unit tests and this origin does not pretend to supply them.
 
 An ORCID is published as a resolver URL, and the URL is the token: it is what upstream wrote, and

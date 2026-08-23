@@ -1,8 +1,8 @@
-"""`read_page` — open several URLs, read them, hand back the text.
+"""`read_page`, open several URLs, read them, hand back the text.
 
 This is the ninety-percent case of browsing, as one call. Reading a page used to be
 `browser_navigate`, then `browser_snapshot`, then reading an accessibility tree, once per
-URL, serially — three round trips and a tree full of markup for something the model wanted
+URL, serially, three round trips and a tree full of markup for something the model wanted
 as prose. Here it is navigate, settle, extract, capture, return, batched over URLs.
 
 **`goal` is not an inner agent loop.** It is passed to the extraction, which uses it to
@@ -13,7 +13,7 @@ debugged from the outside; that shape was rejected deliberately and must not com
 
 **The artifact contract is unchanged.** Each page produces the same screenshot-always,
 MHTML-under-the-cap capture that an explicit snapshot produces, so the archived-page card
-in the transcript renders exactly as it did — one card per page, several per call.
+in the transcript renders exactly as it did, one card per page, several per call.
 
 The shared character budget is divided across the URLs asked for, and what did not fit is
 named in the note rather than silently dropped. See `agent_common.batching`.
@@ -95,7 +95,7 @@ class ReadResult:
 
 
 def plan(raw_urls: object) -> tuple[list[str], list[str], list[str], str]:
-    """`(to_read, repeats, over_cap, note)` — everything decided before a browser is touched.
+    """`(to_read, repeats, over_cap, note)`, everything decided before a browser is touched.
 
     Separated from the fetching so the whole argument-shaping contract is testable without
     a Chromium: this is where a model's malformed list, its duplicate URLs and its
@@ -123,7 +123,7 @@ def focus(text: str, goal: str, limit: int) -> tuple[str, bool]:
 
     With no goal this is a plain head truncation, which is the right default: a page's
     opening is its summary far more often than not. With a goal, paragraphs carrying the
-    goal's words are kept first and the rest fills what is left — so a term appearing
+    goal's words are kept first and the rest fills what is left, so a term appearing
     forty thousand characters down a reference page survives a budget that would otherwise
     have cut at the table of contents.
 
@@ -226,8 +226,8 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> Pag
         # still extracted and captured below.
         navigated = f"navigation did not settle within {NAVIGATE_TIMEOUT_MS / 1000:g}s"
     if navigated:
-        # A navigation that errored still leaves something on screen — a cookie wall, a
-        # 403 page, a CAPTCHA — and that is exactly what the capture below is for. The
+        # A navigation that errored still leaves something on screen (a cookie wall, a
+        # 403 page, a CAPTCHA), and that is exactly what the capture below is for. The
         # extraction is still attempted; only if it also comes back empty is this
         # reported as the failure.
         log.info("read_page: navigation to %s reported %s", url, navigated)
@@ -264,10 +264,10 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> Pag
 
 
 async def _call(chat, tool: str, arguments: dict) -> tuple[str, str]:
-    """Forward one sidecar call. `(error, text)` — exactly one of the two is non-empty.
+    """Forward one sidecar call. `(error, text)`, exactly one of the two is non-empty.
 
-    The unbound sidecar tools are still *callable* — they stopped being advertised, not
-    routable — which is what lets this compose `browser_evaluate` without exposing it.
+    The unbound sidecar tools are still *callable* (they stopped being advertised, not
+    routable) which is what lets this compose `browser_evaluate` without exposing it.
     """
     try:
         call = await chat.client.call_tool(tool, arguments, raise_on_error=False)
@@ -293,7 +293,7 @@ def _decode(body: str) -> dict | None:
 
     `browser_evaluate` answers with a `### Result` heading and the value beneath it, so
     the JSON object has to be found rather than parsed off the front. The extraction
-    returns a *string* of JSON, which the sidecar then JSON-encodes again — hence the
+    returns a *string* of JSON, which the sidecar then JSON-encodes again, hence the
     second decode.
     """
     decoder = json.JSONDecoder()

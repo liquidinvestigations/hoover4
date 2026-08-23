@@ -20,7 +20,7 @@ numbers", which is how this kind of system actually fails.
 every spurious and missed span by itself.
 
 Roughly half the corpus is fragments where the right answer is nothing at all. Negative cases are
-not padding — precision is the property under test, and a corpus of positives alone cannot measure
+not padding. Precision is the property under test, and a corpus of positives alone cannot measure
 it.
 
 Fixtures name the surface form and the canonical value rather than byte offsets, because offsets
@@ -39,7 +39,7 @@ case-file schema and how an upstream test becomes a fragment we scan.
 
 It is a normal test target with its one test `#[ignore]`d, rather than a `[[bin]]` or a separate
 `[[test]]` with `harness = false`. That way the fast battery compiles it, rustfmt and clippy cover
-it, and `tests/support` is shared — so it cannot rot unnoticed — while `cargo test` still never runs
+it, and `tests/support` is shared (so it cannot rot unnoticed) while `cargo test` still never runs
 it. `./test-long.sh` runs it by name with `--ignored`.
 
 The golden corpus and the conformance run answer different questions and neither replaces the
@@ -51,7 +51,7 @@ check digit means what its author meant.
 
 The whole battery stays inside two to three minutes and an individual test inside ten to fifteen
 seconds. Reference corpora are large; a test iterates a representative subset and says what the
-subset covers. A suite that takes long enough to skip is not more thorough, it is unused.
+subset covers. A suite that takes long enough to skip is unused rather than more thorough.
 
 The one exhaustive test is the ISO week sweep in `dates.rs`, and it is exhaustive because no corpus
 anywhere carries a week date: it generates its own cases over eight chosen years rather than

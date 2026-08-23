@@ -1,7 +1,7 @@
 # `src/rules/`
 
 One module per entity type. A rule is a candidate pattern plus a validator, and adding a type is a
-pattern, a validator and a fixture — not a new pipeline.
+pattern, a validator and a fixture, not a new pipeline.
 
 ## The inventory
 
@@ -28,7 +28,7 @@ pattern, a validator and a fixture — not a new pipeline.
 Standing policy for the `date` type, and the reason there are four date rules rather than six: **a
 date rule emits nothing unless the match itself determines year, month and day.**
 
-Yearless formats are therefore not matched — a syslog line's `Mar  4 09:12:00` would have to have
+Yearless formats are therefore not matched. A syslog line's `Mar  4 09:12:00` would have to have
 its year invented, taken from document state this service does not hold, or left out of a value a
 range query then cannot use. Bare `YYYYMMDD` is not matched either: it does fix the whole day, but
 eight adjacent digits with a valid calendar reading is the noisiest date shape there is, and in an
@@ -43,7 +43,7 @@ characters. National form does not: `020 7123 4567` names a different subscriber
 and in Bucharest, and the text does not say which is meant.
 
 There is therefore no default region, no configuration setting for one, and no rule that reads a
-national number. Assuming a region is not a small convenience — it silently mislabels every document
+national number. Assuming a region is not a small convenience. It silently mislabels every document
 written anywhere else, and the mislabelling is invisible in the output, which is the worst shape a
 false positive can take.
 
@@ -51,8 +51,8 @@ The `00` form asks for more than the `+` form: the metadata has to confirm the n
 has to carry the punctuation somebody dialling abroad writes. Two leading zeros and a digit run is
 also every long reference number there is.
 
-The punctuation half of that is the expensive half and it is bought deliberately. Dropping it — an
-unpunctuated `00` run confirmed by the metadata and nothing else — wins a block of free-text
+The punctuation half of that is the expensive half and it is bought deliberately. Dropping it (an
+unpunctuated `00` run confirmed by the metadata and nothing else) wins a block of free-text
 international numbers from the reference corpora and, in the same run, reads `invoice 0012345678901`
 as a call to another country. A recall gain on a corpus of telephone numbers against a precision
 loss on documents full of reference numbers is the trade this project refuses, so the punctuation
@@ -64,8 +64,8 @@ Standing policy for the `national_id` type, and it has two halves.
 
 **Scope.** A bare digit run with one check digit is still a bare digit run, and a facet built out of
 those is a facet of invoice numbers. A scheme ships on one of two grounds. Either its surface form
-identifies itself — a fixed letter-and-digit pattern, a restricted check alphabet, a holder-type
-position — which is the codice fiscale, the NIF/NIE, the CURP and the PAN. Or it carries two
+identifies itself (a fixed letter-and-digit pattern, a restricted check alphabet, a holder-type
+position), which is the codice fiscale, the NIF/NIE, the CURP and the PAN. Or it carries two
 independent checks and a mandatory cue: the PESEL and the personnummer are nothing but digits, and
 what admits them is a check digit *and* an embedded date that has to be a real day *and* the word
 beside them. If the cue requirement is ever dropped from those two, the rules go with it.
@@ -77,10 +77,10 @@ that a document mentions an identity number is a different act from deriving per
 out of it, and this service does only the first.
 
 **The type is full.** `national_id` holds six rules, which is the budget below. The next national
-scheme is not a seventh entry: it is a conversation about splitting the type per region, and the
-budget is the thing being measured when one is proposed. Finland's personal identity code is the
-strongest candidate outside — a mod-31 check character over nine digits, an embedded date and a
-century separator — and it is outside on the budget rather than on quality.
+scheme opens a conversation about splitting the type per region rather than adding a seventh
+entry, and the budget is what is measured when one is proposed. Finland's personal identity code is the
+strongest candidate outside (a mod-31 check character over nine digits, an embedded date and a
+century separator), and it is outside on the budget rather than on quality.
 
 ## The rule-set version
 
@@ -89,7 +89,7 @@ the scope of a reindex computable: extraction is not idempotent across rule sets
 
 Bump it for any change to a candidate pattern, to a validator's accept or reject boundary, to the
 value a rule normalises to, or to the rule inventory. Do not bump it for card text, a doc comment or
-a catalogue entry — none of those change what a document yields. Adding a conformance origin does
+a catalogue entry, none of those change what a document yields. Adding a conformance origin does
 not bump it either: it changes no pattern, no validator and no inventory.
 
 A bump is scopable by facet, which is what makes it worth having. A change that adds two bank rules
@@ -111,31 +111,32 @@ candidate, and an anchor or a word boundary means something different there. Bou
 belong in the validator, which holds the whole fragment either way.
 
 `validate` returns `None` to reject, or a `Verdict` carrying the canonical value, a confidence, any
-flags, and possibly a narrowed span — trailing punctuation that the pattern swallowed is trimmed
+flags, and possibly a narrowed span. Trailing punctuation that the pattern swallowed is trimmed
 here, where it is cheap to reason about, instead of in the pattern where it is not.
 
-## Guards that earn their keep
+## Guards that remove the most noise
 
 In rough order of how much noise they remove per line of code:
 
-1. **Structural validity** — a calendar that has the day, a check digit that agrees. This alone
+1. **Structural validity**, a calendar that has the day, a check digit that agrees. This alone
    removes the bulk of numeric false positives.
-2. **Plausibility windows** — a year range, an amount magnitude. Kills version strings and
-   identifier fragments.
-3. **Adjacent-byte guards** — the stripped lookarounds. A date wedged between digits is part of a
+2. **Plausibility windows**, a year range or an amount magnitude. These kill version strings
+   and identifier fragments.
+3. **Adjacent-byte guards**, the stripped lookarounds. A date wedged between digits is part of a
    longer number.
-4. **List membership** — the IANA TLD list, the IBAN registry, the ISO 3166-1 country codes,
-   airport codes, MMSI flag prefixes. Cheap, and decisive for the types that have no checksum.
+4. **List membership**: the IANA TLD list, the IBAN registry, the ISO 3166-1 country codes,
+   airport codes, MMSI flag prefixes. These are cheap, and decisive for the types that have no
+   checksum.
    `VendoredData::is_country_code` is the country test: CLDR's territory list also holds groupings
    and placeholders such as `EU` and `ZZ`, and an identifier that encodes a country encodes a real
    one.
-5. **Ambiguous-lexeme rules** — surface forms that collide with ordinary words and need stronger
+5. **Ambiguous-lexeme rules**. Surface forms that collide with ordinary words and need stronger
    context before they count.
 
 ## Shared machinery
 
-`checksum.rs` is the check-digit arithmetic — `luhn`, `damm`, `weighted_mod`, and `iso7064`'s
-`mod_97_10`, `mod_11_2` and `mod_11_10` — ported from `python-stdnum`, each with the valid and
+`checksum.rs` is the check-digit arithmetic (`luhn`, `damm`, `weighted_mod`, and `iso7064`'s
+`mod_97_10`, `mod_11_2` and `mod_11_10`) ported from `python-stdnum`, each with the valid and
 invalid pair from its upstream documentation as a test. The arithmetic is not invented here; a
 divergence from the reference shows up as a failing test rather than a quietly wrong facet.
 
@@ -146,7 +147,7 @@ and a check digit are admitted on a cue word as well.
 
 That window is **field-scoped**: it stops at the line break either side, unless the next line is
 indented, which is a folded continuation of the same field. Bytes are not meaning once a document
-has structure — in a header block, a mail list or a table, a label belongs to its own line — and a
+has structure (in a header block, a mail list or a table, a label belongs to its own line), and a
 cue that reaches across the boundary vouches for the neighbouring field's token. The cost is worse
 than an invented entity, because the spurious reading can outrank the correct one and take its place
 in `resolve`.
@@ -163,7 +164,7 @@ across rules, which means picking a number off a fixed ladder rather than formin
 
 | Value | What the validator was able to do |
 |---|---|
-| 0.99 | Check digit verified **and** the surface form is self-identifying — a country prefix, a fixed alphabet, a literal marker |
+| 0.99 | Check digit verified **and** the surface form is self-identifying, a country prefix, a fixed alphabet, a literal marker |
 | 0.97 | Check digit verified on a bare token, admitted on a cue word |
 | 0.95 | No check digit; structure plus membership of an authoritative list or published register (email TLD, BIC country, MMSI MID, ISO 4217 code, a country's numbering plan) |
 | 0.90 | No check digit; structure plus a cue word |

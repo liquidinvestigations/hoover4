@@ -1,4 +1,4 @@
-"""`record_processing_errors` takes rows, not strings — and the converter is the only judge.
+"""`record_processing_errors` takes rows, not strings, and the converter is the only judge.
 
 Temporal decodes the activity argument into `RecordProcessingErrorsParams` on the worker
 side. A caller that passes the legacy shape (`errors: List[str]` plus loose

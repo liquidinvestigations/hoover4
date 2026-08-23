@@ -1,9 +1,9 @@
-"""What Chromium itself is allowed to fetch — the line that survives a redirect.
+"""What Chromium itself is allowed to fetch, the line that survives a redirect.
 
 :mod:`.urlcheck` is the first boundary and it is a good one, but it only ever sees **tool
 arguments**. Once Chromium is loading a page, everything after that is the browser's own
 business: an HTTP 302, a `<meta http-equiv=refresh>`, `location = …` in a script, an
-`<img src>` — none of them pass through a tool call, so none of them are checked. A public
+`<img src>`, none of them pass through a tool call, so none of them are checked. A public
 page that redirects to `http://manticore:9308/sql?query=…` was fetched and returned to the
 model. Measured, not assumed: with the filter off, that redirect answered with data.
 
@@ -12,30 +12,30 @@ flag "does not serve as a security boundary and *does not affect redirects*", an
 matching had a second bug on top: a bare hostname becomes the glob `*://<host>/**`, and a
 single `*` does not cross `/`, so `http://manticore:9308/` never matched. Every service on
 this network listens on a non-default port, so the entire flag was inert. It is still
-passed — correctly, now — as the cheap second line it was always meant to be.
+passed (correctly, now), as the cheap second line it was always meant to be.
 
 The boundary that does hold is a **proxy auto-config script**, handed to Chromium at
 launch as a `data:` URL. PAC is consulted for *every* request the network stack makes,
 including each hop of a redirect chain, before a connection is opened, browser-wide and
-for every tab — which is exactly the coverage the tool-argument check lacks. Anything
+for every tab, which is exactly the coverage the tool-argument check lacks. Anything
 internal is routed to a proxy that does not exist, so the request fails at once with
 `ERR_PROXY_CONNECTION_FAILED` instead of reaching the service.
 
 What counts as internal, in the order the script tests it:
 
-* a **single-label** host (`isPlainHostName`) — every container on the `hoover4` network is
+* a **single-label** host (`isPlainHostName`), every container on the `hoover4` network is
   reachable under a bare name, so this catches `clickhouse`, `manticore`, `localhost` and
   every service added after this file was written, without a list to keep in step;
 * the `.internal` and `.localhost` suffixes (cloud metadata endpoints live in the first);
 * an address, after resolution, in any private, loopback, link-local, CGNAT or reserved
-  range — the same rule :mod:`.urlcheck` applies, now applied to what the browser actually
+  range, the same rule :mod:`.urlcheck` applies, now applied to what the browser actually
   connects to, which also covers a public name with a private `A` record.
 
 Fail-closed: a name that does not resolve is blocked rather than tried.
 
 Known limits, deliberately accepted: PAC's `dnsResolve` is IPv4-only (`dnsResolveEx` is a
 Microsoft extension Chromium does not implement), so an IPv6-only internal host would not
-be caught by the address rule — the name rules still catch every one that exists here, and
+be caught by the address rule. The name rules still catch every one that exists here, and
 this network is IPv4. And PAC is consulted per *request*, so it does not see a page that
 exfiltrates through a host it is allowed to reach; that was never this layer's job.
 """
@@ -48,7 +48,7 @@ import os
 from browser_use_server.urlcheck import DENIED_HOSTS
 
 #: Where a blocked request is sent instead. `127.0.0.1:1` is a privileged port nothing in
-#: this container binds, so the connection is refused *immediately* — the failure is fast
+#: this container binds, so the connection is refused *immediately*. The failure is fast
 #: and unambiguous. An unroutable public address (TEST-NET, say) would be tidier in theory
 #: and much worse in practice: the container has a default route, so those hang until the
 #: navigation deadline and every blocked fetch costs 30 seconds.
@@ -116,7 +116,7 @@ def blocked_origins(hosts: str) -> str:
         if not host:
             continue
         if "://" in host:
-            # Already an origin — trust the caller and pass it through untouched.
+            # Already an origin: trust the caller and pass it through untouched.
             out.append(host)
             continue
         out.extend((f"http://{host}:*", f"https://{host}:*"))

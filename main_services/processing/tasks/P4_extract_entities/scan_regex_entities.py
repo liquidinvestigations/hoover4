@@ -7,11 +7,11 @@ website, so inventing a stage between P4 and P5 would move a number that other r
 already hold.
 
 The scan is one HTTP call per batch to a service with no fallback twin. A 503 from it is
-admission control, which `tasks.remote.post_json` already raises as retryable — the right
+admission control, which `tasks.remote.post_json` already raises as retryable. The right
 answer to a full scan queue is to come back, never to scan somewhere else.
 
 **A segment boundary loses an entity.** `text_content.page_id` is a ~256 KB segment
-ordinal for unpaged formats, and a value that straddles two segments is seen by neither —
+ordinal for unpaged formats, and a value that straddles two segments is seen by neither,
 at most one per boundary. The scanner takes an `offset` parameter precisely so a windowed
 caller can overlap and deduplicate; this stage does not window, so the loss is real and
 bounded rather than mysterious.
@@ -48,8 +48,8 @@ REGEX_TASK_QUEUE = "processing-common-queue"
 #: Texts per request, and characters per request.
 #:
 #: The characters are the bound that matters. `NLP_BATCH_CHARS` is 250 000 because a GPU
-#: slot must not be held for seconds by one request; the scanner is memory-light — 188 MB
-#: at full load, with no per-request growth — and runs at about 0.85 MB/s per thread, so a
+#: slot must not be held for seconds by one request; the scanner is memory-light. 188 MB
+#: at full load, with no per-request growth, and runs at about 0.85 MB/s per thread, so a
 #: megabyte is roughly a second of one thread's work rather than a queue-blocking unit.
 REGEX_BATCH_CHARS = 1_000_000
 REGEX_BATCH_TEXTS = 64
@@ -261,6 +261,6 @@ def scanner_url(path: str) -> str:
 
 def _dumps(value) -> str:
     """Sorted keys and no whitespace, so the same value produces the same string on every
-    run — the column is part of a ReplacingMergeTree row that a re-scan must not change
+    run. The column is part of a ReplacingMergeTree row that a re-scan must not change
     for no reason."""
     return json.dumps(value, separators=(",", ":"), sort_keys=True)

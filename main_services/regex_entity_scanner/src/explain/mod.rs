@@ -7,13 +7,13 @@
 //! Two properties shape this module.
 //!
 //! **The entity is the whole input.** Nothing is looked up in a session, a cache or the original
-//! document — an entity is self-describing, so a card can be produced from one that was extracted
+//! document. An entity is self-describing, so a card can be produced from one that was extracted
 //! months ago by a client that has kept it. Only `rule_id` is required; every other field is used
 //! if present and ignored if not, because an entity from an older rule set must still explain
 //! itself rather than fail.
 //!
 //! **The knowledge is static and lives in [`catalog`].** What a rule matches, which standard
-//! defines it, which authority administers it, what the validator checked and — as importantly —
+//! defines it, which authority administers it, what the validator checked and (equally)
 //! what it did not check, are properties of the rule, written down once next to it. The per-rule
 //! shapers in [`cards`] add what only this particular match can say: its country, its precision,
 //! the authority register entry for its own top-level domain.
@@ -53,7 +53,7 @@ impl ExplainRequest {
         self.value.get(field)?.as_bool()
     }
 
-    /// One entry of an identifier value's `parts` map — the bank code inside an IBAN, the issuing
+    /// One entry of an identifier value's `parts` map, the bank code inside an IBAN, the issuing
     /// unit inside an LEI. Nested one level, so it needs its own accessor.
     pub fn value_part(&self, name: &str) -> Option<&str> {
         self.value.get("parts")?.get(name)?.as_str()
@@ -69,7 +69,7 @@ pub struct Explanation {
     pub entity_type: EntityType,
     /// Human-readable name for what was matched: "ISO 8601 timestamp", not `date.iso8601`.
     pub title: String,
-    /// One line of what this particular match is — country, authority, precision, register.
+    /// One line of what this particular match is: country, authority, precision, register.
     pub subtitle: String,
     /// The long text, in Markdown, with links inline.
     pub body: String,
@@ -114,7 +114,7 @@ impl Link {
     }
 }
 
-/// Builds the card, or `None` when no rule of that identifier is documented — which a UI treats as
+/// Builds the card, or `None` when no rule of that identifier is documented, which a UI treats as
 /// "show no card" rather than as an error.
 pub fn explain(request: &ExplainRequest, data: &VendoredData) -> Option<Explanation> {
     let doc = catalog::lookup(&request.rule_id)?;

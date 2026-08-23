@@ -222,7 +222,7 @@ def _as_utc(value) -> datetime | None:
     """Coerce whatever the caller has into an aware UTC datetime.
 
     ClickHouse `DateTime` columns come back through `query_arrow().to_pylist()` as raw
-    epoch INTEGERS, not datetimes — which is not what reading the schema suggests, and
+    epoch INTEGERS, not datetimes, which is not what reading the schema suggests, and
     is the kind of thing that only shows up as `'int' object has no attribute 'tzinfo'`
     in a worker log. Accepting both keeps the pure function usable from tests (which
     pass datetimes) and from the activity (which does not).

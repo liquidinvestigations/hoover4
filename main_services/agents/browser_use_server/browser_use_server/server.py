@@ -3,25 +3,25 @@
 Each chat gets a browser that belongs to it and to nobody else. What this server
 *advertises* over that browser is deliberately small: `read_page`, which opens a list of
 URLs and returns their readable text with a screenshot and an archived copy each, plus six
-interactive tools for pages that have to be driven — navigate, snapshot, click, type,
+interactive tools for pages that have to be driven: navigate, snapshot, click, type,
 select an option, press a key.
 
 The sidecar's other two dozen tools are registered **disabled**: absent from `list_tools`,
 still routable, and one entry in `BROWSER_EXPOSED_TOOLS` away from coming back. Advertising
 all of them made this one server four fifths of a research agent's tool list, and a tool
-list that long costs accuracy — the evidence is that a seven-tool adaptive shortlist scores
+list that long costs accuracy. The evidence is that a seven-tool adaptive shortlist scores
 level with a fixed fifty. `read_page` covers what almost all of them were reached for.
 
 How a call flows:
 
 1. the tool name and arguments arrive here, with `x-hoover4-chat-session` naming the chat;
-2. :mod:`.urlcheck` inspects every URL-shaped argument **before** anything is dispatched —
-   this server sits inside a network where ClickHouse and Temporal answer unauthenticated,
+2. :mod:`.urlcheck` inspects every URL-shaped argument **before** anything is dispatched.
+   This server sits inside a network where ClickHouse and Temporal answer unauthenticated,
    so the check is the boundary and refusals are *returned* to the model, not raised;
 3. :mod:`.router` hands back that chat's :class:`ChatBrowser`, starting one if needed;
 4. the call is forwarded to that chat's sidecar over MCP;
 5. if the tool could have changed what is on screen, :mod:`.capture` screenshots and
-   snapshots the page — **including when the call failed** — and appends the artifact id
+   snapshots the page (**including when the call failed**), and appends the artifact id
    to the result under `_hoover4_artifacts`.
 
 Tool *listing* never spawns a browser: it is answered from a warm template session started
@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 
 #: Header carrying the chat session id, so each conversation browses in its own browser.
 #: Set by the research agent from the id the website passes it. Absent means the shared
-#: anonymous session — see `router.ANONYMOUS`.
+#: anonymous session. See `router.ANONYMOUS`.
 SESSION_HEADER = "x-hoover4-chat-session"
 USER_HEADER = "x-hoover4-user"
 
@@ -116,7 +116,7 @@ class RoutedTool(Tool):
 
     The schema is copied verbatim from the template session, so the model sees exactly
     playwright-mcp's own contract. What this class adds is everything in the module
-    docstring — and it adds it in the router rather than in the sidecar, because there is
+    docstring, and it adds it in the router rather than in the sidecar, because there is
     one sidecar per chat and the boundary has to hold for all of them.
     """
 
@@ -146,7 +146,7 @@ class RoutedTool(Tool):
         async with chat.lock:
             result, failed = await self._forward(chat, tool_name, arguments)
 
-            # 3. Capture, including on failure — the error path is where the evidence
+            # 3. Capture, including on failure, the error path is where the evidence
             #    matters most. A tool that captures nothing still gets an empty marker:
             #    the card authenticates the marker by its position, and that only works
             #    if every result this router returns ends with one.
@@ -188,7 +188,7 @@ class RoutedTool(Tool):
             failed = bool(getattr(call, "is_error", False))
             # One `ai_service_telemetry` row per forwarded tool call. `/admin/ai_status`
             # had a browser column that no writer ever filled, so a dead router and an
-            # unused one looked identical there — and the router is the capability most
+            # unused one looked identical there, and the router is the capability most
             # likely to be quietly broken, because a page can fail for reasons that are
             # nobody's fault.
             telemetry.record_async(
@@ -249,7 +249,7 @@ def _drop_dead_links(result: ToolResult) -> ToolResult:
 
 #: Marker line carrying the capture ids in the tool result's **text**.
 #:
-#: `structured_content` is the right place for this and is where it also goes — but it
+#: `structured_content` is the right place for this and is where it also goes, but it
 #: does not survive the path to the transcript. LangGraph's `on_tool_end` hands the
 #: website a ToolMessage whose `content` is the text blocks and nothing else, so a card
 #: reading only the structured key finds nothing and renders no thumbnail. Verified
@@ -258,7 +258,7 @@ def _drop_dead_links(result: ToolResult) -> ToolResult:
 #: The cost is ~15 tokens of opaque line per browser call. The card parses it out and
 #: **strips it before display**, so it is never shown to the user either.
 #:
-#: **It is always the last block, and it is always present** — `[hoover4:artifacts]
+#: **It is always the last block, and it is always present**: `[hoover4:artifacts]
 #: {"artifacts": []}` when there is nothing to report. That is not tidiness: the rest of a
 #: browser tool's text *is the fetched page*, so a hostile page can write this marker into
 #: its own body and, if it were the only one, have attacker-chosen titles and URLs rendered
@@ -267,7 +267,7 @@ def _drop_dead_links(result: ToolResult) -> ToolResult:
 #: rather than only for the ones that happened to capture something.
 #:
 #: The payload is an **object**, `{"artifacts": [...], "failed": true}`. The card also
-#: accepts a bare array, because transcripts hold rows in that shape — but a
+#: accepts a bare array, because transcripts hold rows in that shape, but a
 #: bare array has nowhere to put the one other thing the card cannot work out for itself:
 #: whether the call *failed*. Playwright reports failure as `is_error` plus a prose line;
 #: by the time the result reaches the website that flag is gone, and without `failed` the
@@ -321,7 +321,7 @@ def _append_marker(
     #    **Only ever ADDED to structured content the sidecar itself produced, never
     #    invented.** Most browser tools answer in TEXT and carry no structured content at
     #    all, and synthesising a dict for them turns `structured_content: None` into
-    #    `{"_hoover4_artifacts": []}` — a non-empty structured result, which every client
+    #    `{"_hoover4_artifacts": []}`, a non-empty structured result, which every client
     #    that prefers structured output over text (Claude Code does) shows the model
     #    INSTEAD of the text, discarding the snapshot, the `browser_evaluate` value, the
     #    console log and the network list. When there is nothing of the sidecar's to add
@@ -333,7 +333,7 @@ def _append_marker(
     else:
         structured = None
 
-    # 2. The text marker, for the transcript path — and it must be the FINAL block, since
+    # 2. The text marker, for the transcript path, and it must be the FINAL block, since
     #    that position is what the card authenticates it by. See ARTIFACT_MARKER.
     content = list(result.content or [])
     content.append(
@@ -349,8 +349,8 @@ def _append_marker(
 #: four fifths of the full-research agent's tool list, and a tool list that long costs
 #: accuracy: an adaptive shortlist averaging seven tools scores level with a fixed fifty and
 #: beats a fixed five by six points, so thirty from one server is the opposite of adaptive.
-#: `read_page` below covers reading a page — the overwhelming majority of what the rest are
-#: reached for — and these six cover driving one.
+#: `read_page` below covers reading a page (the overwhelming majority of what the rest are
+#: reached for), and these six cover driving one.
 #:
 #: **The unadvertised tools are not deleted.** They are registered disabled, so they are
 #: absent from `list_tools` and one env var away from returning, and `read_page` still
@@ -373,7 +373,7 @@ def exposed_tools() -> set[str]:
 #:
 #: A model that learned an old name gets an error *naming the replacement*, not a silent
 #: shim: a shim that quietly works means the model never discovers the batched form, which
-#: is the entire point of the rename. And not the transport's bare `Unknown tool` either —
+#: is the entire point of the rename. And not the transport's bare `Unknown tool` either,
 #: that tells the model the capability is gone rather than that it moved, and it will either
 #: give up or retry the same name.
 RETIRED_TOOLS = {
@@ -407,7 +407,7 @@ class RetiredNames(Middleware):
 
 
 class ReadPageTool(Tool):
-    """`read_page(urls=[…], goal=…)` — the batched ninety-percent case.
+    """`read_page(urls=[…], goal=…)`, the batched ninety-percent case.
 
     Implemented here rather than forwarded, because it *is* several sidecar calls: navigate,
     extract, capture, per URL. See :mod:`.read_page`.
@@ -439,8 +439,8 @@ class ReadPageTool(Tool):
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
-        # The real elapsed time, not zero: this is the slowest tool the router offers —
-        # several navigations and captures — and `/admin/ai_status` averaging a hardcoded
+        # The real elapsed time, not zero: this is the slowest tool the router offers
+        # (several navigations and captures), and `/admin/ai_status` averaging a hardcoded
         # zero into the browser column would make the one tool worth watching invisible.
         telemetry.record_async(
             "browser", provider="read_page",

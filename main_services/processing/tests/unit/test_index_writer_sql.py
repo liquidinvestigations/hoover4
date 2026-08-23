@@ -36,7 +36,7 @@ def _normalize(sql: str) -> str:
 
 class TestReprManticoreTuple:
     def test_empty_list_renders_empty_mva(self):
-        # The empty MVA is () — never "(,)" and never an omitted column.
+        # The empty MVA is (), never "(,)" and never an omitted column.
         assert repr_manticore_tuple([]) == "()"
 
     def test_values_render_as_csv_tuple(self):
@@ -101,7 +101,7 @@ class TestPagesReplaceSql:
 
     def test_missing_mva_fields_default_to_empty_mva(self):
         # A segment with no entities and a document with no metadata interpolate ()
-        # rather than None — the `row.get(...) or '()'` behaviour is load-bearing.
+        # rather than None, which is what the `row.get(...) or '()'` behaviour gives.
         sql = pages_replace_sql("testdata_1_pages", {})
         assert "None" not in sql
         assert sql.count("()") == 18
@@ -230,7 +230,7 @@ class TestFilenameRowIdentity:
 
 
 class TestRowIds:
-    """Deterministic Manticore row ids (blake2b-63 since the 2026-07 bugfix round —
+    """Deterministic Manticore row ids (blake2b-63 since the 2026-07 bugfix round,
     see hash_string_to_uint63's docstring for the required reindex)."""
 
     def test_golden_ids(self):

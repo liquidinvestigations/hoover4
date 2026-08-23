@@ -164,7 +164,7 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
     `main.py probe-embeddings`. That made a model change a two-step operation where the
     second step was undocumented and easy to forget: every consumer correctly refuses
     while `embeddings_serving_model` is stale or missing (P5, P6's vector indexer,
-    collection search), so the stack sat there refusing until someone remembered — the
+    collection search), so the stack sat there refusing until someone remembered. The
     refusal being *correct* is exactly what made it hard to diagnose.
 
     Off the event loop because the probe is synchronous `requests`, and non-fatal because
@@ -521,7 +521,7 @@ async def run_indexing_worker():
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
   # `index_vectors` builds Manticore `_vectors` tables from the probed dimension, and a
-  # table's knn_dims is fixed at creation — this worker needs the probe as much as P5.
+  # table's knn_dims is fixed at creation. This worker needs the probe as much as P5.
   await _probe_embeddings_at_startup("indexing worker")
   CONCURRENCY = worker_concurrency("indexing", 1)
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
@@ -586,7 +586,7 @@ OPERATIONS_QUEUE_SLOTS = {
 async def run_chat_worker():
   """Serve `chat-queue`: every ordinary chat turn.
 
-  Its own process and its own queue, which is the whole point. A chat turn is a person
+  Its own process and its own queue, which is what keeps it responsive. A chat turn is a person
   waiting at a screen, and an ingestion backlog on the shared queue would put them behind
   however many thousand documents are being processed -- a delay no amount of worker
   concurrency fixes, because the queue is FIFO and the backlog is ahead of them.

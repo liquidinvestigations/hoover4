@@ -24,7 +24,7 @@ drives the container runtime.
 ## Before you deploy anything
 
 **Check what is in flight.** A deploy restarts containers, and the end-to-end verification
-runs for tens of minutes inside the worker — restarting it kills the run outright. Batch
+runs for tens of minutes inside the worker. Restarting it kills the run outright. Batch
 your fixes so one restart serves several.
 
 ```
@@ -36,7 +36,7 @@ uptime                      # someone else's build may already own the machine
 
 `hoover4.ini` (gitignored; the template beside it is `hoover4.ini.example`) is the single
 source. `deploy.py` renders it into the generated `.env` files next to the compose files.
-**Never hand-edit a generated `.env`** — the next deploy overwrites it, and the change looks
+**Never hand-edit a generated `.env`**. The next deploy overwrites it, and the change looks
 like it worked until then.
 
 - **Ports are configuration keys, not literals.** Read the key; never hard-code the number.
@@ -47,7 +47,7 @@ like it worked until then.
 
 ## Four things that behave differently from how they read
 
-**`up -d` is not a deployment; it is a no-op with opinions.** It reuses existing images and
+**`up -d` is a no-op with opinions rather than a deployment.** It reuses existing images and
 containers, so a broken build context, a changed ignore file and new environment all stay
 invisible until something forces a rebuild or a recreate. After changing anything that feeds
 a build, run `--build` and *read the output*.
@@ -65,18 +65,18 @@ doing it. `--no-deps` is required whenever a single service is the target.
 **A backend change needs the website container stopped and started before it is being served.**
 The type check passes against the source on disk; the running server keeps answering from what
 it already loaded. The symptom is a request behaving the way it did before your patch, which
-reads as your patch being wrong — one pass caught this only because a dispatch it had just
+reads as your patch being wrong. One pass caught this only because a dispatch it had just
 rewritten still did the old thing.
 
 **`stop_grace_period` is honoured only when the runtime is itself the process stopping the
 container.** It is not written onto the container and cannot be set afterwards, so the
 container carries the runtime's own ten-second default however the compose file is configured.
 A deploy prints the number really in force. **Restart the worker with
-`main_services/restart-worker.sh`**, which passes the period explicitly — a bare stop or
+`main_services/restart-worker.sh`**, which passes the period explicitly. A bare stop or
 restart cuts the drain short, silently, and a cut drain is how in-flight activities are lost.
 
-**Relative paths in a compose file resolve against the project directory** — the first `-f`
-file's directory — not against the file that declares them. An overlay in a subdirectory
+**Relative paths in a compose file resolve against the project directory** (the first `-f`
+file's directory) not against the file that declares them. An overlay in a subdirectory
 therefore points somewhere else entirely from where it reads as pointing.
 `docker compose … config` renders absolute paths; use it whenever an overlay is added or
 moved.
@@ -95,13 +95,13 @@ error context if there is any. A truncated log has cost a full rebuild cycle her
 once.
 
 **Build parallelism is bounded by one build argument**, which feeds every backend's own
-spelling of it — the make, cmake, cargo and thread-cap variables are set as a group.
+spelling of it. The make, cmake, cargo and thread-cap variables are set as a group.
 Missing one of them loses the bound and takes the machine down with it.
 
 ## Waiting on it
 
 Background the run and keep working. A monitor that emits only on failure signatures beats
-polling — but make sure its filter would fire on a crash, because silence must not be
+polling, but make sure its filter would fire on a crash, because silence must not be
 indistinguishable from success. See `reference/long-jobs.md`.
 
 ## After a deploy
@@ -118,7 +118,7 @@ If something is wrong, `debugging-the-stack` routes by symptom.
 
 ## References
 
-- `reference/deploy-flags.md` — what each flag actually does, what a reset preserves, and
+- `reference/deploy-flags.md`, what each flag actually does, what a reset preserves, and
   the order the pieces come up in.
-- `reference/long-jobs.md` — backgrounding, monitoring on failure signatures, and not
+- `reference/long-jobs.md`, backgrounding, monitoring on failure signatures, and not
   disturbing a verification.

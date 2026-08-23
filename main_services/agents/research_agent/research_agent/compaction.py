@@ -7,7 +7,7 @@ older tool results with a placeholder while the assistant messages that requeste
 keep their tool calls untouched, so the model still sees that it searched and what it
 searched for.
 
-Three properties hold and each one is load-bearing.
+Three properties hold, and dropping any one of them loses a citation.
 
 **Nothing is edited.** This transformation is applied to the list on its way to the model
 and never written back into the graph state or into `chat_messages`. The transcript a user
@@ -103,7 +103,7 @@ CITATION_HANDLE = re.compile(r"\[D\d+\]")
 CITATION_TOOLS = frozenset({"cite_documents"})
 
 #: The todo tools. The todo is the turn's plan and the thing the nag loop checks against,
-#: so a summary of it is not a cheaper todo, it is a different one.
+#: so a summary of it is a different todo rather than a cheaper one.
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
 
 #: How many messages at the end of the list layer two always leaves alone, on top of

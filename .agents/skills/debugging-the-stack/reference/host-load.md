@@ -10,10 +10,10 @@ Three things that are easy to get wrong:
 - **Prefer `renice -n 19` on an in-flight build's process tree over killing it.** A build
   most of the way through has already paid for gigabytes of wheel downloads; renicing
   restores interactive responsiveness without discarding that.
-- **Load average stays high after the fix** — it counts runnable tasks, so it lags. Judge by
+- **Load average stays high after the fix**. It counts runnable tasks, so it lags. Judge by
   `%CPU` of the top processes and by whether the desktop responds, not by the number.
 
 Image builds bound their own parallelism through the `BUILD_JOBS` build arg (default 6),
-which feeds every backend's own spelling of it — `MAX_JOBS`, `MAKEFLAGS`,
+which feeds every backend's own spelling of it: `MAX_JOBS`, `MAKEFLAGS`,
 `CMAKE_BUILD_PARALLEL_LEVEL`, `CARGO_BUILD_JOBS`, and the `OMP`/`MKL` thread caps. Missing
 one of them loses the bound, which is why they are set as a group.

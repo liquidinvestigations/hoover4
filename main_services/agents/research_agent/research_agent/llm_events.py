@@ -1,8 +1,8 @@
 """Write one `llm_call_events` (+ `ai_service_telemetry`) row per LLM call.
 
 The agent is the only place that knows which model actually answered, how long it took,
-and how many reasoning tokens were billed. Failures here must never fail a chat turn —
-telemetry is best-effort over ClickHouse HTTP.
+and how many reasoning tokens were billed. Failures here must never fail a chat turn.
+Telemetry is best-effort over ClickHouse HTTP.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ def record_llm_call(
                         r.text[:200],
                     )
                     return
-    except Exception as exc:  # noqa: BLE001 — telemetry must not break chat
+    except Exception as exc:  # noqa: BLE001, telemetry must not break chat
         log.warning("llm_events insert failed: %s", exc)
 
 

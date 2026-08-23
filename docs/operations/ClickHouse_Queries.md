@@ -43,7 +43,7 @@ ch.sh "SHOW DATABASES"
 ```
 
 One database per collection, named for it, plus one global database. **List them; do not
-construct a name** from a collection name you were told — the naming convention is the
+construct a name** from a collection name you were told. The naming convention is the
 backend's business, and a typo produces "table does not exist" rather than anything useful.
 
 The global database holds the collection and dataset registries, users, groups and
@@ -77,10 +77,10 @@ Two counting rules that catch people out:
 
 Three entry points, all in the collection's database:
 
-- **by path** — `vfs_files` gives the container hash and the content hash;
-- **by content hash** — `blobs` gives the stored object path and size, `text_content` gives
+- **by path**: `vfs_files` gives the container hash and the content hash;
+- **by content hash**: `blobs` gives the stored object path and size, `text_content` gives
   its pages per extractor, the entity tables give its hits;
-- **by search result** — whatever identifier the search engine returned carries the hash
+- **by search result**. Whatever identifier the search engine returned carries the hash
   beside it.
 
 **The stored object path in `blobs` is the authority for which bucket the bytes are in.**
@@ -90,7 +90,7 @@ Rebuilding it from configuration works on one collection and fails on the next.
 
 `processing_eta_samples` in the global database carries the rolling per-stage progress the
 admin processing view draws. Its stage identifiers are stored strings mirrored as constants
-in the shared Rust types — a stage identifier that exists on one side only makes a bar
+in the shared Rust types. A stage identifier that exists on one side only makes a bar
 disappear with no error anywhere.
 
 `processing_task_runs` carries per-activity durations, one row per **attempt**: a retry is a
@@ -128,7 +128,7 @@ garage.sh status
 
 A bucket per collection plus a system bucket. Derived output lives under a prefix the
 disk-scan stage must never walk, and the stack verification asserts that no blob row
-references it — a row that does is the signature of a re-ingestion loop having started.
+references it, a row that does is the signature of a re-ingestion loop having started.
 
 The store's image carries no shell, so its command-line tool is invoked directly rather than
 through one.
@@ -139,7 +139,7 @@ through one.
 the reader sees a default.
 
 **An alias shadows the column it derives from.** After `AS ts`, every later reference to `ts`
-resolves to the alias — which is how sibling aggregates end up nested inside one another. The
+resolves to the alias, which is how sibling aggregates end up nested inside one another. The
 fix is to aggregate under a distinct inner name and rename on the way out, because renaming
 the outer alias breaks the name-based binding above.
 

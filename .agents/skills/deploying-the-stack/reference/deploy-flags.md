@@ -15,7 +15,7 @@ They are never brought up by one command.
 3. The container network is created or repaired **before** compose runs, with its upstream
    resolvers pinned. Without that step the network's DNS forwards to the host's local
    resolver stub and every external lookup from inside a container wedges, while
-   container-name resolution keeps working — so the stack looks healthy and only
+   container-name resolution keeps working, so the stack looks healthy and only
    internet-facing work hangs.
 4. Compose brings the selected side up, with `--build --force-recreate` when `--build` is
    given.
@@ -47,7 +47,7 @@ Preserved across a reset:
 - **the model-cache volumes**, unless `--reset-caches` is also given.
 
 Lost across a reset, and worth capturing first: anything held only in the datastores that no
-export reproduces — collection display names and visibility flags among them. A reset plus a
+export reproduces (collection display names and visibility flags among them). A reset plus a
 re-ingest recreates collections with bare names.
 
 A reset also drops the website's build-target volume, so the next deploy pays a cold release
@@ -57,12 +57,11 @@ build wherever release mode is on.
 
 Drops only the workflow history and visibility stores, keeping the corpus in ClickHouse,
 Manticore, Garage and Redis. What is lost is workflow history, which retention already caps
-at a day. Running ingests do not survive — their workflows are gone, and the scan stage
+at a day. Running ingests do not survive. Their workflows are gone, and the scan stage
 re-reads the dataset from disk on the next run. This is the flag that has to be used to
 change the history-shard count.
 
 ## `--print-env` and `--print-command`
 
-Render and show, run nothing. These are the honest answer to "is the container getting the
-value I think it is" at configuration time — and `docker exec <c> env` is the honest answer
-at runtime. Trust neither the ini file nor the compose file on its own.
+Render and show, run nothing. These report what the container will get for a value at
+configuration time, and `docker exec <c> env` reports what it has at runtime. Trust neither the ini file nor the compose file on its own.

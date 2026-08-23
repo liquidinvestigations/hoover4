@@ -106,7 +106,7 @@ def test_a_half_done_list_does_not_need_a_new_plan():
 
 
 def test_a_bare_status_flip_is_not_a_material_change():
-    """The whole point of the cap: a model must not be able to farm resets."""
+    """What the cap is for: a model must not be able to farm resets."""
     before = {"goal": "g", "items": _items(("a", "x", "pending", ""))}
     after = {"goal": "g", "items": _items(("a", "x", "in_progress", ""))}
     assert not todos.is_material_change(before, after)

@@ -74,7 +74,7 @@ pub fn ComponentErrorBoundary(children: Element) -> Element {
 ///
 /// `error_txt` is a plain `String` and must stay one. A `ReadSignal<T>` prop is built by
 /// a conversion that **runs a hook in the caller's scope**, so instantiating this
-/// component inside an `if` — which is the natural way to write an error branch — changes
+/// component inside an `if` (which is the natural way to write an error branch) changes
 /// the caller's hook count between renders and panics with *"Unable to retrieve the hook
 /// that was initialized at this index"* the first time the branch flips.
 #[component]
@@ -108,7 +108,7 @@ pub fn ComponentErrorDisplay(error_txt: String, children: Element) -> Element {
 ///
 /// Two things it exists to stop, both of which a `format!("{e:#?}")` at the call site
 /// produces every time: a Rust struct on the page, and a query the server declined
-/// reading as a crash. The status is what separates the two — a 4xx is advice for the
+/// reading as a crash. The status is what separates the two. A 4xx is advice for the
 /// person who typed it, everything else is a failure of ours.
 ///
 /// It takes the error **by value**, not as a `ReadSignal`, for the reason spelled out on
@@ -116,8 +116,8 @@ pub fn ComponentErrorDisplay(error_txt: String, children: Element) -> Element {
 /// a signal prop would put a hook in each of those branches.
 ///
 /// **One template and one `return`, and no child component.** The two presentations differ
-/// only in the strings and styles they interpolate. A version of this that branched — an
-/// early `return` for one case, a different child component for the other — panicked the
+/// only in the strings and styles they interpolate. A version of this that branched (an
+/// early `return` for one case, a different child component for the other) panicked the
 /// render with *"Unable to retrieve the hook that was initialized at this index"* as soon
 /// as an error changed status between renders, which is exactly what a document viewer
 /// does while its panels resolve. Structure that varies per branch is the hazard; values

@@ -15,7 +15,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         //
         // Every document tool returns `collection_dataset`, so this branch should be
         // unreachable. It stays as a defence and it names its own cause, because the
-        // failure it guards against is a card that says nothing about why it is thin —
+        // failure it guards against is a card that says nothing about why it is thin,
         // which is diagnosable only by finding the tool that produced it.
         let reason = if doc.file_hash.is_empty() {
             "no document id"
@@ -40,7 +40,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
 
     let title = doc.display_title();
     // Clamped, not raw: a search hit's snippet is up to 1200 characters of page text and a
-    // turn can surface a dozen of them, so one result could bury the conversation it is
+    // turn can return a dozen of them, so one result could bury the conversation it is
     // meant to support. `display_snippet` says what the clamp is for.
     let snippet = if doc.snippet.is_empty() {
         title.clone()

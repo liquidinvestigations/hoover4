@@ -2,7 +2,7 @@
 
 Diagnostic for "the session gate fires more than once": `whoami` is the only endpoint
 that mints a session, so every extra call is an extra session write. Run it the way
-`take-screenshots.sh` runs the capture script — copied into `hoover4-mcp-browser` and
+`take-screenshots.sh` runs the capture script, copied into `hoover4-mcp-browser` and
 executed there, because that is the only container with a browser and the website is
 only reachable from inside the podman network.
 

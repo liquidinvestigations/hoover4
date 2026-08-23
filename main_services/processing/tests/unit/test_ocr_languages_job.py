@@ -1,8 +1,8 @@
 """Tests for the `change_ocr_languages` diff and the OCR'd-PDF key convention.
 
-Two pure things carry the whole job. The diff decides what gets purged — get a removal
+Two pure things carry the whole job. The diff decides what gets purged. Get a removal
 wrong and either rows leak forever or a variant still in use is deleted. The key decides
-where the derived object lives — get it wrong and the ingest walker starts a re-derive
+where the derived object lives. Get it wrong and the ingest walker starts a re-derive
 loop that bills an OCR pass per lap.
 """
 

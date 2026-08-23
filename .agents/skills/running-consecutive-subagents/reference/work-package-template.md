@@ -4,17 +4,17 @@ The same skeleton `planning-work` uses, with the notes that matter when the read
 sub-agent rather than a future session.
 
 ```markdown
-# <id> — <the deliverable in one line>
+# <id>: <the deliverable in one line>
 
 You are agent `<id>`, running inside a larger pass. **Your prompt is this file. Your
-deliverable is `<exact path>`** — the launching agent reads that and nothing else.
+deliverable is `<exact path>`**. The launching agent reads that and nothing else.
 
 ## 1. Read before you start
 ## 2. What lands
 ## 3. What is true now
 ## 4. What must not happen
 ## 5. Before you finish
-## 6. The report — <the exact section list>
+## 6. The report: <the exact section list>
 ```
 
 ## Notes per section
@@ -24,7 +24,7 @@ there. An unordered list of eight paths is read in the order they appear, which 
 useful order.
 
 **What lands.** Enumerate. If a draft or an earlier document is an input, say explicitly
-whether it is authoritative or merely a starting point — a pass told "here is the draft" will
+whether it is authoritative or merely a starting point. A pass told "here is the draft" will
 implement it faithfully including its errors.
 
 **What is true now.** The section that is skipped most often and costs most. Name what has
@@ -40,7 +40,7 @@ verification.
 invocation, and the sentence that says what its output must show.
 
 **The report.** Fix the section list. Include a section that invites the pass to say what it
-could not do and where it shipped past a failing check — without that section, it will
+could not do and where it shipped past a failing check. Without that section it will
 present a clean summary instead.
 
 ## Timebox

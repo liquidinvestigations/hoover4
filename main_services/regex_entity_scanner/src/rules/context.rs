@@ -1,6 +1,6 @@
 //! Cue words: what admits a bare token into an index.
 //!
-//! Several formats are digit runs with a check digit and nothing else — IMO, MMSI, IMEI, CUSIP,
+//! Several formats are digit runs with a check digit and nothing else: IMO, MMSI, IMEI, CUSIP,
 //! SEDOL. A check digit is a one-in-ten filter, which is not enough on its own to put a nine-digit
 //! run into a facet: invoice numbers, part numbers and order references all pass it at that rate.
 //! What makes the match defensible is the word beside it, so the rules for those formats require
@@ -13,7 +13,7 @@
 //! The window is **field-scoped**. Proximity in bytes is not proximity in meaning once a document
 //! has structure: in a header block, a mail list or a table, the label on one line belongs to that
 //! line's value and vouches for nothing on the next one. A cue that reaches across a field boundary
-//! admits a token from a neighbouring field, and that costs more than an invented entity — the
+//! admits a token from a neighbouring field, and that costs more than an invented entity. The
 //! spurious reading can outrank the correct one and delete it in `resolve`. The one line break that
 //! does not end a field is a folded one, where the next line is indented.
 
@@ -81,8 +81,8 @@ fn field_end(fragment: &str, from: usize, to: usize) -> usize {
     (from..to).find(|at| ends_a_field(bytes, *at)).unwrap_or(to)
 }
 
-/// A line break ends a field unless the next line is indented. Indentation is RFC 5322 folding —
-/// a header value continued on the next line is still that header's value — and it is the same
+/// A line break ends a field unless the next line is indented. Indentation is RFC 5322 folding
+/// (a header value continued on the next line is still that header's value), and it is the same
 /// shape a wrapped cell or a continued log line takes.
 fn ends_a_field(bytes: &[u8], at: usize) -> bool {
     bytes[at] == b'\n' && !matches!(bytes.get(at + 1), Some(b' ' | b'\t'))

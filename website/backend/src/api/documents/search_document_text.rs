@@ -4,7 +4,7 @@
 //! `collection_dataset` up front: the owning collection is resolved via the global
 //! dataset registry and the document's shard via that collection's
 //! `manticore_shard_assignments` table. Only that one `<shard>_pages` table is
-//! queried — no fan-out, and the results never cross collection boundaries.
+//! queried, no fan-out, and the results never cross collection boundaries.
 
 use common::{
     current_user::CurrentUser,
@@ -56,7 +56,7 @@ async fn pages_table_for_document(
 /// `None` covers the empty query and the shapes Manticore's parser rejects outright.
 /// Both mean "no hits" here rather than an error: in-document search runs on every
 /// keystroke and per entity value, so a query that cannot match is an ordinary state,
-/// not a failure to report. (The main search box is the opposite — there an empty query
+/// not a failure to report. (The main search box is the opposite, there an empty query
 /// means *every* document, which is why it does not share this helper.)
 fn find_query_match_argument(find_query: &str) -> Option<String> {
     match prepare_match_query(find_query) {

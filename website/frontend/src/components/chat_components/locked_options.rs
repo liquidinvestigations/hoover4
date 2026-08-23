@@ -3,7 +3,7 @@
 //! Sits at the top of the transcript, taking over from the composer's checkboxes once
 //! the first message is sent. Both are rendered as genuinely `disabled` inputs rather than as
 //! text or icons: a checkbox is what the user ticked, so a checkbox is what should show
-//! their choice back to them — greyed out, in the position they left it.
+//! their choice back to them. Greyed out, in the position they left it.
 
 use common::chat_types::ChatOptions;
 use dioxus::prelude::*;

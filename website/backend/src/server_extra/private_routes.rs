@@ -5,14 +5,14 @@
 //! `access-control-allow-origin: *` on either is a header saying "any origin may read
 //! this" attached to a response whose whole job is deciding that not any origin may. A
 //! browser will not hand a `*` response to a *credentialed* cross-origin read, so it was
-//! never a live hole — it is a permission statement contradicting the code beneath it, on
+//! never a live hole. It is a permission statement contradicting the code beneath it, on
 //! the two routes where an audit of the headers must not be told the wrong thing. These
 //! routes are same-origin only, so they say so.
 //!
 //! **Where the header actually came from, measured.** The application emits no CORS
 //! headers at all: probed directly, the server binary answers `/_chat_artifact/…` with no
 //! `access-control-*` and no `vary`. The `*` observed on port 12345 is added by the
-//! `dx serve` dev proxy in front of it — the same dev-mode layer that injects the "Your
+//! `dx serve` dev proxy in front of it, the same dev-mode layer that injects the "Your
 //! app is being rebuilt" toast, and it disappears with `dx serve`. This middleware is
 //! therefore a guarantee about the application, not a fix for the dev server: it is
 //! outermost in `main.rs` so that any CORS layer added inside the framework's router later
@@ -57,7 +57,7 @@ mod tests {
         assert!(is_private_path("/_chat_artifact/6f1a3c2e/page.html"));
         assert!(is_private_path("/_download_document/testdata_x/abc"));
         // The site itself, its assets and its server functions stay as the framework
-        // serves them — narrowing CORS there is a different decision with a blast radius.
+        // serves them. Narrowing CORS there is a different decision, and it reaches every page.
         assert!(!is_private_path("/"));
         assert!(!is_private_path("/wasm/frontend_bg.wasm"));
         assert!(!is_private_path("/api/search_for_results1234"));

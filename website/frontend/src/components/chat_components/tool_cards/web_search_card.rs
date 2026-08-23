@@ -2,18 +2,18 @@
 //!
 //! Four states, because the four questions are different:
 //!
-//! * **Pending** — the query and an elapsed counter, while the search runs. Possible
-//!   only because in-flight tool calls are visible at all.
-//! * **Collapsed** — `web_search · "danube water level" · 18 results · 5 sources`, plus a
+//! * **Pending**: the query and an elapsed counter, while the search runs. This is
+//!   possible only because in-flight tool calls are visible at all.
+//! * **Collapsed**: `web_search · "danube water level" · 18 results · 5 sources`, plus a
 //!   warning pip when a source came back empty.
-//! * **Expanded** — the result list: rank badge, domain chip, the title as a real link,
+//! * **Expanded** shows the result list: rank badge, domain chip, the title as a real link,
 //!   the *full* snippet, the sources that corroborated it, and an `RRF #7 → #2` badge
 //!   where reranking moved it. This is the level that answers "what did it actually find".
-//! * **Popup** — both orderings side by side, fetched lazily from the search-detail
+//! * **Popup**, both orderings side by side, fetched lazily from the search-detail
 //!   artifact. `TOOL_PAYLOAD_CHARS` cannot carry two orderings of forty candidates, which
 //!   is why the artifact exists.
 //!
-//! Every string here is a text node and every link goes through `http_link` first — see
+//! Every string here is a text node and every link goes through `http_link` first. See
 //! the module docstring in `tool_cards/mod.rs`.
 
 use dioxus::prelude::*;
@@ -90,7 +90,7 @@ pub fn WebSearchCard(
     let Some(content) = tool_content(&tool_output) else {
         // Not "the payload was not recorded": the payload IS recorded, it just did not
         // survive as JSON. Showing the bytes is worth more than a card that denies the
-        // data exists — see `truncate_tool_payload`, which is why this happens far less
+        // data exists. See `truncate_tool_payload`, which is why this happens far less
         // often now.
         return rsx! { UnparseableSearch { query, raw: tool_output.clone() } };
     };
@@ -102,7 +102,7 @@ pub fn WebSearchCard(
     let rerank_applied = json_bool(&content, "rerank_applied");
     let rerank_error = json_str(&content, "rerank_error");
     let artifact_id = json_str(&content, "artifact_id");
-    // A dead search used to read "0 results · 0 sources" — a count, phrased as if the web
+    // A dead search used to read "0 results · 0 sources". A count, phrased as if the web
     // simply had nothing to say. The failure is the headline, so it goes in the header.
     let failure = tool_failure(&content);
     let error = failure.as_ref().map(|f| f.message.clone()).unwrap_or_default();
@@ -251,7 +251,7 @@ fn PendingSearch(query: String, sources: Vec<String>, elapsed_ms: Option<u32>) -
 /// It used to say "the result payload was not recorded", which was the card denying data
 /// the transcript is holding: the payload was recorded and then byte-chopped at
 /// `TOOL_PAYLOAD_CHARS`, and the card read the wreckage as absence. Storage now truncates
-/// *inside* the JSON so this is rare, but when it happens the bytes are shown — an
+/// *inside* the JSON so this is rare, but when it happens the bytes are shown, an
 /// unreadable result is exactly the case where seeing the literal text matters.
 #[component]
 fn UnparseableSearch(query: String, raw: String) -> Element {
@@ -356,7 +356,7 @@ fn ResultRow(row: Row) -> Element {
                 style: "min-width: 0; flex: 1;",
                 div {
                     style: "display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap;",
-                    // The title is a link only when the URL is plainly http/https —
+                    // The title is a link only when the URL is plainly http/https,
                     // otherwise it stays text. See `http_link`.
                     if let Some(href) = link.clone() {
                         a {

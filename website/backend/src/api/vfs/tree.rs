@@ -6,7 +6,7 @@
 //! predicate per level. That works for "show me this folder" and cannot answer the two
 //! questions this module exists for: "what is under this node INCLUDING through the
 //! containers below it" and "which names under this node match `*report*`". Both are
-//! one predicate against the materialised tree — `ancestor_keys` for the first, an infix
+//! one predicate against the materialised tree: `ancestor_keys` for the first, an infix
 //! `MATCH` on `name` for the second.
 //!
 //! Why they are uncached
@@ -86,9 +86,9 @@ async fn structure_table(user: &CurrentUser, collection_dataset: &str) -> anyhow
 
 /// The SQL one page of children resolves to.
 ///
-/// Split out of [`vfs_tree_children`] so the two things that are easy to get wrong here —
-/// which rows `folders_only` excludes, and that `total` is counted over the same
-/// predicate the page is drawn from — are assertable without a live Manticore.
+/// Split out of [`vfs_tree_children`] so the two things that are easy to get wrong here
+/// (which rows `folders_only` excludes, and that `total` is counted over the same
+/// predicate the page is drawn from) are assertable without a live Manticore.
 ///
 /// `kind != 1` is "not a plain file": `Enum8('dir'=0,'file'=1,'container'=2)`, and a
 /// container is folder-like. Excluding by inequality rather than listing `IN (0, 2)`
@@ -211,7 +211,7 @@ pub async fn vfs_tree_path_to(
 /// Names matching `pattern` anywhere under `node_key`, folders and files alike.
 ///
 /// "Under" means the full ancestor closure, so a match three archives deep still comes
-/// back — that is what makes this different from filtering the current listing. The
+/// back. That is what makes this different from filtering the current listing. The
 /// pattern is wrapped in stars for infix matching (`min_infix_len='3'` on the table) and
 /// quoted; Manticore's own query-syntax metacharacters are stripped rather than escaped,
 /// because a folder search box is not a place to expose query syntax.
@@ -260,7 +260,7 @@ pub async fn vfs_search_in_folder(
 ///
 /// The id is `blake2b(key)` truncated to 63 bits, minted by the Python indexer into
 /// `string_term_text_to_id`. Reimplementing that hash here would give two definitions of
-/// document identity that can drift silently — the ids would simply stop matching and
+/// document identity that can drift silently. The ids would simply stop matching and
 /// every folder filter would return nothing, with no error anywhere. One round trip
 /// against the authoritative table is the cheaper kind of correct.
 ///
@@ -287,7 +287,7 @@ pub async fn node_term_id(
 /// The `vfs_node` term ids of many node keys at once, keyed by node key.
 ///
 /// The picker resolves its WHOLE selection every time a box is ticked, and a tick on a
-/// collection row selects every dataset under it — one round trip per key made that a
+/// collection row selects every dataset under it, one round trip per key made that a
 /// burst of N requests for a single click. One `IN` per dataset instead.
 ///
 /// Keys the dictionary does not know are simply absent from the map, exactly as
@@ -315,7 +315,7 @@ pub async fn node_term_ids(
 /// Strip Manticore query-syntax metacharacters from a folder-search box.
 ///
 /// Not escaping: this box is "type part of a name", and a user who types `a-b` means the
-/// literal string, not "a NOT b". Stars are stripped too — the query already wraps the
+/// literal string, not "a NOT b". Stars are stripped too. The query already wraps the
 /// pattern in them, and a user-supplied one produces `**foo**`, which matches nothing.
 pub fn sanitize_folder_search(pattern: &str) -> String {
     pattern
@@ -360,8 +360,8 @@ mod tests {
     fn folders_only_excludes_plain_files_and_nothing_else() {
         let sql = snapshot(true);
         assert!(sql.contains("AND kind != 1"), "{sql}");
-        // The predicate belongs to the WHERE clause, so `total` is counted over it too —
-        // that is what makes the "N more…" row's arithmetic honest.
+        // The predicate belongs to the WHERE clause, so `total` is counted over it too.
+        // That is what makes the "N more…" row's arithmetic honest.
         let where_clause = sql.split("ORDER BY").next().unwrap();
         assert!(where_clause.contains("AND kind != 1"), "{sql}");
         assert!(sql.contains("ORDER BY kind ASC, path ASC"), "{sql}");

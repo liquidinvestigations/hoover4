@@ -67,7 +67,7 @@ def test_two_datasets_sharing_content(temp_collection, tiny_dataset):
     assert hashes1 == hashes2, "same path ingested twice must yield the same content hashes"
 
     docs_per_dataset = len(hashes1)
-    # Every (dataset, file_hash) PAIR in exactly one shard — even though the same
+    # Every (dataset, file_hash) PAIR in exactly one shard, even though the same
     # file_hash legitimately appears twice (once per dataset).
     assert all(int(n) == 1 for _cd, _h, n in per_pair)
     assert len(assignments) == len(per_pair) == 2 * docs_per_dataset

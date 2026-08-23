@@ -76,7 +76,7 @@ def _cap(name: str, default: int) -> int:
 MAX_TASKS_PER_CALL = _cap("AGENT_SUBAGENT_MAX_TASKS", 5)
 
 #: Workers running at once. Sized to what the serving configuration can actually keep
-#: busy — more in flight buys queueing, not answers.
+#: busy. More in flight buys queueing, not answers.
 MAX_CONCURRENCY = _cap("AGENT_SUBAGENT_CONCURRENCY", 3)
 
 #: Tool turns one worker may take before it is made to write its report. The failure mode
@@ -89,7 +89,7 @@ WORKER_TOOL_TURNS = _cap("AGENT_SUBAGENT_TOOL_TURNS", 6)
 #:
 #: Six is one full wave of five plus one follow-up after a nag, and it is sized against a
 #: measured cost rather than a round number: a worker runs about 85 000 tokens here, so ten
-#: of them is roughly 850 000 on top of a lead that is itself growing — enough to fire
+#: of them is roughly 850 000 on top of a lead that is itself growing. Enough to fire
 #: compaction in the middle of a wave, on a window of 262 144. Raising it is an environment
 #: variable and needs no rebuild.
 MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 6)
@@ -100,7 +100,7 @@ MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 6)
 #: holds eight in total; `read_page` is the overwhelmingly common browser action, needs no
 #: persistent context, and is deliberately still there. The three todo *writers*, because
 #: the plan belongs to the conversation and a worker with one objective has nothing to
-#: plan — `read_todo` stays so a worker can see the plan its briefing came out of.
+#: plan: `read_todo` stays so a worker can see the plan its briefing came out of.
 #:
 #: `run_subagent` is here as well as being absent from what a worker is built from. That
 #: is redundant on purpose: the primary guarantee is that the delegation tool is appended
@@ -126,8 +126,8 @@ WORKER_DENIED_TOOLS = frozenset(
 def worker_tools(tools: Sequence[Any]) -> List[Any]:
     """The lead's MCP tools, minus the ones a worker must not have.
 
-    The delegation tool is normally not in the list this is given at all — it is appended
-    to the lead's list *after* this has run — so the filter below is the second of two
+    The delegation tool is normally not in the list this is given at all. It is appended
+    to the lead's list *after* this has run, so the filter below is the second of two
     independent reasons a worker cannot delegate. See `WORKER_DENIED_TOOLS`.
     """
     return [tool for tool in tools if getattr(tool, "name", "") not in WORKER_DENIED_TOOLS]
@@ -142,8 +142,8 @@ def delegates(profile: str) -> bool:
 #:
 #: A `ContextVar` for the same reason the compaction trail is one: the compiled graph is
 #: cached and shared across concurrent conversations, while the budget belongs to exactly
-#: one of them. A run that never installs a counter is not delegating under a budget —
-#: which is the case for a direct call in a test — and gets the per-call cap only.
+#: one of them. A run that never installs a counter is not delegating under a budget
+#: (which is the case for a direct call in a test), and gets the per-call cap only.
 @dataclass
 class TurnBudget:
     """What one user turn has spent on delegation, and what it may still spend.
@@ -151,7 +151,7 @@ class TurnBudget:
     It carries the token counts as well as the worker count because a worker's model calls
     happen inside a tool call and never reach the lead's own event stream. A delegating
     turn whose reported cost was the lead's alone would under-report by roughly the factor
-    that makes these caps necessary in the first place — which is precisely the number a
+    that makes these caps necessary in the first place, which is precisely the number a
     reader of the turn's footer needs.
     """
 
@@ -178,7 +178,7 @@ def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> Tu
 
     **A nag round continues the turn's budget rather than starting a new one.** A nagged
     turn is the agent run again on the same user message, and it can delegate again, so a
-    budget reset per run would multiply the ceiling by the nag count — which is exactly
+    budget reset per run would multiply the ceiling by the nag count, which is exactly
     the case the cap exists for. The chat workflow's own signal for "this is a nag round"
     is a non-zero extra tool budget, and `continuing` is that signal; a first round with a
     session id clears whatever the previous turn left behind.
@@ -219,7 +219,7 @@ def worker_usage(messages: Sequence[BaseMessage]) -> Dict[str, int]:
     """What one worker's model calls were billed, off the messages it produced.
 
     Read from `usage_metadata`, which is what the provider counted, rather than
-    re-tokenising anything. A message shape that carries no usage contributes nothing —
+    re-tokenising anything. A message shape that carries no usage contributes nothing,
     unknown, never free.
     """
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "model_calls": 0}

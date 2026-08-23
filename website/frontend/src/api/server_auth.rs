@@ -4,7 +4,7 @@
 ///
 /// The session middleware attaches a `CurrentUser` only when a cookie or a proxy-set
 /// header resolved one, and it refuses every endpoint except the mint route outright when
-/// it cannot — so the missing-extension case reaches here from exactly two places: the
+/// it cannot, so the missing-extension case reaches here from exactly two places: the
 /// mint route itself (`whoami`, before anything has minted, which is how a deployment with
 /// guests disabled refuses a visitor) and a server function invoked during server-side
 /// rendering of the app shell, which the browser re-runs with a session moments later.

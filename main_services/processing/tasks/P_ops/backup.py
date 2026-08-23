@@ -34,7 +34,7 @@ mount is refused even when both live on one filesystem, so no path here tries.
 **The staging directory is what makes a failed export harmless.** Everything is written
 into `<destination>.partial-<op_id>/` and renamed onto `<destination>/` only once the
 manifest is complete. A failed, killed or cancelled export therefore leaves a directory
-whose name says it is incomplete and which blocks no later attempt — including the
+whose name says it is incomplete and which blocks no later attempt, including the
 ClickHouse `.lock` file a failed `BACKUP` leaves behind, which is scoped to that
 directory and to that operation id.
 """
@@ -145,8 +145,8 @@ class _Phase:
     """One store's byte counters, on the operation row, named and throttled.
 
     **The fraction is per phase, and the phase is named on the row.** Each store knows
-    how many bytes it is going to move before it moves them — the object listing, the
-    ClickHouse part set, the frozen file list — but no store knows the other two's
+    how many bytes it is going to move before it moves them (the object listing, the
+    ClickHouse part set, the frozen file list), but no store knows the other two's
     totals, so a single denominator across all three would only exist once the backup was
     over. A bar that restarts at each named phase reports what is actually known, and the
     per-store sizes accumulate in `detail` as each one lands.
@@ -282,7 +282,7 @@ def export_object_store(params: ExportParams) -> ExportStoreResult:
 
     **Enumerated first, then copied**, which is what gives this phase a real denominator:
     the listing knows the object count and total size before a byte is written. It is
-    also the phase's one consistency caveat — an object written after the listing is not
+    also the phase's one consistency caveat. An object written after the listing is not
     in the backup, and Garage offers nothing stronger over S3.
 
     Volumes are plain tars in PAX format, because an object key is longer and stranger
@@ -367,8 +367,8 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
 
     **ClickHouse writes the artifact itself, into this very directory**, because the
     backup root is mounted onto its own `backups/` path as well. Nothing is copied
-    afterwards, and the alternative — letting it write inside its data volume and copying
-    the tar out — would both double the space and strand the original, since this
+    afterwards, and the alternative (letting it write inside its data volume and copying
+    the tar out) would both double the space and strand the original, since this
     container holds that volume read-only and has no way to delete anything in it.
 
     **`BACKUP` copies parts verbatim, and that is why it is the mechanism.** Most tables

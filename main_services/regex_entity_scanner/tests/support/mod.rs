@@ -14,7 +14,7 @@ pub fn vendored_dir() -> PathBuf {
 
 /// One scanner per test binary. Compiling the whole pattern set and loading the vendored data once
 /// per test is where the battery's time budget would otherwise go, and the scanner is immutable and
-/// shared by every request in production anyway — so sharing it here is also the more faithful
+/// shared by every request in production anyway, so sharing it here is also the more faithful
 /// fixture.
 pub fn scanner() -> Arc<Scanner> {
     static SCANNER: OnceLock<Arc<Scanner>> = OnceLock::new();

@@ -2,7 +2,7 @@
 
 Each correction case below is named after the file that forced it. They are pinned by
 hand-written bytes rather than by reading the fixture, so the test still means something
-on a checkout that has not fetched the corpora — the corpus-wide numbers are the
+on a checkout that has not fetched the corpora. The corpus-wide numbers are the
 integration gate's job.
 """
 

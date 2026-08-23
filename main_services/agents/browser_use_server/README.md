@@ -10,7 +10,7 @@ which reads a list of URLs, and six for driving a page that has to be operated.
 ## The tool surface
 
 The sidecar provides about thirty tools. Six of them, plus `read_page`, are advertised; the
-rest are registered **disabled** — absent from `list_tools`, still routable, and one entry
+rest are registered **disabled**: absent from `list_tools`, still routable, and one entry
 in `BROWSER_EXPOSED_TOOLS` away from returning. Nothing is deleted, so a future adaptive
 layer has a surface to select from.
 
@@ -22,7 +22,7 @@ of adaptive.
 ### `read_page(urls=[…], goal=…)`
 
 The way to read a page. Navigate, wait for the load to settle, extract the readable text
-with the navigation and adverts stripped, capture, return — for each URL, in one call.
+with the navigation and adverts stripped, capture, return, for each URL, in one call.
 
 ```json
 {"urls": ["https://en.wikipedia.org/wiki/Enron_scandal",
@@ -52,7 +52,7 @@ Three behaviours are worth knowing before changing it:
   extraction, which keeps the paragraphs carrying the goal's words when the budget forces a
   cut, and it is recorded on the artifact. An LLM loop inside a tool hides cost and latency
   behind something that looks like a function call and cannot be debugged from outside.
-* **The budget is shared and divided**, not per page — `READ_PAGE_TOTAL_CHARS` over the
+* **The budget is shared and divided**, not per page: `READ_PAGE_TOTAL_CHARS` over the
   number of URLs, never below a floor. Under the floor the surplus URLs are dropped *and
   named*, because a page the model can read beats five it cannot.
 * **A page that failed is reported as failed**, per URL, and the rest of the call still
@@ -62,7 +62,7 @@ Three behaviours are worth knowing before changing it:
 ### The interactive six
 
 `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`,
-`browser_select_option`, `browser_press_key` — for a page that has to be *operated* rather
+`browser_select_option`, `browser_press_key`, for a page that has to be *operated* rather
 than read. Navigate, snapshot to get a `ref` for every element, then act on the refs.
 
 The mouse-coordinate family, drag and drop, file upload, tab management,
@@ -74,7 +74,7 @@ restart.
 
 `browse_page` is registered as a **disabled tool that returns an error naming `read_page`**,
 not a silent shim. A shim that quietly works means a model which learned the old name never
-discovers the batched form, which is the whole point of the rename.
+discovers the batched form, which is what the rename exists to prevent.
 
 ## Shape
 
@@ -123,17 +123,17 @@ reads nothing.
 `host`+`port` to attach to. Two reasons, both paid for:
 
 * nodriver treats a configured `host`+`port` as *"attach to a browser that is already
-  running"* and **skips the launch entirely** — and the port has to be configured, because
+  running"* and **skips the launch entirely**, and the port has to be configured, because
   the sidecar must be told it. The symptom is a confident `Failed to connect to browser /
   you may be running as root` against a Chromium that was never started.
 * nodriver's own launch gives the browser ~2.7 s to answer `/json/version`. Chromium with
   two MV3 extensions takes 5–6 s in this image, so even without the first problem it would
   have raced.
 
-`Config` still builds the argument list — it owns the extension flags — but the process and
+`Config` still builds the argument list (it owns the extension flags), but the process and
 its pipes are ours. Chromium's stderr goes to `DEVNULL`: in a container it writes a
 continuous stream of D-Bus and GCM errors, and on a pipe nobody reads, that pipe fills and
-the browser blocks on write — a wedge that looks exactly like a hung page.
+the browser blocks on write, a wedge that looks exactly like a hung page.
 
 ## The sidecar answers to `localhost`, not `127.0.0.1`
 
@@ -147,7 +147,7 @@ Access is only allowed at localhost:41999
 ```
 
 So the router's client URL is `http://localhost:<port>/mcp`. Do not "fix" it to
-`127.0.0.1`, and do not pass `--allowed-hosts 127.0.0.1` — that makes it worse, because the
+`127.0.0.1`, and do not pass `--allowed-hosts 127.0.0.1`. That makes it worse, because the
 comparison then includes the port and never matches.
 
 The binary is `playwright-mcp` (not `mcp-server-playwright`), pinned in the Dockerfile.
@@ -164,7 +164,7 @@ the agent sees, mid-conversation, with nothing in the transcript saying so.
 | `BROWSER_MAX_TABS_PER_CHAT` | `6` | a model opening a tab per result must not exhaust the container |
 
 Eviction tears down both processes and deletes the profile directory. The evicted chat's
-next call transparently starts a fresh browser — its cookies and tabs are gone, which the
+next call transparently starts a fresh browser. Its cookies and tabs are gone, which the
 design accepts. Coming back always costs somebody else their browser: the cap is a memory
 ceiling.
 
@@ -176,7 +176,7 @@ concurrent CDP sessions safely; with one browser per chat, serialisation belongs
 and a global lock would make eight conversations queue behind each other.
 
 The router keeps one lock over its **map**, and that lock is never held across a spawn, an
-eviction stop or a sidecar restart. **Never hold it across `chat_browser.start()`** — a
+eviction stop or a sidecar restart. **Never hold it across `chat_browser.start()`**. A
 cold Chromium launch plus a Node sidecar is 45 to 90 seconds, and holding the map lock for
 that long blocks every other chat's lookup: the cap says eight contexts and the router
 behaves like one. Callers racing for the *same* chat still share a single spawn,
@@ -185,7 +185,7 @@ was there to prevent (two browsers for one chat, double the memory, split cookie
 
 **`init: true` on the container.** Chromium is a process tree, and PID 1 here is the Python
 server, which never reaps grandchildren. Every renderer and crashpad handler a closed
-browser leaves behind stayed a zombie — 104 of them on a stack that had been up for hours.
+browser leaves behind stayed a zombie, 104 of them on a stack that had been up for hours.
 Each holds a PID; the end of that road is `cannot fork`, surfacing as an unrelated browser
 launch failing.
 
@@ -204,7 +204,7 @@ was gone. A second failure in the same call is real and is returned as a retryab
 ## The warm template session
 
 `list_tools` runs during graph construction, for every chat, including the ones that will
-never browse. It is answered from a **template browser started at boot** — otherwise tool
+never browse. It is answered from a **template browser started at boot**, otherwise tool
 discovery would start a Chromium per conversation on the site.
 
 The template also makes a broken image fail at boot with a log line instead of on the first
@@ -216,7 +216,7 @@ the signature.
 **Read [`browser_use_server/urlcheck.py`](browser_use_server/urlcheck.py) before changing
 anything here.** This server is driven by an LLM and sits *inside* the `hoover4` network,
 where `clickhouse:8123`, `temporal:7233` and `manticore:9308` answer unauthenticated HTTP.
-An unrestricted fetcher in that position is an arbitrary read of the whole stack — and the
+An unrestricted fetcher in that position is an arbitrary read of the whole stack, and the
 URL can arrive from a web page the model was asked to summarise, so "the user would not ask
 for that" is not a defence.
 
@@ -225,9 +225,9 @@ URL-shaped argument of every forwarded tool. `browse_page` was the only navigati
 this module was written; there are now two dozen, so the guard moved up to the dispatch
 point. Each candidate must pass, in order:
 
-1. scheme is `http` or `https` — no `file://`, `chrome://`, `data:`, `ftp://`
+1. scheme is `http` or `https`, no `file://`, `chrome://`, `data:`, `ftp://`
 2. the host is not a known service on this network, and does not end in `.internal`
-3. the host resolves, and **every** address it resolves to is public — this is what catches
+3. the host resolves, and **every** address it resolves to is public. This is what catches
    a public name with a private `A` record (`localtest.me`, `*.nip.io`), the usual SSRF
    bypass
 
@@ -245,7 +245,7 @@ internal hosts and moves on. No browser is spawned for a refused call.
 ### The line that survives a redirect
 
 `check_tool_arguments` only ever sees **tool arguments**. Everything Chromium does after a
-navigation starts — an HTTP 302, a `<meta refresh>`, `location =`, an `<img src>` — passes
+navigation starts (an HTTP 302, a `<meta refresh>`, `location =`, an `<img src>`) passes
 through no tool call and so through no check. Measured: a public page redirecting to
 `http://manticore:9308/sql?query=…` was fetched and its data returned to the model.
 
@@ -255,58 +255,58 @@ stack makes, each hop of a redirect chain included, before a connection is opene
 tab. Anything internal is routed to a proxy that does not exist and fails at once with
 `ERR_PROXY_CONNECTION_FAILED`:
 
-* a **single-label** host (`isPlainHostName`) — every container here answers to a bare name,
+* a **single-label** host (`isPlainHostName`), every container here answers to a bare name,
   so this covers services added after the file was written, with no list to maintain;
 * `.internal` and `.localhost` suffixes (cloud metadata lives in the first);
 * any address, **after resolution**, in a private, loopback, link-local, CGNAT or reserved
-  range — the same rule urlcheck applies, applied to what the browser actually connects to;
+  range, the same rule urlcheck applies, applied to what the browser actually connects to;
 * a name that does not resolve: fail closed.
 
 `--blocked-origins` on the sidecar is a **third** opinion, nothing more. Playwright's own
-documentation says it is not a security boundary *and does not affect redirects* — and until
+documentation says it is not a security boundary *and does not affect redirects*, and until
 this sweep it did nothing at all: a bare hostname compiles to the glob `*://host/**`, a
 single `*` does not cross `/`, and every service here listens on a port, so it matched
 nothing. It is now passed as `http://host:*` / `https://host:*`, the one form
 `originOrHostGlob` turns into a port-tolerant glob.
 
 What none of this closes is a DNS-rebinding race between urlcheck and Chromium's own
-resolution — though the PAC script resolves independently at connect time, which narrows it
+resolution, though the PAC script resolves independently at connect time, which narrows it
 considerably. PAC's `dnsResolve` is IPv4-only (`dnsResolveEx` is a Microsoft extension
 Chromium does not implement); this network is IPv4 and the name rules catch every internal
 host regardless.
 
 ## Capture
 
-After `browser_take_screenshot` or `browser_snapshot` — and **also when the tool failed** —
+After `browser_take_screenshot` or `browser_snapshot` (and **also when the tool failed**)
 the router takes a capture through its own CDP connection:
 
 1. `Page.captureScreenshot` → downscaled to 1280×720 → WebP q72;
 2. `Page.captureSnapshot{format: "mhtml"}` → inlined to self-contained HTML by
    [`mhtml.py`](browser_use_server/mhtml.py);
 3. one `chat_artifacts` row, and `{"artifact_id": …}` appended to the tool result under
-   `_hoover4_artifacts` — and, in the text, a trailing
+   `_hoover4_artifacts`, and, in the text, a trailing
    `[hoover4:artifacts] {"artifacts": [...], "failed": true}` marker.
 
 The marker's `failed` flag exists because **`is_error` does not survive to the transcript**.
 LangGraph hands the website the text blocks and nothing else, and for a browser tool that
-text *is the fetched page* — so "Error:" in it proves nothing, and the card was left
+text *is the fetched page*, so "Error:" in it proves nothing, and the card was left
 describing the tool's arguments instead of its outcome ("opened http://clickhouse:8123" for
 a navigation urlcheck had refused). The router knows, so the router writes it down. The
 flag is written only when true; the array form without it is still read, for rows already
 stored.
 
-The router also strips markdown links into playwright-mcp's own output directory —
-`- [Snapshot](.playwright-mcp/page-2026-08-07T16-54-18-139Z.yml)` — from every text block,
+The router also strips markdown links into playwright-mcp's own output directory
+(`- [Snapshot](.playwright-mcp/page-2026-08-07T16-54-18-139Z.yml)`) from every text block,
 along with the section heading left standing over nothing. That file exists inside the
 sidecar's container and nowhere else: the model cannot read files, and the website rendered
 it as a dead link in the transcript. Lines that merely *mention* the path are untouched;
 the rule matches a whole line that is only the link, because the rest of the result is
 evidence and must not be rewritten.
 
-**Captures are explicit — those two tools and nothing else.**
+**Captures are explicit, and they come from those two tools and nothing else.**
 
-Capturing after almost every click — a screenshot plus a multi-megabyte MHTML
-serialisation — costs tens of rows and over ten megabytes in a single day of demo use.
+Capturing after almost every click (a screenshot plus a multi-megabyte MHTML
+serialisation) costs tens of rows and over ten megabytes in a single day of demo use.
 The argument against explicit-only is real: the completeness of the transcript should not
 depend on the model's judgement, and a model that forgets to screenshot the CAPTCHA it hit
 leaves a transcript where the failure is invisible. Explicit still wins, because the
@@ -319,7 +319,7 @@ screenshot of a cookie wall is the most valuable artifact this module produces, 
 tool "failing" is not a reason to discard the evidence of why.
 
 **Each step has its own deadline, and this is not a detail.** A navigation that timed out
-leaves the page still loading, and `captureSnapshot` then blocks until the load settles — so
+leaves the page still loading, and `captureSnapshot` then blocks until the load settles, so
 a single shared budget burned all of it on the snapshot and the *screenshot never happened*,
 in exactly the case where the evidence is most valuable. Now the screenshot goes first under
 `CAPTURE_SCREENSHOT_TIMEOUT_SECONDS` (8), the snapshot gets
@@ -329,8 +329,8 @@ with `status = 'failed'` and a `detail` the card shows.
 Over `CAPTURE_MAX_SNAPSHOT_BYTES` (8 MB) the snapshot is dropped, the row says
 `status = 'too_large'`, and the thumbnail is kept regardless.
 
-Cost control is the capture policy itself, and nothing else. **Do not add body-key reuse**
-— deduplicating a capture whose `(url, document.lastModified)` matches the previous one in
+Cost control is the capture policy itself, and nothing else. **Do not add body-key reuse**.
+Deduplicating a capture whose `(url, document.lastModified)` matches the previous one in
 the same chat looks free but is not: two explicit snapshots of one page are a deliberate
 act, and handing the second the first one's bytes makes two `chat_artifacts` rows share a
 object-store object, so deleting either can strand the other. The **sweeper handles shared body
@@ -338,7 +338,7 @@ keys** anyway, because transcripts contain rows written that way.
 
 ## MHTML → self-contained HTML
 
-MHTML is a faithful archive and an unusable one — no browser renders it from an
+MHTML is a faithful archive and an unusable one, no browser renders it from an
 `<iframe src>`. [`mhtml.py`](browser_use_server/mhtml.py) inlines it into one HTML document
 with `data:` URIs, using `email.parser` and no new dependency.
 
@@ -346,7 +346,7 @@ Every `<script>`, every `on*` attribute, `<base>`, and any `javascript:` / `data
 href is stripped. The website's CSP (`default-src 'none'`) and `<iframe sandbox="">` already
 prevent execution; this is defence in depth against a viewer that gets the headers wrong.
 
-**The trap:** subresource references resolve against **the part's own `Content-Location`**,
+**What goes wrong:** subresource references resolve against **the part's own `Content-Location`**,
 not the document's. A stylesheet at `https://cdn.example/css/app.css` containing
 `url(../img/x.png)` means `https://cdn.example/img/x.png`, nowhere near the page URL.
 Getting this wrong produces a capture that renders with missing images and no error
@@ -363,14 +363,14 @@ verified**, unpacked into `/opt/browser-extensions/<name>/`:
 | I still don't care about cookies | `edibdbjcniadpccecjdfdjjppcpchdlm` | `ISDCAC_VERSION=1.1.9` | `OhMyGuus/I-Still-Dont-Care-About-Cookies` releases |
 
 Both projects publish the unpacked Chromium extension as a release asset, which is versioned
-and immutable. The Chrome Web Store's CRX endpoint is neither — and a blocker that updates
+and immutable. The Chrome Web Store's CRX endpoint is neither, and a blocker that updates
 itself changes what the agent sees with nothing recording it. Bump the `ARG`s and the
 checksums together, and update this table.
 
 They are loaded through nodriver's `Config.add_extension()`, which is what supplies
 `--disable-features=…,DisableLoadExtensionCommandLineSwitch` and
 `--enable-unsafe-extension-debugging`. **Hand-rolling `--load-extension` will appear to work
-and load nothing** — Chromium disables that switch for MV3 by default.
+and load nothing**. Chromium disables that switch for MV3 by default.
 
 uBlock Origin Lite runs at its default *Basic* level, which is declarativeNetRequest-only
 and needs no per-site permission. That blocks network requests but does not always remove
@@ -403,7 +403,7 @@ on content-heavy pages, and up to eight browsers multiply the demand.
 ## The image is ~1.5 GB and that is expected
 
 Chromium plus its shared libraries and fonts, Node for the sidecars, and the two extensions.
-Do not try to slim it by dropping the font packages — without them, text-heavy pages render
+Do not try to slim it by dropping the font packages, without them, text-heavy pages render
 as boxes and the accessibility snapshot comes back as garbage, which is a *silent* content
 failure rather than a visible one.
 
@@ -415,17 +415,17 @@ docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 101 tests
 
 Four groups, none of which need Chromium or Node:
 
-* **`test_urlcheck.py`** — the security boundary, tested hardest: schemes, every non-public
+* **`test_urlcheck.py`** covers the security boundary, tested hardest: schemes, every non-public
   address range in v4 and v6, the named services on this network, the
   public-name-with-private-record bypass, and the per-tool-argument guard in front of the
   Playwright surface.
-* **`test_mhtml.py`** — the converter against fixtures rather than the live web: a page with
+* **`test_mhtml.py`** covers the converter against fixtures rather than the live web: a page with
   `quoted-printable` CSS, one with `srcset`, one with `url()` inside an inline style, one
   whose stylesheet references a resource relative to *its own* location, and one over the
   byte cap.
-* **`test_router.py`** — lifetime: per-chat isolation, the LRU cap, the idle reaper,
+* **`test_router.py`** covers lifetime: per-chat isolation, the LRU cap, the idle reaper,
   idempotent close, and sidecar restart, with `chat_browser.start`/`stop` stubbed.
-* **`test_netfilter.py`** — the redirect boundary: that every blocked origin is emitted in
+* **`test_netfilter.py`** covers the redirect boundary: that every blocked origin is emitted in
   the one form playwright-mcp compiles into a port-tolerant glob (with that compiler
   reimplemented in the test, so a sidecar upgrade that changes it fails here rather than
   silently), and that the PAC script refuses every shape of internal target and falls

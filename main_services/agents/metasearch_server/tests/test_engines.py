@@ -1,6 +1,6 @@
 """Tests for URL normalisation, RRF and the degraded-engine reporting.
 
-The scrapers themselves are not tested against the live web — that would make the suite
+The scrapers themselves are not tested against the live web. That would make the suite
 fail whenever an engine changes its HTML, which is precisely the event the `degraded`
 field exists to report at runtime. What is tested here is the merging logic, which is
 where a silent wrong answer would actually hide, plus each parser against a captured
@@ -114,7 +114,7 @@ class TestReciprocalRankFusion:
         assert y.source_ranks == {"a": 2, "b": 1}
 
     def test_a_more_specific_kind_survives_the_merge(self):
-        """A page both Wikipedia and a scraper returned is a reference result — otherwise
+        """A page both Wikipedia and a scraper returned is a reference result, otherwise
         the per-kind floor cannot see it and reference results get crowded out."""
         merged = reciprocal_rank_fusion(
             {
@@ -154,7 +154,7 @@ class TestEngineConfiguration:
 
 class TestParsers:
     """One captured fragment per engine, so a selector edit fails here rather than in
-    production. These are shapes, not live HTML — they will not catch the engine
+    production. These are shapes, not live HTML. They will not catch the engine
     changing its markup, which is what `degraded` reports at runtime."""
 
     def test_duckduckgo_unwraps_its_click_redirect(self):
@@ -199,7 +199,7 @@ class TestParsers:
 
     def test_brave_reads_the_current_generic_snippet_markup(self):
         """Captured live: `.snippet-description` is gone and the description moved into
-        `.generic-snippet .content`, so every Brave result carried an empty snippet — and
+        `.generic-snippet .content`, so every Brave result carried an empty snippet, and
         an empty snippet is a candidate the cross-encoder scores on its title alone."""
         html = """
         <div class="snippet" data-type="web">
@@ -245,7 +245,7 @@ class TestParsers:
         """Captured live: the anchor wraps the favicon, the site name AND the URL
         breadcrumb as well as the `h3`, so the link's text was
         `Wikipediahttps://en.wikipedia.org › wiki › Eiffel_TowerEiffel Tower - Wikipedia`.
-        That string is what the user reads and what the reranker scores — a page with a
+        That string is what the user reads and what the reranker scores, a page with a
         keyword-stuffed breadcrumb outranked the clean encyclopaedia entry because of it.
         """
         html = """

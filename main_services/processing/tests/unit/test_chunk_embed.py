@@ -1,6 +1,6 @@
 """Unit tests for the P5 chunk+embed stage: the chunker and the e5 prefix rule.
 
-The chunker's offsets are BYTE offsets into the UTF-8 encoding — the golden property
+The chunker's offsets are BYTE offsets into the UTF-8 encoding. The golden property
 tested here is that `text.encode("utf-8")[start:end].decode("utf-8")` reproduces the
 chunk text exactly, multibyte content included. A character/byte mix-up fails these
 tests nowhere except against real multibyte text, so that case comes first.
@@ -27,7 +27,7 @@ class TestChunkPageText:
         assert encoded[chunks[0].index_start:chunks[0].index_end].decode("utf-8") == chunks[0].text
 
     def test_byte_offsets_roundtrip_multibyte(self):
-        # "€" is 3 bytes and "—" is 3 bytes; a character-offset implementation
+        # "€" is 3 bytes and ". " Is 3 bytes; a character-offset implementation
         # produces offsets that slice these tests' strings at the wrong places.
         text = "€ " * 400 + "tail"
         chunks = chunk_page_text(text, max_bytes=300, overlap_bytes=60)

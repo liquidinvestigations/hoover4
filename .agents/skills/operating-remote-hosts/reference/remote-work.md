@@ -7,8 +7,8 @@ Most remote sessions should end here. Nothing below changes anything.
 1. **What is running, and how long has it been running.** A container that restarted recently
    is the first thing to explain.
 2. **The container's own logs**, from before the symptom, not from the tail.
-3. **What the container actually received for the value in question** — its environment, not
-   the file that was supposed to produce it.
+3. **What the container actually received for the value in question**, read from its
+   environment rather than from the file that was supposed to produce it.
 4. **The rendered compose configuration**, which resolves relative paths and variable
    substitution to absolutes. A path that reads correctly in a file can resolve somewhere
    else entirely.
@@ -35,22 +35,22 @@ after the fact more than once.
 | local result | transfers? |
 |---|---|
 | the code compiles and the tests pass | yes |
-| a compose file parses and brings the stack up | **no** — a different engine is stricter, and rejects things the local one accepts |
-| a cleanup command is safe | **no** — a shared runtime turns an unscoped command into someone else's outage |
-| a path exists at the depth the script expects | **no** — corpus layout differs, and the ingest-root overrides exist for that |
-| a build takes N minutes | **no** — release mode and shared cores change it by a lot |
+| a compose file parses and brings the stack up | **no**, a different engine is stricter, and rejects things the local one accepts |
+| a cleanup command is safe | **no**, a shared runtime turns an unscoped command into someone else's outage |
+| a path exists at the depth the script expects | **no**, corpus layout differs, and the ingest-root overrides exist for that |
+| a build takes N minutes | **no**, release mode and shared cores change it by a lot |
 
 ## Deploying, when deploying is the task
 
 Same entry point as locally, and the same rules: read what is in flight first, run the build
-with its whole output captured, and never combine the reset flag with the build flag —
-the reset path returns before the build runs. `deploying-the-stack` has the detail.
+with its whole output captured, and never combine the reset flag with the build flag.
+The reset path returns before the build runs. `deploying-the-stack` has the detail.
 
 Afterwards, verify from inside the network and from a browser, in that order. A container
 that is up is not a site that renders.
 
 ## Access
 
-`INFRASTRUCTURE_INVENTORY.md` at the repository root — gitignored, local, filled in from an
+`INFRASTRUCTURE_INVENTORY.md` at the repository root, gitignored, local, filled in from an
 interview with the operator. Never copy anything out of it into this repository, a script, a
 commit message, or a log.

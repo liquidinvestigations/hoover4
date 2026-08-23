@@ -348,7 +348,7 @@ def _detect_from_name(params: DetectMimeParams) -> Dict[str, Any]:
     """Detection from the filename alone, stored as its own `file_types` row.
 
     The extension used to be consulted only as a fallback for when `file` returned
-    nothing at all, so for a `.docx` — which `file` names confidently, and names a zip —
+    nothing at all, so for a `.docx` (which `file` names confidently, and names a zip)
     it was discarded. It is a first-class parallel detection, and the canonical
     resolution weighs it against the content detectors instead of behind them.
     """
@@ -380,7 +380,7 @@ def _detect_by_content(params: DetectMimeParams,
                        ) -> Dict[str, Any]:
     """The content sniff: email, plus the two rules libmagic still gets wrong.
 
-    Emails first, because that is the whole reason this detector exists — an
+    Emails first, because that is the whole reason this detector exists. An
     extension-less RFC 822 message is `text/plain` to every other detector in the
     fan-out, so a maildir indexes as text and never produces an `emails` row. The sniff
     runs only behind its cheap gate (`should_check_email`), which keeps it off the ~98%

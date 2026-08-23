@@ -1,6 +1,6 @@
 //! Equipment identifiers and network addresses.
 //!
-//! The IMEI fixtures are the documented examples from `stdnum/imei.py` — the valid number, its
+//! The IMEI fixtures are the documented examples from `stdnum/imei.py`: the valid number, its
 //! grouped spelling, and the counterpart whose check digit disagrees. The rest of the subset is
 //! chosen for the failure modes these four rules actually have: a certificate fingerprint against
 //! `device.mac`, a four-component release number against `network.ip`, and the English word "as"
@@ -131,7 +131,7 @@ fn accepts_the_ipv6_form_that_ends_in_a_dotted_quad() {
 }
 
 /// A four-component dotted number is also how a release is written, and the arithmetic cannot
-/// separate the two — only the words around it can.
+/// separate the two, only the words around it can.
 #[test]
 fn rejects_version_numbers_and_impossible_octets() {
     rejects("upgraded to firmware version 10.0.0.4 last night");
@@ -159,8 +159,8 @@ fn accepts_autonomous_system_numbers_behind_their_prefix() {
 /// The guard this rule is built around, and its only interesting claim: a space is allowed after
 /// the three-letter spelling and refused after the two-letter one, because `AS` followed by a
 /// space is the English word far more often than it is a network. No corpus can be vendored for
-/// this rule — every authoritative source publishes bare numbers, and the one register that writes
-/// the prefix out forbids redistributing its database — so these fixtures are the whole of its
+/// this rule (every authoritative source publishes bare numbers, and the one register that writes
+/// the prefix out forbids redistributing its database), so these fixtures are the whole of its
 /// evidence.
 #[test]
 fn rejects_numbers_without_the_autonomous_system_prefix() {

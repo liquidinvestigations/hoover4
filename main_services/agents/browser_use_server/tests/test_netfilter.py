@@ -3,7 +3,7 @@
 Two separate claims are checked here, because they failed separately:
 
 1. the origins handed to playwright-mcp must be in the *one* form its `originOrHostGlob`
-   compiles into a port-tolerant glob — the bare hostnames this code used to pass matched
+   compiles into a port-tolerant glob. The bare hostnames this code used to pass matched
    nothing, so the flag was inert on a network where every service has a port;
 2. the PAC script must refuse every shape of internal target, including the ones that only
    ever arrive through a redirect and therefore never reach `urlcheck`.
@@ -27,7 +27,7 @@ def _origin_glob(origin: str) -> str:
 
     Copied from `playwright-core/lib/coreBundle.js` (v0.0.79 of `@playwright/mcp`). If the
     sidecar is upgraded and this stops matching, the flag has gone inert again and this
-    test is the thing that says so.
+    test is what says so.
     """
     wildcard_port = re.match(r"^(https?://[^/:]+):\*$", origin)
     if wildcard_port:

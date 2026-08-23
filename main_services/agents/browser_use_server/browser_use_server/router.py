@@ -2,13 +2,13 @@
 
 The lifetime rules, and why each number is what it is:
 
-* ``BROWSER_MAX_CONTEXTS`` (8) — a whole Chromium per chat costs a few hundred MB, so this
+* ``BROWSER_MAX_CONTEXTS`` (8), a whole Chromium per chat costs a few hundred MB, so this
   is a memory ceiling, not a politeness limit. Past it the least recently used chat is
   evicted: both processes die and the profile directory goes. The evicted chat's next call
-  transparently starts a fresh browser — its cookies and tabs are gone, which is accepted.
-* ``BROWSER_IDLE_SECONDS`` (900) — a conversation the user has walked away from should not
+  transparently starts a fresh browser. Its cookies and tabs are gone, which is accepted.
+* ``BROWSER_IDLE_SECONDS`` (900), a conversation the user has walked away from should not
   hold a browser. Fifteen minutes is long enough to survive reading an answer.
-* ``BROWSER_MAX_TABS_PER_CHAT`` (6) — a model that opens a tab per search result would
+* ``BROWSER_MAX_TABS_PER_CHAT`` (6), a model that opens a tab per search result would
   otherwise exhaust the container through a single chat.
 
 **The warm template session** is the part that is easy to leave out and expensive to
@@ -37,7 +37,7 @@ REAP_INTERVAL_SECONDS = float(os.getenv("BROWSER_REAP_INTERVAL", "60"))
 MAX_TABS_PER_CHAT = int(os.getenv("BROWSER_MAX_TABS_PER_CHAT", "6"))
 
 #: Session id used by a caller that supplies no header. Pre-existing behaviour, kept so
-#: `curl` and the host-side `.mcp.json` entry work — at the cost of no isolation between
+#: `curl` and the host-side `.mcp.json` entry work, at the cost of no isolation between
 #: such callers, which is what it always was.
 ANONYMOUS = "_anonymous"
 
@@ -51,11 +51,11 @@ class Router:
         self._chats: "OrderedDict[str, ChatBrowser]" = OrderedDict()
         # Guards the map, not the browsers. Per-chat serialisation is each ChatBrowser's
         # own lock; a global lock here would make eight chats queue behind each other,
-        # defeating the whole point of a browser per chat.
+        # defeating the isolation a browser per chat exists to give.
         #
         # **Never hold this across a spawn, a stop or a sidecar restart.** Holding it
         # across `chat_browser.start()`, which is a cold Chromium launch plus a Node
-        # sidecar — 45 to 90 seconds — makes one chat's first browse block every other
+        # sidecar (45 to 90 seconds) makes one chat's first browse block every other
         # chat's map lookup for that whole time. The cap says eight contexts; the lock
         # made it behave like one.
         self._lock = asyncio.Lock()
@@ -80,7 +80,7 @@ class Router:
         """The warm session `list_tools` is answered from. Started on first ask.
 
         Serialised through the same spawn-future machinery as :meth:`get`, so a cold
-        template launch does not hold the map lock either — `list_tools` runs during graph
+        template launch does not hold the map lock either: `list_tools` runs during graph
         construction for every chat on the site, and blocking all of them behind the first
         one's Chromium boot is the worst possible place to do it.
         """
@@ -103,7 +103,7 @@ class Router:
     async def get(self, session_id: str | None) -> ChatBrowser:
         """This chat's browser, starting it if needed and evicting to stay under the cap.
 
-        The map lock is held only for map operations — never across a spawn, an eviction
+        The map lock is held only for map operations, never across a spawn, an eviction
         stop, or a sidecar restart. Callers racing for the *same* chat still share one
         spawn (see `_spawning`); callers for different chats never wait on each other
         at all, which is what the eight-context cap is supposed to mean.
@@ -128,7 +128,7 @@ class Router:
         if not chat_browser.sidecar_alive(chat):
             # The sidecar died between calls. Restarting it here means the tool call the
             # user is waiting on succeeds rather than failing once to teach us the process
-            # was gone. Under the chat's OWN lock — `server.py` takes it after this
+            # was gone. Under the chat's OWN lock, `server.py` takes it after this
             # returns, so there is no nesting, and two calls for one chat must not both
             # restart the sidecar.
             async with chat.lock:
@@ -188,7 +188,7 @@ class Router:
         return chat
 
     async def close(self, session_id: str) -> bool:
-        """Drop one chat's browser. Idempotent — an unknown session is a `False`, not an
+        """Drop one chat's browser. Idempotent, an unknown session is a `False`, not an
         error: the caller's goal ("this session must not be open") is met either way."""
         async with self._lock:
             chat = self._chats.pop(session_id, None)
@@ -214,7 +214,7 @@ class Router:
     def _take_over_limit_locked(self, making_room_for: int = 0) -> list[ChatBrowser]:
         """Remove the least recently used chats from the map and hand them back to be
         stopped. Caller holds the lock; stopping happens **outside** it, the same split
-        :meth:`sweep` has always used — killing two processes and deleting a profile
+        :meth:`sweep` has always used. Killing two processes and deleting a profile
         directory is not a map operation.
         """
         doomed: list[ChatBrowser] = []

@@ -82,7 +82,7 @@ class TestDaySnap:
 
     def test_one_second_before_the_epoch_is_the_previous_day(self):
         """Floor division, never truncation toward zero. `int(-1 / 86400)` is 0, which
-        would put 1969-12-31T23:59:59 on 1970-01-01 — and every pre-epoch instant one
+        would put 1969-12-31T23:59:59 on 1970-01-01, and every pre-epoch instant one
         day late, which is precisely the range the signed column exists for."""
         assert snap_to_day(-1) == -DAY_SECONDS
 

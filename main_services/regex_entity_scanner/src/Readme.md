@@ -20,28 +20,27 @@ exist. So the scanner is two-stage, and the two stages are held to different rul
 
 - The **prefilter** runs over raw document text and must stay in a linear-time engine. No
   lookaround, no backreferences, no catastrophic backtracking on a document somebody else wrote.
-  It is allowed — expected — to over-match.
+  It is allowed (expected) to over-match.
 - The **validator** sees one candidate at a time and may be as expensive as it likes. It re-imposes
   the guards that had to be stripped out of the pattern, applies the checks that decide truth
   (calendar validity, check digits, list membership, plausibility windows), and produces the
   canonical value.
 
-Everything that leaves this crate has been through both. A span with no canonical value is not an
-extraction, it is a substring, and a facet built out of substrings is the thing nobody ends up
-using.
+Everything that leaves this crate has been through both. A span with no canonical value is a substring
+rather than an extraction, and a facet built out of substrings goes unused.
 
 ## Byte offsets
 
 Matching is on bytes and offsets are byte offsets, absolute in the source document. A caller
-scanning a large document splits it into overlapping windows — the overlap at least as long as the
-longest matchable entity — passes each window's own offset as `base_offset`, and deduplicates on
+scanning a large document splits it into overlapping windows (the overlap at least as long as the
+longest matchable entity) passes each window's own offset as `base_offset`, and deduplicates on
 `(type, start, end)`. Never split a window mid-codepoint.
 
 ## A missing table is a startup failure, not a quiet one
 
 Every vendored table is read once at startup, and each one has a minimum number of entries it has
-to hold to be the file it was transformed from. This matters more than it looks: a validator whose
-table is empty compiles, runs and answers no — so the process starts, the requests succeed, and one
+to hold to be the file it was transformed from. This is easy to underestimate: a validator whose
+table is empty compiles, runs and answers no, so the process starts, the requests succeed, and one
 entity type is silently absent for as long as it runs. `VendoredData::load` refuses to build in that
 state, and `/health` answers 503 with the offending tables named for the case where one was built
 anyway.

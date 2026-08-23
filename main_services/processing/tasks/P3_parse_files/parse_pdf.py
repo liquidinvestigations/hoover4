@@ -26,7 +26,7 @@ from tasks.text_sources import OCR_ENGINES
 #: alive, so a wedged qpdf would heartbeat happily until start_to_close. A
 #: subprocess timeout is the only thing that catches a wedged child.
 #: Generous, because a 500-page split is legitimately
-#: slow -- the point is that it is finite.
+#: slow, and the value of the cap is that it is finite.
 _PDF_SUBPROCESS_TIMEOUT_S = 900
 
 
@@ -77,7 +77,7 @@ def _maybe_pdftotext(path: str) -> Optional[str]:
 
 
 #: pdftotext writes a form feed after every page, including the last one. That single
-#: byte is the whole per-page split: one subprocess call still does the work, and the
+#: byte is the whole per-page split. One subprocess call still covers every page, and the
 #: alternative -- `pdftotext -f N -l N` once per page -- would be one process spawn per
 #: page of every PDF in the corpus.
 _PAGE_BREAK = "\x0c"
@@ -439,10 +439,10 @@ class PdfProcessingAndScan:
         size_bytes = int(meta.get("size_bytes") or 0)
 
         # 1b) Searchable PDFs, one activity per engine, started now and awaited at the
-        # end. Which engines run — and whether any do — is decided inside the activity
+        # end. Which engines run (and whether any do) is decided inside the activity
         # from `pdf_ocr_provider` and `dataset_settings`, not here: a workflow argument
-        # would freeze the value at schedule time, and the whole point of the apply job
-        # is to reach activities that are already in flight.
+        # would freeze the value at schedule time, and the apply job exists
+        # to reach activities that are already in flight.
         #
         # On the OCR queue rather than the common one: the work is one OCR call per page,
         # so it belongs behind the same bounded tier as image OCR. An engine with nothing

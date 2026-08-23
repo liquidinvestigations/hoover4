@@ -76,7 +76,7 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     not a bonus: an operation whose stages all ran finishes `finished` whether or not
     every document survived, so without a recorded failure count a plan that lost
     documents is indistinguishable from one that did not. The count is of the dataset,
-    not of this run — a re-run over an already-damaged dataset should say so rather
+    not of this run. A re-run over an already-damaged dataset should say so rather
     than report a clean sheet because its own attempt added nothing new.
 
     Returns `[done, total]`. A dataset whose scan has not produced plans yet is
@@ -145,7 +145,7 @@ def count_dataset_rows_activity(params: DatasetProgressParams) -> int:
     What the purge driver counts progress with: the total taken before the purge starts
     is the denominator, and the same count taken again while it runs is what is left, so
     `done` is rows actually gone rather than a stage number. Physical rows, not `FINAL`
-    rows -- the honest answer to "what is still there" and far cheaper on a large
+    rows, which answers "what is still there" and is far cheaper on a large
     collection.
     """
     from tasks.P_admin.activities import count_dataset_rows

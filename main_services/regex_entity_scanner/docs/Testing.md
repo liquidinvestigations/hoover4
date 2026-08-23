@@ -18,15 +18,15 @@ is short enough to run on every rule change, and a suite that is slow enough to 
 nobody runs.
 
 Reference corpora and upstream test suites are large, and running one whole is the usual way this
-budget gets lost. A test iterates a **representative subset** — chosen to cover the formats, locales
-and failure modes that rule actually claims — and says in the test what the subset is for. That is
+budget gets lost. A test iterates a **representative subset**, chosen to cover the formats, locales
+and failure modes that rule actually claims, and says in the test what the subset is for. That is
 thoroughness; iterating everything is just slowness that looks like thoroughness.
 
 ## The golden corpus
 
 `tests/golden/corpus.jsonl` is the test that decides whether a rule change was an improvement. Unit
 tests pin individual behaviours; only a labelled corpus answers "did this pattern start swallowing
-version numbers", which is the way this kind of system actually fails — not by being slow, but by
+version numbers", which is the way this kind of system actually fails, not by being slow, but by
 filling a facet with noise until nobody uses it.
 
 The harness scores precision and recall over the whole corpus; `./test.sh -- --nocapture` shows the
@@ -65,7 +65,7 @@ Agreement with upstream is the only evidence that a ported check digit, or a por
 means what its author meant.
 
 It is a separate entry point with its own budget of fifteen to twenty minutes, and the fast battery
-never triggers it — the two-to-three-minute budget above is not something a conformance sweep may
+never triggers it. The two-to-three-minute budget above is not something a conformance sweep may
 spend. The runner samples each scheme deterministically rather than exceeding its budget, taking the
 first cases of a scheme in the case file's sorted order, so the sample is the same on every machine
 with no seed to carry.
@@ -75,18 +75,18 @@ separately**, in `tests/conformance.rs`. The per-origin floors are what stop one
 behind the others: the largest origin carries many times the cases of the smallest, so a rule that
 loses every case in a small one moves the aggregate by less than the aggregate floor's own margin.
 Every origin in the corpus must have a floor, so adding an origin is a decision about the number it
-is expected to hold. The floors are a ratchet — raised after a real fix, never lowered to make a run
+is expected to hold. The floors are a ratchet. Raised after a real fix, never lowered to make a run
 pass. Two things move the aggregate by changing the denominator rather than by a rule getting worse.
 An origin joining the corpus is one. A new rule is the other, from the opposite direction: the cases
 for a scheme nothing claimed were excluded as *no rule for this entity type*, and the rule that
-claims them turns every one of them into a scored case at once — including the ones it will miss,
+claims them turns every one of them into a scored case at once, including the ones it will miss,
 because a rule's documented limits arrive in the denominator with its successes. In both the floor is
 re-derived from the run at the commit that moves it, with the reason recorded beside the constant,
 and that is not the same thing as lowering it for a corpus that has not changed.
 
 Three numbers are reported per scheme, per origin and in aggregate, and never blended: **recall**
-over upstream-valid cases in a scheme we implement, **precision** over upstream-invalid ones — did
-we stay silent — and **coverage**, how much of the extracted material was scored at all. Excluded
+over upstream-valid cases in a scheme we implement, **precision** over upstream-invalid ones (did
+we stay silent), and **coverage**, how much of the extracted material was scored at all. Excluded
 cases are counted and listed with their reason beside every score, because a run that excludes its
 way to a good number measures nothing. `tests/conformance/Readme.md` has the case-file schema, the
 carrier and cue rules, and what may be excluded.
@@ -106,14 +106,14 @@ not a sample of the evidence; they are the evidence.
   the hemisphere-first form the card refuses.
 - **`network.asn`.** Every authoritative source publishes bare numbers, and the rule requires the
   literal `AS`/`ASN` prefix *inside* the token, so prefixing them manufactures the token. The one
-  register that writes the prefix out — RIPE's database — forbids redistributing any substantial
+  register that writes the prefix out (RIPE's database) forbids redistributing any substantial
   part of it, which is not a licence a manifest can record. `tests/devices_network.rs` carries the
   guard that is the rule's whole interesting claim: a space is allowed after the three-letter
   spelling and refused after the two-letter one, because `AS` followed by a space is the English
   word far more often than it is a network.
 - **`date.iso_week`.** No public dataset carries a week date. `tests/dates.rs` therefore sweeps it
-  exhaustively rather than sampling: eight years — 2004, 2009, 2015, 2020 and 2026, which have
-  fifty-three weeks, and 2021, 2022 and 2023, which have fifty-two — times every week from 1 to 53,
+  exhaustively rather than sampling: eight years (2004, 2009, 2015, 2020 and 2026, which have
+  fifty-three weeks, and 2021, 2022 and 2023, which have fifty-two) times every week from 1 to 53,
   times every weekday from 1 to 7, times both ISO spellings. Each is accepted or refused according
   to week-date arithmetic worked out inside the test from the day-of-week of 4 January, because an
   oracle that shares the rule's own implementation proves nothing; an accepted one has its resolved
@@ -137,13 +137,13 @@ scanner is mutable, so sharing it across tests changes no result.
 
 Every `python-stdnum` module under `vendored/reference/` carries a valid and an invalid example in
 its docstring, and those are the fixtures: numbers the upstream implementers chose as the ones worth
-testing. Roughly five valid and three invalid per scheme, and the test says what the subset covers —
-the formats and the failure modes that scheme claims. Inventing an identifier by hand mostly proves
+testing. Roughly five valid and three invalid per scheme, and the test says what the subset covers.
+The formats and the failure modes that scheme claims. Inventing an identifier by hand mostly proves
 the check digit routine agrees with itself.
 
 ## What the other tests cover
 
-Per-rule files pin what the validator keeps, what it rejects, and what the value normalises to —
+Per-rule files pin what the validator keeps, what it rejects, and what the value normalises to,
 including the rejections that matter most, since a false positive is the failure mode with real
 cost. `http.rs` exercises the service over a real socket on an ephemeral port, so it never collides
 with a server already running on the published one.

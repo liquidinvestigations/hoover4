@@ -8,7 +8,7 @@
 //!
 //! * **One language change per dataset, refused by the operations lock.** The disabled
 //!   button on the form is courtesy. Two admins in two browsers are stopped by the
-//!   non-terminal `operations` row, which is the same row the status strip polls — so
+//!   non-terminal `operations` row, which is the same row the status strip polls, so
 //!   what refuses the second admin is exactly what the first one can see.
 //! * **The creation form never takes a path.** It takes a folder *name*, which is
 //!   validated against the listing of `DATASETS_MOUNT_PATH` and joined server-side. A
@@ -294,7 +294,7 @@ pub async fn admin_get_dataset_operation(
 /// A language string as the pipeline stores it: `+`-joined, deduplicated, order kept.
 ///
 /// Order is preserved rather than sorted because Tesseract treats the first language as
-/// the primary one — `eng+ron` and `ron+eng` are genuinely different requests and
+/// the primary one: `eng+ron` and `ron+eng` are genuinely different requests and
 /// therefore genuinely different variants. Mirrors `join_languages` in
 /// `tasks/text_sources.py`.
 pub fn normalise_languages(raw: &str) -> String {
@@ -311,8 +311,8 @@ pub fn normalise_languages(raw: &str) -> String {
 /// Reject anything that is not a plain language code before it reaches a storage key.
 ///
 /// `extracted_by` is built from this string and becomes a ClickHouse value, a Manticore
-/// value and part of a blob-store object key. Restricting it to `[a-z_]` costs nothing —
-/// Tesseract's own codes are `eng`, `ron`, `chi_sim` — and removes a whole class of
+/// value and part of a blob-store object key. Restricting it to `[a-z_]` costs nothing
+/// (Tesseract's own codes are `eng`, `ron`, `chi_sim`), and removes a whole class of
 /// question about where the value ends up.
 fn validate_languages(raw: &str, field: &str) -> anyhow::Result<String> {
     let joined = normalise_languages(raw);
@@ -449,7 +449,7 @@ fn is_safe_folder_name(name: &str) -> bool {
 /// The dataset id the pipeline composes: `<collectionname>_<dataset_name>`.
 ///
 /// Mirrors `compose_collection_dataset` in `tasks/P0_scan_disk/submit_job.py`. Never split
-/// it to recover the collection — a dataset name may contain `_`; resolve through the
+/// it to recover the collection. A dataset name may contain `_`; resolve through the
 /// `dataset` table instead.
 fn compose_collection_dataset(collectionname: &str, dataset_name: &str) -> String {
     format!("{collectionname}_{dataset_name}")
@@ -512,7 +512,7 @@ pub async fn admin_list_dataset_folders(
 /// Create a disk dataset from a subfolder of the datasets mount and start ingestion.
 ///
 /// The OCR settings are written **before** the ingest workflow starts, so the very first
-/// OCR activity reads them rather than the stack-wide defaults — there is no apply job to
+/// OCR activity reads them rather than the stack-wide defaults, there is no apply job to
 /// fix it up afterwards, and a first pass in the wrong languages costs a full re-OCR.
 pub async fn admin_create_dataset(
     user: &CurrentUser,

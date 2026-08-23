@@ -4,7 +4,7 @@ A FastAPI-based research agent with MCP (Model Context Protocol) tool integratio
 
 ## The agent profiles
 
-One image, two containers, different tool sets — and the difference is deliberate. A third
+One image, two containers, different tool sets, and the difference is deliberate. A third
 profile, `research_subagent`, has no container of its own: it is the profile the
 full-research agent's workers run in-process. See "Delegation" below.
 
@@ -15,7 +15,7 @@ full-research agent's workers run in-process. See "Delegation" below.
 | Used by | the website's AI Chat page | the Temporal `ResearchTask` |
 
 **The internal-search agent has no web tools on purpose.** A chat about the user's own
-documents must not quietly become a web search — the user cannot tell from the answer
+documents must not quietly become a web search. The user cannot tell from the answer
 which sentence came from their archive and which came from a search engine.
 
 ## The ACL header chain
@@ -24,19 +24,19 @@ An agent answering for a user must only reach collections that user could read i
 search UI:
 
 1. The **website backend** resolves the user's permitted collections (group grants union
-   public collections). It is the only component that can — it owns the auth tables.
+   public collections). It is the only component that can. It owns the auth tables.
 2. It passes that list to the agent as `allowed_collections` on the `/chat` request.
 3. `acl_headers()` turns it into `X-Hoover4-Collections: <list>` plus
    `Authorization: Bearer $MCP_SHARED_SECRET`, set as **MCP connection headers**.
 4. The agent caches **one graph per ACL and chat session** (`_acl_key`), so a connection
    opened for one user is never reused for another. The chat session is part of the key
-   because `X-Hoover4-Chat-Session` travels in the same connection headers — see the
+   because `X-Hoover4-Chat-Session` travels in the same connection headers. See the
    browser sessions note below. The cache is LRU-bounded by `AGENT_MAX_CACHED_GRAPHS`
    (default 24); each entry holds one live MCP connection per configured server, so it
    cannot be allowed to grow per conversation without limit.
 5. `hoover4-mcp-collections` enforces the header on every tool call.
 
-The model never sees or supplies its own permissions — they are not tool arguments, so it
+The model never sees or supplies its own permissions. They are not tool arguments, so it
 cannot widen them. An empty list is sent as an empty header rather than omitted: "this user
 may read nothing" and "no ACL was supplied" must not look the same to the MCP server, which
 denies the second outright.
@@ -53,7 +53,7 @@ names, the tool-turn budget the graph will enforce, whether delegation is bound,
 the caller can read any collection at all, and whether the open web is reachable. The tool
 section is generated from the bound names, so a prompt can neither describe a tool the
 model does not have nor leave out one it does. `tests/test_prompts.py` fails when a
-template names an unbound tool or states a budget the code does not use — renaming a tool
+template names an unbound tool or states a budget the code does not use. Renaming a tool
 used to mean correcting the same sentence by hand in several prose files, and the one that
 was missed told the model to call a name that no longer existed.
 
@@ -76,7 +76,7 @@ briefings and runs them at once, each in a fresh context, with no peer coordinat
 
 **One level, enforced by what is bound.** A worker's tool list is built before the
 delegation tool is appended to the lead's, and `run_subagent` is in `WORKER_DENIED_TOOLS`
-as well — two independent reasons a worker cannot delegate, and neither is a sentence in a
+as well, two independent reasons a worker cannot delegate, and neither is a sentence in a
 prompt. A prompt asking a model not to recurse eventually meets a model that does. Every
 other cap is an environment-overridable number; the depth is not, because it is not a
 number.
@@ -97,7 +97,7 @@ the chat workflow sends, and the budget is keyed by chat session.
 **Workers get `read_page` and not the interactive browser tools, and `read_todo` and not
 the writers.** Reading a page is the overwhelmingly common browser action and needs no
 persistent context; driving one does, and the browser server holds eight contexts in total.
-A worker has one objective and a few tool turns, so it has nothing to plan — and it is
+A worker has one objective and a few tool turns, so it has nothing to plan, and it is
 never nagged, for the same reason.
 
 **Workers run on the lead's MCP connections, and that is the citation contract.** Citation
@@ -113,7 +113,7 @@ one. Reports that come back empty are named in the response's `note`: noticing a
 and re-delegating is the lead's job, not the worker's.
 
 **The workers' tokens are counted into the turn.** Their model calls happen inside a tool
-call, on a graph of their own, so not one of them reaches the lead's event stream — a turn
+call, on a graph of their own, so not one of them reaches the lead's event stream. A turn
 reporting its lead's cost alone would under-report by the whole factor that makes these caps
 necessary. The `end` event's `usage` carries them in the totals and names their share
 separately in `subagent_prompt_tokens`, `subagent_completion_tokens`,
@@ -124,17 +124,17 @@ not the lead's.
 ## Per-chat browser sessions
 
 `X-Hoover4-Chat-Session` carries the chat session id alongside the ACL headers. It grants
-no authority — it is an **isolation key**. `hoover4-mcp-browser` uses it to give each
+no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give each
 conversation its own Chromium browser context, so cookies and storage from one chat do not
 follow the next one. Sessions are dropped when the chat ends, or after
 `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 
-## Thinking budget — `AGENT_THINKING`
+## Thinking budget: `AGENT_THINKING`
 
 Qwen3.5's chat template decides thinking in the **prompt**, not the sampler. With
 `enable_thinking` unset or false it emits `<think>\n\n</think>` *before* generation, so
-the default is not a small thinking budget — it is **no thinking at all**.
+the default is not a small thinking budget. It is **no thinking at all**.
 
 Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, think it through"):
 
@@ -144,18 +144,18 @@ Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, think it thr
 | thinking on | 1,735 | closes `</think>` after ~1,300 tokens, then answers |
 
 Roughly **4x** on an easy question. On a *hard* one (a two-trains-and-a-bird puzzle) the
-picture is much worse — unbounded thinking does not converge at all:
+picture is much worse. Unbounded thinking does not converge at all:
 
 | mode | wall time | completion tokens | finish reason |
 |---|---|---|---|
 | off (**default**) | 19.0 s | 594 | `stop` |
-| on (unbounded) | **563.5 s** | 16,000 | `length` — never terminated |
+| on (unbounded) | **563.5 s** | 16,000 | `length`, never terminated |
 | budgeted 750 (half) | 56.9 s | 1,774 | `length` |
 | budgeted 375 (quarter) | 49.8 s | 1,399 | `length` |
 
 **Unbounded thinking is not a safe setting on this model.** It ran to a 16 K-token cap
 and nine and a half minutes without closing `</think>`. Use `budgeted` if you want
-thinking at all — the budget is what turns a non-terminating run into a ~1-minute one.
+thinking at all. The budget is what turns a non-terminating run into a ~1-minute one.
 
 There is no half-way setting inside the model, and vLLM 0.17.1 has no thinking-budget
 flag: `max_thinking_tokens`, `thinking_budget` and `reasoning_max_tokens` are all
@@ -171,20 +171,20 @@ completion.
 | `on` | unbounded reasoning. Slowest, best on multi-step questions. |
 | `budgeted` | reasoning on, completion capped at `AGENT_THINKING_BUDGET_TOKENS` + answer allowance |
 
-`AGENT_THINKING_BUDGET_TOKENS` defaults to **750** — half a measured unbudgeted thought,
+`AGENT_THINKING_BUDGET_TOKENS` defaults to **750**, half a measured unbudgeted thought,
 which is the "half the thinking" setting.
 
 **Tool-calling turns never think, whatever the mode.** Choosing a tool is routing, not
 reasoning, and letting this model reason about it is what produces the repeated-call loop
 the `agent` node has a guard for. The budget applies to the `finalize` node, which writes
-prose and cannot call a tool — the turn where thinking changes the answer.
+prose and cannot call a tool, which is the turn where thinking changes the answer.
 
 **Two things to fix before shipping `on` or `budgeted` to real users:**
 
 1. vLLM is not started with `--reasoning-parser qwen3`, so `reasoning_content` is never
    separated out and the `<think>` block lands in the answer the user reads. In the runs
-   above the budgeted modes returned *only* reasoning — the budget was spent before the
-   model closed the block — so without the parser the chat would show a chain of thought
+   above the budgeted modes returned *only* reasoning (the budget was spent before the
+   model closed the block), so without the parser the chat would show a chain of thought
    and no answer.
 2. A budget that truncates mid-thought yields no answer at all. If thinking is wanted,
    pair it with a larger `ANSWER_TOKEN_ALLOWANCE`, or accept `off` for the chat path and
@@ -195,25 +195,25 @@ prose and cannot call a tool — the turn where thinking changes the answer.
 Small models are bad at deciding they are finished. Given results that fully answer the
 question, Qwen3.5-2B will still re-issue a search it has already run. Left alone that ends
 in langgraph's `GraphRecursionError`, which surfaces as an **HTTP 500 with no answer at
-all** — the least useful possible failure, since the tool results needed to answer were
+all**. The least useful possible failure, since the tool results needed to answer were
 already in hand.
 
 `_create_graph` therefore routes to a `finalize` node when either guard trips:
 
-* **a repeated tool call** — at temperature 0 the same call returns the same result, so a
+* **a repeated tool call**, at temperature 0 the same call returns the same result, so a
   repeat is a stuck loop, not exploration;
 * **`AGENT_MAX_TOOL_TURNS`** (default 12) tool-calling turns.
 
 `finalize` removes the unsatisfied tool call (an OpenAI-shaped request carrying `tool_calls`
 with no matching results is rejected), appends "answer now from what you already have", and
-runs the same model **with no tools bound** — a model that cannot call a tool has to answer.
+runs the same model **with no tools bound**, a model that cannot call a tool has to answer.
 `AGENT_RECURSION_LIMIT` (default 40) is the hard backstop behind both.
 
 `finalize` is an answer-producing node exactly like `agent`, so the SSE event loop must
 watch both. Omitting it is why the forced answer first came back as an empty string with a
 cheerful HTTP 200.
 
-## Context compaction — `AGENT_COMPACTION_FRACTION`
+## Context compaction: `AGENT_COMPACTION_FRACTION`
 
 A tool-using turn grows because every result it collected stays in the list sent back to
 the model on the next call. `research_agent/compaction.py` replaces the content of the
@@ -230,32 +230,32 @@ model is usually still working with what it just read.
 | `AGENT_COMPACTION_KEEP_RECENT_MESSAGES` | `6` | trailing messages summarisation leaves alone, on top of what it may never touch |
 | `LLM_MODEL_COMPACTION` | the answering model | model that writes the handoff document |
 
-**It does not fire on the traffic this stack produces.** The widest turn measured here —
-the full research profile, sixteen tool calls, three web pages read and cited — peaked at
+**It does not fire on the traffic this stack produces.** The widest turn measured here
+(the full research profile, sixteen tool calls, three web pages read and cited) peaked at
 about a tenth of the window, and an ordinary corpus question at half that. The trigger is
 sized against the window rather than against those measurements because the window is a
 property of the model in use: a smaller-window model, a larger corpus, sub-agents, or tool
 results replayed across turns all bring it into range.
 
-Three properties are load-bearing:
+Three properties decide whether a citation still resolves:
 
 * **Nothing is edited.** The transformation sits in front of the prompt template, not in a
   node that writes state, so the graph state, the trajectory the website renders and the
   transcript rows all keep every result in full. Only the model sees less.
 * **A result is shortened, never removed.** An assistant message whose `tool_calls` have no
-  matching tool result is rejected by an OpenAI-shaped API outright — the same constraint
-  `finalize` works around above — so the placeholder is what "dropped" has to mean here.
+  matching tool result is rejected by an OpenAI-shaped API outright (the same constraint
+  `finalize` works around above), so the placeholder is what "dropped" has to mean here.
 * **An unknown window never fires the trigger.** `llm_models.context_window` is 0 when the
   provider never stated one, and there is no default to fall back on. The catalog is the
   source rather than the provider directly, so the number the trigger divides by is the
   number the transcript footer shows the user.
 
-### Layer two — summarisation
+### Layer two: summarisation
 
 Eviction runs first, always, because it makes no model call and cannot lose a fact: every
 result it takes away is still in the transcript and can be re-read. Summarisation runs
 only on what eviction leaves, and only when the list is still projected to be over the
-threshold. That projection is an estimate and is labelled one — the only honest token
+threshold. That projection is an estimate and is labelled one. The only honest token
 count available is what the provider billed for the *previous* call, so the saving is
 scaled by the fraction of the list's characters eviction removed.
 
@@ -267,13 +267,13 @@ smaller than what it replaces, the list is sent as layer one left it.
 
 **The handoff is a user message, not a system message.** It lands in the middle of the
 list, and this provider answers a system message anywhere but the first position with
-`System message must be at the beginning.` — a 400 the client retries, so the symptom is a
+`System message must be at the beginning.`. A 400 the client retries, so the symptom is a
 turn that hangs rather than one that fails. The bracketed header is what tells the model
 the message is not the user speaking.
 
 The summariser runs with thinking off and a hard completion ceiling. Summarising is not a
 reasoning task, and a thinking model handed a transcript starts answering the research
-question instead of compressing it — measured here as a call that did not return inside two
+question instead of compressing it. Measured here as a call that did not return inside two
 minutes.
 
 **Some messages are never summarised, and that is enforced by selecting them in code, not
@@ -289,10 +289,10 @@ arrives without the call that asked for it. Eviction honours the same set.
 **A summarised turn says so to the user; an evicted one does not.** The difference is what
 a reader can still check. Eviction leaves every result in the transcript, so the evidence
 is there. Summarisation replaces the model's own working prose, and the answer was written
-from that summary rather than from what the agent read — which is a fact about how much to
+from that summary rather than from what the agent read, which is a fact about how much to
 trust it, so the answer carries one line saying so.
 
-Every applied compaction writes a `chat_compactions` row — what was evicted, the handoff
+Every applied compaction writes a `chat_compactions` row. What was evicted, the handoff
 document whole, the citation handles that were live, the model-visible list either side,
 the trigger and its denominator, and the token counts before and after. The "after" is the
 prompt of the first call made on the shortened list, so it arrives one call later and
@@ -315,7 +315,7 @@ single `invoke` and the node emits a whole `AIMessage` with its `tool_calls` int
 
 **Re-tested on vLLM 0.17.1 + Qwen3.5-2B: fixed.** With `LLM_STREAMING=true` a real agent run
 made 4 tool calls and returned a correctly cited answer, so the default is now on and token
-streaming is back. The code path and its comment are deliberately left in place — set
+streaming is back. The code path and its comment are deliberately left in place. Set
 `LLM_STREAMING=false` if it ever regresses. **The symptom to watch for is an agent that
 answers with no tool calls**, not an error.
 
@@ -339,7 +339,7 @@ unrelated reason. See [`../README.md`](../README.md).
 In deployment both agent containers are built from this directory by
 [`../../ops/docker/compose/agents.yaml`](../../ops/docker/compose/agents.yaml) and come
 up with the main stack (`./deploy` from the repo root). Environment is rendered from
-`hoover4.ini` by `deploy.py` — there is no `.env` to copy. For local development
+`hoover4.ini` by `deploy.py`, there is no `.env` to copy. For local development
 outside docker, `poetry install` and `python main.py` still work.
 
 ## Configuration
@@ -349,7 +349,7 @@ The application is configured entirely via environment variables (rendered from
 
 ### Required Variables
 
-- `LLM_API_KEY` (or `LLM_API_KEY_FILE` — a bind-mounted file takes precedence when the plain var is unset): Your LLM API key
+- `LLM_API_KEY` (or `LLM_API_KEY_FILE`, a bind-mounted file takes precedence when the plain var is unset): Your LLM API key
 - `MCP_SERVERS`: Comma-separated list of MCP server URLs
 
 ### Optional Variables

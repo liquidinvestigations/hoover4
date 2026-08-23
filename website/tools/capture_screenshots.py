@@ -27,7 +27,7 @@ A page fails, and the run exits non-zero, when any of these hold:
 
 * **An error marker is in the DOM.** Every place the UI shows a user an error carries the
   class ``x-error-display`` (``frontend/src/components/error_boundary.rs``). Matching on a
-  class rather than on words is the whole point: "Error" is also a column header, and a
+  class rather than on words is what makes this reliable: "Error" is also a column header, and a
   raw ``ServerError { .. }`` debug string is not a phrase anyone can enumerate.
   Admin form errors carry ``x-error-bar`` instead and are reported as warnings, because a
   form rejecting bad input is the panel working.
@@ -37,7 +37,7 @@ A page fails, and the run exits non-zero, when any of these hold:
   fail; one of them is a bad-CSS warning whose text starts with "Error:", which is why the
   report has to show warnings at all.
 
-Per-page escape hatches live in the ini: ``allow_error_markers``, ``allow_http_errors``,
+Per-page exemptions live in the ini: ``allow_error_markers``, ``allow_http_errors``,
 ``allow_console`` (a substring, one per line). Run-wide console exceptions live in
 ``console_whitelist.txt``; whitelisted matches still print, as warnings.
 """
@@ -178,7 +178,7 @@ async def js(tab, expression: str):
 async def click_text(tab, needle: str, scope: str = "body") -> None:
     """Click the deepest visible element whose text contains `needle`.
 
-    `scope` matters more than it looks: a modal renders OVER the page, and text like a
+    `scope` changes the result: a modal renders OVER the page, and text like a
     dataset name is on screen both inside the dialog and on the result cards behind it.
     A document-wide search finds the card, clicks straight through the overlay, and the
     failure is a page that looks almost right.
@@ -245,7 +245,7 @@ return {ok: true, value: el.value};
 
 async def press_enter(tab) -> None:
     """A real key event. The home box submits on `onkeypress`, which a synthetic
-    `KeyboardEvent` from JS does not trigger in the same way — CDP is the honest route."""
+    `KeyboardEvent` from JS does not trigger in the same way. CDP is the honest route."""
     import nodriver.cdp.input_ as input_cdp
 
     for kind in ("keyDown", "char", "keyUp"):
@@ -555,7 +555,7 @@ def judge(
 
 # `dx serve` shows this while it is recompiling, and KEEPS SERVING THE PREVIOUS BUNDLE
 # until it finishes. A run started right after an edit therefore screenshots the old code
-# and looks like the change did nothing — which is exactly how an hour goes missing. It
+# and looks like the change did nothing, which is exactly how an hour goes missing. It
 # also puts a dev overlay in the corner of every image.
 DEV_REBUILD_TIMEOUT_S = 600.0
 
@@ -570,7 +570,7 @@ async def wait_for_dev_rebuild(tab) -> None:
     announced = False
     while time.monotonic() < deadline:
         # The toast keeps its text after the build finishes and is hidden by collapsing to
-        # zero height, so the text alone reads as "rebuilding forever" — which is a ten
+        # zero height, so the text alone reads as "rebuilding forever", which is a ten
         # minute wait per run, or a whole run refused, for a banner nobody can see.
         state = await js(tab, """
 const toast = document.querySelector('#__dx-toast');

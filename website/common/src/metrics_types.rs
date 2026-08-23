@@ -2,7 +2,7 @@
 //!
 //! Data source: the rolling 24h `usage_events` / `api_events` tables (global
 //! database, migrations `00014`/`00015`). Both are privacy-bounded by design:
-//! who, which route class or function name, when — and for the API table how
+//! who, which route class or function name, when, and for the API table how
 //! long and how big. Never a URL, never a query string.
 
 /// Count of events of one type over the last 24 h.
@@ -65,7 +65,7 @@ pub struct UserLlmSession {
     pub created_at: String,
     pub message_count: u64,
     pub tool_calls: u64,
-    /// Wall time the agent spent on this session — the GPU cost of it.
+    /// Wall time the agent spent on this session. The GPU cost of it.
     pub agent_duration_ms: u64,
 }
 
@@ -85,7 +85,7 @@ pub struct AdminUserLlmMetrics {
     pub chat_messages: u64,
     pub tool_calls: u64,
     /// Summed `agent_duration_ms` over all sessions: how much agent (GPU) time
-    /// this person consumed — what the chat rate limit exists to bound.
+    /// this person consumed. What the chat rate limit exists to bound.
     pub agent_duration_ms_total: u64,
     pub sessions: Vec<UserLlmSession>,
     pub chat_limit: Vec<RateWindowUsage>,

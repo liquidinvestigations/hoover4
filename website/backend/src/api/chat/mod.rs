@@ -2,7 +2,7 @@
 //!
 //! The security property this module exists to hold: **an agent answering for a user
 //! can only read collections that user could read in the search UI.** That is enforced
-//! in one place — [`send_message`] resolves the live permission set and passes it to the
+//! in one place. [`send_message`] resolves the live permission set and passes it to the
 //! workflow, which passes it to the agent, which passes it to the MCP servers. The
 //! collection selection stored on a session is a *preference*; it is intersected with
 //! live permissions on every message, so a permission revoked after a chat started takes
@@ -12,12 +12,12 @@
 //! [`send_message`] writes the user row, reserves the transcript position and dispatches
 //! `ChatTurn`, then returns. The worker writes the answer back into the same tables the
 //! poller was already reading, so a website restart, a closed tab or a timed-out request
-//! costs nothing — the turn carries on and the page picks it up again.
+//! costs nothing. The turn carries on and the page picks it up again.
 //!
 //! What follows from that, and is the whole reason for the shape of this module:
 //!
 //! * liveness is read from the transcript and the stream table, not from a registry in
-//!   this process — see [`stream_state`];
+//!   this process, see [`stream_state`];
 //! * stopping a turn is a Temporal cancellation, not a flag another task polls;
 //! * the admin live-run list is a Temporal visibility query, so it cannot show a run
 //!   this process forgot about or hide one it never knew about.
@@ -44,7 +44,7 @@ const SESSION_LIST_LIMIT: u32 = 100;
 /// Reject anonymous use. Guests are allowed only when demo mode is on
 /// (`HOOVER4_DEMO_MODE`), keyed by their `guest-*` username like any other user.
 ///
-/// Which users may chat follows from the deployment's mode — see
+/// Which users may chat follows from the deployment's mode. See
 /// `docs/architecture/Chat_And_Agents.md`.
 fn require_named_user(user: &CurrentUser) -> anyhow::Result<&str> {
     require_named_user_inner(user, crate::auth::session_middleware::demo_mode())
@@ -120,7 +120,7 @@ pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyh
 ///
 /// Served through a server function rather than the `/_chat_artifact/…` route because the
 /// popup renders it, and a fetch from WASM would need its own credential handling and its
-/// own copy of the ACL. Images and the archived-page iframe still use the HTTP route —
+/// own copy of the ACL. Images and the archived-page iframe still use the HTTP route:
 /// `<img src>` and `<iframe src>` cannot call a server function.
 ///
 /// Same rule as the route: the id is a lookup key from an LLM-driven tool payload, so it
@@ -162,7 +162,7 @@ pub async fn set_chat_collections(
 
 /// Keep only requested collections the user may actually read.
 ///
-/// An empty request means "everything I am allowed to see" — that is the useful default
+/// An empty request means "everything I am allowed to see". That is the useful default
 /// for a chat, and it stays correct as permissions change because it is re-resolved on
 /// every message rather than frozen into the session.
 pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<String> {
@@ -192,13 +192,13 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
 /// while a turn is running is a client bug (the composer shows a stop button, not a
 /// send button), and blocking the request while a turn runs would be worse than saying
 /// so. The lock only covers this process, so [`stream_state`] is asked the same
-/// question the poller asks — that is the check that actually holds across processes.
+/// question the poller asks. That is the check that actually holds across processes.
 ///
 /// When the rate limiter refuses, nothing is written and `retry_after_seconds` is set.
 ///
 /// `requested_options` only has effect on the **first** turn of a conversation; after
-/// that the frozen values on the session win, so a client that forgets to send them —
-/// or forges them — cannot change which agent a thread is talking to mid-way.
+/// that the frozen values on the session win, so a client that forgets to send them
+/// (or forges them) cannot change which agent a thread is talking to mid-way.
 ///
 /// The model is resolved **here**, where the caller's identity is known: a forged id has
 /// to be refused where the user is, not in a worker that cannot check it.
@@ -260,7 +260,7 @@ pub async fn send_message(
         .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
 
     // The lock above only covers this process, and it is released when this function
-    // returns — long before the worker writes the answer at the seq reserved here. So
+    // returns. Long before the worker writes the answer at the seq reserved here. So
     // ask the same question the poller asks: is a turn still being produced? Without
     // this, a second send during a running turn took the reserved seq and one of the two
     // messages was silently dropped by ReplacingMergeTree.
@@ -272,7 +272,7 @@ pub async fn send_message(
     // returns is the one the poller continues from.
     let turn_uuid = crate::db_auth::sessions::generate_session_id();
     let user_seq = db_chat::next_seq(username, &session_id).await?;
-    // Read, not inferred from the seq. `next_seq` starts a fresh session at 1, not 0 —
+    // Read, not inferred from the seq. `next_seq` starts a fresh session at 1, not 0.
     // ClickHouse's `max()` over an empty UInt32 column is 0 rather than NULL, so the
     // "no rows yet" case and "one row at seq 0" case produce the same number. Deriving
     // the first turn from it silently stopped the conversation ever being titled.
@@ -289,7 +289,7 @@ pub async fn send_message(
         },
     )
     .await?;
-    // Reported, not prevented — see `detect_seq_collision`. Refusing here costs the user
+    // Reported, not prevented. See `detect_seq_collision`. Refusing here costs the user
     // a resend; not checking costs them the message.
     db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
 
@@ -303,9 +303,9 @@ pub async fn send_message(
     }
 
     let start_seq = user_seq + 1;
-    // An empty *stream* row, written before the dispatch and load-bearing rather than
+    // An empty *stream* row, written before the dispatch and required rather than
     // decorative. This process runs nothing for the turn, so an open stream row is the
-    // only thing telling the poller the turn exists — without it the page would stop
+    // only thing telling the poller the turn exists, without it the page would stop
     // following the turn in the seconds before the worker picks the activity up. The
     // worker takes this same seq over and keeps rewriting it, which is what stops the
     // stall detector calling a healthy run interrupted.
@@ -385,13 +385,13 @@ fn research_workflow_id(session_id: &str, start_seq: u32) -> String {
 // ---------------------------------------------------------------------------
 
 /// How long one poll holds the request when nothing changes. The 500 ms step doubles
-/// as the floor while content is flowing — see the loop in [`poll_chat`].
+/// as the floor while content is flowing. See the loop in [`poll_chat`].
 const POLL_HOLD: Duration = Duration::from_secs(15);
 const POLL_STEP: Duration = Duration::from_millis(500);
 
 /// Concurrently-held polls per user. A held request is a cheap way to exhaust a
 /// server, so past this cap a poll answers immediately with the current state instead
-/// of holding — the client simply polls again sooner.
+/// of holding. The client simply polls again sooner.
 const MAX_HELD_POLLS_PER_USER: usize = 2;
 
 static HELD_POLLS: std::sync::LazyLock<
@@ -444,7 +444,7 @@ impl Drop for HeldPollGuard {
 /// Every turn is a workflow now, so there is no registry of runs this process is holding
 /// open, and there must not be one: a website restart would empty it while the turns
 /// themselves carried on, and every one of them would read as interrupted. That is why
-/// [`send_message`] opens the stream row before it dispatches — the row is the turn's
+/// [`send_message`] opens the stream row before it dispatches. The row is the turn's
 /// heartbeat from the moment it is accepted, and the worker keeps it beating.
 async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTail> {
     let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, session_id).await?;
@@ -511,7 +511,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             summary: r.content.clone(),
             done: false,
             // A running tool's stream row is written once, at `start_tool`, and not
-            // touched again until the call finalises into `chat_messages` — the keepalive
+            // touched again until the call finalises into `chat_messages`, the keepalive
             // rewrites the *assistant* row. So its `updated_at` is when the call started,
             // which is what the card's counter needs to survive a refresh.
             elapsed_ms: now_ms.saturating_sub(r.updated_at).clamp(0, i64::from(u32::MAX)) as u32,
@@ -569,12 +569,12 @@ fn poll_sig(finished_max_seq: Option<u32>, tail: &TurnTail) -> String {
 /// Long-poll the tail of a conversation.
 ///
 /// Returns finished rows with `seq > after_seq` plus the in-flight turn. Holds up to
-/// [`POLL_HOLD`] when nothing changes and returns immediately when the signature moves
-/// — one poll updates the whole tail of the transcript.
+/// [`POLL_HOLD`] when nothing changes and returns immediately when the signature moves,
+/// one poll updates the whole tail of the transcript.
 ///
 /// Every poll after the first takes at least [`POLL_STEP`]. That floor is not a
 /// courtesy: with content flowing, each poll finds a change and returns at once, so
-/// without it a client would spin as fast as the network allows — and so would every
+/// without it a client would spin as fast as the network allows, and so would every
 /// client past the held-poll cap, which returns immediately by design.
 pub async fn poll_chat(
     user: &CurrentUser,
@@ -584,7 +584,7 @@ pub async fn poll_chat(
 ) -> anyhow::Result<ChatPollResult> {
     let username = require_named_user(user)?;
     // Typed, not prose. The client counts consecutive poll failures and declares "lost
-    // contact with the chat" at three — and a rate limit is the opposite of lost contact:
+    // contact with the chat" at three, and a rate limit is the opposite of lost contact:
     // the server is answering, the turn is still running, and the only correct response is
     // to wait exactly this long and ask again.
     check_and_record(username, RateLimitKind::ChatPoll).map_err(|e| {
@@ -641,7 +641,7 @@ pub async fn poll_chat(
 /// page stops following a turn that will never speak again.
 ///
 /// The turn is addressed by the seq it reserved, which is derived from the transcript
-/// rather than remembered — the last user row with no answer after it is the running
+/// rather than remembered. The last user row with no answer after it is the running
 /// turn, and its answer seq is the workflow's id. Both workflow kinds are tried because
 /// the composer knows the conversation, not which of the two is running in it.
 ///
@@ -675,7 +675,7 @@ pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::R
 
 /// Dismiss an interrupted turn's leftover stream rows.
 ///
-/// Refused while the turn is still advancing — dismissing a running turn would hide it
+/// Refused while the turn is still advancing. Dismissing a running turn would hide it
 /// from the poller that is following it. "Advancing" is the same question the poller
 /// asks, so the button is enabled exactly when the page is showing the interrupted
 /// marker.
@@ -705,7 +705,7 @@ pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) ->
 const CHAT_STREAM_STALL_DEFAULT_SECONDS: u64 = 180;
 
 /// A stream row that has not advanced for this long is an interrupted turn rather than a
-/// slow one — nothing is writing it, and no reschedule is close enough to wait for. The
+/// slow one. Nothing is writing it, and no reschedule is close enough to wait for. The
 /// worker's keepalive rewrites the open rows every 30 s, so silence for longer than this
 /// means neither the original attempt nor a retry of it is running.
 fn stream_stall() -> Duration {
@@ -725,7 +725,7 @@ fn stream_stall() -> Duration {
 ///
 /// Returns the Temporal run id, or a rate-limit refusal via the same `ChatSendResult`
 /// shape used by [`send_message`] when limited (here encoded as an error string with
-/// retry seconds — research returns only a run id on success).
+/// retry seconds. Research returns only a run id on success).
 pub async fn start_research_task(
     user: &CurrentUser,
     session_id: String,
@@ -735,7 +735,7 @@ pub async fn start_research_task(
     let username = require_named_user(user)?;
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
-        // Nothing written — consistent with send_message's rate-limit path.
+        // Nothing written, consistent with send_message's rate-limit path.
         return Ok(Err(e.retry_after_seconds));
     }
 
@@ -783,7 +783,7 @@ pub async fn start_research_task(
     let mut seq = db_chat::next_seq(username, &session_id).await?;
     // The turn uuid every row of this research turn carries, transcript and stream alike.
     // The *stream* writer in the Temporal worker derives the identical string from
-    // `(session_id, start_seq)` (`P_agent/stream_writer.py`) — it is a coordination key
+    // `(session_id, start_seq)` (`P_agent/stream_writer.py`). It is a coordination key
     // between two processes that cannot pass one to each other, so the format is load
     // bearing on both sides. The user row was written without it, which left the turn's
     // first row unattributable and made the collision detector blind to exactly the
@@ -815,8 +815,8 @@ pub async fn start_research_task(
     // streams its progress into chat_message_stream, so the turn renders live exactly
     // like a chat turn and the workflow writes the finished rows at `seq`.
     //
-    // An empty *stream* row does go in, though, and it is load-bearing rather than
-    // decorative — the same reason it is in `send_message`. It is the only thing telling
+    // An empty *stream* row does go in, though, and it is required rather than
+    // decorative. The same reason it is in `send_message`. It is the only thing telling
     // the poller the turn exists before the worker picks the activity up, and the
     // activity keeps rewriting it, which is what stops the stall detector calling a
     // healthy run interrupted.
@@ -869,7 +869,7 @@ pub async fn start_research_task(
 /// A Temporal visibility query, not a registry in this process. That is the difference
 /// between a list that is true and one that was true: an in-process registry could not
 /// see a turn started before the last website restart, and kept listing one whose
-/// process died — a restart mid-turn left a run in this panel for ever.
+/// process died. A restart mid-turn left a run in this panel for ever.
 ///
 /// Chat turns and research turns are both here, because both are workflows and an admin
 /// hunting "who is on the GPU" wants one table rather than a page that lists half of them
@@ -931,14 +931,14 @@ pub async fn admin_list_live_runs(
             started_at: run.started_at,
         });
     }
-    // Longest-running first — the order an admin hunting a stuck chat wants, without
+    // Longest-running first, the order an admin hunting a stuck chat wants, without
     // having to sort the table themselves.
     out.sort_by(|a, b| b.running_ms.cmp(&a.running_ms));
     Ok(out)
 }
 
 /// How much of the question is shown to the admin. Enough to recognise a runaway chat,
-/// short enough that the panel is not a transcript viewer — an admin looking for "who is
+/// short enough that the panel is not a transcript viewer. An admin looking for "who is
 /// burning the GPU" does not need the whole prompt.
 const PREVIEW_CHARS: usize = 200;
 
@@ -973,13 +973,13 @@ fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
 
 /// The queue chat turns are dispatched to.
 ///
-/// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`** — the worker
+/// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`**. The worker
 /// polls the name it declares there and this addresses the name it declares here, and a
 /// workflow addressed to a queue nothing polls waits for ever with no error anywhere. It
 /// presents as chat hanging, so the two move in the same patch or not at all.
 const CHAT_TASK_QUEUE: &str = "chat-queue";
 
-/// The queue research turns are dispatched to — the general processing queue, where a run
+/// The queue research turns are dispatched to. The general processing queue, where a run
 /// measured in minutes can sit behind ingestion without anyone watching it.
 const RESEARCH_TASK_QUEUE: &str = "processing-common-queue";
 

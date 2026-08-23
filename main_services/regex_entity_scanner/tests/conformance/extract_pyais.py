@@ -2,8 +2,8 @@
 """Turn pyais' decoded expectations into conformance cases for the MMSI rule.
 
 ``vendored/reference/pyais/tests/`` holds two decode modules. Every place they assert what an AIS
-message decodes to — a dict entry, a comparison against ``msg["mmsi"]`` or ``msg.mmsi``, a keyword
-argument to an encoder — is upstream stating an identity, and those statements are the cases. The
+message decodes to (a dict entry, a comparison against ``msg["mmsi"]`` or ``msg.mmsi``, a keyword
+argument to an encoder) is upstream stating an identity, and those statements are the cases. The
 modules are read with ``ast`` rather than by pattern, because the same value is written four
 different ways across them.
 
@@ -17,7 +17,7 @@ measures the rule against a list of numbers rather than against text somebody wr
 weaker evidence than a prose origin gives and is the best this rule can have.
 
 **The origin measures recall and nothing else.** pyais decodes the identity field to an integer, so
-a coast station or a group call — identities that begin with one or two zeros — arrives with its
+a coast station or a group call (identities that begin with one or two zeros) arrives with its
 leading zeros gone. A value of fewer than nine digits is therefore not upstream declaring an invalid
 MMSI; it is a valid identity that lost its shape on the way out, and padding it back would
 manufacture a token nobody wrote. Those rows are an exclusion, and with them goes any precision

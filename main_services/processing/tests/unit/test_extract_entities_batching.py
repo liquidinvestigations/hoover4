@@ -263,7 +263,7 @@ class TestBatchCharacterBudget:
     """A batch bounded only by COUNT is not bounded at all.
 
     Each text may be as long as the NER service's per-text ceiling, so many of them is
-    tens of megabytes in one request — and the service holds a parsed document for every
+    tens of megabytes in one request, and the service holds a parsed document for every
     text in the batch simultaneously. On a corpus of large plain-text files that walked
     the spaCy container through a 4 GB memory limit and then a 12 GB one, and each time
     the cgroup killed the server process rather than the container, so every in-flight

@@ -17,8 +17,8 @@ Two differences between the two questions decide what is scored:
   definition and there is nothing for us to report, so those rows are excluded too.
 
 Where the currency *is* in the text, the expected value is computed the way the rule computes it:
-the ISO 4217 code the sign resolves to in ``vendored/data/cldr/currency-symbols.json`` — most
-widely used first, exactly as the symbol rule picks it — scaled by the minor units
+the ISO 4217 code the sign resolves to in ``vendored/data/cldr/currency-symbols.json``, most
+widely used first, exactly as the symbol rule picks it, and scaled by the minor units
 ``vendored/data/cldr/iso4217.json`` gives for that code. That makes the comparison a real test of
 the amount, not of the entity type alone.
 

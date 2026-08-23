@@ -6,7 +6,7 @@
 services:
   hoover4-ocr-pdf:
     build:
-      # Narrow context on purpose — never widen to main_services/ or the repo root,
+      # Narrow context on purpose, never widen to main_services/ or the repo root,
       # which hold large untracked scratch directories that would bloat every build.
       context: ${HOOVER4_REPO_ROOT}/main_services/ocr_pdf
       dockerfile: Dockerfile
@@ -18,7 +18,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       # The OCR tier this service renders *for*. Same values the worker gets, rendered by
-      # deploy.py from the same ini keys — an engine with no url here is reported as not
+      # deploy.py from the same ini keys. An engine with no url here is reported as not
       # configured rather than retried.
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}

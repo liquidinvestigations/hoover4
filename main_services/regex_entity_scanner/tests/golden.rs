@@ -4,7 +4,7 @@
 //! individual behaviours; only a labelled corpus answers "did this pattern start swallowing
 //! version numbers", which is the way this kind of system actually fails.
 //!
-//! Fixtures name the surface form and the canonical value rather than byte offsets — offsets
+//! Fixtures name the surface form and the canonical value rather than byte offsets. Offsets
 //! counted by hand are wrong often enough to make a corpus not worth extending. The harness checks
 //! separately that every reported span really does cover the text it claims.
 //!

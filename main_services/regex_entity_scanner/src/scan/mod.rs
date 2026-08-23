@@ -70,7 +70,7 @@ impl Scanner {
     ///
     /// A rejected candidate is not the end of the story. The prefilter takes leftmost-longest per
     /// rule, so a long over-matched span that fails its validator routinely contains a shorter one
-    /// that would pass — an identifier-shaped run whose tail is a page number, an address whose
+    /// that would pass. An identifier-shaped run whose tail is a page number, an address whose
     /// first reading ends in a top-level domain that does not exist. Rejection therefore re-runs
     /// the rule's own pattern over the candidate's interior and queues whatever it finds, bounded
     /// by [`RETRY_PER_CANDIDATE`] and [`RETRY_PER_FRAGMENT`].

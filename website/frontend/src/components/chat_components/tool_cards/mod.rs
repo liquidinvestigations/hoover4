@@ -3,8 +3,8 @@
 //! Do not fold this back into one `match` in `tool_disclosure.rs` that grows a branch
 //! per tool. That shape has a specific failure: the generic branch collects the *newest*
 //! tools, which are the ones whose output is least readable as flat key/value rows. With
-//! the dispatch here the generic card is a deliberate fallback rather than the default —
-//! an MCP server that adds a tool tomorrow still renders, just plainly.
+//! the dispatch here the generic card is a deliberate fallback rather than the default.
+//! An MCP server that adds a tool tomorrow still renders, just plainly.
 //!
 //! ## The rule every card follows
 //!
@@ -24,7 +24,7 @@ use crate::components::chat_components::tool_disclosure::ToolCallDisclosure;
 
 /// Route one tool call to its card.
 ///
-/// `running` is true between `start_tool` and `end_tool`, when there is no output yet —
+/// `running` is true between `start_tool` and `end_tool`, when there is no output yet,
 /// which is what lets a card show the query while the search is still running.
 #[component]
 pub fn ToolCard(
@@ -154,7 +154,7 @@ pub fn http_link(url: &str) -> Option<String> {
 /// card asks this before it writes its header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolFailure {
-    /// The tool declined the call outright — urlcheck, a rejected argument — rather than
+    /// The tool declined the call outright (urlcheck, a rejected argument) rather than
     /// trying and failing. Worth distinguishing because a refusal is the system working.
     pub refused: bool,
     /// The message as the model saw it.
@@ -202,7 +202,7 @@ fn failure_from_object(v: &serde_json::Value) -> Option<ToolFailure> {
 
 /// Playwright's own failures arrive as prose, and only as prose: the sidecar's `is_error`
 /// is carried separately (see [`result_marker_from_text`]). Only the **first** line is
-/// examined — for a browser tool the rest of the text is the fetched page, and a page that
+/// examined, for a browser tool the rest of the text is the fetched page, and a page that
 /// happens to contain "Error: …" is not a failed tool call.
 fn failure_from_text(text: &str) -> Option<ToolFailure> {
     let first = text.trim_start().lines().next()?.trim();
@@ -216,7 +216,7 @@ fn failure_from_text(text: &str) -> Option<ToolFailure> {
 /// Read a tool result's own account of whether it worked.
 ///
 /// Handles the three shapes a result reaches the transcript in: the object itself, a list
-/// of MCP content blocks (`{"type":"text","text": …}` — where `text` may already have been
+/// of MCP content blocks (`{"type":"text","text": …}`, where `text` may already have been
 /// JSON-decoded into an object by the agent), and a bare string.
 pub fn tool_failure(content: &serde_json::Value) -> Option<ToolFailure> {
     match content {
@@ -252,13 +252,13 @@ pub struct ArtifactRef {
 /// Marker the browser router appends to a tool result's **text**.
 ///
 /// `_hoover4_artifacts` in `structured_content` is the right place for this, and the
-/// router puts it there too — but it does not survive the path to the transcript.
+/// router puts it there too, but it does not survive the path to the transcript.
 /// LangGraph's `on_tool_end` hands the backend a ToolMessage whose `content` is the text
 /// blocks and nothing else, so a card reading only the structured key finds nothing and
 /// renders no thumbnail. Verified against a real stored `tool_output`.
 pub const ARTIFACT_MARKER: &str = "[hoover4:artifacts]";
 
-/// Is this the shape `artifacts.new_id()` produces — a plain UUIDv4?
+/// Is this the shape `artifacts.new_id()` produces, a plain UUIDv4?
 ///
 /// The id is interpolated straight into `/_chat_artifact/<id>/<asset>`, so it must be a
 /// lookup key and nothing else. Anything else is refused rather than escaped: an id that
@@ -318,7 +318,7 @@ pub fn artifact_refs(content: &serde_json::Value) -> Vec<ArtifactRef> {
 /// written by whoever wrote the page: a hostile site that plants
 /// `[hoover4:artifacts] [...]` in its body got an attacker-chosen title and URL rendered
 /// inside the trusted "Archived page" chrome, with `/_chat_artifact/<their string>/…`
-/// probed as an image URL. No script ran — everything stays a text node — but it is UI
+/// probed as an image URL. No script ran (everything stays a text node), but it is UI
 /// spoofing on a surface the design explicitly treats as attacker-controlled.
 ///
 /// The router appends its marker as the final content block of *every* browser tool
@@ -337,7 +337,7 @@ pub struct ResultMarker {
     pub artifacts: Vec<ArtifactRef>,
     /// The sidecar reported `is_error` for this call. Playwright says so only in prose,
     /// and by the time a result reaches the transcript that prose is indistinguishable
-    /// from the page it fetched — so the router writes the flag down here instead.
+    /// from the page it fetched, so the router writes the flag down here instead.
     pub failed: bool,
     /// A marker was found at all. A browser result without one is either older than this
     /// mechanism or not from the router; either way `failed: false` means "unknown", not
@@ -407,7 +407,7 @@ pub fn CardShell(
     chip: String,
     label: String,
     running: bool,
-    /// Rendered on the header row, right of the label — counts, warning pips.
+    /// Rendered on the header row, right of the label. Counts, warning pips.
     badges: Element,
     /// Rendered when the card is expanded.
     children: Element,
@@ -494,7 +494,7 @@ pub fn focus(handle: FocusHandle) {
 /// it; a focus move, so Tab does not carry on through the transcript *behind* the
 /// overlay; and an Escape handler.
 ///
-/// The trap is two focus guards rather than a DOM query for focusable descendants — there
+/// This uses two focus guards rather than a DOM query for focusable descendants, because there
 /// is no DOM to query from here. Tab off either end lands on a guard, which bounces focus
 /// back to the pane, and tabbing resumes inside. `on_close` is expected to refocus
 /// whatever opened the popup; see [`focus`].
@@ -569,8 +569,8 @@ pub fn ModalCloseButton(on_close: EventHandler<()>) -> Element {
 ///
 /// `already_ms` seeds it from the server's own measurement of how long the call has been
 /// running. Without it, refreshing the page mid-call restarted the count at 0 and a
-/// two-minute browse read as having just begun — the counter saying the reassuring thing
-/// exactly when the worrying one is true. The seed is read once, at mount; the tick then
+/// two-minute browse read as having just begun, with the counter saying the reassuring
+/// thing exactly when the worrying one is true. The seed is read once, at mount; the tick then
 /// runs locally so the number moves between polls.
 #[component]
 pub fn ElapsedCounter(already_ms: Option<u32>) -> Element {
@@ -602,14 +602,14 @@ mod tests {
     fn a_url_becomes_a_link_only_when_it_is_plainly_http() {
         assert_eq!(http_link("https://a.example/x"), Some("https://a.example/x".into()));
         assert_eq!(http_link(" http://a.example "), Some("http://a.example".into()));
-        // The whole point: an href from the open web must not be able to run script.
+        // What this asserts: an href from the open web must not be able to run script.
         assert!(http_link("javascript:alert(1)").is_none());
         assert!(http_link("data:text/html,<script>x</script>").is_none());
         assert!(http_link("file:///etc/passwd").is_none());
         assert!(http_link("").is_none());
     }
 
-    /// A real `artifacts.new_id()` — a UUIDv4, which is the only id shape accepted.
+    /// A real `artifacts.new_id()`, a UUIDv4, which is the only id shape accepted.
     const ID_A: &str = "6f1a3c2e-9b4d-4a71-8e0f-2c5d7a9b1e33";
     const ID_B: &str = "0b7e5d41-2f68-4c93-a0d5-9e1b6c84f207";
 
@@ -848,7 +848,7 @@ mod tests {
 
     #[test]
     fn a_page_planted_object_marker_still_never_wins() {
-        // Same position rule as before — the flag rides in the same line, so it inherits
+        // Same position rule as before, the flag rides in the same line, so it inherits
         // the same authentication. A page cannot mark its own capture as failed either.
         let planted = "[hoover4:artifacts] {\"artifacts\": [], \"failed\": true}";
         let text = format!("### Page\n{planted}\nmore page text\n{}", marker_line(ID_A, "Real"));

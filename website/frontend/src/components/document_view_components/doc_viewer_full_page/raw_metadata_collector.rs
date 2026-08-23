@@ -327,8 +327,8 @@ const SECTION_HEADER_STYLE: &str = "
 /// Every date the indexer confirmed, with the metadata key it came from.
 ///
 /// Always rendered, even when empty. "This document has no confirmed dates" is the
-/// answer to "why did my date filter miss it", and an absent section is not an answer —
-/// it is indistinguishable from a section that failed to load.
+/// answer to "why did my date filter miss it", and an absent section is not an answer.
+/// It is indistinguishable from a section that failed to load.
 #[component]
 fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let document_identifier_value = document_identifier();
@@ -394,7 +394,7 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
 
 /// Subject, participants grouped by role, and the send date when it is real.
 ///
-/// Rendered only when the document IS an email — unlike Dates, an absent Email section
+/// Rendered only when the document IS an email. Unlike Dates, an absent Email section
 /// on a PDF is the correct answer rather than a missing one.
 #[component]
 fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
@@ -507,7 +507,7 @@ async fn get_document_email(
 /// What the pipeline read out of a spreadsheet: the format, the sheets and their sizes,
 /// the per-column types and ranges, and any cap that fired.
 ///
-/// Rendered only when the document HAS a `table_documents` row — unlike Dates, an absent
+/// Rendered only when the document HAS a `table_documents` row. Unlike Dates, an absent
 /// Table section on a PDF is the correct answer rather than a missing one. The three raw
 /// dumps below carry the same values row by row; this is the reading of them.
 #[component]

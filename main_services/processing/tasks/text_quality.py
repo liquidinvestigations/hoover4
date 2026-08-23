@@ -1,7 +1,7 @@
 """Is this extracted text *language*, or is it a file's insides spelled out?
 
-Text extraction is deliberately greedy — a parser that skips anything it does not
-understand loses real documents — so it also produces text that is not prose in any
+Text extraction is deliberately greedy (a parser that skips anything it does not
+understand loses real documents), so it also produces text that is not prose in any
 language: the base64 body of an email attachment, the pixel rows of an XPM image, an
 embedded font table. That text is indistinguishable from a document to every stage after
 it. Live, `search_collections("Eiffel Tower height")` returned an `.xpm`'s colour table and
@@ -13,7 +13,7 @@ noise then wins vector searches it has no business winning, and the winning snip
 rendered into a chat transcript a person has to read.
 
 **This is a filter on what gets embedded, not on what gets stored.** `text_content` keeps
-every byte the parser produced — that is the evidence, and a heuristic must never be able
+every byte the parser produced. That is the evidence, and a heuristic must never be able
 to destroy it. What a false positive costs here is that one passage is not semantically
 searchable; what a false negative costs is the failure above. The thresholds are set to
 make the first much likelier than the second.
@@ -38,7 +38,7 @@ MAX_ENCODED_FRACTION = 0.30
 
 #: Fraction of whitespace-separated tokens that may be a single character. Pixel-art rows
 #: (`. 5 6 c 0 @ . . X O O #`) and character-per-pixel maps are almost entirely these;
-#: prose in every language this pipeline sees is not, even Chinese — CJK arrives without
+#: prose in every language this pipeline sees is not, even Chinese. CJK arrives without
 #: spaces, so it reads as *few, long* tokens, never many one-character ones.
 MAX_SINGLE_CHAR_TOKEN_FRACTION = 0.55
 
@@ -47,7 +47,7 @@ MAX_SINGLE_CHAR_TOKEN_FRACTION = 0.55
 #: legitimate documents, and this must not reach them.
 MIN_LETTER_FRACTION = 0.20
 
-#: A token that is a number in some notation — `0xFB`, `#0C0B01`, `1,234.56`, `42;` — with
+#: A token that is a number in some notation (`0xFB`, `#0C0B01`, `1,234.56`, `42;`) with
 #: whatever punctuation the surrounding format wraps it in. Hex digits are letters, so an
 #: XBM bitmap (`0xFB, 0xFF, 0xBF, …`) passes the letter test with 67 % "letters" while
 #: being a raw byte dump; it is the shape of the tokens that gives it away, not their

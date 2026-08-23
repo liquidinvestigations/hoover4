@@ -23,7 +23,7 @@ pub struct StageProgress {
     /// counts so `312 / 900` is not ambiguous.
     pub unit: String,
     pub done: u64,
-    /// `None` for stages with no knowable denominator — P0 discovers work as it runs,
+    /// `None` for stages with no knowable denominator. P0 discovers work as it runs,
     /// so "42 of ?" is the honest display, not "42 of 42, complete".
     pub total: Option<u64>,
     /// Items completed per minute, measured over [`RATE_WINDOW_MINUTES`]. `None` when
@@ -69,7 +69,7 @@ impl StageProgress {
 }
 
 /// One stored ETA sample (`processing_eta_samples`, global database), written by
-/// the `CollectEtaSamples` workflow and only read here — the website never
+/// the `CollectEtaSamples` workflow and only read here, the website never
 /// computes these in the request path.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EtaSamplePoint {
@@ -85,7 +85,7 @@ pub struct EtaSamplePoint {
     pub rate_bytes_per_sec: f64,
     /// 0 when no estimate could be made.
     pub eta_seconds: u64,
-    /// RFC 3339 estimated completion time — `sampled_at + eta_seconds`. This is
+    /// RFC 3339 estimated completion time: `sampled_at + eta_seconds`. This is
     /// what the chart plots: a converging estimate reads as a flattening line.
     /// Best-effort, not a scheduling promise.
     pub deadline: String,
@@ -121,7 +121,7 @@ pub struct WorkflowSummary {
     pub workflow_id: String,
     pub run_id: String,
     pub workflow_type: String,
-    /// `RUNNING`, `COMPLETED`, `FAILED`, … — the `WORKFLOW_EXECUTION_STATUS_` prefix
+    /// `RUNNING`, `COMPLETED`, `FAILED`, …, the `WORKFLOW_EXECUTION_STATUS_` prefix
     /// stripped off, because it is noise in a table.
     pub status: String,
     pub task_queue: String,
@@ -192,7 +192,7 @@ pub struct TaskTimeRow {
     /// `total_seconds` as a percentage of the collection's summed task time.
     pub share_percent: f64,
     pub executions: u64,
-    /// Executions that raised. Their time is included in `total_seconds` — failing is
+    /// Executions that raised. Their time is included in `total_seconds`. Failing is
     /// not free, and a task that burns an hour retrying should read as an hour.
     pub error_count: u64,
     pub mean_ms: f64,
@@ -250,7 +250,7 @@ pub struct LiveTaskActivity {
     pub average_concurrency: f64,
     pub in_flight_total: u64,
     /// RFC 3339 time of the newest in-flight sample, `None` when no worker has
-    /// reported recently — which is how "nothing is running" is expressed.
+    /// reported recently, which is how "nothing is running" is expressed.
     pub sampled_at: Option<String>,
 }
 

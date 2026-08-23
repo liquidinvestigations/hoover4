@@ -27,8 +27,8 @@ of seconds each. `ExecutePlans` keeps 16 plans in flight, `ProcessItemsBatched` 
 
 ### A plan is driven by several sibling workflows, not one
 
-Temporal serialises workflow tasks *within* an execution — a workflow makes one decision
-at a time no matter how many workers are idle — and a per-file chain is about a dozen of
+Temporal serialises workflow tasks *within* an execution (a workflow makes one decision
+at a time no matter how many workers are idle), and a per-file chain is about a dozen of
 those round trips deep. One driver is therefore a latency ceiling rather than a capacity
 one, and measurably so: a synthetic fan-out on this cluster tops out near 50 executions a
 second from a single parent and passes 150 from thirty-two. `ExecuteSinglePlan` splits
@@ -39,8 +39,8 @@ A child workflow is keyed by the item hash, so **a plan may not list a hash twic
 `get_plan_items_metadata` joins `blobs`, which is a ReplacingMergeTree it does not read
 `FINAL`, so a hash whose rows have not merged yet joins more than once; the query
 collapses that with `LIMIT 1 BY`, and `ExecuteSinglePlan` drops duplicates again before
-grouping. Sequential batches used to tolerate a duplicate — the second start reused a
-completed id — but sibling drivers run them at the same time, where the second is a
+grouping. Sequential batches used to tolerate a duplicate (the second start reused a
+completed id), but sibling drivers run them at the same time, where the second is a
 `WorkflowAlreadyStartedError` and the file silently never parses.
 
 `ProcessItemsBatched` also continues as new past `MAX_ITEMS_PER_RUN` items. Each file is
@@ -54,8 +54,8 @@ records failures into `processing_errors` and relies on P3 for actual file parsi
 ### P4 and P5 run together
 
 `ExecuteSinglePlan` starts `ExtractEntitiesForPlan` and `ChunkEmbedForPlan` in one
-gather. They read the same `text_content` and write disjoint tables — entities and the
-`nlp_processed` watermark against `text_chunks` and `text_chunk_vectors` — and they run
+gather. They read the same `text_content` and write disjoint tables (entities and the
+`nlp_processed` watermark against `text_chunks` and `text_chunk_vectors`), and they run
 on different worker queues, so in sequence each left the other tier idle for its whole
 stage. Both must still complete before `IndexDatasetPlan`: P6 reads the `entity_hit` rows
 and copies the vectors into the shard's HNSW table.
@@ -73,7 +73,7 @@ After the children, the tree is rebuilt a second time and then copied into Manti
 this batch's own P3 produced, and an archive member whose content already had a blob adds
 a `vfs_files` row without adding a plan, so nothing restarts to pick it up. Both calls sit
 **before** the continuation and restart hand-offs, so every invocation indexes the plans
-it executed — indexing only on the terminal invocation means a child that raises, or one
+it executed. Indexing only on the terminal invocation means a child that raises, or one
 that finds no plans left, leaves the browser on the previous ingest.
 
 The copy is incremental: `REPLACE` in multi-row chunks of 512, then a delete of Manticore

@@ -2,7 +2,7 @@
 //!
 //! These two are one file because they are one mechanism. The form disables itself while
 //! an apply operation runs; the strip is what makes that operation visible. A form that
-//! hides its own lock is a form that locks forever — so the strip polls, reports
+//! hides its own lock is a form that locks forever, so the strip polls, reports
 //! staleness, and shows the error when an operation fails.
 //!
 //! Neither of them is the actual guard. `admin_apply_ocr_languages` refuses a second

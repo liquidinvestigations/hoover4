@@ -5,17 +5,17 @@ One definition, three readers
 The MIME set, the caps and the "is this really a table" thresholds live here and nowhere
 else, the way `mime_type_mapper._ZIP_BASED_DOCUMENT_MIMES` does for zip-based documents.
 The P3 workflow routes on `is_table_mime`, `parse_table` picks its reader with
-`table_reader_for`, and the delimited-text sniff shares the thresholds — three callers,
+`table_reader_for`, and the delimited-text sniff shares the thresholds, three callers,
 one table, no chance of the routing condition and the reader disagreeing about what a
 `.xlsb` is.
 
 The two-family split is the whole design
 ----------------------------------------
-A **binary spreadsheet** — xlsx, xlsm, xltx, xltm, xlam, xlsb, xls, ods, ots — is a table
+A **binary spreadsheet** (xlsx, xlsm, xltx, xltm, xlam, xlsb, xls, ods, ots) is a table
 because of what it is. Somebody opened a spreadsheet application and saved a grid. One
 non-empty cell is enough: an almost-empty workbook is a bad table, not a text file.
 
-**Delimited text** — csv, tsv, tab, psv — has no such guarantee. Its bytes are also the
+**Delimited text** (csv, tsv, tab, psv) has no such guarantee. Its bytes are also the
 bytes of prose, of an RFC 822 message, of a log file and of a config file, and the cost
 of calling one of those a table is that it acquires a grid nobody wants and leaves the
 `text` bucket of the file-type facet. So delimited text has to clear a shape threshold:
@@ -62,7 +62,7 @@ DELIMITED_TABLE_MIMES = frozenset({
 
 TABLE_MIMES = BINARY_TABLE_MIMES | DELIMITED_TABLE_MIMES
 
-#: Extensions that decide the reader when the MIME set is ambiguous — which it always is
+#: Extensions that decide the reader when the MIME set is ambiguous, which it always is
 #: for delimited text, and often is for a `.xlsb` that libmagic calls a zip.
 _XLSX_EXTENSIONS = frozenset({".xlsx", ".xlsm", ".xltx", ".xltm", ".xlam"})
 _XLS_EXTENSIONS = frozenset({".xls", ".xlsb"})
@@ -81,7 +81,7 @@ READER_CALAMINE = "calamine"
 READER_VERSION = 1
 
 #: The cap set. Above any of these the document is stored up to the cap and the cap is
-#: recorded in `TruncationRecord` — a cap that is invisible in the UI reads as "this file
+#: recorded in `TruncationRecord`, a cap that is invisible in the UI reads as "this file
 #: has 300 columns", which is a lie about the corpus.
 #:
 #: The numbers are sized for a real open-data export rather than for a mail attachment:
@@ -271,7 +271,7 @@ def column_letter(column_id: int) -> str:
 
 def column_index(letters: str) -> int:
     """Inverse of `column_letter`. `"AB"` is 28, and it is the only correct source of a
-    column index in an XLSX row — a row with a gap has fewer `<c>` elements than it has
+    column index in an XLSX row. A row with a gap has fewer `<c>` elements than it has
     columns."""
     index = 0
     for character in letters:

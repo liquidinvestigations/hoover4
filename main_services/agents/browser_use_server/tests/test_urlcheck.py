@@ -1,9 +1,9 @@
 """Tests for the URL admission control.
 
-This is the security boundary of the server — an LLM chooses the URLs and the container
-sits inside the network where ClickHouse and Temporal answer unauthenticated requests —
+This is the security boundary of the server (an LLM chooses the URLs and the container
+sits inside the network where ClickHouse and Temporal answer unauthenticated requests)
 so it is tested far harder than the rest of the code. Everything here is offline: the
-cases that would need DNS use literal addresses or the documented escape hatch.
+cases that would need DNS use literal addresses or the documented exemption.
 """
 
 import pytest
@@ -116,7 +116,7 @@ class TestToolArgumentGuard:
 
     `browse_page` was the only navigating tool when this module was written; the router
     now forwards two dozen, and every one of them is checked here *before* the call
-    reaches the sidecar. The sidecar's own `--blocked-origins` is the second line —
+    reaches the sidecar. The sidecar's own `--blocked-origins` is the second line.
     Playwright documents it as not being a security boundary.
     """
 

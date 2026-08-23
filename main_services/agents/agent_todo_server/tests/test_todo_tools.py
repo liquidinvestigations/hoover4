@@ -3,7 +3,7 @@
 The store's own rules are tested where they live. What can be wrong *here* and nowhere
 else is the wrapper: reading the caller out of headers instead of an argument, coercing
 the shapes a model sends into the shapes the store takes, and returning a refusal the
-model can read rather than an exception it cannot. The two load-bearing rules are
+model can read rather than an exception it cannot. The two rules that must not be relaxed are
 asserted through the tools as well -- not to test them twice, but because relaxing them
 at this layer is exactly the mistake these tests exist to catch.
 

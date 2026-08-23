@@ -5,10 +5,10 @@ Two upstreams, one subject. ``vendored/reference/eth-utils/tests/test_address_ut
 parametrised tables, each asking a different question about the same forty hexadecimal characters,
 and the questions are exactly the ones a scanner has to keep apart:
 
-* ``test_is_address`` — is this the shape of an address at all? Upstream answers yes for a
+* ``test_is_address``, is this the shape of an address at all? Upstream answers yes for a
   mixed-case address whose checksum is wrong, because that function does not read the checksum.
-* ``test_is_checksum_address`` — does the capitalisation carry a correct EIP-55 checksum?
-* ``test_to_normalized_address`` and ``test_to_checksum_address`` — what is the canonical spelling?
+* ``test_is_checksum_address``, does the capitalisation carry a correct EIP-55 checksum?
+* ``test_to_normalized_address`` and ``test_to_checksum_address``, what is the canonical spelling?
   These are the only rows in the origin that document a value.
 
 ERC-55's own Test Cases section carries the eight vectors the standard is defined by, in three

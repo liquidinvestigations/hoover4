@@ -2,7 +2,7 @@
 //!
 //! Datasets were CLI-only until this panel: `main.py add-disk-dataset`. The reason it is
 //! a *picker* rather than a path box is the same reason the backend re-validates the name
-//! against the listing — a free-text path in a browser form is a way to point the ingest
+//! against the listing. A free-text path in a browser form is a way to point the ingest
 //! walker at any directory the container can see, and the walker copies what it finds.
 //!
 //! The OCR languages are chosen here rather than after the fact because the first pass is

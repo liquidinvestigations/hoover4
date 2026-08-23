@@ -89,7 +89,7 @@ def escape_manticore_string(value: str) -> str:
     """Escape a value for a single-quoted Manticore SQL string literal.
 
     Manticore has no parameter binding over the HTTP SQL endpoint, so this is the only
-    barrier between user text and the query. Backslash first, then the quote — reversing
+    barrier between user text and the query. Backslash first, then the quote, reversing
     the order would double-escape the backslashes introduced by the quote pass.
     """
     return value.replace("\\", "\\\\").replace("'", "\\'")
@@ -107,7 +107,7 @@ _MATCH_KEYWORDS = frozenset(
     {"AND", "OR", "NOT", "MAYBE", "NEAR", "SENTENCE", "PARAGRAPH", "ZONE", "ZONESPAN"}
 )
 
-#: `@field`, `@!field`, `@(a,b)` or `@*` — the field-prefix operator in all its spellings.
+#: `@field`, `@!field`, `@(a,b)` or `@*`, the field-prefix operator in all its spellings.
 _FIELD_OPERATOR_RE = re.compile(r"@(!?)(\*|\(([^)]*)\)|\w+)")
 
 
@@ -197,7 +197,7 @@ def _balance_parens(query: str) -> tuple[str, list[str]]:
 def _has_positive_term(query: str) -> bool:
     """Whether anything in the query can *match*, as opposed to only exclude.
 
-    Manticore rejects a query built only from negations — `-zzz` alone is
+    Manticore rejects a query built only from negations: `-zzz` alone is
     `query is non-computable (single NOT operator)`, a 500 rather than an empty result.
     A quoted phrase counts as positive, and so does any word not introduced by `-`/`!`.
     """
@@ -214,7 +214,7 @@ def _has_positive_term(query: str) -> bool:
             continue
         word = token.strip('()|/~^=*')
         # `NEAR/3` and `ZONE/2` carry their distance in the token, so compare on the
-        # part before the slash — otherwise the operator itself reads as a search word
+        # part before the slash, otherwise the operator itself reads as a search word
         # and `NEAR/3 -zzz` looks computable when Manticore says it is not.
         if word.split("/", 1)[0].upper() in _MATCH_KEYWORDS or word.startswith("@"):
             continue
@@ -227,14 +227,14 @@ def prepare_match_query(query: str) -> PreparedMatch:
     """Turn caller text into a `MATCH()` expression, repairing what can be repaired.
 
     Operators are **passed through** rather than stripped: `"exact phrase"`, `-exclude`,
-    `term*`, `a | b`, `^start`, `=exact`, `NEAR/3` and `^3` boosts are the whole point of
+    `term*`, `a | b`, `^start`, `=exact`, `NEAR/3` and `^3` boosts are what the agent uses in
     Manticore's extended syntax and the agent is told how to use them (see
     :mod:`.prompts`). What this does instead is head off the three shapes that come back
     as an HTTP 500 the model cannot interpret:
 
-    * an unbalanced `"` or `(` — `syntax error, unexpected $end`
-    * a query with no positive term — `non-computable (single NOT operator)`
-    * an empty query — `MATCH('')` is not an error at all, which is worse: it matches
+    * an unbalanced `"` or `(`: `syntax error, unexpected $end`
+    * a query with no positive term, `non-computable (single NOT operator)`
+    * an empty query, `MATCH('')` is not an error at all, which is worse: it matches
       **every row** in the shard
 
     Escaping is unchanged and stays last: `\\` and `'` are what could break out of the

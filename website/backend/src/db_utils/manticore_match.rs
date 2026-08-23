@@ -4,9 +4,9 @@
 //! argument crosses two language boundaries at once and each one has its own escape
 //! rule:
 //!
-//! 1. the **SQL string literal** it is wrapped in — `\` and `'` are what could break
+//! 1. the **SQL string literal** it is wrapped in: `\` and `'` are what could break
 //!    out of it, and Manticore wants a **backslash**, not the SQL-standard doubling;
-//! 2. the **full-text query expression** living inside that literal — `"`, `(`, `/`,
+//! 2. the **full-text query expression** living inside that literal, `"`, `(`, `/`,
 //!    `~`, `|` and `\` are operators, and an unbalanced or dangling one is a hard error
 //!    from the parser rather than an empty result set. Quoting a phrase does not make
 //!    its contents inert: `|` and `\` keep their meaning inside one.
@@ -22,7 +22,7 @@
 
 /// Escape a value for a single-quoted Manticore SQL string literal.
 ///
-/// Backslash first, then the quote — reversing the order would double-escape the
+/// Backslash first, then the quote, reversing the order would double-escape the
 /// backslashes introduced by the quote pass.
 pub fn escape_manticore_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('\'', "\\'")
@@ -90,7 +90,7 @@ fn balance_quotes(query: &str) -> (String, Vec<String>) {
 ///
 /// Parens **inside a phrase are not counted here**: they are operators there too, and
 /// [`neutralise_stray_operators`] removes them. Counting them instead would put the
-/// repair outside the quotes it was trying to fix — an entity value like `Rule 20.4(c`
+/// repair outside the quotes it was trying to fix. An entity value like `Rule 20.4(c`
 /// is searched for as the phrase `"Rule 20.4(c"`, and closing that `(` appends the `)`
 /// after the closing quote, a syntax error built by the code meant to prevent one. This
 /// runs after [`balance_quotes`], so the scan can never end mid-phrase.
@@ -132,14 +132,14 @@ fn balance_parens(query: &str) -> (String, Vec<String>) {
 ///
 /// **Outside a phrase**, `/` and `~` are suffix operators on a phrase or a keyword:
 /// `"a b"~3` is proximity, `"a b c"/2` is quorum, `NEAR/3` carries its distance the same
-/// way. Standing alone between two words they are neither — `3/4` and `a~2` are
+/// way. Standing alone between two words they are neither: `3/4` and `a~2` are
 /// `P08: syntax error` from the parser, not a zero-result search.
 ///
-/// **Inside a phrase**, quoting does NOT make the contents inert — measured against a
-/// live Manticore, not assumed. `"Rule 20.4(c"`, `"a) b"` and `"File | New"` are each a
+/// **Inside a phrase**, quoting does NOT make the contents inert, measured against a
+/// live Manticore rather than assumed. `"Rule 20.4(c"`, `"a) b"` and `"File | New"` are each a
 /// `P08: syntax error`, while the same phrases with those characters removed match. So
 /// `(`, `)` and `|` keep their meaning between quotes and are neutralised there, and `\`
-/// still escapes the character after it — a value ending in one escapes the phrase's own
+/// still escapes the character after it. A value ending in one escapes the phrase's own
 /// closing quote and the query runs off the end (`unexpected $end`).
 ///
 /// This is why parens inside a phrase are removed here rather than balanced: a phrase is
@@ -203,7 +203,7 @@ fn neutralise_stray_operators(query: &str) -> (String, Vec<String>) {
 
 /// Whether anything in the query can *match*, as opposed to only exclude.
 ///
-/// Manticore rejects a query built only from negations — `-zzz` alone is
+/// Manticore rejects a query built only from negations: `-zzz` alone is
 /// `query is non-computable (single NOT operator)`, an error rather than an empty
 /// result. A quoted phrase counts as positive, and so does any word not introduced by
 /// `-`/`!`.
@@ -225,7 +225,7 @@ fn has_positive_term(query: &str) -> bool {
         }
         let word = token.trim_matches(|c| "()|/~^=*".contains(c));
         // `NEAR/3` and `ZONE/2` carry their distance in the token, so compare on the
-        // part before the slash — otherwise the operator itself reads as a search word
+        // part before the slash, otherwise the operator itself reads as a search word
         // and `NEAR/3 -zzz` looks computable when Manticore says it is not.
         let head = word.split('/').next().unwrap_or(word).to_uppercase();
         if MATCH_KEYWORDS.contains(&head.as_str()) || word.starts_with('@') {
@@ -261,14 +261,14 @@ fn split_keeping_quotes(token: &str) -> Vec<&str> {
 /// Turn caller text into a `MATCH()` expression, repairing what can be repaired.
 ///
 /// Operators are **passed through** rather than stripped: `"exact phrase"`, `-exclude`,
-/// `term*`, `a | b`, `^start`, `=exact` and `NEAR/3` are the whole point of Manticore's
-/// extended syntax. What this heads off instead are the shapes that come back as a
+/// `term*`, `a | b`, `^start`, `=exact` and `NEAR/3` are what a caller uses Manticore's
+/// extended syntax for. What this heads off instead are the shapes that come back as a
 /// parser error the user cannot act on:
 ///
-/// * an unbalanced `"` or `(` — `syntax error, unexpected $end`
-/// * a stray `/` or `~` — `P08: syntax error, unexpected '/'`
-/// * a query with no positive term — `non-computable (single NOT operator)`
-/// * an empty query — `MATCH('')` is not an error at all, which is worse: it matches
+/// * an unbalanced `"` or `(`: `syntax error, unexpected $end`
+/// * a stray `/` or `~`, `P08: syntax error, unexpected '/'`
+/// * a query with no positive term, `non-computable (single NOT operator)`
+/// * an empty query, `MATCH('')` is not an error at all, which is worse: it matches
 ///   **every row** in the shard. A caller that means "everything" must say so by not
 ///   calling this.
 ///
@@ -353,7 +353,7 @@ mod tests {
 
     /// Quoting does not make a phrase's contents inert. Each of these was run against a
     /// live Manticore in both spellings: with the character it is `P08: syntax error`,
-    /// without it the phrase matches. Every shape here comes straight out of the corpus —
+    /// without it the phrase matches. Every shape here comes straight out of the corpus.
     /// NER emits legal citations, menu paths and Windows paths, and the entities panel
     /// searches each value as a phrase.
     #[test]
@@ -419,7 +419,7 @@ mod tests {
 
     /// The characters measured against a live Manticore as breaking the extended
     /// syntax. Every one of them must now produce something the parser accepts, or a
-    /// typed error — never a string that reaches Manticore and errors there.
+    /// typed error, never a string that reaches Manticore and errors there.
     #[test]
     fn every_known_breaking_character_is_handled() {
         for (input, expected) in [

@@ -1,18 +1,18 @@
 """The query side of the embedding contract: the model-keyed prefix, and the client.
 
-**The prefix convention lives in exactly one function per runtime** —
+**The prefix convention lives in exactly one function per runtime**.
 :func:`embedding_input` here for the search side, and
 `main_services/processing/tasks/P5_chunk_embed/embedding_prefix.py` for the indexing
 side. The duplication is deliberate (same pattern as `extracted_by` in
 `tasks/text_sources.py` vs `website/common/src/document_sources.rs`): the processing
 image and the agents images share no package, so neither runtime may depend on the other
-being right. Mixing the two directions up — embedding a passage with the query prefix —
+being right. Mixing the two directions up (embedding a passage with the query prefix)
 degrades retrieval silently and nothing will ever alert you, which is why there is one
 function and why it REFUSES an unknown model instead of guessing a convention.
 
 The function keys off the model id recorded in `server_settings`
-(`embeddings_serving_model`, written by `main.py probe-embeddings`) — the probed truth
-about what the server serves, never the configured value.
+(`embeddings_serving_model`, written by `main.py probe-embeddings`), which is the probed
+truth about what the server serves rather than the configured value.
 
 The client mirrors `rerank.py`'s rules: a 2 s connect timeout so a dead GPU host is
 noticed in seconds, a finite read timeout so a slow one cannot wedge a search, and every
@@ -62,7 +62,7 @@ def embedding_input(model_id: str, kind: str, text: str) -> tuple[str, str | Non
       `passage: ` / `query: ` prepended by the caller.
     * `*-e5-*-instruct`: passages go bare; queries go bare plus a task description the
       server wraps as `Instruct: {task}\\nQuery: {text}`.
-    * Anything else raises — a model whose convention we do not know gets no vectors
+    * Anything else raises, a model whose convention we do not know gets no vectors
       rather than wrong ones.
     """
     name = (model_id or "").lower()
@@ -85,7 +85,7 @@ def embed_query(query: str, model_id: str) -> list[float]:
     """Embed one search query with the serving model's query convention.
 
     Raises :class:`EmbeddingUnavailable` on anything that stops a real vector being
-    produced — the caller falls back to keyword-only search and says so, rather than
+    produced. The caller falls back to keyword-only search and says so, rather than
     silently returning a keyword result set it presents as fused.
     """
     import requests

@@ -3,7 +3,7 @@
 //! Both read the tables P6's `build_email_graph` materialises. Neither traverses at
 //! write cost: the envelope's `cluster_size` is one point lookup on `email_clusters`,
 //! which is what makes the "Open Connected Emails" button affordable on every email
-//! opened — the vast majority are in no cluster, and discovering that with a traversal
+//! opened. The vast majority are in no cluster, and discovering that with a traversal
 //! per opened message would be the expensive way to render nothing.
 //!
 //! The graph walk is bounded twice, by depth and by node count, and it carries a visited
@@ -91,7 +91,7 @@ pub async fn get_email_envelope(
     // The icon label, in a second query rather than a correlated subquery:
     // `file_type_canonical` is a separate ReplacingMergeTree and joining it inside an
     // aggregate is how a missing row turns an attachment list into an empty one. It is
-    // also the only table that holds ONE type per document — the per-detector
+    // also the only table that holds ONE type per document. The per-detector
     // `file_types` rows disagree with each other by design, and picking one of them here
     // would give an attachment a different glyph from the one it has everywhere else.
     // A document with no row yet simply gets the generic glyph.
@@ -153,7 +153,7 @@ pub async fn get_email_envelope(
         .fetch_all()
         .await?;
     if let Some((src_dataset, src_hash, kind, confidence)) = parents.into_iter().next() {
-        // The parent can be in another dataset — that is what an identity edge is — so
+        // The parent can be in another dataset (that is what an identity edge is), so
         // the permission check is redone for it and a refusal simply hides the banner.
         let parent_readable = permissions::assert_can_read(user, &src_dataset).await.is_ok();
         let parent_client = get_client_for_dataset(&src_dataset).await?;
@@ -205,7 +205,7 @@ type EdgeRow = (String, String, String, String, String, f32, String);
 /// Breadth-first rather than depth-first: with a 50-node budget on a component of
 /// thousands, a depth-first walk spends the whole budget on one arm and the picture it
 /// draws is a line, not a neighbourhood. The prompt's "depth-first order" is about
-/// exhausting a cluster, and the budget makes that impossible either way — so the budget
+/// exhausting a cluster, and the budget makes that impossible either way, so the budget
 /// is spent on the nodes NEAREST the centre, which is what a person opening the graph on
 /// a message is asking for.
 pub async fn get_email_graph(

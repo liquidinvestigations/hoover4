@@ -298,7 +298,7 @@ class IngestAndProcessDataset:
     """Scan, plan and execute, in that order, for a newly created dataset.
 
     `IngestDiskDataset` alone only walks the disk. The plan stages after it are separate
-    workflows because they must not start until the scan has finished — computing plans
+    workflows because they must not start until the scan has finished. Computing plans
     over a half-scanned dataset silently plans a subset of the files, which is exactly why
     `main.py add-disk-dataset --no-wait` refuses to submit them.
 

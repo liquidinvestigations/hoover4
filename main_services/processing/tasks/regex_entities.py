@@ -75,7 +75,7 @@ MENTIONED_DATE_TYPE = "date"
 #: major-unit amount. Ten buckets per currency.
 #:
 #: Bucket ids are canonical ASCII and are what the term dictionary stores. A label
-#: spelling change — an en-dash instead of a hyphen — must never be a reindex, so the
+#: spelling change (an en-dash instead of a hyphen) must never be a reindex, so the
 #: en-dash is a render-time concern and never reaches here.
 _MONEY_LADDER: tuple[tuple[float, str], ...] = (
     (1, "under 1"),
@@ -142,7 +142,7 @@ def parse_rfc3339(raw: str) -> datetime | None:
     """The scanner's date form to an aware UTC datetime, or None.
 
     A value with no offset is read as UTC. It is the only defensible reading, and being
-    an hour out never changes which day-sized bucket a mention lands in — but a value
+    an hour out never changes which day-sized bucket a mention lands in, but a value
     read as *local* would silently shift every undated mention by the worker's zone.
     """
     match = _RFC3339_RE.match(raw.strip())

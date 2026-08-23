@@ -55,7 +55,7 @@ MACHINE_DATE = re.compile(
 )
 
 # A currency sign or an ISO 4217 code somewhere in the token. Amounts written with the currency's
-# name in words — "420 million finnish markka" — are what both money cards list as not matched.
+# name in words ("420 million finnish markka") are what both money cards list as not matched.
 CURRENCY_MARK = re.compile(r"[$€£¥₩₽₹¢₺₫₪]|\b[A-Z]{3}\b")
 
 EXCLUSION_NATURAL_DATE = (
@@ -102,7 +102,7 @@ def locate(text: str, token: str, start):
     """Where the extraction sits in the sentence, in characters.
 
     Upstream gives `Start` on some recognisers and not others, and the `Text` it reports is its own
-    normalised spelling — the email recogniser case-folds it — so a literal search has to fall back
+    normalised spelling (the email recogniser case-folds it), so a literal search has to fall back
     to a case-insensitive one before the case is dropped.
     """
     if isinstance(start, int) and text[start : start + len(token)].lower() == token.lower():
@@ -120,7 +120,7 @@ def value_of(resolution, scheme: str):
     Only the IPv4 half of the IP recogniser and the email recogniser resolve to something directly
     comparable. Upstream's phone resolution is the raw text rather than E.164, its currency
     resolution names the currency in English words rather than by ISO code, and its IPv6
-    resolution echoes the spelling in the sentence instead of the RFC 5952 canonical form — so
+    resolution echoes the spelling in the sentence instead of the RFC 5952 canonical form, so
     those are scored on entity type alone and the value column is left empty rather than filled
     with a string that was never meant to be compared.
     """
@@ -161,7 +161,7 @@ def spec_cases(cases, path, scheme, rule, entity_type):
         results = spec.get("Results") or []
         if not results:
             # Upstream names no span, so the token is the whole sentence: the question the scorer
-            # then asks — did anything fire anywhere in it — is exactly upstream's assertion.
+            # then asks (did anything fire anywhere in it) is exactly upstream's assertion.
             index += 1
             cases.append(
                 make(

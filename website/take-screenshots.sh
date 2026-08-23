@@ -9,7 +9,7 @@
 #   NN-name.FAILED.png    the state at the moment an action failed
 #   report.md             the index: a line per page with pass/fail and the reason
 #
-# This is a GATE. It exits non-zero when a page surfaces an error marker, gets a non-200
+# This is a GATE. It exits non-zero when a page shows an error marker, gets a non-200
 # response, or logs a console error that no whitelist covers -- see the header of
 # tools/capture_screenshots.py for what each means and how a page opts out.
 # tools/console_whitelist.txt holds the run-wide console exceptions and is copied in too.
@@ -55,7 +55,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 # One run at a time. Two overlapping runs share $REMOTE_DIR inside the container, and the
-# second one's `rm -rf` deletes the first one's output from under it — which presents as
+# second one's `rm -rf` deletes the first one's output from under it, which presents as
 # every page after the halfway point failing with ENOENT on its own PNG.
 if docker exec "$BROWSER_CONTAINER" test -e "$REMOTE_DIR/.running" 2>/dev/null; then
     echo "error: another capture run is in progress (${REMOTE_DIR}/.running exists)." >&2

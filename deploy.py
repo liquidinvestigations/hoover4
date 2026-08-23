@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""deploy.py — deploy hoover4 from one hoover4.ini.
+"""deploy.py, deploy hoover4 from one hoover4.ini.
 
 Stdlib only (configparser, argparse, subprocess, pathlib, os, sys, socket, hashlib,
 shutil, stat, re, json, textwrap). Must import clean on python 3.10 and run clean on 3.14:
@@ -46,8 +46,8 @@ CDI_SPEC = "/etc/cdi/nvidia.yaml"
 
 # --------------------------------------------------------------------------------------
 # Defaults. Every value here is overridable in hoover4.ini; hoover4.ini.example is a
-# fully commented rendering of this table. Ports are ini keys, never code literals —
-# the single exception is the website's 12345, which humans type.
+# fully commented rendering of this table. Ports are ini keys, never code literals.
+# The single exception is the website's 12345, which humans type.
 # --------------------------------------------------------------------------------------
 
 DEFAULTS = {
@@ -98,7 +98,7 @@ DEFAULTS = {
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
         "tesseract_languages": "eng",
-        # regex entity scanning — always on, so the only knobs are its size
+        # regex entity scanning, always on, so the only knobs are its size
         "regex_scanner_threads": "10",
         "regex_scanner_queue_depth": "32",
         # How the website is served. false = `dx serve` (the development loop). true =
@@ -171,7 +171,7 @@ DEFAULTS = {
         # carry none at all.
         "website_bind_ip": "0.0.0.0",
         "infra_bind_ip": "0.0.0.0",
-        # ports — main infrastructure
+        # ports, main infrastructure
         "clickhouse_http_port": "21900",
         "clickhouse_native_port": "21901",
         "manticore_sql_port": "21902",
@@ -186,7 +186,7 @@ DEFAULTS = {
         "ch_ui_port": "21911",
         "cassandra_port": "21912",
         "elasticsearch_port": "21913",
-        # ports — main app services
+        # ports, main app services
         "pdf_to_html_port": "21920",
         "tesseract_cpu_port": "21921",
         "ocr_pdf_port": "21922",
@@ -426,7 +426,7 @@ def worker_graceful_shutdown_seconds(cfg):
 
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini; no port
-    literal appears here except the website's 12345 (which is not rendered at all — it
+    literal appears here except the website's 12345 (which is not rendered at all. It
     stays in the compose file where humans read it)."""
     m = "main_services"
     env = {}
@@ -491,8 +491,8 @@ def render_main_env(cfg):
     )
 
     # The regex entity scanner. Always running, so this is never empty and the scan stage
-    # never has to branch on its absence. Same network, container name and internal port
-    # — the published port exists for humans and for verify-stack. Both the worker (which
+    # never has to branch on its absence. Same network, container name and internal port.
+    # The published port exists for humans and for verify-stack. Both the worker (which
     # scans) and the website (which proxies the explainer) read it.
     env["REGEX_SCANNER_URL"] = "http://hoover4-regex-entity-scanner:19705"
     env["REGEX_ENTITY_SCANNER_PORT"] = cfg.get(m, "regex_entity_scanner_port")
@@ -509,8 +509,8 @@ def render_main_env(cfg):
     )
 
     # The embeddings endpoint (P5 chunk+embed calls it; the same server also serves
-    # /v1/rerank, so one base URL covers both). No CPU twin exists yet —
-    # embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
+    # /v1/rerank, so one base URL covers both). No CPU twin exists yet.
+    # Embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
     # the embed activity will fail fast naming the setting rather than hang.
     emb_provider = cfg.get(m, "embeddings_provider")
     if emb_provider == "gpu":
@@ -769,7 +769,7 @@ class Runtime:
 
 
 # --------------------------------------------------------------------------------------
-# Preflights — all run before any `docker compose` invocation, in this order
+# Preflights, all run before any `docker compose` invocation, in this order
 # --------------------------------------------------------------------------------------
 
 def preflight_os():
@@ -809,7 +809,7 @@ def preflight_gpu(cfg, side):
 
 def preflight_cdi_prune(rt):
     """Fold of ai_services/start-docker.sh: drop CDI mounts whose host path does not
-    exist — a partial driver upgrade leaves entries pointing at files that were never
+    exist. A partial driver upgrade leaves entries pointing at files that were never
     installed, and crun refuses to start the GPU containers over a missing bind
     source. Host-A (ai_services) preflight."""
     if not os.path.isfile(CDI_SPEC) or not os.access(CDI_SPEC, os.R_OK):
@@ -894,14 +894,14 @@ def container_reachable_host(host):
 
     ai_services lives on its own private network and main_services reaches it
     over the published ports on `[ai_services] host`. That
-    works when the GPU tier is a different box. When both tiers share one box — the
-    dev setup — the ini names this host's own LAN IP, and a rootless podman container
+    works when the GPU tier is a different box. When both tiers share one box (the
+    dev setup) the ini names this host's own LAN IP, and a rootless podman container
     cannot route to its host's LAN address: the connect hangs until the OS gives up,
     which surfaces as an NER activity stalling for minutes with zero CPU load.
 
     Podman (and Docker Desktop) inject `host.containers.internal` into every
     container's /etc/hosts pointing at the host gateway, which is routable. Remote
-    hosts are returned unchanged — they are reachable from the container as-is.
+    hosts are returned unchanged. They are reachable from the container as-is.
     """
     if host in local_ip_addresses():
         return "host.containers.internal"
@@ -921,7 +921,7 @@ def port_is_free(port, bind_ips):
 
 
 def project_published_ports(rt, side):
-    """Host ports already published by THIS compose project's own containers — a
+    """Host ports already published by THIS compose project's own containers, a
     redeploy must not fail its own port preflight on the running stack."""
     filters = ["label=com.docker.compose.project=%s" % project_name(side)]
     if side == "main":
@@ -977,7 +977,7 @@ def preflight_ports(cfg, side, rt):
 
 
 def preflight_ner_spacy(cfg, side):
-    """A knob that is rendered and not read is the failure mode to refuse, not degrade.
+    """A setting that is rendered and never read is the failure to refuse rather than degrade.
 
     `ner_provider = spacy` with `ner_spacy_enabled = false` asks for entities from a
     service that will not be running. Silently producing no entities at all would look
@@ -1012,7 +1012,7 @@ def preflight_compose_yaml(cfg, side):
     key and lets the last one win, which is exactly the case that has to be caught here,
     so the loader below rejects duplicates explicitly.
 
-    Skipped when PyYAML is absent: this is a guard rail, not a dependency worth adding
+    Skipped when PyYAML is absent: this check is optional and not a dependency worth adding
     to a script whose whole job is to run before anything is installed.
     """
     try:
@@ -1155,7 +1155,7 @@ def ensure_network(rt, name):
 
     An existing network is also checked: podman cannot change resolvers on a
     live network, so one without them (e.g. created by compose before this
-    check existed) is removed and recreated — possible only when nothing is
+    check existed) is removed and recreated. Possible only when nothing is
     attached, i.e. right after a `--reset`. With containers attached we warn
     and keep the network as-is."""
     resolvers = _host_resolvers()
@@ -1204,7 +1204,7 @@ def ensure_network(rt, name):
 
 def verify_network_dns(rt, cfg, side):
     """Verify name resolution between two containers of the stack before declaring
-    success — a fresh podman network without resolvers is the failure this catches."""
+    success. A fresh podman network without resolvers is the failure this catches."""
     result = rt.run(["ps", "--filter", "label=com.docker.compose.project=%s"
                      % project_name(side), "--format", "{{.Names}}"],
                     capture_output=True, text=True)
@@ -1252,7 +1252,7 @@ def report_worker_stop_timeout(cfg, rt):
 
     `stop_grace_period` in the compose file is not the whole story under podman, and the
     difference is invisible unless something says so -- which is the entire reason this
-    prints rather than staying silent on the happy path.
+    prints rather than staying silent when nothing is wrong.
 
     podman-compose applies the grace period only when IT stops the container: it passes
     `-t <seconds>` to `podman stop` on down/stop/restart. It does NOT write the value into
@@ -1315,7 +1315,7 @@ def reprobe_embeddings(rt):
 
     `server_settings.embeddings_serving_model` is the *truth* the whole vector half is
     built on, and bringing the AI tier up with a different `embeddings_model` is precisely
-    when it goes stale. Every consumer then correctly refuses — which is the hard part to
+    when it goes stale. Every consumer then correctly refuses, which is the hard part to
     diagnose, because nothing is broken and nothing says so.
 
     Best effort, and never fatal to the deploy: the worker lives on the main stack, which
@@ -1373,12 +1373,12 @@ def wait_for_ports_released(cfg, side, rt, timeout_seconds=60):
     `compose down` returns as soon as the containers are gone, but on podman the
     project's pod publishes the ports on its infra container, and that teardown is
     asynchronous. So `./deploy --reset && ./deploy` would fail its own port preflight
-    with a port it had just released ("port 12345 wanted by hoover4-website") — a race
+    with a port it had just released ("port 12345 wanted by hoover4-website"). A race
     that looks exactly like a genuine conflict and sends you hunting for a process that
     does not exist. Wait it out here instead of making every caller rediscover it.
     """
     # Serena is a separate compose project that deliberately survives down/reset, so
-    # its port is still held on purpose — waiting on it would burn the whole timeout
+    # its port is still held on purpose. Waiting on it would burn the whole timeout
     # and print a warning about working as intended.
     wanted = [(svc, port) for svc, port in expected_ports(cfg, side)
               if svc != "hoover4-serena"]
@@ -1405,7 +1405,7 @@ def compose_down(cfg, side, rt):
 def compose_reset(cfg, side, rt, reset_caches):
     """Scoped reset: only this compose project's containers and volumes. Model-cache
     volumes are preserved by name unless --reset-caches; the Serena container and its
-    volume are never touched — killing it mid-session drops the MCP connection the
+    volume are never touched. Killing it mid-session drops the MCP connection the
     agent is using to do the work. Serena survives by construction: it is a separate
     compose project (hoover4-devtools), so this project's `down` never selects it."""
     proj = project_name(side)

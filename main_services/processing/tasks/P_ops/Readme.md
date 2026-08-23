@@ -1,4 +1,4 @@
-# P_ops — the operations layer
+# P_ops: the operations layer
 
 Everything long that a person can start is an **operation**: a row in the global
 `operations` table, and a Temporal workflow whose id *is* that row's `op_id`.
@@ -20,14 +20,14 @@ in the process that was watching.
 ## The lock
 
 A second dispatch is refused while a non-terminal row exists for the same kind and target.
-Which identifier is "the target" is a property of the kind — a dataset kind locks on the
-dataset, a collection kind on the collection — so a dataset-scoped operation is not blocked
+Which identifier is "the target" is a property of the kind (a dataset kind locks on the
+dataset, a collection kind on the collection), so a dataset-scoped operation is not blocked
 by a collection-scoped one that is not touching it.
 
 **A stale row is not free.** There is deliberately no timeout that releases the lock when a
 run stops reporting: a run that stopped updating may still have activities in flight, and
 releasing on a clock would start a second writer beside a live one. Cancelling the operation
-is how a lock is released early, and it lands the row in `cancelled` — a state of its own,
+is how a lock is released early, and it lands the row in `cancelled`. A state of its own,
 not a failure, and re-runnable, because every pipeline stage is idempotent.
 
 The lock check and the row insert are not atomic, and cannot be against ClickHouse. The
@@ -53,8 +53,8 @@ error, and the row then reports the opposite of what happened.
 **And the workflow's own late write says `cancelled` too.** A cancellation reaches the
 failure path wrapped as an activity failure, so the guard above is not enough on its own:
 the two writes can land in the same second and whichever is second decides the state. The
-state is therefore read off the failure chain — a chain containing a cancellation is a
-cancellation — so both writers agree and the order between them stops mattering.
+state is therefore read off the failure chain (a chain containing a cancellation is a
+cancellation), so both writers agree and the order between them stops mattering.
 
 ## What each kind drives
 
@@ -65,11 +65,11 @@ provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
 `change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
 chain of them; `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
 interrupted deletion leaves rows nothing routes to rather than a live dataset missing half
-its data — and the log distinguishes a dataset that was retired from one whose data was
+its data, and the log distinguishes a dataset that was retired from one whose data was
 cleaned out from under it. Every child
 is addressed **by name**, never by importing its class: importing drags the pipeline's
 module graph through the workflow sandbox's importer, where a re-imported C extension fails
-with a bare `SystemError` naming nothing in this repository — and the operations container
+with a bare `SystemError` naming nothing in this repository, and the operations container
 has no business loading the pipeline's dependencies anyway, since it schedules that work
 rather than running it.
 
@@ -83,7 +83,7 @@ Progress is whatever that kind can honestly count, and the unit differs by kind:
 an OCR-language change and a plan execution count **plans**, a retry counts the plans it
 re-runs, and a purge or a delete counts **rows still in the stores**, so its bar moves with
 the deletion rather than with the number of activities that have returned. A purge excludes
-the two task-telemetry tables it writes to while it runs — an operation counting its own
+the two task-telemetry tables it writes to while it runs. An operation counting its own
 telemetry as work left to do could never reach its total.
 
 **Three kinds have no progress fraction at all, deliberately.** `compute_plans` writes
@@ -108,7 +108,7 @@ of the split, not the split itself:
 
 | queue | slots | what runs there |
 |---|---|---|
-| `operations-queue` | 8 | the operation workflows — orchestration only |
+| `operations-queue` | 8 | the operation workflows, orchestration only |
 | `operations-clickhouse-queue` | 1 | ClickHouse backup and restore driving and polling |
 | `operations-manticore-queue` | 2 | Manticore backup, decompress, import |
 | `operations-garage-queue` | 2 | object-store enumerate, get, put, volume writing |
@@ -140,7 +140,7 @@ the only compressed single-file shape ClickHouse offers is a deflate zip, its pa
 already compressed internally, and deflating them again bought 1.38x for twenty percent more
 time. The object payload is **not compressed** because the blobs are already-compressed
 documents behind a write path that tops out around 27 MB/s, so re-compressing spends
-processor time on the wrong side of the bottleneck — its key manifest is compressed, and a
+processor time on the wrong side of the bottleneck. Its key manifest is compressed, and a
 million entries costs 8.3 MB and under a second. Manticore artifacts are compressed because
 a text index compresses well, though a collection dominated by vector tables compresses far
 less than a text-only one.
@@ -148,7 +148,7 @@ less than a text-only one.
 **ClickHouse writes its own artifact straight into the backup directory**, because the
 backup root is mounted onto its `backups/` path as well as onto this container's. Nothing is
 copied afterwards, which matters: this container holds the store volumes read-only and could
-neither delete an original nor hard-link one — **a cross-mount hard link is refused even
+neither delete an original nor hard-link one. **A cross-mount hard link is refused even
 inside one filesystem, so a backup copies bytes.**
 
 Manticore is taken with `FREEZE`, which flushes the table's RAM chunk, holds it read-only
@@ -172,8 +172,8 @@ the sizes of the frozen Manticore files. No store knows another's total, so a si
 denominator across all three would only exist once the backup was over; the phase is named
 in `detail` and the per-store sizes accumulate there as each one lands.
 
-The manifest carries the collection's own rows — the collection, its group permissions, its
-datasets and their settings, the server settings and the schema versions — because they are
+The manifest carries the collection's own rows (the collection, its group permissions, its
+datasets and their settings, the server settings and the schema versions), because they are
 small and they are what makes a restored collection *configured* rather than merely present.
 Artifacts this container writes carry a sha256 taken as they are written; the ClickHouse
 archive carries ClickHouse's own per-file checksums inside it instead, so an outer digest
@@ -185,8 +185,8 @@ do not.
 ## Restoring one
 
 `import_collection` reads a backup directory's manifest and puts each store back through
-that store's own protocol, in the export's order — object store, then ClickHouse, then
-Manticore — so an interrupted restore leaves blobs nothing points at rather than searchable
+that store's own protocol, in the export's order (object store, then ClickHouse, then
+Manticore), so an interrupted restore leaves blobs nothing points at rather than searchable
 rows pointing at blobs that were never written. `main.py import-collection <collection>
 --source <directory>` submits it, and it demands the collection name typed back before it
 dispatches.
@@ -216,16 +216,16 @@ version than this deployment is refused before anything is touched.
 
 **Manticore is restored one table at a time, against the live daemon.** Its own restore tool
 takes configuration and data together into an empty instance and refuses one that is already
-serving. Each artifact is decompressed here — the Manticore image has no zstd — into a
+serving. Each artifact is decompressed here (the Manticore image has no zstd) into a
 `.restore-<op_id>` staging directory on the data volume, and handed to `IMPORT TABLE`. The
 staging directory is on that volume because `IMPORT TABLE` **moves** the files and a move
-across filesystems is not a rename; it is not the destination, because the destination must
-not exist, which is also why the directory `DROP TABLE` leaves behind is removed first.
+across filesystems is a copy rather than a rename. The staging directory is not the
+destination, because the destination must not exist, which is also why the directory `DROP TABLE` leaves behind is removed first.
 
 **The configuration rows are written last**, because they are what offers the collection to
 the rest of the system: until they land, an unfinished restore is a collection nobody is
 shown rather than one that is shown and half empty. `server_settings` is deliberately not
-among them — those belong to the deployment, not to the collection, and restoring one
+among them. Those belong to the deployment, not to the collection, and restoring one
 deployment's into another would reconfigure everything else running there.
 
 ## Navigation

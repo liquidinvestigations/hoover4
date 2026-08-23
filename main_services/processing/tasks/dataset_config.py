@@ -1,7 +1,7 @@
 """Per-dataset settings, read **per activity** rather than at import.
 
 A language change dispatched from the dataset admin page has to reach activities that
-are already running -- that is the whole point of the apply job, and a module-level
+are already running, which is what the apply job exists for, and a module-level
 constant read once at worker start would silently ignore it until the next restart.
 
 The cost of reading per activity is one ClickHouse query per file, which is why there is

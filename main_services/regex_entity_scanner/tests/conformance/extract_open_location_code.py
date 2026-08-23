@@ -5,7 +5,7 @@
 material, and three of its four files answer three different questions:
 
 * ``validityTests.csv`` is a code with the validity upstream asserts for it, and its invalid half is
-  the adversarial set nobody could write for themselves — a plus sign in the wrong place, padding
+  the adversarial set nobody could write for themselves: a plus sign in the wrong place, padding
   after data, a non-alphabet Unicode character in the middle, a bare separator.
 * ``decoding.csv`` is a code with the cell its decode produces, as ``latLo,lngLo,latHi,lngHi``. The
   point a code names is the centre of that cell, which is what the rule reports, so the expected
@@ -156,7 +156,7 @@ def case(scheme, index, source, token, valid, rule_id, expect_value, exclusion):
 
 
 def validity_cases():
-    """`code,isValid,isShort,isFull` — the valid half measures recall, the invalid half precision.
+    """`code,isValid,isShort,isFull`, the valid half measures recall, the invalid half precision.
 
     An upstream-invalid code is never excluded: what it measures is whether the rule stays silent
     on it, which is the whole of the precision evidence this origin supplies for plus codes.
@@ -177,7 +177,7 @@ def validity_cases():
 
 
 def decoding_cases(start_index: int):
-    """`code,length,latLo,lngLo,latHi,lngHi` — the cell, whose centre is the point the code names."""
+    """`code,length,latLo,lngLo,latHi,lngHi`, the cell, whose centre is the point the code names."""
     index = start_index
     for row in rows("decoding.csv"):
         code = row[0]

@@ -1,8 +1,8 @@
 //! Email addresses.
 //!
-//! The strictness question is settled deliberately: full RFC 5322 — quoted local parts, comments,
-//! folding whitespace — accepts a great deal nobody writes and costs a famously large pattern to
-//! express. What earns its keep on real corpora is a pragmatic shape plus a TLD membership test,
+//! The strictness question is settled deliberately: full RFC 5322 (quoted local parts, comments,
+//! folding whitespace) accepts a great deal nobody writes and costs a famously large pattern to
+//! express. What works on real corpora is a pragmatic shape plus a TLD membership test,
 //! which is where nearly all of the precision comes from.
 
 use crate::model::{EntityType, Value};

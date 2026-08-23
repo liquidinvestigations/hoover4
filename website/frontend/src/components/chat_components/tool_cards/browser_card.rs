@@ -1,10 +1,10 @@
 //! Cards for the browser router's Playwright tools.
 //!
-//! One family, two shapes. `browser_navigate` gets the full treatment — thumbnail, title,
+//! One family, two shapes. `browser_navigate` gets the full treatment. Thumbnail, title,
 //! the URL as a link, the page text, and a popup holding the archived page in a sandboxed
 //! iframe. Every other action (`browser_click`, `browser_type`, …) gets a compact row:
 //! what was done, to which element, and the resulting thumbnail. Read as a sequence, those
-//! compact rows are a filmstrip of the navigation, which is the thing that makes a
+//! compact rows are a filmstrip of the navigation, which is what makes a
 //! multi-step browse legible at all.
 //!
 //! `status = 'too_large'` or `'failed'` renders as an **explicit line**, never as an
@@ -93,8 +93,8 @@ fn action_label(tool_name: &str, input: &serde_json::Value, failed: bool) -> Str
 /// The text a Playwright tool returns.
 ///
 /// It arrives in one of three shapes depending on how far up the stack it has travelled:
-/// a bare string, MCP content blocks (`{"type":"text","text":…}`), or — the shape the
-/// transcript actually stores — a **plain array of strings**, one per content block.
+/// a bare string, MCP content blocks (`{"type":"text","text":…}`), or (the shape the
+/// transcript actually stores) a **plain array of strings**, one per content block.
 /// Missing that last case was worth a bug: `result_text` returned empty, the artifact
 /// marker was never found, and the browser cards rendered with no thumbnail while the
 /// captures existed and were correct.
@@ -263,7 +263,7 @@ pub fn BrowserCard(
 ///
 /// A button, not a bare `img onclick`: it opens a modal, so it must be reachable by
 /// keyboard, and it must be the element focus returns to when that modal closes.
-/// It owns its own node handle and publishes it to the shared `opener` **on click** — a
+/// It owns its own node handle and publishes it to the shared `opener` **on click**, a
 /// card with three thumbnails would otherwise return focus to whichever mounted last.
 #[component]
 fn ThumbnailButton(
@@ -431,7 +431,7 @@ mod tests {
 
 /// The archived page, in a sandboxed iframe.
 ///
-/// `sandbox=""` — the empty value, not an omitted attribute — gives the document an opaque
+/// `sandbox=""` (the empty value, not an omitted attribute) gives the document an opaque
 /// origin with scripting disabled. The response also carries `default-src 'none'`, which
 /// forbids every network fetch. Both are needed: the CSP alone still allows scripts, and
 /// the sandbox alone still lets a stylesheet fetch leak that the capture was viewed.
@@ -481,7 +481,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
                     src: "{page}",
                     title: "Archived copy of {artifact.url}",
                     // Quoted because dioxus_elements has no typed `sandbox` on
-                    // iframe. The EMPTY value is the strict one — an omitted
+                    // iframe. The EMPTY value is the strict one. An omitted
                     // attribute means no sandbox at all, which is the opposite.
                     "sandbox": "",
                     style: "flex: 1; width: 100%; border: none; background: white;",

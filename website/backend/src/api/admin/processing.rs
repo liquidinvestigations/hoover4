@@ -9,7 +9,7 @@
 //! row, an `index_state` row). Progress is therefore *derived* by counting watermarks
 //! against the population that should eventually produce them. That means the numbers
 //! are eventually-consistent and can briefly exceed 100% while a `ReplacingMergeTree`
-//! has unmerged duplicates — every count below uses `FINAL` or `uniqExact` to avoid
+//! has unmerged duplicates, every count below uses `FINAL` or `uniqExact` to avoid
 //! that, at the cost of some query time. These are admin pages hit by a handful of
 //! people, so correctness wins over latency here.
 
@@ -156,7 +156,7 @@ pub async fn admin_collection_processing(
     let client = get_collection_client(&collectionname);
     let window = RATE_WINDOW_MINUTES;
 
-    // P0 — scan. Blobs discovered so far. No denominator: the scan learns the size of
+    // P0, scan. Blobs discovered so far. No denominator: the scan learns the size of
     // the job as it walks the tree, and `blobs` has no timestamp column, so no ETA.
     let scanned = grouped_counts(
         &client,
@@ -165,7 +165,7 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P1 — plan computation. Every discovered blob should end up in exactly one plan.
+    // P1, plan computation. Every discovered blob should end up in exactly one plan.
     let planned = grouped_counts(
         &client,
         "SELECT collection_dataset, uniqExact(item_hash) AS value \
@@ -181,7 +181,7 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P2/P3 — plan execution (parsing happens inside the plan execution workflow, so
+    // P2/P3, plan execution (parsing happens inside the plan execution workflow, so
     // the two share one bar; a separate P3 bar would be the same number twice).
     let plans_total = grouped_counts(
         &client,
@@ -204,7 +204,7 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P4 — NLP/NER. Denominator is the text pages extracted by P3.
+    // P4, NLP/NER. Denominator is the text pages extracted by P3.
     //
     // These count `(file_hash, extracted_by, page_id)` triples, and `page_id` is a real
     // page number rather than a multi-megabyte segment ordinal, so the unit count is
@@ -237,14 +237,14 @@ pub async fn admin_collection_processing(
     )
     .await?;
 
-    // P6 — indexing. Denominator is every document that reaches indexing, which is every
-    // blob in the dataset — NOT the documents that have text.
+    // P6, indexing. Denominator is every document that reaches indexing, which is every
+    // blob in the dataset, NOT the documents that have text.
     //
     // It used to count `uniqExact(file_hash) FROM text_content`, and that population is
     // strictly smaller: indexing writes a Manticore document for every file, including
     // the ones with no extractable text (an image with no OCR hit, a binary, a
     // zero-byte file), because a document with only metadata is still findable by
-    // filename and type. The bar therefore read `266 / 94 documents` — 283% — on the
+    // filename and type. The bar therefore read `266 / 94 documents` (283%) on the
     // first dataset that had many text-free files.
     //
     // `blobs` is the same population P0 and P1 report against, so the four stage bars
@@ -280,7 +280,7 @@ pub async fn admin_collection_processing(
     // Failures per (dataset, stage), counting DOCUMENTS rather than error rows: a
     // document that failed three times is one document missing from the corpus, and the
     // bar it sits next to counts documents too. Dataset-level rows carry no hash and
-    // are excluded here — they are in `errors` above, which is the dataset's own total.
+    // are excluded here. They are in `errors` above, which is the dataset's own total.
     let failure_rows = client
         .query(
             "SELECT collection_dataset, task_name, uniqExact(hash) AS value \
@@ -500,7 +500,7 @@ pub async fn admin_task_time_breakdown(
     }
     let client = get_collection_client(&collectionname);
 
-    // Every aggregate is cast explicitly — see the `last_seen` note above: RowBinary is
+    // Every aggregate is cast explicitly. See the `last_seen` note above: RowBinary is
     // positional and untyped, so a `UInt32` decoded into an `i64` field desynchronises
     // the whole row.
     let raw = client
@@ -594,7 +594,7 @@ struct InFlightRow {
 ///
 /// The two halves answer different questions and neither is enough alone. Completed
 /// executions give the share of time per task type but cannot see a task that has been
-/// running for twenty minutes — it has not finished, so it has no row. The in-flight
+/// running for twenty minutes. It has not finished, so it has no row. The in-flight
 /// samples see exactly that one, but only as a count.
 ///
 /// Window arithmetic is an overlap, not a "finished inside the window" filter: an
@@ -684,7 +684,7 @@ fn window_rows_to_pairs(rows: Vec<LiveWindowRow>) -> Vec<(String, f64, u64)> {
 /// Join the completed-window rows with the in-flight samples.
 ///
 /// Split out of the query path so it can be tested: the case that matters is a task
-/// that appears in ONE of the two halves only — a long activity still running (in
+/// that appears in ONE of the two halves only, either a long activity still running (in
 /// flight, no completed time) or one that just finished (time, nothing in flight).
 /// Dropping either would make the live view lie about what is happening.
 fn merge_live(
@@ -714,7 +714,7 @@ fn merge_live(
         })
         .collect();
 
-    // Whatever is left is running but has not completed anything inside the window —
+    // Whatever is left is running but has not completed anything inside the window,
     // the stuck-task case, and the single most useful row on the panel.
     for (task_name, (in_flight, oldest_ms)) in inflight {
         rows.push(LiveTaskRow {
@@ -902,7 +902,7 @@ pub async fn admin_list_workflows(
 // ---------------------------------------------------------------------------
 
 /// NOTE on `last_seen`: `toUnixTimestamp()` returns ClickHouse `UInt32`, and RowBinary is
-/// positional and untyped — a `UInt32` column read into an `i64` field consumes four bytes
+/// positional and untyped. A `UInt32` column read into an `i64` field consumes four bytes
 /// too many and desynchronises the whole row, so the server fn 500s. It only ever fails
 /// when there is at least one row to decode, which is why an empty collection looked fine
 /// and this shipped. Every query feeding this struct must therefore say
@@ -1062,14 +1062,14 @@ pub async fn admin_list_document_failures(
 ///
 /// This is what makes a retry actually retry. `ExecutePlans` skips any plan already in
 /// `processing_plan_finished`, and a stage that records an error *without* failing the
-/// plan — P4 entity extraction is the common case — still lets the plan finish. So
+/// plan (P4 entity extraction is the common case), still lets the plan finish. So
 /// restarting the workflow on its own is a no-op for exactly the failures an admin is
 /// most likely to be looking at. Deleting the finished-marker first is what puts the
 /// work back in front of the pipeline.
 ///
 /// Reprocessing a whole plan to fix one document is coarse (a plan is a batch of
 /// blobs), but the pipeline's unit of work *is* the plan, and every stage is
-/// idempotent — re-running one costs time, not correctness.
+/// idempotent. Re-running one costs time, not correctness.
 async fn reopen_plans_for_hashes(
     client: &clickhouse::Client,
     collection_dataset: &str,

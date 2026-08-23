@@ -4,13 +4,13 @@
 //! and are worse here: a percentage or `vw` re-scales the pane every time the window
 //! changes size, so a width chosen to fit a folder name stops fitting it on a laptop and
 //! swallows the page on a monitor; `rem` tracks the root font size, which nothing in this
-//! tree reads — its rows are sized in pixels. A pixel is what the drag produces, what the
+//! tree reads. Its rows are sized in pixels. A pixel is what the drag produces, what the
 //! layout consumes, and what the content actually needs.
 //!
 //! Those pixels are the app's LAYOUT pixels, before the scale `#x-nav-container` applies
 //! (`assets/main.css` lays the app out at a 1920 px design width and `zoom`s it down to
 //! the window). A pointer event's `clientX` is in the unscaled viewport instead, so the
-//! drag divides by the measured scale — without that the pane grows more slowly than the
+//! drag divides by the measured scale, without that the pane grows more slowly than the
 //! cursor moves and the handle visibly lags behind it.
 //!
 //! **A remembered width can never make the pane unusable, and never off-screen.** Three
@@ -88,8 +88,8 @@ pub fn dragged_sidebar_px(start_px: u32, delta_client_px: f64, scale: f64) -> u3
 /// `assets/main.css` picks a `zoom` per window-width breakpoint, so the factor is not a
 /// constant and duplicating that ladder here would be a second copy to keep in step.
 /// `clientWidth` is in the element's own (unscaled) pixels and the client rect is in
-/// viewport pixels, so their ratio is the scale in force. Anything unmeasurable — no
-/// window, no such element, a zero width — is 1.0, which degrades the drag to layout
+/// viewport pixels, so their ratio is the scale in force. Anything unmeasurable (no
+/// window, no such element, a zero width) is 1.0, which degrades the drag to layout
 /// pixels rather than breaking it.
 fn layout_scale() -> f64 {
     let Some(element) = web_sys::window()
@@ -118,7 +118,7 @@ fn write_stored_px(px: u32) {
 }
 
 /// A drag in progress: where the cursor started, how wide the pane was, and the scale that
-/// was in force. All three are captured at `mousedown` — re-measuring the scale per move
+/// was in force. All three are captured at `mousedown`. Re-measuring the scale per move
 /// would let a mid-drag breakpoint change turn the cursor's motion into a jump.
 #[derive(Clone, Copy)]
 struct Drag {
@@ -142,7 +142,7 @@ const DOUBLE_PRESS_SLOP_PX: f64 = 4.0;
 ///
 /// **The gesture has to be recognised from `mousedown`, because no `click` or `dblclick`
 /// ever reaches the handle.** The first press mounts a full-screen overlay to catch the
-/// drag, the release lands on that overlay, and the overlay unmounts in the same handler —
+/// drag, the release lands on that overlay, and the overlay unmounts in the same handler,
 /// so the browser has no live common ancestor of the press and the release and drops the
 /// whole activation sequence, `click` included. The `ondoubleclick` handler below is
 /// correct and was simply unreachable from a real mouse; this is what reaches it.
@@ -159,7 +159,7 @@ fn is_double_press(previous: Option<(f64, f64)>, now_ms: f64, client_x: f64) -> 
 
 /// A monotonic-enough clock for [`is_double_press`]. Anything unmeasurable reads as 0,
 /// which makes the elapsed time negative on the next press and the gesture simply not
-/// fire — a reset that does not happen is far better than one that happens mid-drag.
+/// fire, a reset that does not happen is far better than one that happens mid-drag.
 fn now_ms() -> f64 {
     web_sys::window()
         .and_then(|window| window.performance())
@@ -202,7 +202,7 @@ pub fn ResizableSidebar(children: Element) -> Element {
     });
 
     // The only path that writes the default back to storage, so it has to be reachable
-    // from a real mouse — see [`is_double_press`].
+    // from a real mouse. See [`is_double_press`].
     let reset_width = Callback::new(move |_: ()| {
         drag.set(None);
         width.set(DEFAULT_SIDEBAR_PX);
@@ -253,8 +253,8 @@ pub fn ResizableSidebar(children: Element) -> Element {
                         scale: layout_scale(),
                     }));
                 },
-                // Kept as well as the press-pair above: a synthetic `dblclick` — an
-                // accessibility tool, a script — does reach the handle, and this is the
+                // Kept as well as the press-pair above: a synthetic `dblclick` (an
+                // accessibility tool, a script) does reach the handle, and this is the
                 // shorter path for it.
                 ondoubleclick: move |_| reset_width.call(()),
             }
@@ -325,7 +325,7 @@ mod tests {
     /// The reset gesture is recognised from the presses, because nothing else arrives.
     ///
     /// The handle's own `title` advertises it, and it is the only path that writes the
-    /// default width back to storage — so "the handler is correct but unreachable" is
+    /// default width back to storage, so "the handler is correct but unreachable" is
     /// indistinguishable, to the user, from no handler at all.
     #[test]
     fn two_presses_in_the_same_place_are_the_reset_gesture() {

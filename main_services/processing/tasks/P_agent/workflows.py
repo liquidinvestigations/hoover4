@@ -334,7 +334,7 @@ class ResearchTask:
     transcript behind.
 
     A failure is written into the transcript as an `error` row rather than left as a
-    silently failed workflow — the user is looking at a chat window waiting for an
+    silently failed workflow. The user is looking at a chat window waiting for an
     answer, and "nothing ever appeared" is the one outcome that gives them nothing to
     act on.
     """

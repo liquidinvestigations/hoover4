@@ -2,7 +2,7 @@
 
 | path | needs |
 |---|---|
-| `unit/` | nothing running — pure logic, run inside the worker container |
+| `unit/` | nothing running, pure logic, run inside the worker container |
 | `integration/` | a live stack |
 | `fixtures/` | small inputs checked in beside the tests |
 | `conftest.py` | shared fixtures and collection settings for both |

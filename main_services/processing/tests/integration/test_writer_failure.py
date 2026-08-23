@@ -3,8 +3,8 @@
 Drives the IndexDatasetPlan failure path in-process: plan_shards reserves the
 assignments, both writer activities fail (retries already exhausted, simulated by
 a monkeypatched raise), the workflow records one processing_errors row per hash
-per task, records NOTHING in index_state, and finalizes. The ledger — recomputed
-from index_state, not from the reservations — must then claim zero documents
+per task, records NOTHING in index_state, and finalizes. The ledger (recomputed
+from index_state, not from the reservations) must then claim zero documents
 while the assignments table still holds the reservations (a later re-index
 returns the documents to the same shard).
 

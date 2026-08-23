@@ -1,6 +1,6 @@
 ---
 name: driving-the-browser
-description: Looks at the running site with a real browser — screenshots, clicking through a flow, checking that a page renders and that its controls do something. Use when asked to "take a screenshot", "check the UI", "does it render", "click through it", "walk the page", "show me the page", "verify the frontend", or before claiming any visible change works. Covers the screenshot harness that gates on console errors, why it does not go through the browser tool server, the two input traps that make typing into this frontend silently do nothing, driving the browser tool server directly when its wrapper drops output, and what a browser acceptance walk is for.
+description: Looks at the running site with a real browser. Screenshots, clicking through a flow, checking that a page renders and that its controls do something. Use when asked to "take a screenshot", "check the UI", "does it render", "click through it", "walk the page", "show me the page", "verify the frontend", or before claiming any visible change works. Covers the screenshot harness that gates on console errors, why it does not go through the browser tool server, the two input traps that make typing into this frontend silently do nothing, driving the browser tool server directly when its wrapper drops output, and what a browser acceptance walk is for.
 allowed-tools: Bash, Read, Grep, Glob, mcp__hoover4-browser__browser_navigate, mcp__hoover4-browser__browser_snapshot, mcp__hoover4-browser__browser_click, mcp__hoover4-browser__browser_type, mcp__hoover4-browser__browser_take_screenshot, mcp__hoover4-browser__browser_evaluate, mcp__hoover4-browser__browser_wait_for, mcp__hoover4-browser__browser_console_messages
 ---
 
@@ -18,11 +18,11 @@ website/take-screenshots.sh --only search      # one subset
 ```
 
 It walks a list of pages, and per page writes the PNG a person would see, a text outline of
-the rendered DOM with the page's verdict, and — where an action failed — the state at the
+the rendered DOM with the page's verdict, and (where an action failed) the state at the
 moment it failed, plus an index of the whole run. Output goes to a gitignored directory that
 is wiped at the start of every run.
 
-**It is a gate.** It exits non-zero when a page surfaces an error marker, returns a non-200,
+**It is a gate.** It exits non-zero when a page shows an error marker, returns a non-200,
 or logs a console error that no whitelist entry covers.
 
 **It is welded to the corpus that the end-to-end verification ingests.** Away from that
@@ -58,7 +58,7 @@ modes to reach the same place. Prefer the URL.
 
 ## Using the browser tool server
 
-For exploratory work — reading a page, following a link, filling a form — the browser tool
+For exploratory work (reading a page, following a link, filling a form), the browser tool
 server is the right surface: navigate, then take an accessibility snapshot, which gives a
 reference for every element you can act on.
 
@@ -76,9 +76,9 @@ clicking.
 Walk the control table for the page in `docs/technical-specification/interface/`. For each
 row: exercise the control, and confirm the thing it claims to do happens. A control that is
 listed and cannot be exercised is either a specification that has gone stale or a control
-that has stopped working — both are findings, and both are worth reporting.
+that has stopped working. Both are findings, and both are worth reporting.
 
 ## References
 
-- `reference/screenshots.md` — the page list's format, adding a page, reading a failed run,
+- `reference/screenshots.md`, the page list's format, adding a page, reading a failed run,
   and cropping an image down to the region under discussion.

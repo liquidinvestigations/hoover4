@@ -11,17 +11,17 @@ scorer.
 | `stdnum.jsonl` | The extracted `python-stdnum` cases, checked in. |
 | `extract_libphonenumber.py` | Turns libphonenumber's per-region example numbers and its matcher's free-text corpus into cases. |
 | `libphonenumber.jsonl` | The extracted libphonenumber cases, checked in. |
-| `extract_recognizers.py` | Turns the Recognizers-Text English specs — dates, currency, IP, phone, email — into cases. |
+| `extract_recognizers.py` | Turns the Recognizers-Text English specs (dates, currency, IP, phone, email) into cases. |
 | `recognizers.jsonl` | The extracted Recognizers-Text cases, checked in. |
 | `extract_price_parser.py` | Turns price-parser's parametrised (text, currency, amount) rows into cases. |
 | `price-parser.jsonl` | The extracted price-parser cases, checked in. |
-| `extract_grok.py` | Turns the logstash-patterns-core specs — the log lines each grok pattern must match — into date cases. |
+| `extract_grok.py` | Turns the logstash-patterns-core specs (the log lines each grok pattern must match) into date cases. |
 | `grok.jsonl` | The extracted logstash-patterns-core cases, checked in. |
 | `extract_dateparser.py` | Turns dateparser's parametrised date strings, and the two tests that declare a string unparseable, into date cases. |
 | `dateparser.jsonl` | The extracted dateparser cases, checked in. |
 | `extract_open_location_code.py` | Turns the Open Location Code test data into plus-code and decimal-coordinate cases. |
 | `open-location-code.jsonl` | The extracted Open Location Code cases, checked in. |
-| `extract_isemail.py` | Turns the is_email test set — an address with the category and diagnosis upstream returns for it — into email cases. |
+| `extract_isemail.py` | Turns the is_email test set (an address with the category and diagnosis upstream returns for it) into email cases. |
 | `isemail.jsonl` | The extracted is_email cases, checked in. |
 | `extract_eth_utils.py` | Turns eth-utils' address tables and ERC-55's own vectors into Ethereum address cases. |
 | `eth-utils.jsonl` | The extracted eth-utils and ERC-55 cases, checked in. |
@@ -31,15 +31,15 @@ scorer.
 | `pyais.jsonl` | The extracted pyais cases, checked in. |
 | `extract_advisory_database.py` | Turns one month of GitHub advisories into CVE cases: the identifier bare, and the same identifier inside a reference URL. |
 | `advisory-database.jsonl` | The extracted GitHub Advisory Database cases, checked in. |
-| `extract_crossref.py` | Turns the reduced Crossref slice — DOIs and the ORCID identifiers on author records — into publication cases. |
+| `extract_crossref.py` | Turns the reduced Crossref slice (DOIs and the ORCID identifiers on author records) into publication cases. |
 | `crossref.jsonl` | The extracted Crossref cases, checked in. |
-| `extract_presidio.py` | Turns Presidio's recogniser tests — parametrised free-text fragments with the spans upstream asserts are in them — into cases. |
+| `extract_presidio.py` | Turns Presidio's recogniser tests (parametrised free-text fragments with the spans upstream asserts are in them) into cases. |
 | `presidio.jsonl` | The extracted Presidio cases, checked in. |
 
 ## The case file
 
 One JSON object per line, sorted by `id`, with the same shape for every origin. The file is checked
-in, so a run is reproducible without re-extracting — extraction is a separate step, taken when the
+in, so a run is reproducible without re-extracting. Extraction is a separate step, taken when the
 upstream snapshot moves.
 
 | Field | Meaning |
@@ -73,20 +73,20 @@ the column is what keeps a recall figure readable as the mix of evidence it is.
 Upstream calls an API on a bare token; we scan free text. Three rules bridge that, applied
 uniformly and recorded in the file rather than reinvented by the runner:
 
-- **The carrier**, for an origin that tests an API on a bare token. Every token goes into one neutral sentence — `The record shows <token> on the
-  form.` — which carries no digits, no currency symbol and no cue word of its own, so the only
+- **The carrier**, for an origin that tests an API on a bare token. Every token goes into one neutral sentence (`The record shows <token> on the
+  form.`) which carries no digits, no currency symbol and no cue word of its own, so the only
   thing the scanner can find in a case is the token.
 - **The cue.** Several rules refuse a bare token unless a cue word is nearby, because a check digit
   alone is a one-in-ten filter and an invoice number passes it at that rate. Calling
   `stdnum.cusip.validate` *is* the statement "this is a CUSIP", so that scheme's own documented cue
-  goes into the carrier. A cue is never supplied to a rule that does not require one — that would
+  goes into the carrier. A cue is never supplied to a rule that does not require one. That would
   be measuring a different rule than the one that runs in production.
 
   This is what makes a newly-claimed scheme a re-extraction rather than a one-line change to the
   runner. Cases for a scheme no rule claimed carry `"cue": null`, because there was no rule to take
   one from; the extractor has to run again so the carrier gains the cue the rule that now claims
-  them documents. The same commit therefore moves the origin's denominator twice over — every one
-  of those cases stops being excluded and starts being scored, misses included — which is why the
+  them documents. The same commit therefore moves the origin's denominator twice over (every one
+  of those cases stops being excluded and starts being scored, misses included) which is why the
   floors are re-derived there.
 - **The token is verbatim.** Separators, case and punctuation are left exactly as upstream wrote
   them. How a number survives contact with real prose is the property under test, so normalising it
@@ -95,7 +95,7 @@ uniformly and recorded in the file rather than reinvented by the runner:
 An origin whose own material is already free text keeps that text instead of the carrier, and takes
 the offsets upstream reports. The mail origin is the far end of that: its fragment is the header
 field itself, folding line breaks and all, and its labels come from RFC 5322 rather than from an
-upstream assertion — a `Message-ID:` field holds a message id, an address field holds addresses,
+upstream assertion. A `Message-ID:` field holds a message id, an address field holds addresses,
 and the fields are read with the standard library's mail and address parsers rather than with a
 pattern of ours, because a pattern of ours labelling the cases it is then scored against measures
 nothing. Nothing is gained by re-housing a sentence somebody wrote to exercise
@@ -135,19 +135,19 @@ tracked tree is a thumb on the scale. The run prints the exclusion count beside 
 
 Each script reads its own directory under `vendored/reference/`, needs no network, and writes the
 case file to stdout with a count on stderr. Re-run one when the vendored snapshot moves or when a
-scheme gains a rule, and commit the diff — the case file is the corpus, not a build artefact.
+scheme gains a rule, and commit the diff. The case file is the corpus, not a build artefact.
 
 ## An origin that can only agree
 
 Crossref publishes registered identifiers, so its DOI and ORCID cases are recall and nothing else:
 there is no malformed identifier in the source to stay silent about. That matters most for
-`publication.orcid`, whose ISO 7064 check digit makes the invalid examples the interesting ones —
+`publication.orcid`, whose ISO 7064 check digit makes the invalid examples the interesting ones,
 and mutating a digit to manufacture one would break the rule that a token is what upstream wrote.
 Those negatives live in the rule's unit tests instead, and the origin is described as what it is.
 The GitHub Advisory Database is the same shape for `vulnerability.cve`, and more sharply: that rule
 is a literal prefix, a year window and a digit count, so well-formed identifiers all pass and the
-number is 100% by construction. What the origin buys is the surface context — the identifier inside
-an NVD URL with a slash on its left — and a guard against the rule being narrowed by accident.
+number is 100% by construction. What the origin buys is the surface context (the identifier inside
+an NVD URL with a slash on its left), and a guard against the rule being narrowed by accident.
 
 The same reading applies wherever an upstream can only confirm us: agreement from a source that
 publishes nothing wrong is a weaker measurement than the percentage makes it look.
@@ -165,8 +165,8 @@ not about whether the token is an address.
 ## National form, and the numbers that are only written in it
 
 libphonenumber's example numbers are *national significant numbers*, and `phone.international`
-matches international form only — a deliberate limit, because the same digits name a different
-subscriber in every country. Upstream's own test supplies the region as an argument to `parse`;
+matches international form only, which is a deliberate limit, because the same digits name a
+different subscriber in every country. Upstream's own test supplies the region as an argument to `parse`;
 the extractor supplies the same fact the only way a scanner can receive it, by writing the number
 with its country calling code. Scoring a thousand national-form numbers as misses would be
 measuring the documented absence of a rule, over and over.

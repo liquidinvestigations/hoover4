@@ -12,7 +12,7 @@ use crate::search_result::FacetOriginalValue;
 /// `i64::MIN` is the one no real date can collide with. A `BETWEEN` range can never
 /// match it, so undated documents fall out of every range automatically; the UI's
 /// "Unknown only" filters on equality with it. The Python indexer pins the same
-/// constant in `database/manticore.py` — keep them in step.
+/// constant in `database/manticore.py`. Keep them in step.
 pub const DATE_UNKNOWN: i64 = i64::MIN;
 
 /// `file_size_bytes` of a document that exists in `file_types` but in no `vfs_files`
@@ -27,7 +27,7 @@ pub const SIZE_UNKNOWN: i64 = -1;
 /// rules, and quoting rules are where injection bugs live.
 ///
 /// `include_unknown` is a separate flag rather than a magic bound because "documents
-/// with no date" is a different question from "documents dated before X" — the sentinel
+/// with no date" is a different question from "documents dated before X". The sentinel
 /// sorts below every real date, so a naive open-ended `max` would silently sweep every
 /// undated document into "before 1900".
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -60,7 +60,7 @@ impl RangeFilter {
 /// desynchronise the two.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
 pub enum SortKey {
-    /// BM25 weight. Meaningless without a query string — enforced server-side.
+    /// BM25 weight. Meaningless without a query string. Enforced server-side.
     #[default]
     Relevance,
     /// `date_min` ascending / `date_max` descending: "oldest first" and "newest first"
@@ -134,7 +134,7 @@ impl SearchQuery {
             .collect()
     }
 
-    /// Whether anything at all is selected — used to decide between "no filters" and
+    /// Whether anything at all is selected. Used to decide between "no filters" and
     /// "these filters matched nothing".
     pub fn has_any_filter(&self) -> bool {
         self.facet_filters.values().any(|v| !v.is_empty())

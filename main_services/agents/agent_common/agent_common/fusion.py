@@ -1,11 +1,11 @@
-"""Reciprocal Rank Fusion and the per-kind floor — the shared ordering machinery.
+"""Reciprocal Rank Fusion and the per-kind floor, the shared ordering machinery.
 
 This module is the single implementation of two things every search surface needs:
 
 * **RRF fusion** of several ranked lists into one. `metasearch_server` fuses web
   sources with it and `collection_search_server` fuses its keyword and vector rankings
-  with the same code — keep it here rather than copying it into either.
-  A second copy would drift, and a drifted fusion is invisible — results just get
+  with the same code. Keep it here rather than copying it into either.
+  A second copy would drift, and a drifted fusion is invisible. Results just get
   quietly worse.
 * **The per-kind floor.** RRF is a popularity measure: four web scrapers agreeing on a
   page beat one encyclopaedia entry every time, and a keyword match with exact terms
@@ -65,7 +65,7 @@ def normalise_url(url: str) -> str:
 
     Drops the scheme's variability (http/https), a leading `www.`, tracking parameters,
     the fragment and a trailing slash. The *original* URL is what gets returned to the
-    caller — this is only the key.
+    caller. This is only the key.
     """
     try:
         parsed = urlparse(url)
@@ -132,7 +132,7 @@ def reciprocal_rank_fusion(
                     published=result.published,
                 )
                 merged[key] = existing
-            # Keep the longest snippet seen — engines truncate differently and the
+            # Keep the longest snippet seen. Engines truncate differently and the
             # fullest one is the most useful to the model.
             if len(result.snippet) > len(existing.snippet):
                 existing.snippet = result.snippet
@@ -160,7 +160,7 @@ T = TypeVar("T")
 class FusedItem:
     """One item of a generic fusion: the payload plus where it ranked.
 
-    The collection-search half of the fusion story — same RRF rule as
+    The collection-search half of the fusion story, same RRF rule as
     :func:`reciprocal_rank_fusion`, but keyed by an arbitrary identity rather than a
     normalised URL, because a chunk of a document is not a web page.
     """
@@ -182,7 +182,7 @@ def fuse_ranked_lists(
     Each source's list is deduplicated on `key_of` first (same rule as
     :func:`dedupe_within_source`): one source contributes at most one rank per key.
     When the same key appears in several sources the FIRST source's payload object is
-    kept — order `per_source` so the richest payload wins (a keyword hit carries the
+    kept. Order `per_source` so the richest payload wins (a keyword hit carries the
     page text; a vector hit only the chunk).
     """
     merged: dict[Hashable, FusedItem] = {}
@@ -216,21 +216,21 @@ def per_kind_floor(
 ) -> list[T]:
     """Guarantee each kind a share of the answer, then fill the rest by rank.
 
-    Two passes, and the first is the whole point:
+    Two passes, and the first is what this function exists for:
 
     1. **Reserve.** Each kind keeps its own best `min_per_kind` results (or all of them,
        if it has fewer) whatever the overall cap says. Without this a query with an
        obvious encyclopaedia answer returns twenty blogs about it, because four web
-       scrapers agreeing always outscores one reference source — and a keyword-heavy
+       scrapers agreeing always outscores one reference source, and a keyword-heavy
        query would return no vector hits at all.
     2. **Fill.** Everything else in rank order, up to `max_per_kind` per kind and
-       `max_results` overall — but never evicting a reserved slot.
+       `max_results` overall, but never evicting a reserved slot.
 
     `is_reservable` bounds pass 1 to results that deserve the guarantee. A floor promises
     *representation*, and representation of nothing is padding: with no gate, a query whose
     reference source has one good answer and fourteen unrelated ones reserved slots for the
     unrelated ones too, and the model cannot tell a reserved slot from an earned one. A
-    rejected item is not dropped — pass 2 can still pick it on merit.
+    rejected item is not dropped. Pass 2 can still pick it on merit.
 
     The returned list keeps the input's order, so a reranked ordering stays reranked.
     """

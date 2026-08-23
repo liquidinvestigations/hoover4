@@ -4,7 +4,7 @@
 //! a name, an organisation or a place; the rest are what a rule's validator accepted as
 //! an identifier, an amount or a date. They sit in one list because a reader asking "what
 //! is in this document" is asking one question, and they keep separate sections because
-//! the confidence behind them is not comparable — a name is a judgement, an IBAN either
+//! the confidence behind them is not comparable. A name is a judgement, an IBAN either
 //! has a valid check digit or it does not.
 //!
 //! **`View Details` is what makes the second half legible.** A normalised identifier says
@@ -15,8 +15,8 @@
 //! acceptance does not prove.
 //!
 //! **A URL may name one entity**, and then the panel shows that card alone with the rest
-//! of the list a click away. That is what makes a card reachable from outside the viewer —
-//! from a conversation, from a message — as a link rather than as a sequence of clicks to
+//! of the list a click away. That is what makes a card reachable from outside the viewer
+//! (from a conversation, from a message) as a link rather than as a sequence of clicks to
 //! describe. A named value the document does not carry says so, because a panel that
 //! silently listed nothing would look like a document with no entities in it.
 
@@ -128,7 +128,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
     };
 
     // Every provider that found anything in this document, for the filter below. The
-    // chips are already one per value — the rows are aggregated server-side — so this is
+    // chips are already one per value (the rows are aggregated server-side), so this is
     // about answering "which model saw this", not about hiding duplicates.
     let mut providers: Vec<String> = items
         .iter()
@@ -212,7 +212,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                         items: items.clone(),
                         show_provider: multi_provider,
                         // A link asked for one card, so the section holding it opens
-                        // already expanded — the card is the destination, not a chip to
+                        // already expanded. The card is the destination, not a chip to
                         // find and click a second time.
                         force_expanded: selected_entity.is_some(),
                     }
@@ -225,7 +225,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
 /// What the panel says when a link opened it on one entity.
 ///
 /// Two states, and the second is the reason this exists: a value the document does not
-/// carry — a link from a re-ingest, a rule set that stopped producing it — must say so.
+/// carry (a link from a re-ingest, a rule set that stopped producing it) must say so.
 /// A panel that silently listed nothing would be indistinguishable from a document with
 /// no entities in it.
 #[component]
@@ -291,7 +291,7 @@ fn EntityTypeIcon(entity_type: DocumentEntityType, style: String) -> Element {
 ///
 /// The stored id is canonical ASCII (`USD 10k-100k`) because a label spelling change must
 /// never be a reindex. The en-dash is applied here, at render time, and only to the range
-/// itself — never to the currency code in front of it.
+/// itself, never to the currency code in front of it.
 fn render_bucket(bucket: &str) -> String {
     match bucket.split_once(' ') {
         Some((currency, range)) => format!("{currency} {}", range.replace('-', "\u{2013}")),
@@ -342,7 +342,7 @@ fn EntityGroup(
     // A card comes from the rule that produced the value, so the toggle appears when the
     // group holds at least one value that names one. Asking the SECTION instead would
     // deny cards to `Other`, which is where every scanner type without a section of its
-    // own lands — CVEs, IMEIs, MAC addresses, autonomous-system numbers — each of them a
+    // own lands (CVEs, IMEIs, MAC addresses, autonomous-system numbers), each of them a
     // validated value the scanner can explain in full.
     let has_details = group_items.iter().any(|item| !item.rule_id.is_empty());
     let is_expanded = (expanded() || force_expanded) && has_details;
@@ -454,7 +454,7 @@ fn EntityGroup(
 ///
 /// A card per amount would be a page of near-identical cards saying the same thing about
 /// ISO 4217; the bucket is what the facet files them under and therefore what a reader
-/// clicking through to the corpus will get. The amounts stay reachable — each one is a
+/// clicking through to the corpus will get. The amounts stay reachable, each one is a
 /// find-in-page click of its own, on the surface text the document actually wrote.
 #[component]
 fn MoneyCards(items: Vec<DocumentEntityItem>) -> Element {

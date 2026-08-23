@@ -1,7 +1,7 @@
 """The `Operation` workflow: one durable execution per dispatched operation.
 
-The workflow id **is** the operation id, so anything holding the id — an interrupted
-CLI, a link in the admin list, a row read months later — can find the execution again
+The workflow id **is** the operation id, so anything holding the id (an interrupted
+CLI, a link in the admin list, a row read months later) can find the execution again
 without a lookup table. That identity is the whole reason a caller can be killed
 without consequence: the work is not in the caller, and the caller's only unique
 knowledge is a string it already printed.
@@ -58,7 +58,7 @@ PURGE_SETTLE_SAMPLES = 8
 #:
 #: Generous because it is a whole-store budget, not a per-file one: at the measured rates
 #: a terabyte-scale collection is hours per store, and the liveness question is answered
-#: by the heartbeat deadline instead — which is what actually catches an activity that
+#: by the heartbeat deadline instead, which is what actually catches an activity that
 #: has stopped doing anything.
 EXPORT_STORE_TIMEOUT = timedelta(hours=24)
 
@@ -157,8 +157,8 @@ class Operation:
         leads straight back to the row.
 
         THE CHILD IS ADDRESSED BY NAME, not by importing its class, and that is not a
-        style choice. Importing it drags the whole pipeline module graph — the scan
-        activities, the object-store client, its crypto bindings — through the workflow
+        style choice. Importing it drags the whole pipeline module graph (the scan
+        activities, the object-store client, its crypto bindings) through the workflow
         sandbox's importer, and a C extension re-imported that way fails with a bare
         `SystemError` from inside CPython that names nothing in this repository. The
         operations container has no business loading the pipeline's dependencies
@@ -234,8 +234,8 @@ class Operation:
         """Run the dataset's unfinished plans, sampling plans finished against plans held.
 
         Progress means something here, and it is the counter the ingest driver already
-        uses. The denominator can grow while the operation runs — a plan that opens an
-        archive computes plans for what was inside it — and that is the corpus being
+        uses. The denominator can grow while the operation runs (a plan that opens an
+        archive computes plans for what was inside it), and that is the corpus being
         discovered, not the counter lying: the number moves in both parts.
         """
         child = asyncio.ensure_future(workflow.execute_child_workflow(
@@ -385,7 +385,7 @@ class Operation:
 
         The child's id carries the operation id rather than the collection name, so a
         repeated create or delete of the same collection is its own execution with a
-        history of its own — the same rule every other kind follows.
+        history of its own, which is the same rule every other kind follows.
         """
         workflow_type = {
             "ensure_collection": "EnsureCollectionDatabase",
@@ -403,8 +403,8 @@ class Operation:
 
         **The order is the only cross-store consistency there is.** No store can be
         snapshotted together with another, so an export taken while the pipeline runs is
-        going to have a seam somewhere; taking the objects first puts the seam where a
-        restore survives it — an orphaned blob rather than a row pointing at a blob that
+        going to be inconsistent somewhere; taking the objects first puts the inconsistency
+        where a restore survives it. An orphaned blob rather than a row pointing at a blob that
         was never copied.
 
         Each store runs on its own queue, so a slow object copy cannot hold the single
@@ -604,8 +604,8 @@ def _is_cancellation(exc: BaseException) -> bool:
     """Whether a failure chain is really a cancellation wearing an error's clothes.
 
     Matched on the exception's *name* rather than on an imported class, because three
-    different cancellations arrive here — `asyncio.CancelledError`, the SDK's own
-    `CancelledError` and the `ActivityError` that wraps either — and importing the SDK's
+    different cancellations arrive here: `asyncio.CancelledError`, the SDK's own
+    `CancelledError` and the `ActivityError` that wraps either, and importing the SDK's
     exception module into a workflow file only to compare against it drags more through
     the sandbox importer than the comparison is worth.
     """
@@ -638,7 +638,7 @@ def ApplicationErrorKind(kind: str) -> Exception:
     """The error for a kind the workflow has no driver for.
 
     A named function rather than a bare `raise` so the message is identical wherever a
-    kind is registered in the table but not yet dispatched here — the operations log
+    kind is registered in the table but not yet dispatched here. The operations log
     accepts more kinds than this workflow can currently run, on purpose, so a row can
     be written for work that another surface performs.
     """

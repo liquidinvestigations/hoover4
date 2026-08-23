@@ -115,9 +115,9 @@ def served_embedding_model(base_url=None):
     Hardcoding a name here was a lie waiting to happen, and it happened: the constant said
     `multilingual-e5-large-instruct` while every deployment served
     `multilingual-e5-small`. It went unnoticed because `/v1/embeddings` used to echo the
-    requested name back over vectors the real model produced — the same echo the worker's
-    "did I get the model I probed?" check depends on, which is why the endpoint now
-    refuses a `model` it does not serve instead. Ask the server rather than assuming.
+    requested name back over vectors the real model produced, which is the same echo the
+    worker's "did I get the model I probed?" check depends on. The endpoint now refuses a
+    `model` it does not serve instead. Ask the server rather than assuming.
     """
     import os
 

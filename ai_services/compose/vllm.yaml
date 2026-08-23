@@ -19,13 +19,13 @@ services:
   #
   # The reasoning parser is what moves a thinking block out of `content` and into
   # `reasoning_content`. Qwen3.5 thinks by default, so without it every answer arrives
-  # with the model's working prepended to it — visible to the user, counted against the
+  # with the model's working prepended to it, visible to the user, counted against the
   # payload budget, and parsed by nothing.
   #
   # vLLM 0.17 is the first release with native Qwen3.5 (qwen3_5) support.
   #
   # SECURITY: bind_ip comes from hoover4.ini and MUST be a private-network address in
-  # any real deployment — an exposed vLLM is a free GPU for the internet.
+  # any real deployment. An exposed vLLM is a free GPU for the internet.
   hoover4-vllm:
     image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.17.1}
     container_name: hoover4-vllm

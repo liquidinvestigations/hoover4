@@ -4,8 +4,8 @@
 //!
 //! The first is scope: a bare digit run with one check digit is still a bare digit run, and a
 //! facet built out of those is a facet of invoice numbers. A scheme ships here on one of two
-//! grounds. Either the **surface form identifies itself** — a fixed letter-and-digit pattern, a
-//! restricted check alphabet, a holder-type position — which is the codice fiscale, the NIF/NIE,
+//! grounds. Either the **surface form identifies itself** (a fixed letter-and-digit pattern, a
+//! restricted check alphabet, a holder-type position) which is the codice fiscale, the NIF/NIE,
 //! the CURP and the PAN. Or the number carries **two independent checks and a mandatory cue**: the
 //! PESEL and the personnummer are nothing but digits, and what admits them is a check digit *and*
 //! an embedded date that has to be a real day *and* the word beside them. If the cue requirement
@@ -15,7 +15,7 @@
 //! personnummer all encode their holder's date of birth, and two of them encode sex. **No value
 //! here carries either.** The date-bearing validators read those positions for exactly one
 //! purpose, to reject a number whose date could never have existed, and the catalogue entry says
-//! so — the identifier encodes personal data that this service does not derive, and that is a
+//! so. The identifier encodes personal data that this service does not derive, and that is a
 //! decision to state rather than to leave implicit in what the code happens not to do.
 
 use std::collections::BTreeMap;
@@ -61,7 +61,7 @@ fn national_id(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Italy — codice fiscale
+// Italy, codice fiscale
 // ---------------------------------------------------------------------------------------------
 
 pub struct CodiceFiscaleRule;
@@ -131,13 +131,13 @@ fn cin_check_character(body: &str) -> Option<u8> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Spain — NIF and NIE
+// Spain, NIF and NIE
 // ---------------------------------------------------------------------------------------------
 
 pub struct NifNieRule;
 
-/// Eight digits and a check letter for a resident, or one of `XYZ` — a foreign national — or
-/// `KLM` — the residual categories — followed by seven digits and the same check letter. The check
+/// Eight digits and a check letter for a resident, or one of `XYZ` (a foreign national) or
+/// `KLM` (the residual categories) followed by seven digits and the same check letter. The check
 /// alphabet is in the pattern because it excludes the letters that would otherwise be confused
 /// with digits, and that exclusion is most of what makes the shape recognisable.
 const NIF_NIE_PATTERN: &str =
@@ -183,7 +183,7 @@ impl Rule for NifNieRule {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Mexico — CURP
+// Mexico, CURP
 // ---------------------------------------------------------------------------------------------
 
 pub struct CurpRule;
@@ -245,7 +245,7 @@ fn curp_check_digit(body: &str) -> Option<u8> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// India — PAN
+// India, PAN
 // ---------------------------------------------------------------------------------------------
 
 pub struct PanRule;
@@ -303,7 +303,7 @@ impl Rule for PanRule {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Poland — PESEL
+// Poland, PESEL
 // ---------------------------------------------------------------------------------------------
 
 pub struct PeselRule;
@@ -356,8 +356,8 @@ impl Rule for PeselRule {
 
 /// Whether the six leading digits name a day that exists.
 ///
-/// The century is folded into the month field — twenty is added to it once per century from the
-/// nineteenth on — so a month of 38 is February 2002 rather than a malformed month. The date is
+/// The century is folded into the month field. Twenty is added to it once per century from the
+/// nineteenth on, so a month of 38 is February 2002 rather than a malformed month. The date is
 /// read here and only here: it decides whether the number can exist, and neither the value nor the
 /// card carries a birth date out of it.
 fn pesel_date_exists(digits: &[u32]) -> bool {
@@ -372,7 +372,7 @@ fn pesel_date_exists(digits: &[u32]) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sweden — personnummer
+// Sweden, personnummer
 // ---------------------------------------------------------------------------------------------
 
 pub struct PersonnummerRule;
@@ -454,7 +454,7 @@ impl Rule for PersonnummerRule {
 /// Whether the leading digits name a day that could exist.
 ///
 /// The twelve-digit form carries its century and gets a full calendar check. The ten-digit form
-/// does not, and the separator that would say which century — a `+` once the holder turns 100 —
+/// does not, and the separator that would say which century (a `+` once the holder turns 100)
 /// only resolves against the date the document was written, which this service does not hold. So
 /// the ten-digit form is checked for a real month and a day in range and no further: inventing a
 /// century in order to run a leap-day test would make the same number valid or invalid depending

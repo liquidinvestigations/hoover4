@@ -1,8 +1,8 @@
 //! Per-rule shapers: what only this particular match can say.
 //!
 //! The catalogue supplies everything true of the rule. A shaper adds what is true of the match in
-//! front of the reader — the country behind its top-level domain, the weekday its date fell on,
-//! the register entry for its own identifier — and that is the half that makes a card worth
+//! front of the reader (the country behind its top-level domain, the weekday its date fell on,
+//! the register entry for its own identifier), and that is the half that makes a card worth
 //! opening.
 //!
 //! A rule with no shaper still gets a card from the catalogue alone. That fallback is what keeps
@@ -121,7 +121,7 @@ fn bullets(items: impl Iterator<Item = impl std::fmt::Display>) -> String {
 }
 
 /// ISO 8601: precision decides what to call it, and the calendar gives the reader the one thing the
-/// digits do not — which day of the week it was.
+/// digits do not, which day of the week it was.
 fn date_iso(card: &mut Explanation, request: &ExplainRequest) -> Option<String> {
     let rfc3339 = request.value_str("rfc3339")?;
     let precision = request.value_str("precision").unwrap_or("day");
@@ -274,7 +274,7 @@ fn company_vat(
 }
 
 /// BIC: positions five and six are the country, and they are the only part of the code checked
-/// against a list — the institution and branch letters are whatever SWIFT allocated.
+/// against a list. The institution and branch letters are whatever SWIFT allocated.
 fn bank_bic(
     card: &mut Explanation,
     request: &ExplainRequest,
@@ -321,7 +321,7 @@ fn security_isin(
     }
 
     let Some((alpha2, country)) = encoded_country(request, data) else {
-        // The substitute-agency prefixes — XS for Eurobonds and the rest — name no place, so the
+        // The substitute-agency prefixes (XS for Eurobonds and the rest) name no place, so the
         // card says what the prefix is instead of naming a country that does not exist.
         let prefix = compact.get(..2).unwrap_or_default();
         card.subtitle = format!("{compact} · issued by a substitute numbering agency");
@@ -343,7 +343,7 @@ fn security_isin(
 }
 
 /// MMSI: the first three digits are the ITU Maritime Identification Digits, which name the
-/// administration that assigned the number — the flag the station sails under.
+/// administration that assigned the number. The flag the station sails under.
 fn vessel_mmsi(
     card: &mut Explanation,
     request: &ExplainRequest,

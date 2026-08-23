@@ -22,7 +22,7 @@ fn fast_budget() -> std::time::Duration {
 }
 
 /// Start a fast test's clock. The returned guard prints the elapsed time and fails the
-/// test if it went over budget — a drop guard rather than a call at the end, so an early
+/// test if it went over budget. A drop guard rather than a call at the end, so an early
 /// `?` or a panic still reports the number.
 struct Budget {
     name: &'static str,
@@ -285,7 +285,7 @@ async fn pagination_pages_are_disjoint_and_complete() {
 /// Partial-failure round trip. Insert a bogus shard into one collection's
 /// ledger (its Manticore tables do not exist), assert the search still returns
 /// the surviving shards' hits with partial == true on results, hit count and
-/// facets — then remove the row again.
+/// facets, then remove the row again.
 ///
 /// `slow_`: it waits out the 30 s shard-state cache in both directions and then a
 /// ClickHouse mutation, so it costs one to two minutes and no amount of tuning will make
@@ -345,7 +345,7 @@ async fn slow_missing_shard_degrades_to_partial_results() {
     let restricted = backend::api::search::search_for_results(&admin_user(), restricted_query, 0).await;
 
     // Cleanup: delete the bogus shard row and wait until the mutation has been
-    // APPLIED (mutations_sync) — an asynchronously-pending delete would leak the
+    // APPLIED (mutations_sync). An asynchronously-pending delete would leak the
     // bogus shard into the next test's fan-out.
     client
         .query("ALTER TABLE manticore_shards DELETE WHERE shard_name = 'other_9999' SETTINGS mutations_sync = 1")
@@ -485,7 +485,7 @@ async fn permissions_restrict_search_to_granted_collections() {
 //
 // Every one of these is bound to a named fixture directory ingested by
 // `main_services/verify-stack.sh`, and every one asserts a property of that fixture
-// rather than a row count of the whole corpus — a count changes whenever a root is
+// rather than a row count of the whole corpus. A count changes whenever a root is
 // added and says nothing when it does.
 // ---------------------------------------------------------------------------------
 
@@ -511,7 +511,7 @@ async fn hits(query: SearchQuery) -> u64 {
     count.total
 }
 
-/// A date range narrows the corpus, and the three range shapes COVER it — a low-pass, a
+/// A date range narrows the corpus, and the three range shapes COVER it. A low-pass, a
 /// high-pass at the same instant and the undated leave nothing out.
 ///
 /// Not a partition, and that is the point. A date filter is an interval-overlap test
@@ -519,7 +519,7 @@ async fn hits(query: SearchQuery) -> u64 {
 /// `search_sql::range_predicate`) rather than `ANY(dates) BETWEEN`, because Manticore
 /// cannot evaluate `ANY(mva)` across the pages/meta JOIN.
 /// So a document whose span crosses the split satisfies both halves and is counted twice,
-/// which is the honest answer to both questions: it does have dates below AND above.
+/// which answers both questions correctly: it does have dates below AND above.
 /// `other_emails/cap33.pdf` (2003-03 … 2016-06) is that document here.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -537,7 +537,7 @@ async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
     // document on one side and the test asserts nothing.
     let split = 1_262_304_000_i64;
     // Both halves CLOSE on `split`, deliberately: the overlap between them is then exactly
-    // "spans that contain that instant", which is a query — the single-instant band below.
+    // "spans that contain that instant", which is a query, the single-instant band below.
     let before = hits(dated_query(None, Some(split), false)).await;
     let after = hits(dated_query(Some(split), None, false)).await;
     let unknown = hits(dated_query(None, None, true)).await;
@@ -563,7 +563,7 @@ async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
          every bucket, which is the real bug this guards"
     );
 
-    // Every double-counted document is one of the straddlers, and each is counted twice —
+    // Every double-counted document is one of the straddlers, and each is counted twice,
     // so nothing can hide behind the excess.
     assert!(
         before >= straddling && after >= straddling,
@@ -575,7 +575,7 @@ async fn range_filter_covers_the_corpus_and_straddlers_are_in_both_halves() {
     assert!(band <= before + after);
 }
 
-/// `Unknown only` returns exactly the documents with no confirmed date — no range, and
+/// `Unknown only` returns exactly the documents with no confirmed date, no range, and
 /// nothing that a range would also return.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -603,7 +603,7 @@ async fn unknown_dates_only() {
 
 /// Sorting by size is monotonic across the whole result page, which is the property the
 /// cross-shard merge exists to preserve. The sizes are read back from ClickHouse rather
-/// than from the hit, because the hit does not carry one — so this checks the ORDER BY
+/// than from the hit, because the hit does not carry one, so this checks the ORDER BY
 /// and the merge against an independent source of truth.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -708,7 +708,7 @@ async fn in_folder_search_is_scoped() {
     use common::vfs::make_node_key;
 
     // The whole folder name, because that is what a person types. Hyphens are fine; what
-    // is NOT is a leading token shorter than the table's `min_infix_len` of 3 —
+    // is NOT is a leading token shorter than the table's `min_infix_len` of 3:
     // `*a-child-dir-767*` matches nothing while `*many-a-child-dir-767*` and
     // `*child-dir-767*` both match. The fixture's folders are numbered 666..999, so a
     // pattern naming a number outside that range correctly finds nothing.
@@ -747,7 +747,7 @@ async fn in_folder_search_is_scoped() {
 }
 
 /// The VFS endpoints refuse a dataset the caller's group has no grant for. Without this
-/// the structure index is a way around `permissions::sanitize_query` — it answers
+/// the structure index is a way around `permissions::sanitize_query`. It answers
 /// "what files exist" for anyone who can name a dataset.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -841,7 +841,7 @@ async fn vfs_endpoints_respect_permissions() {
 
 /// Structure queries never enter the search result cache. The tree changes while
 /// ingestion runs and a stale tree is worse than a slow one, so `api/vfs/tree.rs` uses
-/// the uncached primitive on purpose — a change that routed it through the cached one
+/// the uncached primitive on purpose, a change that routed it through the cached one
 /// would be invisible except as folders that stop appearing.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -912,8 +912,8 @@ async fn vfs_tree_path_to_walks_the_whole_chain() {
 }
 
 /// The chain CROSSES a container boundary. This is the case `PathDescriptor` cannot
-/// represent — it carries one `container_hash`, so the archive the container sits in is
-/// simply absent from it — and the whole reason the breadcrumb was rewritten.
+/// represent. It carries one `container_hash`, so the archive the container sits in is
+/// simply absent from it, and the whole reason the breadcrumb was rewritten.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn vfs_tree_path_to_crosses_a_container() {
@@ -938,8 +938,8 @@ async fn vfs_tree_path_to_crosses_a_container() {
         .expect("/location-1 must hold a container");
 
     // What is inside the archive hangs off the archive FILE. There is no `/` node in
-    // between — expanding an archive shows its contents, not a virtual root the user has
-    // to open again — so the archive's own node key is what its members' parent is.
+    // between. Expanding an archive shows its contents, not a virtual root the user has
+    // to open again, so the archive's own node key is what its members' parent is.
     let members = backend::api::vfs::vfs_tree_children(
         &admin_user(),
         "testdata_zips".to_string(),
@@ -983,7 +983,7 @@ async fn vfs_tree_path_to_crosses_a_container() {
 ///
 /// The second half is the one that bites in the field: `ORDER BY kind ASC` sorts
 /// `dir`(0), `file`(1), `container`(2), so a folder with more files than the page size
-/// never shows its archives at all — the files fill the page and the containers behind
+/// never shows its archives at all. The files fill the page and the containers behind
 /// them are starved. The fixture level is FOUND rather than named: an email with an
 /// attachment and a couple of inline parts is exactly that shape in miniature, and which
 /// of `other_emails`' messages has it is not something this test should hardcode.
@@ -1040,7 +1040,7 @@ async fn folders_only_counts_and_returns_only_what_the_tree_draws() {
 /// The "N more…" row's arithmetic: pages tile the level, and no row arrives twice.
 ///
 /// The row raises an OFFSET and appends. It used to raise the limit, which the server
-/// clamped straight back to the page it had already sent — so the row could not resolve
+/// clamped straight back to the page it had already sent, so the row could not resolve
 /// for any folder in any dataset. `shapes/the-directory` has 334 subfolders, which is
 /// three pages of 150 with a short last one.
 #[tokio::test]
@@ -1220,7 +1220,7 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
 ///
 /// `text_content.page_id` is 1-based and the email preview renders the body by asking
 /// `get_document_text_by_id_and_source` for a single page. A page number of 0 matches no
-/// row, so the whole body of every email comes back as "document not found!" — which is
+/// row, so the whole body of every email comes back as "document not found!", which is
 /// what a hardcoded 0 in the preview did. Asserting the range alone is not enough: the
 /// page the source names has to resolve to text, which is the half a unit test cannot see.
 #[tokio::test]
@@ -1284,8 +1284,8 @@ async fn email_source_names_a_page_that_holds_the_body() {
 /// The two halves of a mail file are stored independently: `email_headers` gets a row
 /// whenever the file parses at all, `text_content` gets an `email_parser` row only if the
 /// message yielded body text worth storing. Mail whose whole `text/plain` part is a
-/// single character — a bare `,` on a line of its own, which the Enron export produces by
-/// the dozen — clears the first bar and not the second, exactly like mail whose only body
+/// single character (a bare `,` on a line of its own, which the Enron export produces by
+/// the dozen) clears the first bar and not the second, exactly like mail whose only body
 /// part is HTML. The viewer still offers the Email source for those, so the source has to
 /// carry the fact that there is nothing to fetch; when it did not, the body pane rendered
 /// the text endpoint's 404 as `document not found!`.
@@ -1369,7 +1369,7 @@ async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
         )),
         "the fixture is only meaningful while it has no email_parser text source"
     );
-    // The fetch the viewer used to make unconditionally. It fails, and that is correct —
+    // The fetch the viewer used to make unconditionally. It fails, and that is correct,
     // which is why the source must not send the viewer to it.
     let body = backend::api::documents::search_document_text::get_document_text_by_id_and_source(
         &admin_user(),
@@ -1404,7 +1404,7 @@ async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
 /// Two separate things have to be true for a hit to come back and neither is visible from
 /// a unit test: the sidecar process is running, and the address this server sends the
 /// request to is the sidecar's. The sidecar is a CHILD of this server rather than a
-/// service of its own, so that address is loopback — and a deployment that starts the
+/// service of its own, so that address is loopback, and a deployment that starts the
 /// server from a different working directory loses the process entirely, which turns
 /// every in-PDF search into a 500 with nothing else affected.
 #[tokio::test]
@@ -1413,7 +1413,7 @@ async fn in_pdf_search_returns_hits_through_the_sidecar() {
     let _budget = Budget::start("in_pdf_search_returns_hits_through_the_sidecar");
     use common::search_result::DocumentIdentifier;
 
-    // A PDF picked by the property the test needs — it has a text layer — rather than by
+    // A PDF picked by the property the test needs (it has a text layer) rather than by
     // name, and a word taken out of that layer rather than guessed: the assertion is
     // about the search path, not about the corpus.
     let client = get_client_for_dataset(TESTFILES).await.unwrap();
@@ -1454,7 +1454,7 @@ async fn in_pdf_search_returns_hits_through_the_sidecar() {
 ///
 /// There is no second address to check: the sidecar is handed the PDF's bytes, so nothing
 /// tells it a url to fetch them back from. Such a url points at this server's own HTTP
-/// port — a request the server makes to itself, carrying no session cookie, which
+/// port. A request the server makes to itself, carrying no session cookie, which
 /// requiring a session on the download route kills silently.
 #[test]
 fn pdf_search_endpoint_defaults_to_loopback() {
@@ -1468,7 +1468,7 @@ fn pdf_search_endpoint_defaults_to_loopback() {
 /// The route answered 500 for the missing hash. That is not a cosmetic difference: a
 /// crawler or a stale bookmark then reads as the server throwing, and `is_error` on the
 /// admin metrics page is derived from the status, so every such request was counted as
-/// breakage. The pair is asserted together — a handler that 404s everything would satisfy
+/// breakage. The pair is asserted together, a handler that 404s everything would satisfy
 /// the first assertion on its own.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -1551,7 +1551,7 @@ async fn ai_status_reports_the_hardware_that_actually_serves_ner() {
 ///
 /// Most documents are not images, so an error here is emitted on a large fraction of
 /// document opens. Under `err(Debug)` on the tracing attribute that is ERROR level, and it
-/// buried every real error in the website log — the log stopped being usable as a signal
+/// buried every real error in the website log. The log stopped being usable as a signal
 /// while nothing at all was failing. The positive half is asserted with it: a probe that
 /// answered `None` for everything would satisfy the first assertion by doing nothing.
 #[tokio::test]
@@ -1610,7 +1610,7 @@ async fn a_document_that_is_not_an_image_is_not_an_error() {
 /// The NLP stage stops these before `entity_hit` is written, but a rule applied at write
 /// time governs only rows written after it, and every collection ingested earlier keeps
 /// its junk until the stage is re-run. `testdata` is such a collection in the fixture
-/// stack — it carries single-letter and empty entity values from a PDF — so this asserts
+/// stack. It carries single-letter and empty entity values from a PDF, so this asserts
 /// the read side filters what the write side would now have rejected.
 #[tokio::test]
 #[ignore = "needs live stack"]
@@ -1655,7 +1655,7 @@ async fn the_entities_facet_offers_no_extraction_debris() {
 ///
 /// Manticore keeps whatever was written under a dataset name until something deletes it,
 /// so an abandoned ingest (or a re-ingest under a new name) goes on producing buckets
-/// with real counts long after its registry row is gone — and ticking one applies a
+/// with real counts long after its registry row is gone, and ticking one applies a
 /// filter that matches nothing. `dataset` is the authority; this asserts the facet
 /// agrees with it in both directions, against the live index rather than against a
 /// hand-built list of values.
@@ -1714,7 +1714,7 @@ async fn the_collections_facet_offers_exactly_the_registered_datasets() {
 // lives in the axum middleware, so only a request that actually crosses it can see it.
 //
 // The rule under test: **exactly one route may create a session**. A fresh `set-cookie` on
-// every response lets a client that stores none — a crawler, a `curl` loop — mint a
+// every response lets a client that stores none (a crawler, a `curl` loop) mint a
 // `guest-<hex>` user and a `user_login` row per request.
 //
 // These run inside the website container (`run-stack-tests.sh`), where the site is on
@@ -1731,7 +1731,7 @@ fn site_url() -> String {
 /// Discovered from the served WASM bundle, never written down: Dioxus mounts a server
 /// function at `/api/<name><decimal hash>` and the hash changes whenever the function's
 /// signature does, so a literal path here would rot into a 404 that reads as a missing
-/// refusal. Fetched once for the whole suite — the bundle is megabytes.
+/// refusal. Fetched once for the whole suite. The bundle is megabytes.
 struct ServerFnPaths {
     whoami: String,
     search_hit_count: String,
@@ -1786,7 +1786,7 @@ fn first_match(haystack: &str, needle: &str) -> Option<String> {
     Some(head[..end].to_string())
 }
 
-/// `<prefix><digits>` — the hash suffix is decimal, so the match stops at the first
+/// `<prefix><digits>`, the hash suffix is decimal, so the match stops at the first
 /// non-digit and cannot run into whatever the bundle stores next to it.
 fn hashed_path(haystack: &str, prefix: &str) -> Option<String> {
     let start = haystack.find(prefix)?;
@@ -1856,7 +1856,7 @@ async fn only_the_sign_in_route_hands_out_a_session() {
     let paths = server_fn_paths().await;
     let _budget = Budget::start("only_the_sign_in_route_hands_out_a_session");
 
-    // The app shell is public — the browser has to load the code that signs in — but it
+    // The app shell is public (the browser has to load the code that signs in), but it
     // is not an identity.
     for path in ["/", "/search/x/0/9g==/9g==", "/admin"] {
         let response = request_without_session("GET", path).await;
@@ -1876,7 +1876,7 @@ async fn only_the_sign_in_route_hands_out_a_session() {
         );
     }
 
-    // And the one route that does. With guests disabled it refuses instead — the same
+    // And the one route that does. With guests disabled it refuses instead, the same
     // rule, the other deployment mode.
     let response = request_without_session("POST", &paths.whoami).await;
     if backend::auth::session_middleware::guest_sessions_allowed() {
@@ -1917,7 +1917,7 @@ async fn every_endpoint_refuses_a_request_with_no_session() {
 }
 
 /// The other half: with a session, the same endpoints work. A refusal that refuses
-/// everybody is not an access control, it is an outage.
+/// everybody is an outage rather than an access control.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
@@ -1959,7 +1959,7 @@ async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
     assert_eq!(search.status(), 200, "a signed-in search must work");
 
     // A dataset that is in no registry row is a complete answer about something that is
-    // not there, exactly like an unknown hash — not a 500.
+    // not there, exactly like an unknown hash, not a 500.
     let unknown = client
         .get(format!(
             "{}/_download_document/no_such_dataset/deadbeef",

@@ -4,7 +4,7 @@
 service already has: people, companies, documents, bank accounts, vessels, and the properties that
 hang off them. A span this scanner produces is only useful once it lands somewhere in that model, so
 every rule names the schema and property its extraction feeds, and the mapping travels with the rule
-rather than living in a consumer's glue code.
+rather than living in the code of a consumer.
 
 The mapping is a field on every catalogue entry (`FtmMapping` in `src/explain/catalog.rs`) and is
 served on `GET /rules/{rule_id}` beside everything else known about the rule. A rule without one
@@ -25,18 +25,18 @@ fails the test suite.
 
 Where a property is defined on an abstract parent, the mapping names the parent: `amount` and
 `currency` on `Value`, `idNumber`, `vatCode`, `leiCode` and `phone` on `LegalEntity`. That is where
-FollowTheMoney defines them, and every concrete schema a consumer builds — `Company`, `Person`,
-`Payment` — inherits them. Naming `Company.leiCode` would be picking one of the inheritors for the
+FollowTheMoney defines them, and every concrete schema a consumer builds (`Company`, `Person`,
+`Payment`) inherits them. Naming `Company.leiCode` would be picking one of the inheritors for the
 consumer, on evidence that does not support the choice.
 
 ## The `res:` extension namespace
 
 FollowTheMoney does not model everything this scanner finds. There is no schema for an intermodal
 container, no property for an IMEI, a MAC address, an autonomous system number, a DOI, an ORCID or a
-CVE identifier. Where that is the case, the property is declared under a `res:` prefix — a local
+CVE identifier. Where that is the case, the property is declared under a `res:` prefix. A local
 extension of their schema, marked as ours.
 
-The prefix is the whole point. A consumer reading `BankAccount.iban` knows exactly what to do with
+The prefix is what makes the two cases distinguishable. A consumer reading `BankAccount.iban` knows exactly what to do with
 it. A consumer reading `Analyzable.res:imeiMentioned` knows it has to decide where the value goes,
 and knows the decision is theirs rather than something FollowTheMoney already settled. An extension
 that is written down is a mapping somebody can implement; an unmarked invented property name is a
@@ -62,7 +62,7 @@ document's text, so a mention this scanner adds is named the same way.
 | `company_id` | `company.lei` | `LegalEntity.leiCode` | Defined upstream on the abstract parent, inherited by `Company` and `Organization`. |
 | `company_id` | `company.vat_eu` | `LegalEntity.vatCode` | Defined upstream on the same abstract parent, so a company, an organisation or a public body all carry it on one property. |
 | `company_id` | `company.vat_non_eu` | `LegalEntity.vatCode` | The same property: FollowTheMoney does not scope `vatCode` to the Union, so every jurisdiction lands on one property. |
-| `company_id` | `company.se_organisationsnummer` | `LegalEntity.registrationNumber` | Defined upstream on the abstract parent, for the number a company register knows an entity by, and inherited by `Company`, `Organization` and `PublicBody` — the same set of legal forms the number's leading digit distinguishes. |
+| `company_id` | `company.se_organisationsnummer` | `LegalEntity.registrationNumber` | Defined upstream on the abstract parent, for the number a company register knows an entity by, and inherited by `Company`, `Organization` and `PublicBody`, the same set of legal forms the number's leading digit distinguishes. |
 | `security` | `security.isin` | `Security.isin` | Defined upstream. |
 | `security` | `security.cusip` | `Security.res:cusip` | `Security` has `isin`, `ticker` and `figiCode` but no CUSIP property, and a North American security is routinely identified by nothing else. |
 | `security` | `security.sedol` | `Security.res:sedol` | The same gap for the London Stock Exchange's own code. |
@@ -78,7 +78,7 @@ document's text, so a mention this scanner adds is named the same way.
 | `publication` | `publication.orcid` | `Analyzable.res:orcidMentioned` | `Person` has no ORCID property. |
 | `phone` | `phone.international` | `Analyzable.phoneMentioned` | Defined upstream, for a number found in a document's text. `LegalEntity.phone` is the property to write once the number is known to belong to the entity, which is an assertion a span cannot make. |
 | `money` | `money.iso_code` | `Value.amount` | Defined upstream on the abstract parent, alongside `Value.currency`, and inherited by `Payment`. One match supplies both: the scaled integer and the ISO 4217 code travel in the same value. |
-| `money` | `money.symbol` | `Value.amount` | As above. Where the symbol names more than one currency the code is the most widely used of them, and the ambiguous-currency flag says so — a consumer that cannot tolerate that should threshold on the flag rather than on the amount. |
+| `money` | `money.symbol` | `Value.amount` | As above. Where the symbol names more than one currency the code is the most widely used of them, and the ambiguous-currency flag says so, a consumer that cannot tolerate that should threshold on the flag rather than on the amount. |
 | `message_id` | `message.rfc5322` | `Document.messageId` | Defined upstream, and the rule only fires behind a mail header name, which is the same context the property assumes. |
 | `coordinates` | `coord.decimal` | `Address.latitude` | Defined upstream. One match supplies both `latitude` and `longitude`; the mapping names a single property, so it names the first. |
 | `coordinates` | `coord.dms` | `Address.latitude` | As above. |

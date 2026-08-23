@@ -26,7 +26,7 @@ async function initPdfium() {
 //
 // Passing a URL for this process to fetch instead points it back at the website's own
 // HTTP port: the server asking itself for a document it already knows how to read. Such a
-// request is not a browser's — it carries no session cookie — so a download route that
+// request is not a browser's, and it carries no session cookie, so a download route that
 // requires one silently kills in-document search. The bytes travel over the connection
 // that asked for the search, and nothing here reaches back into the caller.
 async function searchPdfMultipleKeywords(pdfBytes, keywords) {

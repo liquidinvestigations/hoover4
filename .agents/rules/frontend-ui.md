@@ -9,7 +9,7 @@ paths: website/frontend/**
 **No emoji, anywhere in the interface.** Every glyph comes from the icon crate, so it scales,
 inherits colour, and renders identically on every platform. The families in use are listed in
 `website/frontend/Cargo.toml`; a family that is not enabled produces a compile error naming
-only the icon, which reads like a typo rather than a missing dependency — check the feature
+only the icon, which reads like a typo rather than a missing dependency. Check the feature
 list before assuming the name is wrong.
 
 **Structure queries never go through the search cache.** The collection's tree changes while
@@ -28,7 +28,7 @@ arrangement all live in the address, so any state is a link that can be sent. Fi
 an encoded parameter later must decode from an older link by taking their default, so an old
 bookmark keeps working rather than shifting every value after the missing one.
 
-**Surface a failed server call on the page.** A failure that collapses into an empty result
+**Show a failed server call on the page.** A failure that collapses into an empty result
 list is indistinguishable from a query that matched nothing, and the two need different
 reactions from the user.
 
@@ -51,4 +51,4 @@ rest, including the two input traps that make typing into this frontend silently
 
 Edit its row in `docs/technical-specification/interface/` in the **same patch**. A control
 with no row was never agreed; a row with no control is a lie. Layout, wording, colour and
-ordering are not specified there — only what a user can ask for.
+ordering are not specified there, only what a user can ask for.

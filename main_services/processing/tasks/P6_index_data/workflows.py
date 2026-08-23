@@ -176,7 +176,7 @@ class IndexDatasetPlan:
             task_queue=PLANNER_TASK_QUEUE,
         )
 
-        # Compaction, once per plan and only for the shards it wrote to — never in the
+        # Compaction, once per plan and only for the shards it wrote to, never in the
         # per-chunk loop, where it would compete with the writer for I/O on the table
         # being written. The statement itself is asynchronous, so this returns as soon as
         # the merges are queued.

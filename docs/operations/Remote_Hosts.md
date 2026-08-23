@@ -6,7 +6,7 @@ page describes how working on them differs from working locally.
 
 **It deliberately names neither.** Host names, addresses, users, ports, credentials, and the
 shape of the network in front of the demo box live in `INFRASTRUCTURE_INVENTORY.md` at the
-repository root — a local, gitignored file filled in from an interview with the operator.
+repository root, a local, gitignored file filled in from an interview with the operator.
 This tree is public; nothing from that file is copied into it, into a script, into a commit
 message, or into a log.
 
@@ -32,7 +32,7 @@ reproduces.
   something else. Every cleanup is scoped to this compose project; the project-scoped reset
   is safe for exactly that reason.
 - **Capture what no export reproduces, before any reset.** Collection display names and
-  visibility flags live only in the database — a reset plus a re-ingest gives back the
+  visibility flags live only in the database. A reset plus a re-ingest gives back the
   documents and not those.
 
 ## The demo box
@@ -41,7 +41,7 @@ The public deployment.
 
 - **It runs a different container engine from the workstation**, and that difference is the
   source of most surprises. A compose file the local engine accepts can be rejected outright
-  there — a duplicate mapping key is the recurring example — and some flags the local
+  there (a duplicate mapping key is the recurring example), and some flags the local
   workflow relies on do not exist. Validate a compose change against a strict parser before
   assuming a local success transfers.
 - **Another product's stack shares the container daemon.** An unscoped prune destroys it.
@@ -68,11 +68,11 @@ machine what it is running instead of assuming.
   the tier needs has a matching manifest, so architecture is rarely the real blocker.
 - **The one genuinely architecture-bound dependency is the tensor library.** The older pinned
   CUDA build has no wheel for that architecture and carries no kernels for that device
-  generation in any case; the newer index does, and it is the vision companion package — not
-  the tensor library itself — that selects the compatible version. Dropping the per-package
+  generation in any case; the newer index does, and it is the vision companion package, not
+  the tensor library itself, that selects the compatible version. Dropping the per-package
   pins around it is not an architecture concession: they conflict with the newer build on the
   workstation's architecture as well. When porting such a bump back, **test it first and
-  alone** — it is the only change that can regress a working host.
+  alone**. It is the only change that can regress a working host.
 - **Three failures there look architecture-specific and are not.** A network pre-created
   without the compose project's labels is adopted by one engine and refused by the other,
   which fails the whole bring-up. A service directory that does not exist takes the *entire*
@@ -86,10 +86,10 @@ machine what it is running instead of assuming.
 | local result | transfers? |
 |---|---|
 | the code compiles and the tests pass | yes |
-| a compose file parses and brings the stack up | **no** — a stricter engine rejects things the local one accepts |
-| a cleanup command is safe | **no** — a shared runtime turns an unscoped command into someone else's outage |
-| a path exists at the depth a script expects | **no** — corpus layout differs, which is what the ingest-root overrides are for |
-| a build takes N minutes | **no** — release mode and shared cores change it by a lot |
+| a compose file parses and brings the stack up | **no**, a stricter engine rejects things the local one accepts |
+| a cleanup command is safe | **no**, a shared runtime turns an unscoped command into someone else's outage |
+| a path exists at the depth a script expects | **no**, corpus layout differs, which is what the ingest-root overrides are for |
+| a build takes N minutes | **no**, release mode and shared cores change it by a lot |
 
 Whether local changes made on the GPU box during bring-up have been carried back into this
 repository is **not recorded anywhere**. Confirm against the tree before assuming the tier

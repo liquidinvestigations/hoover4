@@ -1,6 +1,6 @@
 ---
 name: running-consecutive-subagents
-description: Runs sub-agents the way this repository requires — one at a time, waited on, self-timeboxed, each with a hand-written work package and a report file of its own. Use before delegating anything to a sub-agent, and whenever asked to "fan out", "delegate", "coordinate", "run agents in parallel", "spawn a swarm", "organize this", or "have an agent do X". Covers what belongs in a work package, how to review a pass (read its diff, never its report), and the two cases where a sub-agent is the wrong tool entirely.
+description: Runs sub-agents the way this repository requires, one at a time, waited on, self-timeboxed, each with a hand-written work package and a report file of its own. Use before delegating anything to a sub-agent, and whenever asked to "fan out", "delegate", "coordinate", "run agents in parallel", "spawn a swarm", "organize this", or "have an agent do X". Covers what belongs in a work package, how to review a pass (read its diff, never its report), and the two cases where a sub-agent is the wrong tool entirely.
 allowed-tools: Task, Read, Write, Edit, Glob, Grep, Bash
 ---
 
@@ -14,15 +14,15 @@ whose failures are indistinguishable from each other in the logs.
 
 **One at a time. Waited on. Self-timeboxed. Hand-written work package. Report to a file.**
 
-- **One at a time** — never a swarm, never a parallel fan-out. Two agents editing this tree
+- **One at a time**, never a swarm, never a parallel fan-out. Two agents editing this tree
   produce a merge you did not plan and a stack you cannot attribute a failure in.
-- **Waited on** — the launching agent blocks on the result and reviews it before the next
+- **Waited on.** The launching agent blocks on the result and reviews it before the next
   pass starts. A pass that is not reviewed before the next one begins compounds its mistakes.
-- **Self-timeboxed** — the pass reports what it did not reach rather than running until it is
+- **Self-timeboxed**. The pass reports what it did not reach rather than running until it is
   stopped. **A self-timebox is a budget of effort and attention, not a clock**: passes
   reporting they had "roughly doubled" a one-hour box had used twenty-four minutes of it, and
   one reporting a "2.5× overrun" had used forty-seven. Ask a pass what it did not reach, never
-  how long it took — an agent's sense of its own elapsed time is a feeling, and wall clock has
+  how long it took. An agent's sense of its own elapsed time is a feeling, and wall clock has
   to come from outside it.
 - **One item per pass**, and two only when they are one item in a dependency chain that a
   single check closes. A brief listing five items has been measured to deliver one.
@@ -34,10 +34,11 @@ costs no slot, it keeps the context it has already paid for, and the work is fin
 than starting. Three of five briefs in the last sprint needed one, so budget half a pass for
 every item that is not a single mechanical change.
 
-A resume still gets **a written work package**, not a paragraph — a new file beside the first,
-answering the questions the pass raised and naming what it must not revisit.
-- **A hand-written work package** — a file, written before launch, not a paragraph typed into
-  the call. See `planning-work`'s prompt template.
+A resume still gets **a written work package** rather than a paragraph. It is a new file
+beside the first, answering the questions the pass raised and naming what it must not
+revisit.
+- **A hand-written work package.** This is a file, written before launch, and never a
+  paragraph typed into the call. See `planning-work`'s prompt template.
 - **A report file** beside the prompt, so the pair is visible in the directory listing.
 
 ## When a sub-agent is the wrong tool
@@ -54,14 +55,14 @@ answer is small, the reading is large, and a wrong answer is cheap to detect.
 
 Every pass needs all of this, because it starts with none of your context:
 
-1. **Role and scope** — what it owns, and what it must not touch.
+1. **Role and scope**. What it owns, and what it must not touch.
 2. **What to read first**, by path, and which decisions are settled and closed.
-3. **What is true now** — anything that has changed since the documents it will read were
+3. **What is true now**. Anything that has changed since the documents it will read were
    written.
-4. **The deliverable** — the exact output path and its required section list.
+4. **The deliverable**, the exact output path and its required section list.
 5. **The checks**, as runnable commands, with what their output must show.
-6. **The prohibitions, each with its reason** — especially anything unrecoverable: pushing,
-   publishing, deleting, deploying over live work.
+6. **The prohibitions, each with its reason**, especially anything unrecoverable: pushing,
+   publishing, deleting, or deploying over live work.
 
 Construct exactly what it needs. It does not inherit your session, and a package that assumes
 it does is a package with a hole in it.
@@ -89,5 +90,5 @@ tree.
 
 ## References
 
-- `reference/work-package-template.md` — the skeleton, and the sections that are always got
+- `reference/work-package-template.md`, the skeleton, and the sections that are always got
   wrong.

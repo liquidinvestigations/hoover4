@@ -173,7 +173,7 @@ fn SearchResultsView() -> Element {
 
     rsx! {
         // Partial-results notice: one or more shards could not be searched (see the
-        // backend fan-out partial-failure policy) — the list and the hit count may
+        // backend fan-out partial-failure policy). The list and the hit count may
         // be incomplete.
         if search_result.partial || hit_count_partial {
             div {

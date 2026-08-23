@@ -22,15 +22,15 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 
 Routes (see `website/frontend/src/routes.rs`):
 
-- `/ai_chat` — homepage ("What are you researching?") with recent-session cards and composer
-- `/ai_chat/history` — full conversation list
-- `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state` — transcript + document preview (60/40)
+- `/ai_chat`, homepage ("What are you researching?") with recent-session cards and composer
+- `/ai_chat/history`, full conversation list
+- `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`, transcript + document preview (60/40)
 
 Storage lives in the global ClickHouse database: `chat_sessions` (migration `00011`) and
 `chat_messages` (`00012`), plus `chat_message_stream` (`00018`) for in-flight output. The
 tool payload columns (`tool_input` / `tool_output` / `doc_refs` / `created_ms` /
 `agent_duration_ms`), `retry_errors`, the per-message `model`, the session `summary` and
-the frozen option flags are all declared in those two `CREATE TABLE`s — the migration set
+the frozen option flags are all declared in those two `CREATE TABLE`s. The migration set
 is collapsed, so do not look for them in `ALTER` files of their own.
 
 `retry_errors` is written by nothing today: retries are Temporal's and it does not report
@@ -66,12 +66,12 @@ The code defaults (`localhost:21936` / `localhost:21937`) are the loopback ports
 on the *host*, for running the website outside Docker. Inside the container `localhost` is
 the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
 internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
-agent itself was perfectly healthy — the same trap as `TEMPORAL_HTTP_URL`.
+agent itself was perfectly healthy. This is the same trap as `TEMPORAL_HTTP_URL`.
 
 The same switch also picks the **model**. Each agent profile has a `server_settings` key
-of its own — `llm_model_internal_search`, `llm_model_full_research`,
-`llm_summarization_model` — resolved by `admin::llm::model_for_profile`. **Unset means
-"use `llm_default_chat_model`"**, and an empty string is the same as unset — so a deployment
+of its own (`llm_model_internal_search`, `llm_model_full_research`,
+`llm_summarization_model`) resolved by `admin::llm::model_for_profile`. **Unset means
+"use `llm_default_chat_model`"**, and an empty string is the same as unset, so a deployment
 that never touches these keys runs one model everywhere. They exist because the profiles make
 different demands: one binds four tools and reads a handful of
 passages, the other binds thirty and reads the open web, and the summariser writes a chat
@@ -92,12 +92,12 @@ search cards under a tool disclosure are everything a search returned; the **Sou
 strip** beneath an answer is what the agent chose, and rendering the first in place of the
 second is what turns an answer into a pile of links.
 
-Each citation carries a handle — `[D1]`, `[D2]` — allocated per chat **session** by the
+Each citation carries a handle (`[D1]`, `[D2]`) allocated per chat **session** by the
 collection-search MCP server, so a handle from the first turn still resolves in the ninth.
 `markdown_text.rs` renders a bare `[Dn]` in the prose as a chip that scrolls the strip's
 entry into view and flashes it; `[D3](https://…)` is still a link, because the handle arm
 only fires when no `(` follows the `]`. The anchor id is minted by `source_anchor_id` and
-read by the strip — one function, because two spellings would scroll to nothing silently.
+read by the strip, one function, because two spellings would scroll to nothing silently.
 
 **A quote that does not verify is shown, marked, never dropped.** A model that stops citing
 is a worse outcome than a citation the reader can see is unverified.
@@ -120,13 +120,13 @@ nothing about it ever lived in the website's memory.
 
 The lock is `try_lock`: one turn at a time per session, and a second send is refused with
 a message rather than blocking a request. It only covers this process, so both entry
-points also ask `stream_state(...).active` — the same question the poller asks, and the
+points also ask `stream_state(...).active`. The same question the poller asks, and the
 one that holds across processes.
 
 | Piece | Where |
 |---|---|
 | dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE` |
-| the workflow | `main_services/processing/tasks/P_agent/workflows.py` — `ChatTurn` |
+| the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `ChatTurn` |
 | stream consumer, fold into rows | `main_services/processing/tasks/P_agent/stream_writer.py` |
 | stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
 | long-poll | `api::chat::poll_chat`, `RateLimitKind::ChatPoll` |
@@ -145,8 +145,8 @@ Three rules that are easy to break and hard to notice:
   aggregates (`Code: 184`); but `clickhouse::Row` also matches columns **by name**, so
   the aliases cannot simply be renamed. Aggregate as `last_*` inside, rename outside.
 - **Liveness comes from the transcript and the stream table, and from nothing in the
-  website.** `ChatPollResult` carries `active`, computed from `db_chat::turn_boundaries` —
-  a turn is open while the last user row has no assistant/error row after it — and from
+  website.** `ChatPollResult` carries `active`, computed from `db_chat::turn_boundaries`
+  (a turn is open while the last user row has no assistant/error row after it), and from
   how recently its stream rows moved. There is deliberately no registry of runs the
   website is holding, because there are none: a registry would empty on a restart while
   the turns themselves carried on, and every one of them would read as interrupted.
@@ -155,29 +155,29 @@ Three rules that are easy to break and hard to notice:
   killed with nothing open leaves a transcript that just stops, with no marker.
 
 Poll cadence: holds up to 15 s when nothing changes, and every poll after the first takes
-at least 500 ms — with content flowing each poll returns immediately, so without that
+at least 500 ms, with content flowing each poll returns immediately, so without that
 floor the client spins as fast as the network allows. Concurrently-held polls are capped
 per user (`MAX_HELD_POLLS_PER_USER`).
 
 **Rate limiting a poll loop is not rate limiting a person.** `RateLimitKind::ChatPoll` has
-a *flat* window ladder — factor 1.0 everywhere, unlike chat messages and API calls, whose
+a *flat* window ladder (factor 1.0 everywhere), unlike chat messages and API calls, whose
 budget decays the longer a burst lasts. That decay distinguishes a burst of human activity
 from an hour of it; a streaming turn polls at the 500 ms floor for as long as the model
 generates, so for this limiter "sustained" is simply "working". Under a decaying ladder
 one tab sits exactly on the one-hour window's ceiling and two or three trip it, at which
 point the page declares the chat lost mid-turn. The refusal is
-also typed — `rate_limited:<secs>`, parsed with `chat_types::rate_limited_seconds` — so the
+also typed (`rate_limited:<secs>`, parsed with `chat_types::rate_limited_seconds`), so the
 poll loop waits and retries instead of counting it toward `failures >= 3` and declaring
 "lost contact with the chat" while the turn is still running. The parser searches for the
 marker rather than stripping a prefix: `ServerFnError` may wrap the message.
 
 Stop and interruption: the composer's stop button is a **Temporal cancellation**, addressed
 to the workflow id the turn's reserved seq gives it. `ChatTurn` catches the cancellation
-and writes an ending into the transcript inside `asyncio.shield` — a cancelled workflow
+and writes an ending into the transcript inside `asyncio.shield`. A cancelled workflow
 that simply vanished would leave a user row with nothing after it, and the page would
 follow a turn that will never speak again. A turn whose rows stop advancing for
-`CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button
-— never a spinner, and never promoted into `chat_messages`. A stopped turn's partial answer
+`CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button,
+never a spinner, and never promoted into `chat_messages`. A stopped turn's partial answer
 is therefore never saved into the conversation: the agent writes `chat_messages` only when
 its run finishes, so a cancelled run has written none of them, and the partial survives only
 as a leftover stream row until the next question takes its seq. The transcript keeps the
@@ -191,7 +191,7 @@ rewrites that seq, keepalive included.
 
 A turn is bounded twice, and the two bounds do different jobs.
 
-**The activity** gets `start_to_close` 900 s and a 60-second heartbeat — much shorter than a
+**The activity** gets `start_to_close` 900 s and a 60-second heartbeat, much shorter than a
 research run's 2 400 s and 10 minutes. A chat turn somebody is watching that has produced
 nothing for a quarter of an hour is wedged, and failing it hands the answer slot back to
 them.
@@ -211,13 +211,13 @@ an agent that loops forever while still emitting events.
 **A total-request timeout is the wrong bound for a streamed run**, and getting this wrong
 is expensive to diagnose. A healthy internet-tools turn is a dozen provider calls at
 50–120 s each; cutting it at a total makes the client report a body error whose message is
-indistinguishable from a corrupt stream — while the agent, which never learns the reader
+indistinguishable from a corrupt stream, while the agent, which never learns the reader
 left, keeps working for another quarter of an hour and writes a full set of `ok = 1` rows
 into `llm_call_events`. Log the error's whole cause chain and its timeout flag, never the
 message alone.
 
 Retries are Temporal's: the agent activity gets two attempts, and a worker that dies
-mid-turn does not consume one — the activity is rescheduled on whichever worker picks it
+mid-turn does not consume one. The activity is rescheduled on whichever worker picks it
 up, which is the durability the whole shape exists for. A turn that ends in an error
 writes an `error` row into the transcript *and* logs at ERROR with the session and the
 turn uuid. A failure whose only record is a row in `chat_messages` is a failure nobody
@@ -233,7 +233,7 @@ nothing is the correct failure.
 
 Naming a conversation is not a reasoning problem, and a reasoning model given one spends
 its whole token budget on the thought and returns nothing usable. The request therefore
-carries a hint asking the model not to think — sent as a hint and dropped on a refusal,
+carries a hint asking the model not to think. Sent as a hint and dropped on a refusal,
 because a provider that has never heard of it rejects the whole request and a summariser
 that fails on every call is exactly what the telemetry row exists to make visible. Every
 outcome, including a discarded answer, writes a row into `llm_call_events` with `ok = 0`:
@@ -241,8 +241,8 @@ a model that hits its token limit every time must not look like one that never r
 
 ## Admin: live chats
 
-`/admin/metrics` lists the agent turns running right now — user, conversation, both
-switches, elapsed time — with a **Kill** button. It is a **Temporal visibility query**, so
+`/admin/metrics` lists the agent turns running right now (user, conversation, both
+switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query**, so
 it is true in both directions across a website restart: it does not lose the turns that
 were already running, and it does not keep listing one whose process died. Chat turns and
 research turns are both there, because both are workflows.
@@ -257,8 +257,8 @@ The events-per-hour bars on `/admin/metrics` and the ETA lines on a collection's
 processing page are hand-written SVG, and two traps come with that.
 
 **A `<title>` inside `<svg>` has to be built in the SVG namespace, and `dioxus-html` has
-no such element.** It declares `title` in the HTML namespace only — the SVG twin collides
-on the Rust identifier and is commented out in that crate — so `title { … }` written
+no such element.** It declares `title` in the HTML namespace only (the SVG twin collides
+on the Rust identifier and is commented out in that crate), so `title { … }` written
 inside a chart is created with `createElement` and lands in the document as an
 `HTMLTitleElement`. Inside `<svg>` that is a foreign element: not rendered, not a tooltip,
 and no warning on any build. `components::svg_title` declares the missing element by
@@ -267,8 +267,8 @@ shadowing the `dioxus_elements` module rsx resolves against, and the charts use
 are readable, because the axis deliberately drops the date.
 
 **Keys among SVG siblings are positions, never labels.** Two axis ticks can legitimately
-carry the same text — three ticks all read `0s` on a finished pipeline, and the 24 h window
-spans 25 hourly buckets so its two ends print the same `HH:MM` — and duplicate keys among
+carry the same text (three ticks all read `0s` on a finished pipeline, and the 24 h window
+spans 25 hourly buckets so its two ends print the same `HH:MM`), and duplicate keys among
 keyed siblings are a `debug_assert` in dioxus-core that kills the renderer on the next
 re-diff, then puts *App panicked!* on the next page the operator opens. A release build
 does not assert; it re-associates the wrong nodes instead. Both charts key by tick index.
@@ -301,15 +301,15 @@ one session can pick the same number. Three mechanisms stand behind it, and all 
 required:
 
 * **the session's `db_chat::turn_lock`**, which serialises allocation within this process.
-  It is an in-process lock and it is released when the request handler returns — long
+  It is an in-process lock and it is released when the request handler returns. Long
   before the worker writes the answer;
 * **`next_seq` counts `chat_message_stream` too**, not only `chat_messages`. Every turn
   allocates its answer seq up front and reserves it as a *stream* row; the transcript row
   appears when the workflow finishes. The lock cannot cover that gap (it went with the
   handler), so a `next_seq` reading only `chat_messages` handed the reserved seq to the
   next send and ReplacingMergeTree silently kept one of the two messages. Both entry
-  points also refuse outright while `stream_state(...).active` — the same question the
-  poller asks;
+  points also refuse outright while `stream_state(...).active`, which is the same question
+  the poller asks;
 * **`next_seq` starts a fresh session at 1, not 0.** ClickHouse's `max()` over an empty
   `UInt32` column is 0 rather than NULL, so "no rows yet" and "one row at seq 0" produce
   the same number. Whether a session is on its first turn is read from the transcript,
@@ -317,7 +317,7 @@ required:
 * **`message_uuid`** (migration `00021`), shared by every row of a turn and **read** rather
   than merely written: `db_chat::detect_seq_collision` looks for a second uuid at the seq just claimed
   and refuses the turn if it finds one, so the user resends instead of losing a message. It
-  reads without `FINAL` on purpose — `FINAL` collapses away the evidence. **A write-only
+  reads without `FINAL` on purpose: `FINAL` collapses away the evidence. **A write-only
   collision detector is worse than none, because it reads as covered.**
 
 ## Tool-event payload shapes
@@ -336,7 +336,7 @@ was still running was labelled "tool".
 `search_collections` hits carry `collection_dataset` + `file_hash` (the
 `DocumentIdentifier` key used by the document-preview stack).
 
-Note there is **no tool name on a start event** — it appears only at `output.name` on the
+Note there is **no tool name on a start event**. It appears only at `output.name` on the
 end event, which is why the events have to be paired before a call can be labelled at all.
 
 This format is parsed in two places in the worker, and they must agree:

@@ -2,7 +2,7 @@
 //!
 //! Separate from `download_document` because the two resolve the object completely
 //! differently. A document is a `blobs` row (sometimes with its bytes in ClickHouse); a
-//! derived PDF has **no** `blobs` row at all — `pdf_ocr_results` is the sole index of its
+//! derived PDF has **no** `blobs` row at all: `pdf_ocr_results` is the sole index of its
 //! existence, by design, because a `blobs` row under `derived/` is what would let the
 //! ingest walker find the object and start the re-derive loop.
 //!
@@ -76,7 +76,7 @@ async fn _download_ocr_pdf(
         lookup_blob_key(&collection_dataset, &pdf_hash, &engine, &languages).await?;
 
     // The derived object is in the collection's own bucket, beside the source PDF it was
-    // built from — not in a single shared one, which would make one collection's derived
+    // built from, not in a single shared one, which would make one collection's derived
     // material reachable while reading another's.
     let collectionname = crate::db_utils::collectionname_of_dataset(&collection_dataset).await?;
     let bucket = crate::db_utils::collection_bucket(&collectionname);
@@ -128,8 +128,8 @@ pub async fn download_ocr_pdf(
             // `pdf_ocr_results` said existed, and a purge between the page load and the
             // click is a normal race rather than a broken server. An unknown dataset is
             // the same answer and reaches here from `get_client_for_dataset`, which is
-            // why this asks `guard::is_not_found` rather than matching one message —
-            // matching one message leaves every unknown dataset 500ing on this route.
+            // why this asks `guard::is_not_found` rather than matching one message.
+            // Matching one message leaves every unknown dataset 500ing on this route.
             let message = e.to_string();
             if guard::is_not_found(&e) {
                 return (StatusCode::NOT_FOUND, Body::from(message)).into_response();

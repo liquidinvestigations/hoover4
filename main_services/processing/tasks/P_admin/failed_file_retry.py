@@ -2,7 +2,7 @@
 
 ``processing_plan_finished`` records a plan as finished when its stages have *run*,
 not when every document in it succeeded: a stage that records per-document errors
-without failing the plan — P4 entity extraction is the common case — still lets the
+without failing the plan (P4 entity extraction is the common case), still lets the
 plan finish. So re-submitting ``execute-plans`` is a no-op for exactly the failures
 an operator is most likely looking at, and before this module the only recovery was
 re-ingesting the dataset under a new name, which leaves the old name's rows behind in
@@ -11,14 +11,14 @@ Manticore for ever.
 The unit of recovery here is the **file hash**, taken from ``processing_errors``.
 What actually re-runs is the stage that failed, for the plans those hashes belong to:
 
-* ``nlp``   — clear the ``nlp_processed`` watermarks (and any ``entity_hit`` rows) of
+* ``nlp``, clear the ``nlp_processed`` watermarks (and any ``entity_hit`` rows) of
   the failed hashes, then ``ExtractEntitiesForPlan`` + ``IndexDatasetPlan``. The
   watermark is the only reason P4 skips a page it has seen, so clearing it for those
   hashes and no others is what makes the plan re-run touch only the failed documents.
-* ``embed`` — ``ChunkEmbedForPlan`` + ``IndexDatasetPlan``; both stages are idempotent
+* ``embed``: ``ChunkEmbedForPlan`` + ``IndexDatasetPlan``; both stages are idempotent
   and skip what is already embedded, so no state has to be cleared first.
-* ``index`` — ``IndexDatasetPlan`` alone.
-* ``plan``  — the parse stages. There is no per-file entry point into P3: the file has
+* ``index``: ``IndexDatasetPlan`` alone.
+* ``plan``, the parse stages. There is no per-file entry point into P3: the file has
   to be downloaded and re-parsed, which is the plan's job. Retrying these means
   deleting the finished marker and re-running ``ExecutePlans``, which re-processes
   every document of the affected plans.
@@ -31,7 +31,7 @@ reverse leaves a page watermarked with no entities and it is never looked at aga
 page count its **rows**, so a retry that fails the same way must not leave a second copy
 behind: the failure count a visitor reads would double, and again on the next retry.
 One row per ``(document, task)`` is the invariant, kept by
-:func:`partition_retry_result` + :func:`drop_superseded_error_rows` — the run's own row
+:func:`partition_retry_result` + :func:`drop_superseded_error_rows`, the run's own row
 survives and the row it replaces is deleted.
 """
 
@@ -59,7 +59,7 @@ _TASK_RETRY_KIND = {
 }
 
 # Hashes per ClickHouse query. A hash list goes into ONE query parameter, and the
-# server rejects a parameter over 128 KiB — 4 392 failed hashes of 40 characters is
+# server rejects a parameter over 128 KiB. 4 392 Failed hashes of 40 characters is
 # already past it. Sized by bytes, not by "that looks like a lot".
 HASH_CHUNK = 500
 
@@ -152,7 +152,7 @@ def plans_for_hashes(collectionname: str, collection_dataset: str, hashes) -> li
 def clear_nlp_state(collectionname: str, collection_dataset: str, hashes) -> tuple[int, int]:
     """Delete the NER watermarks and entity rows of `hashes`. Returns (watermarks, hits).
 
-    Watermarks first, then the hits — see the module docstring. `mutations_sync=2`
+    Watermarks first, then the hits. See the module docstring. `mutations_sync=2`
     because the re-run that follows depends on the deletes having landed, and an
     `ALTER TABLE ... DELETE` is asynchronous by default.
     """
@@ -239,12 +239,12 @@ def hashes_without_entities(collectionname: str, collection_dataset: str, hashes
 class RetryOutcome(NamedTuple):
     """What happens to each retried hash's ``processing_errors`` rows.
 
-    * ``recovered`` — nothing new was recorded and the kind's own verification passed:
+    * ``recovered``. Nothing new was recorded and the kind's own verification passed:
       every row of that document goes.
-    * ``superseded`` — the re-run recorded a fresh error row, so the rows it replaces go
+    * ``superseded``. The re-run recorded a fresh error row, so the rows it replaces go
       and the new one stays. This is what keeps a repeated failure at one row instead of
       one more row per attempt.
-    * ``unchanged`` — still broken but the re-run recorded nothing (it died before it
+    * ``unchanged``, still broken but the re-run recorded nothing (it died before it
       could): the original row is the only evidence there is and is left alone.
     """
 

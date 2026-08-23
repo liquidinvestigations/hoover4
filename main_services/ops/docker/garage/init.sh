@@ -12,7 +12,7 @@ ADMIN="http://garage:3903"
 ZONE="${GARAGE_ZONE:-dc1}"
 CAPACITY="${GARAGE_CAPACITY:-300G}"
 # Only the system bucket is bootstrapped. There is a bucket per collection and the
-# application creates each one with its collection — which is why the key is granted
+# application creates each one with its collection, which is why the key is granted
 # --create-bucket below rather than being handed a fixed list.
 BUCKET="${S3_SYSTEM_BUCKET:-hoover4-system}"
 KEY_NAME="${S3_KEY_NAME:-hoover4}"

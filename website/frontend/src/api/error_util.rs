@@ -6,7 +6,7 @@ use dioxus::prelude::ServerFnError;
 /// The one sentence to put in front of a reader when a server call failed.
 ///
 /// Neither of the derived renderings is usable on a page. `Debug` prints the whole
-/// struct — `ServerError { message: "…", code: 500, details: None }` — and `Display`
+/// struct: `ServerError { message: "…", code: 500, details: None }`, and `Display`
 /// still wraps the message in *error running server function: … (details: …)*. The
 /// backend already writes `message` for a person; everything around it is machinery.
 ///

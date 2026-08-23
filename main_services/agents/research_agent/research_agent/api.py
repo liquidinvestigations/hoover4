@@ -98,8 +98,8 @@ class HealthResponse(BaseModel):
 def _trace_span(agent, message_id: str, query: str):
     """Yield a Langfuse span, or `None` when tracing is not configured.
 
-    Langfuse is optional infrastructure. Making the chat endpoint depend on it — as it
-    did — turns "no observability credentials" into "no chat", which is the wrong
+    Langfuse is optional infrastructure. Making the chat endpoint depend on it (as it
+    did) turns "no observability credentials" into "no chat", which is the wrong
     trade-off for a self-hosted deployment.
     """
     handler = getattr(agent, "langfuse_handler", None)
@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI):
         "agent_name": os.getenv("AGENT_NAME", "Research Agent"),
         # `SYSTEM_PROMPT` only, and empty when it is not set. The prompt itself is
         # rendered per graph from the tools that graph binds, which is not known until
-        # the MCP connections are open — see research_agent/prompts/ for why a prompt is
+        # the MCP connections are open. See research_agent/prompts/ for why a prompt is
         # a function of the deployment rather than a constant.
         "system_prompt": system_prompt_override(),
         # The profile by name, separately from its prompt: it also decides whether this

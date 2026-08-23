@@ -2,10 +2,10 @@
 
 **Captures are explicit.** `browser_take_screenshot` and `browser_snapshot` produce one;
 nothing else does. Capturing after every action that could change the screen means a
-screenshot plus an MHTML serialisation after almost every click — tens of rows and over
-ten megabytes in a single day of demo use, most of them of pages nobody will ever open.
+screenshot plus an MHTML serialisation after almost every click, which is tens of rows and
+over ten megabytes in a single day of demo use, most of them of pages nobody will ever open.
 
-The argument for implicit capture is real — "the transcript must not depend on the
+The argument for implicit capture is real. "The transcript must not depend on the
 model's judgement", and a model that forgets to screenshot the CAPTCHA it hit leaves a
 transcript where the failure is invisible. Explicit still wins, because the browser cards
 render an explicit snapshot well enough that asking the model to take one is a reasonable
@@ -37,7 +37,7 @@ asks to look is the cost control.
 **Do not add body-key reuse on top of it.** Deduplicating a capture whose
 `(url, document.lastModified)` matches the previous one in the same chat looks free, but
 two explicit snapshots of the same page are a deliberate act, and pointing the second at
-the first one's bytes makes two `chat_artifacts` rows share an object — the retention
+the first one's bytes makes two `chat_artifacts` rows share an object. The retention
 sweeper then has to be careful never to delete one out from under the other. (It is
 careful, because transcripts contain rows written that way.)
 """
@@ -72,7 +72,7 @@ CAPTURE_TIMEOUT = float(os.getenv("CAPTURE_TIMEOUT_SECONDS", "20"))
 #:
 #: This matters most on the path the whole "capture on failure" rule exists for. A
 #: navigation that timed out leaves the page still loading, and `Page.captureSnapshot`
-#: then blocks until the load settles — so a single shared deadline burned the entire
+#: then blocks until the load settles, so a single shared deadline burned the entire
 #: budget on the snapshot and the *screenshot never happened*. The one case where the
 #: evidence is most valuable produced no evidence at all. Now the screenshot is taken
 #: first, under its own short deadline, and the snapshot gets what is left.
@@ -80,8 +80,8 @@ IDENTITY_TIMEOUT = float(os.getenv("CAPTURE_IDENTITY_TIMEOUT_SECONDS", "5"))
 SCREENSHOT_TIMEOUT = float(os.getenv("CAPTURE_SCREENSHOT_TIMEOUT_SECONDS", "8"))
 SNAPSHOT_TIMEOUT = float(os.getenv("CAPTURE_SNAPSHOT_TIMEOUT_SECONDS", "12"))
 
-#: The only two tools after which a capture is taken — the two whose entire purpose is to
-#: record what is on screen. Keep it that size — see the module docstring for what a
+#: The only two tools after which a capture is taken, the two whose entire purpose is to
+#: record what is on screen. Keep it that size. See the module docstring for what a
 #: capture-after-every-tool list costs.
 CAPTURING_TOOLS = frozenset({"browser_take_screenshot", "browser_snapshot"})
 
@@ -145,13 +145,13 @@ async def _capture(
         url, title = await asyncio.wait_for(_page_identity(tab), timeout=IDENTITY_TIMEOUT)
     except Exception:  # noqa: BLE001 - includes asyncio.TimeoutError
         # A page mid-navigation will not run our script. The target's own URL is still
-        # worth recording — a capture that cannot say *which* page it is of is useless.
+        # worth recording, a capture that cannot say *which* page it is of is useless.
         url = getattr(getattr(tab, "target", None), "url", "") or ""
         title = ""
 
     result = CaptureResult(url=url, title=title)
 
-    # 1. Screenshot FIRST, always — including on the failure path, and under its own
+    # 1. Screenshot FIRST, always, including on the failure path, and under its own
     #    deadline. See the module docstring and the note on SCREENSHOT_TIMEOUT.
     thumb: tuple[str, bytes, str] | None = None
     try:
@@ -186,7 +186,7 @@ async def _capture(
             if not result.title:
                 result.title = mhtml_mod.page_title(converted.html)
     except asyncio.TimeoutError:
-        # The page is still loading — which is exactly the situation a failed
+        # The page is still loading, which is exactly the situation a failed
         # navigation leaves behind. The screenshot above is the evidence; say so
         # rather than dropping the artifact.
         status = artifacts.STATUS_FAILED
@@ -208,7 +208,7 @@ async def _capture(
 
     # `to_thread`: `artifacts.write` is several synchronous S3 PUTs (screenshot, MHTML,
     # thumbnail) followed by a ClickHouse insert, and a page capture is megabytes. On the
-    # event loop that stalls every other chat's browser I/O — including their navigation
+    # event loop that stalls every other chat's browser I/O, including their navigation
     # timeouts, which then expire on a page that was never actually slow.
     artifact_id = await asyncio.to_thread(
         artifacts.write,
@@ -232,7 +232,7 @@ async def _capture(
     return result
 
 
-# ------------------------------------------------------------------ CDP plumbing
+# ------------------------------------------------------------------ CDP calls
 
 async def _active_tab(chat: ChatBrowser):
     """The tab the sidecar is driving.
@@ -291,7 +291,7 @@ async def _screenshot(tab) -> bytes:
 
 
 def _to_webp(png: bytes) -> bytes:
-    """Downscale and re-encode. Falls back to the PNG when Pillow is unavailable — a
+    """Downscale and re-encode. Falls back to the PNG when Pillow is unavailable, a
     larger thumbnail is better than no evidence."""
     try:
         from PIL import Image

@@ -329,8 +329,8 @@ class ParseSingleFile:
             # One OCR activity per engine, on the engine-neutral OCR queue. Which
             # languages each engine runs -- and whether it runs at all -- is decided
             # inside the activity from `dataset_settings`, not here: a workflow argument
-            # would freeze the value at schedule time, and the whole point of the apply
-            # job is to reach activities that are already in flight.
+            # would freeze the value at schedule time, and the apply job
+            # exists to reach activities that are already in flight.
             #
             # An engine with no endpoint configured records a skip and succeeds, so this
             # fan-out costs nothing on a box with no GPU tier.

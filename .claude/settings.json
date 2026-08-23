@@ -27,6 +27,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/deny-claudisms.py",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [

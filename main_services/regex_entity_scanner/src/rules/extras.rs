@@ -1,7 +1,7 @@
 //! Identifiers whose surface form announces what they are: CVE ids, DOIs, ORCIDs, message ids.
 //!
 //! These are the cheapest precise rules in the set, and they are cheap for one reason: a literal
-//! prefix or a fixed delimiter does the work that a check digit does elsewhere. `CVE-`, `10.` and
+//! prefix or a fixed delimiter gives the same certainty that a check digit gives elsewhere. `CVE-`, `10.` and
 //! a pair of angle brackets are not things that occur by accident around the right number of
 //! characters, so the validator's job is mostly to confirm the shape and normalise it.
 
@@ -12,7 +12,7 @@ use crate::rules::checksum::iso7064;
 use crate::rules::{Candidate, Rule, Verdict};
 
 /// The header names that make an angle-bracketed addr-spec a message id. Without one it is an
-/// author or a recipient — `From: Anna Popescu <anna@example.co.uk>` has exactly the same shape —
+/// author or a recipient: `From: Anna Popescu <anna@example.co.uk>` has exactly the same shape,
 /// and reading that as a message id both invents an entity and hides the address.
 const MESSAGE_ID_HEADERS: &[&str] = &[
     "Message-ID",
@@ -85,7 +85,7 @@ impl Rule for CveRule {
                 parts,
             },
             confidence: 0.99,
-            // The prefix is decisive, and there is no arithmetic behind it — both facts are worth
+            // The prefix is decisive, and there is no arithmetic behind it, both facts are worth
             // reporting, so the confidence is high and the flag says why it is not a checksum.
             flags: vec![Flag::NoChecksum],
         })
@@ -211,7 +211,7 @@ pub struct MessageIdRule;
 /// address, so they are in the pattern and in the span, and not in the value.
 ///
 /// The right side is not required to be a domain. RFC 5322 §3.6.4's `id-right` admits a bare
-/// `dot-atom-text`, and a real internal mail system emits exactly that — `<…@thyme>`,
+/// `dot-atom-text`, and a real internal mail system emits exactly that: `<…@thyme>`,
 /// `<foo@localhost>`. A registered top-level domain is a plausible-looking guard here but it is the
 /// wrong one: it turns away well-formed identifiers, and the header label is what carries the
 /// precision.
@@ -221,7 +221,7 @@ const MESSAGE_ID_PATTERN: &str =
 /// Whether one of the header names labels this candidate.
 ///
 /// Proximity is not a label. A header name to the right of a value, or one with prose between it
-/// and the value, says nothing about it — `Please quote the Message-ID when you reply to
+/// and the value, says nothing about it: `Please quote the Message-ID when you reply to
 /// <legal@example.com>` names an address. So the walk left from the candidate crosses only what a
 /// header value may legitimately contain before its first token: whitespace, the folding line
 /// break, list punctuation, and complete angle-bracketed groups, which is the `References:` list

@@ -3,7 +3,7 @@
 Same shape as `main_services/processing/tasks/remote.py`: a **2 s connect timeout** so a
 dead host is noticed in seconds, and a **circuit breaker** so it is noticed once rather
 than once per search. Without the breaker every query pays a connect timeout while the
-GPU box is down, and the whole point of reranking — better ordering, cheaply — inverts.
+GPU box is down, and reranking stops giving better ordering cheaply and starts costing more than it saves.
 
 Two rules the plan states explicitly and that read identically to their wrong versions:
 
@@ -29,7 +29,7 @@ from agent_common import telemetry
 
 log = logging.getLogger(__name__)
 
-#: Dead-host detection, in seconds. Never inherit the read timeout here — see AGENTS.md
+#: Dead-host detection, in seconds. Never inherit the read timeout here. See AGENTS.md
 #: on timeout units.
 CONNECT_TIMEOUT = float(os.getenv("GPU_CONNECT_TIMEOUT_MS", "2000")) / 1000.0
 
@@ -128,7 +128,7 @@ def rerank(query: str, documents: list[str], model: str | None = None) -> tuple[
 
     Returns `(scores, elapsed_ms)`. `scores[i].index` points back into `documents`.
     Raises :class:`RerankUnavailable` on anything that stops a real ranking being
-    produced — an empty list would be indistinguishable from "everything scored zero".
+    produced. An empty list would be indistinguishable from "everything scored zero".
     """
     import requests
 
@@ -180,7 +180,7 @@ def rerank(query: str, documents: list[str], model: str | None = None) -> tuple[
         raise RerankUnavailable(f"rerank timed out after {READ_TIMEOUT:g}s") from exc
 
     elapsed_ms = (time.monotonic() - started) * 1000.0
-    # Every outcome, not just the good one — see `telemetry`. A capability that only
+    # Every outcome, not just the good one, see `telemetry`. A capability that only
     # writes rows when it works reads as idle exactly while it is broken.
     telemetry.record_async(
         "rerank", provider=url, latency_ms=elapsed_ms, ok=response.status_code == 200,

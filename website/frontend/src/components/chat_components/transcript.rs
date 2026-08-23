@@ -88,7 +88,7 @@ pub fn ChatTranscript(
                         style: "display: flex; flex-direction: column; gap: 8px;",
                         ToolCard {
                             tool_name: tool.tool_name.clone(),
-                            // A stream row has no payload columns — the arguments and
+                            // A stream row has no payload columns. The arguments and
                             // result are written only when the call finalises into
                             // chat_messages. Its `summary` *is* the arguments JSON while
                             // the call runs (`AgentToolCall::summary` takes `input`
@@ -110,7 +110,7 @@ pub fn ChatTranscript(
                         style: "align-self: stretch; max-width: 96%; padding: 4px 2px;",
                         MarkdownishText { text: turn.content.clone() }
                         // The cursor marks this as the live tail rather than a finished
-                        // answer — identical content, different promise.
+                        // answer, identical content, different promise.
                         if stream_live {
                             span { style: "color: #4F46E5;", "\u{258D}" }
                         }
@@ -319,7 +319,7 @@ fn MessageEntry(
                             max-width: 88%; border: 1px solid #FECACA; padding: 10px 14px; \
                             border-radius: 12px; {ring}",
                     div { "{message.content}" }
-                    // The final error is often the least informative of the set — a
+                    // The final error is often the least informative of the set. A
                     // timeout that followed a real 500 says much less than the 500 did.
                     // The list is every attempt including the one quoted above, so it is
                     // labelled by what it holds: reading it as "earlier" attempts turned
@@ -341,7 +341,7 @@ fn MessageEntry(
     }
 }
 
-/// The model's reasoning trace, collapsed by default — it narrates how the answer was
+/// The model's reasoning trace, collapsed by default. It narrates how the answer was
 /// produced and is never part of the answer body.
 #[component]
 fn ReasoningDisclosure(reasoning: String) -> Element {
@@ -375,8 +375,8 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
 /// Collapsed by default because a search result set is *evidence for* the answer, not
 /// the answer: one `search_collections` call rendered 46 document cards with a 400-
 /// character preview each, so a page holding a 31-character answer was 22 168 characters
-/// of scrolling. The summary line carries the two facts worth having without opening it —
-/// which tool ran and how many documents it found — because a bare chevron makes the
+/// of scrolling. The summary line carries the two facts worth having without opening it
+/// (which tool ran and how many documents it found), because a bare chevron makes the
 /// reader open every one of them to find out whether it is worth opening.
 #[component]
 fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {

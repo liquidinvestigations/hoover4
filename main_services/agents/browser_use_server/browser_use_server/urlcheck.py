@@ -4,12 +4,12 @@
 *inside* the `hoover4` podman network, where `clickhouse:8123`, `temporal:7233`,
 `manticore:9308` and every MCP server answer unauthenticated HTTP. A fetcher that will
 retrieve any URL it is handed is, from inside that network, an arbitrary read of the
-whole stack — and the URL can arrive from a web page the model was asked to summarise,
+whole stack, and the URL can arrive from a web page the model was asked to summarise,
 so "the user would not do that" is not a defence.
 
 The rules, in order:
 
-* scheme must be http or https — no `file://`, `chrome://`, `data:`, `ftp://`
+* scheme must be http or https, no `file://`, `chrome://`, `data:`, `ftp://`
 * the host must resolve, and **every** address it resolves to must be public
 * no loopback, link-local, private, multicast, reserved or unspecified address
 * an explicit deny-list of the service names on this network, so a name that somehow
@@ -37,7 +37,7 @@ ALLOWED_SCHEMES = frozenset({"http", "https"})
 #: Hostnames on the `hoover4` network that must never be fetched, whatever they resolve
 #: to. Belt to the address check's braces, and the thing that makes the intent readable.
 #:
-#: Also the source :mod:`.netfilter` builds the sidecar's blocked-origin list from — one
+#: Also the source :mod:`.netfilter` builds the sidecar's blocked-origin list from, one
 #: list, so the two lines of defence cannot drift apart.
 DENIED_HOSTS = frozenset(
     {
@@ -97,7 +97,7 @@ def check_url(url: str) -> str:
         addresses = [host]
     except ValueError:
         if os.getenv("BROWSER_SKIP_DNS_CHECK") == "1":
-            # Escape hatch for offline unit tests only. Never set in compose.
+            # Exempt for offline unit tests only. Never set in compose.
             return url
         try:
             infos = socket.getaddrinfo(host, None)
@@ -119,7 +119,7 @@ def check_url(url: str) -> str:
 
 
 #: Tool arguments that carry a URL. Every one of them is checked before the call reaches
-#: the sidecar — `browse_page` was the only navigating tool when this module was written,
+#: the sidecar: `browse_page` was the only navigating tool when this module was written,
 #: and the Playwright surface added two dozen more. A new navigating tool with an argument
 #: name that is not in this set would slip past the boundary, so keep it wide: an argument
 #: that merely *looks* like a URL and is checked costs nothing.
@@ -131,7 +131,7 @@ def check_tool_arguments(tool_name: str, arguments: dict) -> None:
 
     This is the boundary for the whole Playwright surface. It runs in the **router**,
     before the call reaches the sidecar, because the sidecar's own `--blocked-origins` is
-    documented as not being a security boundary — it is the second line, this is the
+    documented as not being a security boundary. It is the second line, and this is the
     first.
 
     Values that are not http/https-shaped are left alone rather than refused: Playwright's

@@ -1,11 +1,11 @@
-# Garage — the S3 blob store
+# Garage: the S3 blob store
 
 Single-node [Garage](https://garagehq.deuxfleurs.fr/) on `garage:3900`.
 
 **One bucket per collection, plus one system bucket.** A collection's objects are in
 `hoover4-c-<collectionname>`: its ingested blobs under `<collection_dataset>/<blob_hash>`
-and its OCR'd PDFs under `derived/...`. Everything belonging to no collection — chat
-artifacts — is in `hoover4-system`. `blobs.s3_path` stores the full `s3://<bucket>/<key>`,
+and its OCR'd PDFs under `derived/...`. Everything belonging to no collection (chat
+artifacts) is in `hoover4-system`. `blobs.s3_path` stores the full `s3://<bucket>/<key>`,
 so a reader takes the bucket from the path rather than from its own configuration.
 
 Per-collection *stores* are not possible: Garage has one shared metadata database and
@@ -27,8 +27,8 @@ to ask whether the application can reach it.
 
 Files here:
 
-- `garage.toml` — the daemon's config, bind-mounted read-only.
-- `Dockerfile` + `init.sh` — the `garage-init` one-shot that turns a blank node into a
+- `garage.toml`, the daemon's config, bind-mounted read-only.
+- `Dockerfile` + `init.sh`, the `garage-init` one-shot that turns a blank node into a
   usable cluster.
 
 ## The region is not cosmetic
@@ -60,7 +60,7 @@ refusal happens at bootstrap rather than at first use.
 partitions"* with a 503 on a node that has never been bootstrapped, because a node with
 no layout owns no partitions. Assigning that layout is the bootstrap's own first job, so
 waiting for a 200 there before bootstrapping deadlocks on exactly the case the bootstrap
-exists for. `init.sh` polls `/v2/GetClusterStatus` for a node id instead — which is both
+exists for. `init.sh` polls `/v2/GetClusterStatus` for a node id instead, which is both
 the real readiness signal and the next thing it needs. Once a layout is applied, `/health`
 answers 200 and is a fine liveness probe.
 
@@ -104,7 +104,7 @@ docker exec garage /garage key info <access key>
 docker exec garage /garage layout show            # no staged changes on a settled node
 ```
 
-`NO ROLE ASSIGNED` in `status` means the bootstrap did not run or did not finish — read
+`NO ROLE ASSIGNED` in `status` means the bootstrap did not run or did not finish. Read
 `docker logs garage-init`.
 
 ## Navigation

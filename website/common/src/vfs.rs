@@ -88,7 +88,7 @@ pub struct VfsListing {
 ///
 /// `node_key := "{collection_dataset}\x1f{container_hash}\x1f{path}"`. It cannot occur
 /// in a dataset id or in a path the ingest accepts, which is what makes the key
-/// unambiguous — the bare path `/data` is the same string in every dataset and inside
+/// unambiguous. The bare path `/data` is the same string in every dataset and inside
 /// every archive. The Python side builds the same key in
 /// `tasks/P6_index_data/vfs_nodes.py`.
 pub const NODE_KEY_SEPARATOR: char = '\u{1f}';
@@ -178,7 +178,7 @@ pub struct VfsFileLocation {
 }
 
 impl VfsFileLocation {
-    /// The folder that holds this file — where the storage browser opens to show it.
+    /// The folder that holds this file, where the storage browser opens to show it.
     ///
     /// From the chain's second-to-last node when there is one, because that hop already
     /// knows whether the parent is a plain folder or a container the browser has to step
@@ -231,7 +231,7 @@ pub fn dataset_root_key(collection_dataset: &str) -> String {
 ///
 /// The dataset is the first field of the key by construction, so a caller holding a
 /// selection of keys from several datasets can route each one to its own dataset without
-/// carrying a parallel list — which is what the unified tree's picker does.
+/// carrying a parallel list, which is what the unified tree's picker does.
 pub fn dataset_of_node_key(node_key: &str) -> Option<&str> {
     node_key.split(NODE_KEY_SEPARATOR).next().filter(|d| !d.is_empty())
 }
@@ -247,14 +247,14 @@ pub fn node_key_is_in_dataset(node_key: &str, collection_dataset: &str) -> bool 
 
 /// A node key as a person reads it: the path, or the dataset id for a dataset root.
 ///
-/// A key is machine text — two unit separators and a container hash — and it reaches the
+/// A key is machine text (two unit separators and a container hash), and it reaches the
 /// UI whenever a `vfs_node` term id is resolved back, which is how a `file_paths` filter
 /// says what it is filtering on. The root's path is `/` and says nothing, so it renders
 /// as its dataset instead. The container hash is dropped: a key inside an archive carries
 /// the path RELATIVE to the archive, so `/child.txt` is all there is to show without a
 /// second lookup for the archive's own path.
 ///
-/// Anything that is not a node key comes back unchanged rather than blank — a stale id
+/// Anything that is not a node key comes back unchanged rather than blank, a stale id
 /// or a value from another term field is still better shown than swallowed.
 pub fn node_key_display_path(node_key: &str) -> &str {
     let mut fields = node_key.split(NODE_KEY_SEPARATOR);
@@ -266,7 +266,7 @@ pub fn node_key_display_path(node_key: &str) -> &str {
     }
 }
 
-/// The last segment of [`node_key_display_path`] — the folder's own name, for the places
+/// The last segment of [`node_key_display_path`], the folder's own name, for the places
 /// that have room for a word and not for a path.
 pub fn node_key_display_name(node_key: &str) -> &str {
     let path = node_key_display_path(node_key);
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn node_keys_are_scoped_by_dataset_and_container() {
-        // The whole point: the same path in two datasets, or inside two containers, is
+        // What this asserts: the same path in two datasets, or inside two containers, is
         // three different nodes.
         let a = make_node_key("testdata_testfiles", "", "/data");
         let b = make_node_key("other_emails", "", "/data");
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(node_key_display_path(&folder), "/disk-files/enron");
         assert_eq!(node_key_display_name(&folder), "enron");
 
-        // A dataset root's path is `/`, which names nothing — the dataset does.
+        // A dataset root's path is `/`, which names nothing. The dataset does.
         let root = dataset_root_key("other_emails");
         assert_eq!(node_key_display_path(&root), "other_emails");
         assert_eq!(node_key_display_name(&root), "other_emails");
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn a_location_inside_a_container_points_at_the_containers_root() {
         // The parent hop is the archive itself, and the folder that holds the file is the
-        // archive's own root — the descriptor the browser needs, not the archive's path.
+        // archive's own root. The descriptor the browser needs, not the archive's path.
         let zip = VfsTreeNode {
             container_hash: String::new(),
             path: "/location-1/parent.zip".to_string(),

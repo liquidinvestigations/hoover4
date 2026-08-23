@@ -7,7 +7,7 @@ set that nothing checks, and it goes stale silently. Renaming one tool used to m
 correcting the same sentence by hand in several prose files, and the file that was missed
 told the model to call a name that no longer existed.
 
-Two of the named parameters are the whole point:
+Two of the named parameters carry the whole contract:
 
 * **`tools`** is the list of tool names actually bound on the graph, read off the MCP
   connections at graph-construction time. The tool section of every prompt is generated
@@ -17,7 +17,7 @@ Two of the named parameters are the whole point:
   prose is the number in the code. `default_tool_turns` reads it from the module that
   enforces it rather than restating it.
 
-The rest — `profile`, `subagents_enabled`, `collections_hint`, `web_enabled` — are the
+The rest (`profile`, `subagents_enabled`, `collections_hint`, `web_enabled`) are the
 facts that change what a correct instruction says: which of the three profiles this is,
 whether delegation is available, whether the caller can read any collection at all, and
 whether the open web is reachable from this agent.
@@ -240,7 +240,7 @@ def render(
 ) -> str:
     """Render one profile's system prompt for the deployment it will run in.
 
-    `tools` is the bound tool list — names or tool objects — and everything the prompt
+    `tools` is the bound tool list (names or tool objects), and everything the prompt
     says about the tool surface is derived from it. `web_enabled` and `subagents_enabled`
     default to what that list implies and are overridable only so a test can pin them.
 

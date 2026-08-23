@@ -58,7 +58,7 @@ impl EmailParticipant {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentEmail {
     pub subject: String,
-    /// `None` when the `Date:` header was absent or unparseable — NOT the epoch, which
+    /// `None` when the `Date:` header was absent or unparseable, NOT the epoch, which
     /// is both the fallback and a real instant.
     pub date_sent: Option<i64>,
     pub participants: Vec<EmailParticipant>,

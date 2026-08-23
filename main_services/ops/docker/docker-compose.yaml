@@ -59,8 +59,8 @@ services:
       # The backup root, the same one the operations container holds. `BACKUP ... TO
       # File(...)` resolves under `/var/lib/clickhouse/backups` and refuses an absolute
       # path outside it, so mounting the shared root there is what lets ClickHouse write
-      # its archive straight into the backup directory. The alternative — writing inside
-      # this volume and copying the archive out — costs the space twice and strands the
+      # its archive straight into the backup directory. The alternative (writing inside
+      # this volume and copying the archive out) costs the space twice and strands the
       # original, because the operations container holds this volume read-only.
       - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/var/lib/clickhouse/backups
       # - ./data:/var/lib/clickhouse/user_files
@@ -377,7 +377,7 @@ services:
       # Host path for ingest test data. Defaults to the in-repo (git-tracked)
       # testdata dir so the stack comes up out of the box; override with
       # HOOVER4_TESTDATA_DIR to point at a larger external dataset. The source
-      # must EXIST — podman refuses to auto-create a missing bind-mount source.
+      # must EXIST. Podman refuses to auto-create a missing bind-mount source.
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata
       - ../../processing:/app
       # EasyOCR's model cache (~100 MB, downloaded from the internet on first
@@ -435,7 +435,7 @@ services:
       # Same root the website's creation form lists, mounted from the same host dir.
       - "DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}"
       # The OCR tier, one endpoint per engine. Empty means "this engine produces no
-      # variants", which is the normal state for EasyOCR on a box with no GPU tier —
+      # variants", which is the normal state for EasyOCR on a box with no GPU tier:
       # `tasks/ocr_client.py` records a skip and succeeds rather than consuming retries.
       # There is deliberately no fallback BETWEEN engines: the engine is part of the
       # storage key (`ocr_easyocr_en` vs `ocr_tesseract_eng`), so serving one from the
@@ -443,7 +443,7 @@ services:
       - "OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}"
       - "OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}"
       # The searchable-PDF assembler (compose/ocr-pdf.yaml). Empty means no OCR'd-PDF
-      # variants are produced at all — the activity records a skip and succeeds, exactly
+      # variants are produced at all. The activity records a skip and succeeds, exactly
       # like an OCR engine with no endpoint.
       - "OCR_PDF_URL=${OCR_PDF_URL:-}"
       # The regex entity scanner (compose/regex-entity-scanner.yaml). Always present, so
@@ -501,7 +501,7 @@ services:
       - ../../processing:/app
       # The backup root, read-write. A host path if one is configured, otherwise the
       # managed volume named here, so this container comes up on a box where no backup
-      # directory has been created — podman refuses a missing bind-mount source.
+      # directory has been created. Podman refuses a missing bind-mount source.
       - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/backups
       # The three stores' data directories, READ-ONLY. Read-only because nothing here
       # may write into a live store's files: the backup paths read, and the restore
@@ -559,14 +559,14 @@ services:
       - ../../../website/Cargo.lock:/app/Cargo.lock
       # /app/target, not /app/frontend/target: the workspace manifest is at /app, so
       # that is where cargo writes. Mounted one directory too deep, the volume held
-      # nothing and the 3 GB build tree lived in the container's writable layer — which
+      # nothing and the 3 GB build tree lived in the container's writable layer, which
       # is why recreating this container cost a multi-minute cold rebuild, during which
       # every page 500s.
       - hoover4-website-target:/app/target
       # Read-only, and the same host directory the worker gets: the dataset-creation
       # form lists the subfolders under DATASETS_MOUNT_PATH and offers their names, so
-      # the website has to be able to see them. Read-only because it never writes there
-      # — a form that could create directories in the ingest root would be a way to
+      # the website has to be able to see them. Read-only because it never writes there,
+      # a form that could create directories in the ingest root would be a way to
       # ingest arbitrary host paths.
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
@@ -611,7 +611,7 @@ services:
       - REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}
       # Search limits, both optional (ini: search_max_parallelism /
       # search_timeout_seconds). Unset = the backend's defaults: 8 Manticore queries in
-      # flight process-wide, 30 s per shard query. The empty default is deliberate —
+      # flight process-wide, 30 s per shard query. The empty default is deliberate:
       # `${VAR:-}` renders an empty string, which the backend treats as unset.
       - HOOVER4_SEARCH_MAX_PARALLELISM=${HOOVER4_SEARCH_MAX_PARALLELISM:-}
       - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-}
@@ -641,7 +641,7 @@ services:
       - HOOVER4_AGENT_RETRY_BASE_MS=${HOOVER4_AGENT_RETRY_BASE_MS:-2000}
       - HOOVER4_AGENT_STREAM_RESUMES=${HOOVER4_AGENT_STREAM_RESUMES:-1}
       # The chat title/summary generator (api/chat/summarize.rs) calls the LLM
-      # directly, not through the agent — summarising must not drag MCP tools into
+      # directly, not through the agent. Summarising must not drag MCP tools into
       # the call. `LLM_MODEL` has no default in the code on purpose (the served name
       # changes with the model), so **unset means the summariser silently does
       # nothing**: every conversation keeps its truncated first message as a title

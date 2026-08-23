@@ -137,7 +137,7 @@ pub fn SearchResultItemCard(
 /// The card's file-type glyph, from the document's canonical type.
 ///
 /// Empty type draws the generic file icon, which is what this drew unconditionally
-/// before — a document the type resolver has not reached loses nothing.
+/// before. A document the type resolver has not reached loses nothing.
 #[component]
 fn FileTypeIcon(file_type: String) -> Element {
     rsx! {
@@ -230,13 +230,13 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
     }
 }
 
-/// The body snippet, or — when the filename is the only thing that matched — a note plus
+/// The body snippet, or (when the filename is the only thing that matched), a note plus
 /// the matching part of the filename.
 ///
 /// The snippet for such a hit is `HIGHLIGHT()` over the synthetic filename row, so on its
 /// own it renders the title a second time (`easychair.docx` → `easychair docx`) in the
 /// place a reader takes for "here is the sentence that matched". The note says what
-/// happened, and the highlighted path below it says *where* — clamped to three lines so
+/// happened, and the highlighted path below it says *where*. The note is clamped to three lines so
 /// the hit keeps one line of context above and below it and a deep path cannot grow the
 /// card.
 #[component]

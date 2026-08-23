@@ -2,7 +2,7 @@
 //!
 //! A check digit is the cheapest strong guard this scanner has: one pass over the characters turns
 //! a shape that matches into a number that agrees with itself, and it costs nothing per candidate.
-//! For the identifier tier it is close to decisive — a one-in-ten to one-in-ninety-seven filter on
+//! For the identifier tier it is close to decisive, a one-in-ten to one-in-ninety-seven filter on
 //! digit runs that would otherwise all look alike.
 //!
 //! The arithmetic is not invented here. Each function is a port of the corresponding
@@ -27,7 +27,7 @@ pub fn luhn(number: &str) -> bool {
             return false;
         };
         // Every second digit from the right is doubled, and a two-digit result is added as its
-        // own digits — which is the same as subtracting nine.
+        // own digits, which is the same as subtracting nine.
         let contribution = if index % 2 == 1 {
             let doubled = digit * 2;
             doubled / 10 + doubled % 10
@@ -77,7 +77,7 @@ pub fn damm(number: &str) -> bool {
 /// IMO numbers (weights 7 down to 2, modulo 10), SEDOL (`1,3,1,7,3,9`, modulo 10), CUSIP
 /// (alternating `1,2`, modulo 10) and the ISO 6346 container check digit (powers of two, modulo 11)
 /// are all this function with different arguments. It returns the remainder rather than a verdict,
-/// because the schemes differ in what they then do with it — some compare it to the check digit,
+/// because the schemes differ in what they then do with it. Some compare it to the check digit,
 /// some subtract it from the modulus first.
 ///
 /// `weights` cycle when there are more digits than weights, which is what the alternating schemes
@@ -97,7 +97,7 @@ pub mod iso7064 {
     /// 1 modulo 97.
     ///
     /// Used by IBAN (over the rearranged form), by LEI, and by several national VAT numbers. Letters
-    /// count as their base-36 value, so `A` is 10 — which is how an IBAN's country prefix takes
+    /// count as their base-36 value, so `A` is 10, which is how an IBAN's country prefix takes
     /// part in the arithmetic. The remainder is carried digit by digit because the numbers run to
     /// forty characters, well past any machine integer.
     pub fn mod_97_10(number: &str) -> bool {

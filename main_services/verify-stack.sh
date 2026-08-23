@@ -47,7 +47,7 @@
 #     to ingest despite its 668 files, because they hold only THREE distinct
 #     contents -- the pipeline dedupes by content hash, so it is 3 documents and
 #     668 VFS paths. That property is the reason this root is affordable here;
-#     if it stops holding, the ingest time is the thing that will say so.
+#     if it stops holding, the ingest time will say so.
 #
 # Environment knobs:
 #   WEBSITE_URL           default derived from WEBSITE_BIND_IP in the rendered .env,
@@ -78,7 +78,7 @@ website_url_default() {
     esac
 }
 WEBSITE_URL="${WEBSITE_URL:-$(website_url_default)}"
-# Every website probe goes through this: it bounds the wait and, crucially, never returns
+# Every website probe goes through this. It bounds the wait and never returns
 # non-zero, so an unreachable site is reported by the check that wanted it rather than
 # aborting the run before that check is reached.
 WEB() { curl -s --max-time 30 "$@" || true; }
@@ -226,9 +226,9 @@ ensure_collection_row other "Other Collection"
 # assert not that the workflow says "finished" but that every document actually carries
 # its chunks, its vectors and its index row.
 #
-# That distinction is the whole point of this mode. A plan is marked finished when its
+# That distinction is what this mode exists to catch. A plan is marked finished when its
 # stages RAN, not when every document succeeded, so workflow status reports success over
-# documents that lost their embeddings — which is how a restart under load left fourteen
+# documents that lost their embeddings, which is how a restart under load left fourteen
 # documents in the corpus, searchable by text and invisible to semantic search, with
 # nothing anywhere saying so except a row count nobody was counting.
 #
@@ -455,7 +455,7 @@ echo "== invariants =="
 # The collections the invariants below are checked against. Derived from the ledger, not
 # hardcoded: this script creates `testdata` and `other`, but the stack accumulates others
 # (a `vectortest` shell outlived its experiment), and every check that iterated a literal
-# `for coll in testdata other` silently exempted them — including the Manticore/ledger
+# `for coll in testdata other` silently exempted them, including the Manticore/ledger
 # equality check, which is precisely the one that should have noticed.
 COLLECTIONS=$(CH "SELECT collectionname FROM Hoover4_Processing.collections FINAL
                   WHERE is_deleted = 0 ORDER BY collectionname")
@@ -476,7 +476,7 @@ echo "     collections under test: $(echo $COLLECTIONS)"
 
 # Whether a `_vectors` shard table is expected. `create_shard_tables` builds one only
 # when the embedding dimension has been probed (`knn_dims` is fixed at creation and
-# cannot be altered, so it is never guessed) — so the expectation has to follow the same
+# cannot be altered, so it is never guessed), so the expectation has to follow the same
 # switch rather than assume either answer.
 serving_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings
                   WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
@@ -592,7 +592,7 @@ for coll in $COLLECTIONS; do
         # Manticore has no count(distinct concat(...)): GROUP BY the pair and
         # count the bordered result rows (each data line starts with '|').
         # `|| true`: an empty shard makes `grep -c` exit 1, which under `set -e` killed
-        # the whole run *silently* — no FAIL line, just a script that stopped early and an
+        # the whole run *silently*, no FAIL line, just a script that stopped early and an
         # exit code nobody read as "checks 7 and 8 never ran". Only visible once the
         # collection list stopped being hardcoded and an empty collection entered it.
         n=$(MC "SELECT collection_dataset, file_hash FROM $table
@@ -681,7 +681,7 @@ fi
 # 6f. The `shapes` fixture is the only deep/wide tree in the corpus, and the tree UI's
 #     ancestor elision (MAX_VISIBLE_ANCESTORS=8), sibling capping (10 each side) and the
 #     breadcrumb `...` popup (MAX_CRUMBS_SHOWN=3) are all invisible without it. Assert the
-#     SHAPE, not the row count: the point is that one path is deeper than the elision
+#     SHAPE, not the row count: this checks that one path is deeper than the elision
 #     threshold and one folder is wider than the sibling cap.
 if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
                WHERE collection_dataset = 'testdata_shapes' AND is_deleted = 0")" ]; then
@@ -712,7 +712,7 @@ code=$(WEB -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")
 
 # 7b. Config-drift guard between the two hosts (hoover4.ini is copied by hand, so it
 #     WILL drift). Compare the fingerprint deploy.py rendered on this host against
-#     what the ai-services host reports from /health. A mismatch PRINTS both — it
+#     what the ai-services host reports from /health. A mismatch PRINTS both. It
 #     does not fail the stack, because a deliberate difference is legal.
 main_env="ops/docker/.env"
 expected_fp=$(grep -E '^HOOVER4_CONFIG_FINGERPRINT=' "$main_env" 2>/dev/null | cut -d= -f2 || true)
@@ -755,8 +755,8 @@ else
     echo "NOTE - no OCR_TESSERACT_URL rendered (tesseract_cpu_enabled = false); skipping OCR check"
 fi
 
-# 7c-bis. The searchable-PDF assembler. It owns no engine — it renders pages and calls the
-#     tier above — so the interesting half of its /health is `engines`, which reports which
+# 7c-bis. The searchable-PDF assembler. It owns no engine (it renders pages and calls the
+#     tier above), so the interesting half of its /health is `engines`, which reports which
 #     engines it has an ENDPOINT for. A dataset configured for an engine with no endpoint
 #     produces no OCR'd PDF at all, and this is where that mismatch is visible.
 ocrpdf_url=$(grep -E '^OCR_PDF_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
@@ -776,7 +776,7 @@ fi
 
 # 7d. The AI server serves the embedding model the ini asks for, at the ini's
 #     dimension, and the reranker answers when enabled. The probe writes
-#     embeddings_serving_model/_dim into server_settings — P5/P6 build _vectors tables
+#     embeddings_serving_model/_dim into server_settings. P5/P6 build _vectors tables
 #     from that probed dimension, never from the ini, because a Manticore knn_dims
 #     cannot be altered after creation.
 emb_url=$(grep -E '^EMBEDDINGS_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
@@ -816,7 +816,7 @@ fi
 #     matters, and "it answers on localhost" proves nothing about it (AGENTS.md).
 #
 #     Metasearch's /health also reports its configured source list and whether the rerank
-#     breaker is open — a source list that has silently shrunk is worth seeing here.
+#     breaker is open. A source list that has silently shrunk is worth seeing here.
 for probe in "metasearch:hoover4-mcp-metasearch:8086" "browser router:hoover4-mcp-browser:8087"; do
     label=${probe%%:*}
     rest=${probe#*:}
@@ -837,14 +837,14 @@ ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
 [ -n "$ms_sources" ] && echo "NOTE - metasearch $ms_sources"
 
 # 7e. Everything derived lives under `derived/` in the blob store, and P0_scan_disk must never walk
-#     that prefix. The chat artifacts are now structurally out of reach — they live in
-#     the system bucket, which no collection's walker can see — but the OCR'd PDFs share
+#     that prefix. The chat artifacts are now structurally out of reach. They live in
+#     the system bucket, which no collection's walker can see, but the OCR'd PDFs share
 #     a bucket with the blobs they were built from, so the assertion still earns its
 #     place. Two writers are covered by this one `%derived/%` pattern:
 #       * chat artifacts (captured pages, search detail) under `derived/chat/…`
 #       * OCR'd PDFs under `derived/ocr-pdf/<dataset>/<pdf_hash>/<engine>+<langs>.pdf`
 #     If the walker ever sees either, the object becomes a vfs_files row, is ingested, is
-#     re-derived by the stage that produced it, and produces another object — forever, and
+#     re-derived by the stage that produced it, and produces another object. Forever, and
 #     for the OCR'd PDFs that loop bills OCR time on every lap. `chat_artifacts` and
 #     `pdf_ocr_results` are the sole indexes of those objects, and a `blobs` row pointing
 #     into `derived/` is the signature of the loop having started.
@@ -1007,7 +1007,7 @@ fi
 #    * **A miss must be a FAILURE, not the end of the run.** `grep` exits non-zero when
 #      it matches nothing, and under `set -euo pipefail` that killed the script mid-file
 #      with the last line of output being an unrelated passing check.
-#    * **Prefer the reference that carries a path.** The glue names its bundle twice —
+#    * **Prefer the reference that carries a path.** The glue names its bundle twice,
 #      once as the real hashed asset (`/./assets/frontend_bg-dxh….wasm`) and once as a
 #      bare `frontend_bg.wasm` fallback, in that order or the reverse depending on the
 #      build. Taking the first match fetches the bare name, which the SPA answers with

@@ -6,7 +6,7 @@
 # Why this exists. `dx serve` is a *development* server and it behaves like
 # one in front of visitors:
 #
-#   * it bakes "Your app is being rebuilt." into the served page — every page, every
+#   * it bakes "Your app is being rebuilt." into the served page, every page, every
 #     fresh profile, not a session-local toast;
 #   * it injects `access-control-allow-origin: *` on responses the application itself
 #     never marks cross-origin (chased deep into the app before it was found here);
@@ -16,10 +16,10 @@
 # The build happens in the container on boot rather than in the image, because the image
 # is shared with the development path and a `dx build` layer there would be rebuilt on
 # every source change. With the target volume warm the release build is incremental; the
-# FIRST run after enabling this is a cold release build and takes a while — watch it.
+# FIRST run after enabling this is a cold release build and takes a while. Watch it.
 #
 # The server binary is *discovered*, not hardcoded: `dx` decides both the layout and the
-# binary's NAME, and has used more than one — `target/dx/<package>/release/web/server`
+# binary's NAME, and has used more than one: `target/dx/<package>/release/web/server`
 # today, `.../web/<package>` before. Matching on the name is what breaks on a dx upgrade,
 # and it breaks *after* a successful build, so the log reads "no release server binary"
 # directly under the lines reporting that the build succeeded. The predicate is therefore

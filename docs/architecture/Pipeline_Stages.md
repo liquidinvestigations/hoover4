@@ -23,11 +23,11 @@ The code is `main_services/processing/tasks/`, one directory per stage, each wit
 | stage | reads | writes | directory |
 |---|---|---|---|
 | **P0 scan disk** | a dataset's directory tree | the file and directory tables, the blob table, and the object store | `tasks/P0_scan_disk/` |
-| **P1 compute plans** | newly recorded blobs | processing plans — the batch boundaries every later stage works in | `tasks/P1_compute_plans/` |
+| **P1 compute plans** | newly recorded blobs | processing plans, the batch boundaries every later stage works in | `tasks/P1_compute_plans/` |
 | **P2 execute plan** | a plan | downloads its blobs and drives every stage below for them; resolves the canonical file type for the plan's hashes | `tasks/P2_execute_plan/` |
 | **P3 parse files** | the downloaded bytes | text pages, per-format metadata, email headers, table cells, archive members | `tasks/P3_parse_files/` |
 | **P4 extract entities** | the text pages | model entity hits, pattern entity hits, and the marker that a document was scanned | `tasks/P4_extract_entities/` |
-| **P5 chunk and embed** | the text pages | text chunks and their vectors — the durable vector store | `tasks/P5_chunk_embed/` |
+| **P5 chunk and embed** | the text pages | text chunks and their vectors, the durable vector store | `tasks/P5_chunk_embed/` |
 | **P6 index data** | everything above | the search engine's per-shard page tables, the entities table, the tree table, and a copy of the vectors into the disposable nearest-neighbour tables | `tasks/P6_index_data/` |
 
 Two directories in the same place are **not** stages: `tasks/P_admin/` holds administrative
@@ -37,7 +37,7 @@ the durable research turn.
 ## Why indexing is P6
 
 Indexing is `P6`, not `P5`. The embedding stage owns the number that runs before it, and
-there is no `P4b` or `P4.5` — **the stage numbers are a stored contract.** `STAGE_INDEX` and
+there is no `P4b` or `P4.5`. **The stage numbers are a stored contract.** `STAGE_INDEX` and
 its siblings are values written into `processing_eta_samples` *and* constants in
 `website/common/src/processing_types.rs`. Renumbering a stage on one side leaves the admin
 processing page silently short a bar, with no error anywhere.
@@ -46,8 +46,8 @@ processing page silently short a bar, with no error anywhere.
 
 `ExecuteSinglePlan` runs entity extraction, pattern scanning and chunk-and-embed as three
 branches of one barrier. They can share a barrier because they read the same rows and write
-to **disjoint** tables — model entities and their watermark, pattern hits and their scan
-marker, chunks and vectors — and because only indexing needs all three. They also run on
+to **disjoint** tables (model entities and their watermark, pattern hits and their scan
+marker, chunks and vectors), and because only indexing needs all three. They also run on
 different worker queues and against different services, so running them in sequence left a
 tier idle for the others' whole duration.
 
@@ -55,7 +55,7 @@ All three must finish before indexing starts: the index reads the entity rows an
 vectors into the shard's nearest-neighbour table.
 
 A barrier over a batch costs its slowest member, which is the thing to remember before
-widening a batch — see [tuning](../operations/Troubleshooting.md) and the tuning skill.
+widening a batch. See [tuning](../operations/Troubleshooting.md) and the tuning skill.
 
 ## Text pages: the writer contract
 
@@ -63,7 +63,7 @@ widening a batch — see [tuning](../operations/Troubleshooting.md) and the tuni
 govern every writer, and breaking either is silent.
 
 **`page_id` is never 0.** It is a real 1-based page number for paged formats and a 1-based
-segment ordinal — roughly 256 KB apiece — for everything else. A scan therefore loses at
+segment ordinal (roughly 256 KB apiece), for everything else. A scan therefore loses at
 most one entity to a segment boundary, which is the accepted cost of segmenting at all.
 
 **The writer is called once per `(file, extractor)` with the complete page list.**
@@ -72,7 +72,7 @@ call for the same variant deletes the first call's pages. Every writer goes thro
 of them may call it twice for one variant.
 
 The table is a replacing engine, so a re-parse leaves two rows for a segment until a merge
-collapses them. Readers that must not see both — the chunker in particular — read with
+collapses them. Readers that must not see both (the chunker in particular) read with
 `FINAL`.
 
 ## The extractor key is a label and a storage key at once
@@ -81,8 +81,8 @@ collapses them. Readers that must not see both — the chunker in particular —
 language prefix; native extractors carry none. The same string is a storage key, part of a
 download route, and the label a user sees in the source selector.
 
-**The convention is implemented twice on purpose** — once in `main_services/processing/tasks/text_sources.py` and once
-in `website/common/src/document_sources.rs` — and neither runtime may depend on the other
+**The convention is implemented twice on purpose** (once in `main_services/processing/tasks/text_sources.py` and once
+in `website/common/src/document_sources.rs`), and neither runtime may depend on the other
 being right. Call the shared formatter; never assemble or parse the string in a component.
 
 One filename row per document is written into the search index with a sentinel page id and a
@@ -107,7 +107,7 @@ searched is [Search architecture](Search_Architecture.md).
 
 A rolling sampler writes per-stage progress into `processing_eta_samples` in the global
 database, and per-activity durations land in `processing_task_runs`. Those two are what
-answer "where is the time going" before any tuning decision — reading the workflow service's
+answer "where is the time going" before any tuning decision, reading the workflow service's
 own history instead gives you days of retention and nothing aggregable.
 
 ## Re-running a stage

@@ -749,7 +749,7 @@ def read_calamine_cells(path: str, *,
             # An empty sheet has no used range, and `iter_rows` unwraps that None in Rust
             # and panics the interpreter rather than raising. A workbook with a blank
             # sheet -- a pivot-table template, for instance -- is entirely ordinary, so
-            # this guard is not defensive coding, it is the format.
+            # this guard is the format rather than defensive coding.
             continue
         row_offset, column_offset = start
         for row_index, values in enumerate(sheet.iter_rows()):

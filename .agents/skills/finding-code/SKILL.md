@@ -1,6 +1,6 @@
 ---
 name: finding-code
-description: Finds where something is defined, what calls it, and what a file contains, without paging through it. Use whenever you would reach for `sed -n '400,520p'`, `cat` a source file, or `grep -rn` to answer "where is X", "where is X defined", "what calls X", "where is this used", "who implements this trait", "what does this file contain", "find the function that…", "how does X work" — and when looking up a section of a long Readme. Covers serena's symbol tools (get_symbols_overview, find_symbol, find_referencing_symbols, search_for_pattern) for Rust and Python, correctly scoped grep for everything else, and the map of where hoover4 keeps its pipeline, website, agents and configuration.
+description: Finds where something is defined, what calls it, and what a file contains, without paging through it. Use whenever you would reach for `sed -n '400,520p'`, `cat` a source file, or `grep -rn` to answer "where is X", "where is X defined", "what calls X", "where is this used", "who implements this trait", "what does this file contain", "find the function that…", "how does X work", and when looking up a section of a long Readme. Covers serena's symbol tools (get_symbols_overview, find_symbol, find_referencing_symbols, search_for_pattern) for Rust and Python, correctly scoped grep for everything else, and the map of where hoover4 keeps its pipeline, website, agents and configuration.
 allowed-tools: mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__search_for_pattern, mcp__serena__list_dir, mcp__serena__find_file, Read, Grep, Glob, Bash
 ---
 
@@ -45,7 +45,7 @@ grep -rn 'chat_artifacts' --include='*.rs' website/backend/src
 `grep` on this host is ugrep and it does **not** skip build output. `website/target` alone
 is tens of gigabytes; an unscoped search there burns a core for over an hour and reports as
 "no output", which is indistinguishable from finding nothing. A hook denies the unscoped
-form. **A search that has not returned within seconds is wrong, not slow** — kill it and
+form. **A search that has not returned within seconds is wrong.** Kill it and
 re-scope.
 
 ## Navigating the documentation
@@ -68,28 +68,28 @@ under `docs/`. `docs/development/Repo_Map.md` says which one answers which quest
 
 ## Where things live
 
-- `main_services/processing/` — the Temporal pipeline. Stages are `tasks/P0_scan_disk/`
+- `main_services/processing/`, the Temporal pipeline. Stages are `tasks/P0_scan_disk/`
   … `tasks/P6_index_data/`; shared helpers are `tasks/remote.py`, `tasks/text_sources.py`
   and `tasks/P3_parse_files/parse_common.py`; schema is `database/db_collection_migrations/`
   and `database/db_global_migrations/`; tests are `tests/unit/` and `tests/integration/`.
   **All of those paths are relative to `main_services/processing/`.**
-- `main_services/agents/` — MCP servers and the research agent. `agent_common/` is vendored
+- `main_services/agents/`, the MCP servers and the research agent. `agent_common/` is vendored
   into the metasearch and browser images; their build context is `main_services/agents`.
-- `main_services/ops/` — operational procedures, the compose files and the per-service
+- `main_services/ops/`, operational procedures, the compose files and the per-service
   build contexts, with its own long `Readme.md`.
-- `main_services/regex_entity_scanner/` — the pattern-scanning service, self-contained with
+- `main_services/regex_entity_scanner/`, the pattern-scanning service, self-contained with
   its own `README.md` and sub-documents.
-- `main_services/verify-stack.sh` — end-to-end verification.
-- `website/backend/src/api/` — HTTP surface; `website/frontend/src/components/` — Dioxus
-  components; `website/common/src/` — types shared by both, including the ones that must
-  mirror Python constants.
-- `ai_services/` — the standalone GPU tier. `main_services/ocr_tesseract/` and
+- `main_services/verify-stack.sh`, end-to-end verification.
+- `website/backend/src/api/` holds the HTTP surface, `website/frontend/src/components/`
+  the Dioxus components, and `website/common/src/` the types shared by both, including
+  the ones that must mirror Python constants.
+- `ai_services/`, the standalone GPU tier. `main_services/ocr_tesseract/` and
   `main_services/ner_spacy/` are its CPU twins and live on the main side deliberately.
-- `deploy.py` and `hoover4.ini` at the root — every port and every generated `.env`.
+- `deploy.py` and `hoover4.ini` at the root, every port and every generated `.env`.
 
 ## References
 
-- `reference/serena-calls.md` — worked examples of each tool call with real hoover4
+- `reference/serena-calls.md`, worked examples of each tool call with real hoover4
   symbols, and what to do when the language server has not indexed a file yet.
-- `reference/repo-map.md` — which file answers which question.
-- `docs/development/Repo_Map.md` — the fuller directory map, for a person reading cold.
+- `reference/repo-map.md`, which file answers which question.
+- `docs/development/Repo_Map.md`, the fuller directory map, for a person reading cold.

@@ -2,7 +2,7 @@
 
 `hoover4.ini` at the repository root is the single source of configuration. Every key here is
 in the annotated template `hoover4.ini.example`, which carries the defaults and the reasoning
-per key; this page is the map — what each group decides, and which code reads it.
+per key, and this page is the map of what each group decides and which code reads it.
 
 ## Contents
 
@@ -22,12 +22,12 @@ hoover4.ini  ->  deploy.py  ->  generated .env beside each compose file  ->  con
 
 One direction only. **Never hand-edit a generated `.env`**: the next deploy overwrites it,
 and the change looks like it worked until then. `./deploy --print-env` renders the files and
-shows them without starting anything; `docker exec <c> env` is the honest answer at runtime,
-and the two disagreeing is a finding rather than a curiosity.
+shows them without starting anything, and `docker exec <c> env` reports what the container
+has at runtime. The two disagreeing is a finding rather than a curiosity.
 
 The two sides render separately. `[ai_services]` feeds the accelerated tier's compose
 project; `[main_services]` feeds everything else. The two hosts hold **identical copies** of
-this file, copied by hand — which is why the stack verification compares a configuration
+this file, copied by hand, which is why the stack verification compares a configuration
 fingerprint between them: it will drift.
 
 ## The standing rule about keys
@@ -67,7 +67,7 @@ Seventy-seven keys. Read by `deploy.py`, the main compose files, the worker and 
 
 `ner_provider`, `embeddings_provider`, `pdf_ocr_provider`, and the twin switches
 `ner_spacy_enabled`, `tesseract_cpu_enabled`, `ocr_pdf_enabled`. These pick between the
-accelerated tier and the CPU twins on the main side — see
+accelerated tier and the CPU twins on the main side. See
 [AI services](../architecture/AI_Services.md) for why the twins live there.
 
 `gpu_fallback`, `gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are the fallback
@@ -77,14 +77,14 @@ endpoint stays out of rotation.
 
 ### Scanning and OCR
 
-`tesseract_languages` is what the CPU OCR image can serve — baked into the image, so a
+`tesseract_languages` is what the CPU OCR image can serve. It is baked into the image, so a
 language added here needs a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control.
 
 ### The website
 
 `website_release_mode` picks between the development server and a release build.
-`demo_mode` decides whether anonymous visitors exist at all — see
+`demo_mode` decides whether anonymous visitors exist at all. See
 [Chat and agents](../architecture/Chat_And_Agents.md) for what it grants.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults.
@@ -97,13 +97,13 @@ empty takes the code's defaults.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
-that no fleet size moves — `.agents/skills/tuning-the-pipeline/` has the measurement that
+that no fleet size moves: `.agents/skills/tuning-the-pipeline/` has the measurement that
 distinguishes the two cases.
 
 ### Bind addresses and ports
 
 `website_bind_ip` and `infra_bind_ip` decide which interface each half publishes on. **Which
-address a given deployment uses is not in this tree** — it is in
+address a given deployment uses is not in this tree**. It is in
 `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
 
 Everything else in this group is a port key: the datastores, the workflow service and its
@@ -119,8 +119,8 @@ store refuses to open a keyspace initialised with a different count, so changing
 `./deploy --reset-temporal`. The deploy preflights the running cluster against the file and
 names both numbers rather than letting the server die with a store error.
 
-The pinned versions — of the workflow service and its UI, the history and visibility stores,
-and the object store, which is pinned by digest as well as tag — are here so that a rebuild
+The pinned versions (of the workflow service and its UI, the history and visibility stores,
+and the object store, which is pinned by digest as well as tag) are here so that a rebuild
 is reproducible. `garage_capacity` sizes the object store's advertised capacity.
 
 `serena_enabled` and `serena_port` control the symbol-navigation server, which is development
@@ -155,7 +155,7 @@ The drift check joins on key names, so every key in `hoover4.ini.example` appear
 literally. The template carries each one's default and the reasoning behind it; this index
 is the map back to the group above that explains it.
 
-### `[ai_services]` — the accelerated tier
+### `[ai_services]`: the accelerated tier
 
 - `enabled`, `host`, `bind_ip`, `llm_selfhosted`
 - `vllm_port`, `vllm_image`, `vllm_model`, `vllm_served_name`
@@ -166,7 +166,7 @@ is the map back to the group above that explains it.
 - `ai_server_ner_concurrency`, `ai_server_embed_concurrency`, `ai_server_rerank_concurrency`, `hf_token_file`
 - `easyocr_enabled`, `easyocr_port`, `easyocr_languages`
 
-### `[main_services]` — everything else
+### `[main_services]`: everything else
 
 - `ner_provider`, `ner_spacy_enabled`, `embeddings_provider`, `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`

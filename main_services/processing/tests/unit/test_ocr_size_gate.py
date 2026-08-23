@@ -37,6 +37,6 @@ def test_an_unreadable_header_is_not_gated():
     """A format Pillow cannot open still goes to the engines, which read more of them.
 
     Skipping on "cannot read the header" would silently drop whole formats from OCR;
-    `ocr_skipped_unreadable` is the honest answer when neither side can read the file.
+    `ocr_skipped_unreadable` is what this reports when neither side can read the file.
     """
     assert image_dimensions(b"not an image at all") is None

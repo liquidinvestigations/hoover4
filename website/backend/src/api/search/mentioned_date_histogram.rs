@@ -10,7 +10,7 @@
 //! * **The domain comes from a pair of scalar bounds, the counts from an MVA.** A
 //!   document's own dates are an interval it occupies; the dates it *mentions* are
 //!   points. `mentioned_date_min`/`_max` bracket those points for the axis, and nothing
-//!   else — the moment either of them filters, a document naming 1936 and 2020 starts
+//!   else. The moment either of them filters, a document naming 1936 and 2020 starts
 //!   matching 2005.
 //! * **The bars count mentions, not documents.** A document naming three days inside one
 //!   bin contributes three. Manticore's `GROUP BY` over an MVA yields one row per
