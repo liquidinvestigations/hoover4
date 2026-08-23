@@ -121,6 +121,7 @@ languages.
 | `F-chat-18b` | Enforce every delegation cap as a number rather than a request — tasks per call, workers at once, tool turns each, and a total for the whole user turn that a nudge round continues instead of resetting — refusing the surplus by name so the model can act on it | `subagents.MAX_TASKS_PER_CALL`, `subagents.start_turn` |
 | `F-chat-18c` | Give a worker page reading and not the tools that drive a page, and the plan to read and not to write, so a delegating turn costs the browser server what a plain turn costs it and no worker rewrites the conversation's plan | `subagents.WORKER_DENIED_TOOLS` |
 | `F-chat-18d` | Make a worker's citations resolve in the conversation that delegated to it, by running it on the lead's own tool connections and therefore its citation session | `subagents.make_delegation_tool`, `citations.HandleTable` |
+| `F-chat-18e` | Count what the workers cost into the turn's own token total, and report their share separately — their model calls happen inside a tool call and reach no other counter | `subagents.TurnBudget`, `subagents.worker_usage` |
 
 ## Administration
 

@@ -251,6 +251,40 @@ async def test_a_json_string_of_tasks_is_accepted():
     assert len(seen) == 1
 
 
+async def test_a_workers_tokens_are_added_to_the_turns_budget():
+    """A worker's model calls never reach the lead's event stream, so they are counted
+    here or they are not counted at all."""
+
+    async def run_worker(text):
+        message = AIMessage(content="done")
+        message.usage_metadata = {
+            "input_tokens": 4000,
+            "output_tokens": 200,
+            "total_tokens": 4200,
+        }
+        return [message]
+
+    tool = subagents.make_delegation_tool(run_worker)
+    budget = subagents.start_turn("session-usage")
+    result = await tool.coroutine(tasks=[{"objective": "a"}, {"objective": "b"}])
+    assert result["reports"][0]["usage"]["prompt_tokens"] == 4000
+    assert budget.prompt_tokens == 8000
+    assert budget.completion_tokens == 400
+    assert budget.model_calls == 2
+    assert budget.workers == 2
+
+
+async def test_a_worker_that_reports_no_usage_counts_as_unknown_not_free():
+    async def run_worker(text):
+        return [AIMessage(content="done")]
+
+    tool = subagents.make_delegation_tool(run_worker)
+    budget = subagents.start_turn("session-no-usage")
+    await tool.coroutine(tasks=[{"objective": "a"}])
+    assert budget.prompt_tokens == 0
+    assert budget.model_calls == 0
+
+
 async def test_nonsense_tasks_are_refused_with_the_shape_that_was_wanted():
     async def run_worker(text):  # pragma: no cover - must not be reached
         raise AssertionError("no worker should run")

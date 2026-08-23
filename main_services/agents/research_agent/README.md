@@ -96,6 +96,15 @@ A worker returns its written report, the handles it allocated, and the document 
 one. Reports that come back empty are named in the response's `note`: noticing a thin report
 and re-delegating is the lead's job, not the worker's.
 
+**The workers' tokens are counted into the turn.** Their model calls happen inside a tool
+call, on a graph of their own, so not one of them reaches the lead's event stream — a turn
+reporting its lead's cost alone would under-report by the whole factor that makes these caps
+necessary. The `end` event's `usage` carries them in the totals and names their share
+separately in `subagent_prompt_tokens`, `subagent_completion_tokens`,
+`subagent_model_calls` and `subagents_run`. `context_tokens` and `peak_context_tokens` are
+deliberately untouched: both describe one model call's context, and a worker's context is
+not the lead's.
+
 ## Per-chat browser sessions
 
 `X-Hoover4-Chat-Session` carries the chat session id alongside the ACL headers. It grants

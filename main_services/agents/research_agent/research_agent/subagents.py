@@ -35,6 +35,7 @@ import logging
 import os
 from collections import OrderedDict
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage
@@ -137,21 +138,37 @@ def delegates(profile: str) -> bool:
 #: cached and shared across concurrent conversations, while the budget belongs to exactly
 #: one of them. A run that never installs a counter is not delegating under a budget —
 #: which is the case for a direct call in a test — and gets the per-call cap only.
-_WORKERS_SPENT: ContextVar[Optional[List[int]]] = ContextVar(
-    "hoover4_subagent_workers_spent", default=None
+@dataclass
+class TurnBudget:
+    """What one user turn has spent on delegation, and what it may still spend.
+
+    It carries the token counts as well as the worker count because a worker's model calls
+    happen inside a tool call and never reach the lead's own event stream. A delegating
+    turn whose reported cost was the lead's alone would under-report by roughly the factor
+    that makes these caps necessary in the first place — which is precisely the number a
+    reader of the turn's footer needs.
+    """
+
+    workers: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model_calls: int = 0
+
+
+_TURN_BUDGET: ContextVar[Optional[TurnBudget]] = ContextVar(
+    "hoover4_subagent_turn_budget", default=None
 )
 
 #: Live turn budgets, by chat session. Bounded, least-recently-used, for the reason every
 #: per-session map in this process is: one process serves every conversation on the site.
-_TURN_BUDGETS: "OrderedDict[str, List[int]]" = OrderedDict()
+_TURN_BUDGETS: "OrderedDict[str, TurnBudget]" = OrderedDict()
 MAX_TRACKED_TURNS = _cap("AGENT_SUBAGENT_TRACKED_TURNS", 512)
 
 
-def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> List[int]:
-    """Install this run's worker budget and return its cell.
+def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> TurnBudget:
+    """Install this run's delegation budget and return it.
 
-    Called once per run by the lead's `stream`. The cell is a single-element list so the
-    tool mutates the same counter rather than rebinding a name.
+    Called once per run by the lead's `stream`.
 
     **A nag round continues the turn's budget rather than starting a new one.** A nagged
     turn is the agent run again on the same user message, and it can delegate again, so a
@@ -161,30 +178,56 @@ def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> Li
     session id clears whatever the previous turn left behind.
     """
     if session_id and continuing:
-        spent = _TURN_BUDGETS.get(session_id)
-        if spent is not None:
+        budget = _TURN_BUDGETS.get(session_id)
+        if budget is not None:
             _TURN_BUDGETS.move_to_end(session_id)
-            _WORKERS_SPENT.set(spent)
-            return spent
-    spent = [0]
+            _TURN_BUDGET.set(budget)
+            return budget
+    budget = TurnBudget()
     if session_id:
-        _TURN_BUDGETS[session_id] = spent
+        _TURN_BUDGETS[session_id] = budget
         _TURN_BUDGETS.move_to_end(session_id)
         while len(_TURN_BUDGETS) > MAX_TRACKED_TURNS:
             _TURN_BUDGETS.popitem(last=False)
-    _WORKERS_SPENT.set(spent)
-    return spent
+    _TURN_BUDGET.set(budget)
+    return budget
+
+
+def turn_budget() -> Optional[TurnBudget]:
+    """This run's delegation budget, or `None` when nothing installed one."""
+    return _TURN_BUDGET.get()
 
 
 def _take_worker_slots(wanted: int) -> int:
     """Claim up to `wanted` slots from the turn's budget, returning how many were given."""
-    spent = _WORKERS_SPENT.get()
-    if spent is None:
+    budget = _TURN_BUDGET.get()
+    if budget is None:
         return wanted
-    room = max(0, MAX_WORKERS_PER_TURN - spent[0])
+    room = max(0, MAX_WORKERS_PER_TURN - budget.workers)
     granted = min(wanted, room)
-    spent[0] += granted
+    budget.workers += granted
     return granted
+
+
+def worker_usage(messages: Sequence[BaseMessage]) -> Dict[str, int]:
+    """What one worker's model calls were billed, off the messages it produced.
+
+    Read from `usage_metadata`, which is what the provider counted, rather than
+    re-tokenising anything. A message shape that carries no usage contributes nothing —
+    unknown, never free.
+    """
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "model_calls": 0}
+    for message in messages:
+        meta = getattr(message, "usage_metadata", None)
+        if not isinstance(meta, dict):
+            continue
+        prompt = int(meta.get("input_tokens") or 0)
+        if not prompt:
+            continue
+        usage["prompt_tokens"] += prompt
+        usage["completion_tokens"] += int(meta.get("output_tokens") or 0)
+        usage["model_calls"] += 1
+    return usage
 
 
 class Briefing(BaseModel):
@@ -404,6 +447,12 @@ def make_delegation_tool(run_worker: Callable[[str], Any]) -> StructuredTool:
                         "citations": [],
                         "error": str(exc),
                     }
+            usage = worker_usage(messages)
+            budget = _TURN_BUDGET.get()
+            if budget is not None:
+                budget.prompt_tokens += usage["prompt_tokens"]
+                budget.completion_tokens += usage["completion_tokens"]
+                budget.model_calls += usage["model_calls"]
             return {
                 "task": index + 1,
                 "objective": briefing.objective,
@@ -416,6 +465,7 @@ def make_delegation_tool(run_worker: Callable[[str], Any]) -> StructuredTool:
                 "tool_calls": sum(
                     1 for m in messages if getattr(m, "tool_calls", None)
                 ),
+                "usage": usage,
             }
 
         results = await asyncio.gather(

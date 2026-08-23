@@ -582,7 +582,19 @@ class MCPGatewayAgent:
         # place. It bounds the whole user turn rather than one `run_subagent` call,
         # because a nagged turn runs the agent again and the second run can delegate
         # again — a per-wave cap alone would let the total grow with the nags.
-        subagents.start_turn(session_id, continuing=bool(extra_tool_turns))
+        turn_budget = subagents.start_turn(
+            session_id, continuing=bool(extra_tool_turns)
+        )
+        # What delegation had already spent when this run started. A nag round continues
+        # the turn's budget, so the counters are cumulative across rounds and this run's
+        # share is the difference — adding the running total to every round would count
+        # the first round's workers again in the second.
+        workers_before = subagents.TurnBudget(
+            workers=turn_budget.workers,
+            prompt_tokens=turn_budget.prompt_tokens,
+            completion_tokens=turn_budget.completion_tokens,
+            model_calls=turn_budget.model_calls,
+        )
         # Whether layer two ran at all in this turn. A separate flag because
         # `pending_compactions` is drained as each compaction's token count arrives, and
         # by the end of the run it says nothing about what happened.
@@ -818,6 +830,23 @@ class MCPGatewayAgent:
             }
             all_content += notice
 
+        # What the workers this run delegated to were billed.
+        #
+        # Their model calls happen inside a tool call, on a graph of their own, so not one
+        # of them reaches the event loop above. Leaving them out would report a delegating
+        # turn as costing what its lead alone cost, which is the one number the caps exist
+        # to make visible. `context_tokens` and `peak_context_tokens` are deliberately NOT
+        # touched: both are statements about a single model call's context, and a worker's
+        # context is not the lead's.
+        delegated_prompt = turn_budget.prompt_tokens - workers_before.prompt_tokens
+        delegated_completion = (
+            turn_budget.completion_tokens - workers_before.completion_tokens
+        )
+        delegated_calls = turn_budget.model_calls - workers_before.model_calls
+        prompt_tokens_total += delegated_prompt
+        completion_tokens_total += delegated_completion
+        model_calls += delegated_calls
+
         yield {
             "is_task_complete": True,
             "type": "end",
@@ -832,6 +861,12 @@ class MCPGatewayAgent:
                 "prompt_tokens": prompt_tokens_total,
                 "completion_tokens": completion_tokens_total,
                 "model_calls": model_calls,
+                # Of the totals above, what this run's sub-agents accounted for. Zero on
+                # a turn that did not delegate, which is most of them.
+                "subagent_prompt_tokens": delegated_prompt,
+                "subagent_completion_tokens": delegated_completion,
+                "subagent_model_calls": delegated_calls,
+                "subagents_run": turn_budget.workers - workers_before.workers,
             },
         }
 
