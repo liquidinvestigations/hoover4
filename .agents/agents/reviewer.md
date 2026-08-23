@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Reads a diff against this repository's silent-failure checklist and its four shape tests, and reports what it found. Use after a pass reports work done, before a commit, or when asked whether a change is right. It reads and reports; it does not fix.
-model: claude-opus-5
+model: opus
 effort: high
 maxTurns: 58
 tools: Bash, Read, Grep, Glob

@@ -1,7 +1,7 @@
 ---
 name: executor
 description: Applies one written work package to this repository and runs the checks it names. Use for a pass whose scope is a named list of files or keys, whose checks are commands with an expected output, and whose diff will be read before anything else happens. Do not use it for a pass that has to decide what the work is.
-model: claude-sonnet-5
+model: sonnet
 effort: high
 maxTurns: 96
 ---
