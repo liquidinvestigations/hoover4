@@ -95,6 +95,52 @@ comments included, so correcting a stale word in one makes it refuse to start on
 deployment that already ran it. A prose sweep that reaches the migration directories has gone
 too far.
 
+## The four shape tests
+
+These read the design rather than the defect, so they also apply when a plan is deciding how to
+structure something. `planning-work` loads this skill for that.
+
+**1. A file that crossed a size threshold by a large delta.** Ask whether the code should be
+decomposed before the change lands, and ask it **only when the growth is large**. Measured over
+one fortnight here, nine files crossed 1000 lines in nine commits. Three deserved a yes, and they
+were the ones that gained a whole new responsibility: a shared type file whose growth is why one
+feature needs mirrored edits in two languages, a worker entry point that absorbed an entire
+operations layer, and an indexing module that gained a graph builder. The other six gained 40 to
+140 lines and crossed an arbitrary line. **Trigger on the delta, not on the total.** One useful
+finding for two false alarms is below the rate at which a reviewer stops reading the output.
+
+**2. A repeated conditional that signals a missing model.** The same branch written three times
+over the same value is a type that was never named. Found here as a progress counter that could
+never reach its own total, because a purge counted the telemetry rows it wrote about itself. Two
+populations, one counter, no type separating them.
+
+**3. An abstraction that adds indirection and buys nothing.** Ask what it removes. Found here as
+a compaction step that made the context bigger, evicting a 91-character result to insert a
+127-character placeholder. **One adapter is hypothetical and two are real**: a layer with a
+single implementation is a guess about a second one.
+
+**4. A module that has to be tested past its interface.** If a test reaches inside to set up a
+case the interface cannot express, the interface is the wrong shape. This is the cheapest of the
+four to check, because the test file says so directly.
+
+## The demanding pass
+
+Ordinary review reads the diff for the checklist above. **A demanding pass is a second reading
+with a different question: what would have to be true for this to be wrong.** Take it when the
+change touches a wire format, a permission, a migration, or a counter that someone will trust.
+
+Three rules make it worth the second reading.
+
+- **Open every location before repeating a finding.** A report that a location is wrong is a
+  claim, including your own from ten minutes ago. Expect three failure classes: behaviour that is
+  by design reported as a fault, a real finding attributed to the wrong file, and the same
+  finding counted twice.
+- **Say which checks you ran and which you took on trust.** Collapsing the two is how an
+  unverified claim reaches the tree.
+- **Write down what you considered and rejected**, one line each, in the rejection register at
+  the bottom of `plans/TODO.md` and `plans/DEFECTS.md`. Without it the next pass raises the same
+  item, which this repository's archive shows happening repeatedly.
+
 ## Then the standing checks
 
 - **The specification moved with the code.** A change that adds, removes or re-scopes a

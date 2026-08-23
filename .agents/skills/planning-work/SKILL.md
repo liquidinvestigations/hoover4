@@ -35,7 +35,8 @@ Numbered so the reading order is the order they were written.
 |---|---|
 | `0-prompt.md` | the request **verbatim**, unedited. It is the only record of what was actually asked |
 | `1-research-report.md` | what is true today: the code as it is, measured, with file paths |
-| `2-scope-and-cuts.md` | what lands, what does not, and the reason for each cut |
+| `2-questions.md` | the frontier, asked in one round, with a recommended answer each |
+| `3-scope-and-cuts.md` | what lands, what does not, and the reason for each cut |
 | `N-prompt-NN-<pass>.md` | the work package for one pass |
 | `N-report-NN-<pass>.md` | that pass's report, written by whoever ran it |
 | `N-coordinator-log.md` | decisions taken mid-flight, in the order they were taken |
@@ -75,6 +76,44 @@ meant two different things in two different files. That is what the rules below 
 Run it over the folder before calling a document finished. It is not wired into a hook: the
 archived folders under `plans/old/` predate the rule and would fail it forever.
 
+## The question round, between research and scope
+
+**Ask the frontier in one round, before the scope is written.** The frontier is every decision
+whose prerequisites are already settled, so it can be answered now. A question that depends on
+another question's answer waits for the second round.
+
+Measured across this repository's archive, five of seven plan folders carried a question section
+written at the end of the work rather than the start, and two of those questions decided whether
+finished work shipped. One of them asked whether to ship a known 3.4x regression, and it was
+answerable on day one. A separate plan forecast ten passes for work that one pass did in 62
+minutes, and the correction came from the user; **that was a frontier question the plan never
+asked**, which is whether the ten items were the same shape.
+
+- **Every question carries a recommended answer**, so the reader can agree in one word. A
+  question with no recommendation is asking someone else to do the planning.
+- **The round goes into `2-questions.md` and through `AskUserQuestion` as well.** A question
+  written in a file nobody has been asked is not a question.
+- **Write the questions out where you raise them.** Never name a count and leave the content
+  elsewhere.
+- **Record what was asked and what came back**, so the next round does not re-ask it.
+- **Stop when the frontier is empty**, and say so.
+
+## Scope by churn before scanning
+
+**Read what has been changing before deciding where to look.** A tree is too large to scan and
+the parts that keep moving are where the design questions are.
+
+```
+git log --since='6 weeks ago' --name-only --pretty=format: | sort | uniq -c | sort -rn | head -20
+```
+
+Applied here it found that the five most-edited files in the repository are configuration,
+deployment and specification rather than application code, which is a finding no scan of the
+source would have produced.
+
+Churn is a pointer and not a verdict. A file that changes constantly may be the one file that
+is supposed to.
+
 ## Fanning out artefacts
 
 Complex work produces screenshots, extracted datasets, scratch scripts and test output as
@@ -106,12 +145,24 @@ times the wall clock of doing it once. Before writing a plan with more than thre
 the items through the merge test in `reference/estimating.md` and write one line per split
 saying what forced it. A split with no reason written beside it is a pass that should not exist.
 
+## Deciding a shape
+
+When the plan is choosing how something should be structured rather than what it should do,
+**load `reviewing-changes` and apply its four shape tests at planning time**. They are written
+for reading a diff and they work as well on a design, and the alternative is discovering at
+review that the shape was decided without them.
+
 ## Estimating it
 
 **Cost work in passes, never in developer days.** A pass is one sub-agent invocation, and its
 cost comes from a measured reference class rather than from judgement about the task. Median
-41 minutes for a pass that writes, 10 for one that only reads, 73 for one that deploys. A
-developer day is a unit nothing here has ever been measured in.
+38 minutes for a pass that writes, 9 for one that only reads, 48 for one that touches another
+host. A developer day is a unit nothing here has ever been measured in.
+
+**A plan also carries a money figure and a tool-call budget.** The median implementation pass
+costs about $22 and spends 152 tool calls, against a budget of 96 under the context cap, so the
+median implementation pass hands over about once. Both numbers are in `reference/estimating.md`
+and both belong in the estimate block.
 
 **Get the pass count right before refining the per-pass cost.** An estimate that costs ten
 passes accurately and needed one is wrong by ten, and every percentile in it is still correct.
@@ -119,9 +170,10 @@ The estimate block therefore carries the pass count, the reason for each split, 
 peak context of the largest pass.
 
 Every plan that schedules work carries an `## Estimate` table: one row per item with its
-bucket, its verification cost, and `T50`/`T90` in minutes; then passes, agent wall clock, and
-session wall clock, which is about twice the agent time for a plan of different items and less
-when the items were merged. **The final report restates the same table with an actuals column.**
+bucket, its verification cost, `T50`/`T90` in minutes and a forecast cost; then passes, the
+tool-call budget, agent wall clock, and session wall clock, which is `T × 1.3` at eight passes
+or more and `T × 3.3` below that. **The final report restates the same table with an actuals
+column.**
 
 That last column is what makes the next estimate better. Twenty-one plan headings in this repository's archive
 carried a parenthetical day-cost and not one was ever checked, because every report that

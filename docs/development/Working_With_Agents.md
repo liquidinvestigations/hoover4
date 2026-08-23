@@ -13,6 +13,7 @@ and how to tell whether it fired.
 - [Hooks](#hooks)
 - [MCP servers](#mcp-servers)
 - [Harness compatibility](#harness-compatibility)
+- [Which model runs a pass](#which-model-runs-a-pass)
 - [Editing discipline is a setting, not a virtue](#editing-discipline-is-a-setting-not-a-virtue)
 - [Adding a skill, a rule or a hook](#adding-a-skill-a-rule-or-a-hook)
 - [Knowing that it fired](#knowing-that-it-fired)
@@ -187,6 +188,43 @@ operational detail.
 
 Rows marked unverified are exactly that: nobody has run them here. Treat them as work to do,
 not as support to rely on.
+
+### Where a sub-agent is defined, and what pins its model
+
+| harness | agent definitions | model per agent |
+|---|---|---|
+| Claude Code | `.claude/agents/*.md`, a symlink to `.agents/agents/` | `model` in frontmatter, with `effort` and `maxTurns` |
+| OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort`, behind a features flag |
+| opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
+| Cursor | reads `.agents/skills/` directly | unverified |
+| Gemini CLI | `GEMINI.md` | unverified |
+| Kimi CLI | unverified | unverified |
+| Google Antigravity | `AGENTS.md` | unverified |
+
+Only the Claude Code row runs work here. The rest record where the file would go, so the next
+person setting one up does not have to find out again.
+
+## Which model runs a pass
+
+**A sub-agent with no `model` field runs on whatever the organizer runs**, which is the expensive
+default. Claude Code resolves it in this order: the `CLAUDE_CODE_SUBAGENT_MODEL` environment
+variable, then the model given in the call, then the definition's `model` field, then the main
+conversation's model.
+
+**One agent's prompt is capped**, at 250,000 tokens for a pass that writes source and 150,000 for
+one that only reads. The reason for the first is cost: every turn re-sends the whole prompt, so a
+turn taken at 600,000 tokens of carried context costs about seven times the same turn taken below
+100,000. The reason for the second is the long-context literature, which puts accuracy loss
+between 32,000 and 100,000 tokens.
+
+**The cap is written into a work package as a tool-call count, not as a token count**, because an
+agent can count its own tool calls and cannot see its own context. Where a harness supplies a
+live token warning it fires against the window, not against a budget a plan chose. Two mechanisms
+carry the budget when attention does not: `maxTurns` in the agent definition, which the harness
+enforces, and a `PostToolUse` hook that puts the number back in front of the pass at 80% of it.
+
+Which model fills which role, and how one qualifies, is in
+[`Choosing_A_Model.md`](Choosing_A_Model.md).
 
 `allowed-tools` in skill frontmatter is one harness's spelling and is ignored by the others,
 so the skills carry it and no per-harness transform exists. A transform would be a second

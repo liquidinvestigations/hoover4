@@ -9,3 +9,4 @@ Explanation: the shape of the system and the reasons behind it. Procedure lives 
 - `Website_Backend.md`, sessions, database routing, error surfacing
 - `Chat_And_Agents.md`, the chat turn, the agents behind it, citations and streaming
 - `AI_Services.md`, the GPU tier and its CPU twins
+- `Settled_Decisions.md`, choices that read as defects, and the reason each one stands

@@ -43,10 +43,36 @@ invocation, and the sentence that says what its output must show.
 could not do and where it shipped past a failing check. Without that section it will
 present a clean summary instead.
 
-## Timebox
+## Writing for a reader who may be a weaker model
 
-State it as a budget of effort and attention, and never as a clock. A pass cannot measure its
-own elapsed time and always overestimates it.
+Every package is written to this standard, because it is also what makes a package readable
+after a compaction. Four properties, and a package that has all four costs nothing extra to
+write.
+
+1. **Every fact inlined.** No reference to a decision taken in the organizer's session, and no
+   phrase that assumes the reader watched the work being scoped. The reader was not there.
+2. **Every step ends in a command with its expected output.** A step whose success is a
+   judgement is a step a weaker model will report as done.
+3. **An explicit out-of-scope list**, by path or by name, so an edit outside it shows up in one
+   `git diff --stat`.
+4. **Stop conditions**, meaning what makes the pass stop and report rather than continue.
+
+State what would make the pass a failure **before it runs**, so the result is not argued
+afterwards. An edit outside the named scope, a check reported as passing that you cannot
+reproduce, and a second revision round still not meeting the done criteria are each enough.
+
+## Timebox and tool-call budget
+
+State the timebox as a budget of effort and attention, and never as a clock. A pass cannot
+measure its own elapsed time and always overestimates it.
+
+**State the tool-call budget as a number.** The context cap is a token figure and a pass cannot
+see its own context, so the package carries the cap converted at the p90 growth rate: 96 calls
+for an implementation pass, 58 for a read-only one. Tell the pass what to do when it reaches
+the budget, which is to stop taking new work, finish the step it is on, and write a handover
+naming what is done, what is not, and **the rule it derived**. A handover that carries the rule
+is what stops the next context deriving it again, and that re-derivation is the whole of the
+5.8x forecast error in the archive.
 
 Say what the pass owns, and instruct it to stop and report what it did not reach rather than
 narrowing the work to fit a feeling about time. A pass that stops with items unreached has told

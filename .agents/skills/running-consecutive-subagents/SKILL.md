@@ -83,12 +83,50 @@ median peak prompt was 190,402 tokens and the p90 was 293,276, against a window 
 Four of the 96 compacted, all under an earlier and smaller window. The largest recorded pass
 reached 689,268 tokens over four work packages and 357 tool calls, and never compacted.
 
-Budget 60% of the window for one pass. At the measured p90 growth rate of 2,603 tokens per tool
-call that is about 230 tool calls, and a typical implementation pass here spends 156. **If two
-passes fit inside one context and one check settles both, they are one pass.**
+**Two limits apply and the lower binds.** 60% of the window, and an absolute cap of 250,000
+tokens for a pass that writes source or 150,000 for one that only reads. On a one-million-token
+model the cap binds; on a 262,000-token model the 60% figure does, at 157,000.
+
+The cap is a cost rule. A turn taken at 600,000 tokens of carried context costs about 6.8 times
+the same turn taken below 100,000, measured over 20,405 turns, because every turn re-sends the
+whole prompt.
+
+**Give the pass the budget in tool calls, because it cannot see its own context.** At the p90
+growth rate of 2,603 tokens per call, 250,000 is 96 calls and 150,000 is 58. A typical
+implementation pass spends 152, so **the median implementation pass hands over about once**.
+Plan for that rather than discovering it.
+
+**When the cap and the merge rule disagree, the plan stays merged and the context splits.** One
+pass owns the whole job and restarts with a written handover carrying the rule it derived. Losing
+that rule is what the merge rule exists to prevent, and a handover keeps it for about 19,000
+tokens, which is the measured median first-turn prompt.
+
+**If two passes fit inside one context and one check settles both, they are one pass.**
 
 These figures are pinned in `.agents/skills/planning-work/reference/estimating.md`. Plan against
 them as they stand, and leave re-deriving them to a person who asks for it.
+
+## A worktree does not isolate a pass here
+
+Every check in this repository runs `docker exec` against a named container with the repository
+bind-mounted at `/app`. A git worktree lives at a different path on the host, and that path is
+not mounted into any container. **A pass working in a worktree therefore has no type check, no
+unit tests, no frontend check and no stack verification**, and it would report success against
+commands that never saw its code.
+
+This is the difference between this repository and the ones that external skills assume. There,
+worktree isolation is free because the toolchain runs on the host.
+
+The isolation that is available instead is the one already in force: **one pass in the main tree
+at a time, on its own branch, waited on, and its diff read before the next pass starts.** Accept
+a branch by squashing it into the working branch under one lowercase line, so the executor's
+intermediate messages do not reach the log. Read the diff with `git diff main...<branch>` rather
+than checking out the base, because whatever branch is checked out is what the containers serve,
+and switching invalidates every check the pass just ran.
+
+**Run no git write command while a pass is live.** One tree means one index. The archive records
+this failing once: a push during a live pass interleaved commits and sent unreviewed work to the
+remote.
 
 ## Reviewing a pass
 

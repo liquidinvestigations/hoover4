@@ -8,6 +8,8 @@ itself, badly.
 
 You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact path>`.**
 
+Written against commit `<short sha>`. Tool-call budget: `<n>`.
+
 ## Key
 <every short tag this prompt uses: the tag, what it is, and a link to where it is defined>
 <plus the tags the reader will meet on the other side of any link this prompt makes>
@@ -55,3 +57,19 @@ its author cannot be compared with the report beside it.
 
 **Name the timebox.** A pass self-timeboxes and reports what it did not reach, rather than
 running until it is stopped.
+
+**Stamp the commit the package was written against.** The tree moves while a package sits
+unsent, and a pass that reads a stale package silently works from a description of a tree that
+no longer exists. The stamp costs one `git rev-parse --short HEAD` and it makes the drift
+checkable:
+
+```
+git diff --stat <sha>..HEAD -- <the paths the package names>
+```
+
+Run that before launching. An empty output means the package is still true. Anything else goes
+into "What is true now" before the pass starts, and not into a correction afterwards.
+
+**Name the tool-call budget.** The context cap cannot be checked by the pass, and a tool-call
+count can. Say what to do on reaching it, which is to stop, finish the current step, and hand
+over the rule it derived.

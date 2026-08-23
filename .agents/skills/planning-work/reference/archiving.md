@@ -65,6 +65,32 @@ Then write **one prose document** in the live folder describing that inherited w
 tags at all, so the folder can be read without opening the copies. The copies are the record;
 the prose is the thing a person actually reads.
 
+## Reconcile the standing files first
+
+`TODO.md` and `DEFECTS.md` accumulate. Entries are added by every pass and removed by nobody, so
+the list drifts from the tree and a later plan picks work that is already done. Measured here, a
+two-entry sample of a 31-entry defect list had one entry already delivered, and `DEFECTS.md`
+carries its own header admitting that a good part of it is probably fixed.
+
+**Reconciling is a procedure, not a read.** For every entry:
+
+1. **Reproduce it against the running stack**, or find the commit that fixed it. An entry nobody
+   has tried to reproduce is not open, it is unknown.
+2. **Delete what is fixed.** Do not mark it fixed and leave it. The list is the value.
+3. **Give every survivor one status word** from `open`, `verified`, `fixed` or `rejected`, and
+   the command that reproduced it. A defect with no reproduction command costs the next reader
+   the same hour it cost you.
+4. **Move the survivors that are real limitations into `docs/development/Known_Defects.md`** as
+   present-tense statements. `plans/` is gitignored, so a defect list that lives only there is
+   one command from gone.
+
+**Then add a rejection register at the bottom of both files.** One line per thing considered and
+dropped, with the reason. Without it the next pass raises the same item, which this archive shows
+happening repeatedly across three folders.
+
+Reconcile before archiving, because the entries are accurate while the work is fresh and
+guesswork afterwards.
+
 ## The check
 
 Before archiving, search for every reference to the folder you are about to retire (its path,

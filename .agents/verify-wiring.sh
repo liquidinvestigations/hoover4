@@ -67,6 +67,10 @@ if [ -f "$h/deny-unscoped-search.py" ]; then
     [[ "$b3" == DENY* && "$g3" == allow ]] \
         && ok "register hook denies a banned phrase and allows plain prose" \
         || no "register hook verdicts wrong: bad=$b3 good=$g3"
+    b4=$(python3 "$h/warn-tool-call-budget.py" --test 77 96)
+    [[ "$b4" == *"19 left"* ]] \
+        && ok "budget hook reports the remaining tool calls" \
+        || no "budget hook wrong: $b4"
 else
     no "hook scripts are missing from .agents/hooks"
 fi
@@ -77,6 +81,23 @@ if grep -q 'deny-unscoped-search' "$REPO_ROOT/.claude/settings.json" 2>/dev/null
     ok "settings.json declares the PreToolUse hooks"
 else
     no "settings.json does not declare the hooks -- merge the block from .agents/harnesses/claude-settings.json"
+fi
+if grep -q 'warn-tool-call-budget' "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
+    ok "settings.json declares the PostToolUse budget hook"
+else
+    no "settings.json does not declare the budget hook -- merge the block from .agents/harnesses/claude-settings.json"
+fi
+
+# 5b. The agent definitions are reachable, and each one pins a model. A definition with no
+#     model field runs on whatever the organizer runs, which is the expensive default.
+if [ -n "$(find -L "$REPO_ROOT/.claude/agents" -name '*.md' -print -quit 2>/dev/null)" ]; then
+    n=$(find -L "$REPO_ROOT/.claude/agents" -name '*.md' | wc -l)
+    unpinned=$(grep -L '^model:' "$REPO_ROOT"/.agents/agents/*.md 2>/dev/null | wc -l)
+    [ "$unpinned" -eq 0 ] \
+        && ok ".claude/agents resolves to $n definitions, each pinning a model" \
+        || no "$unpinned agent definition(s) do not pin a model"
+else
+    no ".claude/agents has no definitions -- the symlink into .agents/agents is missing"
 fi
 
 # 6. The five path-scoped rules are present and each declares the paths it covers.

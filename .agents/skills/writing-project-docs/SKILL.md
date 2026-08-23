@@ -110,6 +110,22 @@ out of scope.
 | a procedure a person will repeat | `docs/operations/` or `docs/development/` |
 | a procedure an agent loads mid-task | a skill in `.agents/skills/` |
 | what the product does, as agreed | `docs/technical-specification/` |
+| a decision that keeps being re-opened | `docs/architecture/Settled_Decisions.md` |
+
+## When a decision is settled, and where it goes
+
+A decision earns a line in `Settled_Decisions.md` when **all three** are true. Two out of three
+is not enough, and the page fills up with opinions.
+
+1. **A person decided it**, rather than an agent inferring it from the code.
+2. **It has been re-opened at least once**, or it reads like a defect to someone who does not
+   know the reason. A decision nobody questions needs no defence.
+3. **It is stable**, meaning nothing scheduled will change it. A decision waiting on work is a
+   plan, and plans do not go in the tracked tree.
+
+Write it as what is true now plus the reason, and never as the history of the argument. One
+entry is two or three sentences. If it needs more, the thing being described is an architecture
+and it belongs in its own page.
 
 Every code directory has a `Readme.md`. Read it before changing the code around it, and
 correct it as you go.

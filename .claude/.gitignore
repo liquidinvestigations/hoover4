@@ -1,8 +1,9 @@
-# The shared wiring is tracked: the two symlinks into .agents/ and the settings that
+# The shared wiring is tracked: the three symlinks into .agents/ and the settings that
 # declare the hooks. Everything else here is one machine's local state.
 *
 !.gitignore
 !skills
 !rules
+!agents
 !settings.json
 settings.local.json
