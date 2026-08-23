@@ -76,6 +76,11 @@ Every pass needs all of this, because it starts with none of your context:
 Construct exactly what it needs. It does not inherit your session, and a package that assumes
 it does is a package with a hole in it.
 
+**Inside a plan folder the package is the pass document**, which `planning-work` defines. The
+executor is launched on that file, and nothing is transcribed into a second one. It adds the
+item's provenance and a dated copy of the text the item came from, in front of the six
+sections above. Before launch, confirm its commit stamp and re-check every fact it dates.
+
 ## Sizing the pass against its context
 
 A pass runs out of context long after it runs out of items. Across 96 recorded passes here the

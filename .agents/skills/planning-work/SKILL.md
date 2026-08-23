@@ -45,6 +45,46 @@ Numbered so the reading order is the order they were written.
 Prompt and report are **paired and adjacent**: a prompt with no report beside it is a pass
 that did not finish, and that is visible at a glance from the directory listing.
 
+**Two numbering conventions are legal.** The table above numbers by stage. A folder may
+instead number by the order its documents were written, which gives `1-plan.md`,
+`2-research.md`, `3-answers.md`, `4-organizer-log.md`, `5-scorecards/` and `6-final-report.md`,
+with the passes in `1-plan/` beside the plan they belong to. Pick one per folder and keep it.
+Two rules hold under either convention: the reading order is the number order, and a prompt
+has its report beside it.
+
+## The pass document
+
+**One document per pass, in a folder named for the plan**, such as `1-plan/pass-4-<slug>.md`.
+That document is the work package: the executor is launched on it, and nothing is transcribed
+into a second file. A plan whose passes live only as rows in an estimate table sends a
+sub-agent out with a slug and a cost.
+
+Each one carries, in this order:
+
+1. **The address block.** Which agent this is, that this file is its prompt, the exact
+   deliverable path, and the commit stamp the package was written against.
+2. **The `## Key` table**, because the document uses `T50` and the other tags and has to
+   decode them where it stands.
+3. **The estimate table's header and this pass's row**, copied from the plan. One row is
+   cheap and it means the reader never opens the plan to learn what the pass costs.
+4. **Where this item came from**, as a table: every source, what it holds, and a link.
+5. **The item, copied, with the date of the copy.** Verbatim, including whatever register the
+   source was written in. A quoted line keeps its exact wording.
+6. **The six package sections** from `running-consecutive-subagents`: read before you start,
+   what lands, what is true now, what must not happen, before you finish, and the report.
+
+**The report is written beside it** as `pass-N-report.md`, which keeps the pairing rule.
+
+**Copy across the folder boundary, link inside it.** `TODO.md`, `DEFECTS.md` and anything under
+`plans/old/` are rewritten on their own schedule and can be wiped, so a pass document copies
+their text and dates the copy. Everything inside the plan folder is linked instead. The same
+sentence in two files inside one folder is a defect waiting to happen, and the same sentence
+copied out of a file that may not exist next week is the only way to keep it.
+
+**An item with no entry in the standing files is the one that most needs copying.** Measured
+in this repository: of eight items in one sprint, two came from a code reading and a churn
+reading, and their only record was an archived folder. Those two are the items a plan loses.
+
 ## Short tags, and the `## Key` table
 
 A scope table and a results table only line up if the items have short names, so
@@ -220,8 +260,9 @@ Re-deriving them is a separate request from a person, and never a step inside a 
 
 ## What a prompt file must contain
 
-A pass is only as good as its work package. Every one of these, or the pass reconstructs it
-badly from context it does not have:
+A pass is only as good as its work package. In a plan folder the prompt file is the pass
+document above, so this list is what that document's six sections hold. Every one of these, or
+the pass reconstructs it badly from context it does not have:
 
 1. **Role and scope**. What this pass owns, and what it must not touch.
 2. **What to read first**, by path, including the decisions that are already settled and are

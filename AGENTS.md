@@ -155,6 +155,12 @@ edit that adds one.
   passes correctly and needed one is wrong by ten. Items that share one procedure, one check
   and one context are one pass, and a plan with more than three passes states in one line what
   forced each split. `planning-work` carries the method.
+- **A plan carries the text of every item it schedules.** An item taken from a standing list,
+  a defect list or an archived folder is copied into the plan. The copy carries its date and a
+  link back to the source. Those sources are rewritten on their own
+  schedule and can be deleted, so a link on its own is a promise the plan cannot keep. **Copy
+  across a folder boundary, and link inside one**, because two copies of one sentence in one
+  folder drift apart with nobody noticing. `planning-work` carries the method.
 - **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
   letter-and-number tags for a scope item, a decision, a question or a cut are free and
   useful, because they let a scope table and a result table line up. Outside that folder

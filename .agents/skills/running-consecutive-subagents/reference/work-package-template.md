@@ -3,6 +3,10 @@
 The same skeleton `planning-work` uses, with the notes that matter when the reader is a
 sub-agent rather than a future session.
 
+Inside a plan folder this skeleton is the second half of the pass document, under the address
+block, the `## Key` table, the estimate row, the provenance table and the dated copy of the
+item. `planning-work`, "The pass document", carries that order.
+
 ```markdown
 # <id>: <the deliverable in one line>
 
