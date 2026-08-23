@@ -679,14 +679,14 @@ async def capture_all(
                 if problems:
                     failed_pages.append(stem)
                     print(f"    FAILED: {'; '.join(problems)[:400]}", flush=True)
-                    report.append(f"- `{stem}` — `{page.url}` — **FAILED**")
+                    report.append(f"- `{stem}` (`{page.url}`): **FAILED**")
                 elif warnings:
                     warned_pages.append(stem)
                     report.append(
-                        f"- `{stem}` — `{page.url}` — ok ({len(warnings)} warning(s))"
+                        f"- `{stem}` (`{page.url}`): ok ({len(warnings)} warning(s))"
                     )
                 else:
-                    report.append(f"- `{stem}` — `{page.url}` — ok")
+                    report.append(f"- `{stem}` (`{page.url}`): ok")
                 report.append(f"    - api calls: {network.api_summary()}")
                 for problem in problems:
                     report.append(f"    - **{problem}**")
@@ -700,7 +700,7 @@ async def capture_all(
                 )
                 failed_pages.append(stem)
                 print(f"    FAILED: {reason}", flush=True)
-                report.append(f"- `{stem}` — `{page.url}` — **FAILED: {reason}**")
+                report.append(f"- `{stem}` (`{page.url}`): **FAILED: {reason}**")
                 try:
                     await tab.send(page_cdp.stop_loading())
                 except Exception:  # noqa: BLE001

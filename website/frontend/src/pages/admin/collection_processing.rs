@@ -317,7 +317,7 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
     if samples.is_empty() {
         return rsx! {
             p { style: "{HELP_TEXT} margin: 4px 0 0;",
-                "No ETA samples yet — they are collected in the background while the dataset is being processed, and never for a finished one."
+                "No ETA samples yet. They are collected in the background while the dataset is being processed, and never for a finished one."
             }
         };
     }
@@ -342,10 +342,10 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
                     Some(c) => rsx! {
                         "Estimated completion: "
                         b { "{c.deadline}" }
-                        span { style: HELP_TEXT, " (in {humanize_seconds(c.eta_seconds)} — best-effort estimate, not a scheduling promise)" }
+                        span { style: HELP_TEXT, " (in {humanize_seconds(c.eta_seconds)}, a best-effort estimate rather than a scheduling promise)" }
                     },
                     None => rsx! {
-                        span { style: HELP_TEXT, "No current estimate — the pipeline is finished or not making measurable progress." }
+                        span { style: HELP_TEXT, "No current estimate. The pipeline is finished or not making measurable progress." }
                     },
                 }
             }
@@ -544,7 +544,7 @@ fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
                     Load::Ready(b) if b.rows.is_empty() => rsx! {
                         p { style: HELP_TEXT,
                             "No task executions recorded yet. Every activity the pipeline runs \
-                             writes one row here — an empty table means nothing has been \
+                             writes one row here, so an empty table means nothing has been \
                              processed since the instrumentation was deployed."
                         }
                     },
@@ -710,7 +710,7 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
             "Share of processing time over the last {live.window_seconds} s, refreshed every 5 s. \
              An execution that straddles the window edge counts only for the part inside it. A row \
              with executions in flight but no share is one that started before the window and has \
-             not finished — check its age."
+             not finished. Check its age."
         }
         table { style: TABLE,
             thead {

@@ -19,7 +19,7 @@ use crate::routes::Route;
 #[component]
 pub fn AdminLlmPage() -> Element {
     rsx! {
-        Title { "Admin — LLM" }
+        Title { "Admin: LLM" }
         AdminGuard {
             AdminShell {
                 title: "LLM".to_string(),
@@ -369,7 +369,7 @@ fn CatalogPanel(
                                             if m.is_reasoning { "reasoning" }
                                         }
                                         td { style: TD,
-                                            if m.median_latency_ms > 0 { "{m.median_latency_ms} ms" } else { "—" }
+                                            if m.median_latency_ms > 0 { "{m.median_latency_ms} ms" } else { "n/a" }
                                         }
                                         td { style: TD, "{m.call_count_14d}" }
                                         td { style: TD,

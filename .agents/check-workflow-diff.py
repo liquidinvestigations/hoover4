@@ -107,7 +107,7 @@ def main(argv):
         print("no pipeline code in this diff.")
         return 0
 
-    print("WORKFLOW CODE CHANGED — drain before deploying.")
+    print("WORKFLOW CODE CHANGED. Drain before deploying.")
     print()
     for path in sorted(workflow_files):
         print("    %s" % path)

@@ -12,7 +12,7 @@ use crate::routes::Route;
 #[component]
 pub fn AdminDashboardPage() -> Element {
     rsx! {
-        Title { "Admin — Dashboard" }
+        Title { "Admin: dashboard" }
         AdminGuard {
             AdminShell {
                 title: "Site administration".to_string(),

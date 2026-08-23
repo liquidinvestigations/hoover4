@@ -86,7 +86,7 @@ fn body(doc: &'static RuleDoc, request: &ExplainRequest, specifics: Option<Strin
         blocks.push(format!(
             "**Authorities**\n{}",
             bullets(doc.authorities.iter().map(|authority| format!(
-                "[{}]({}) — {}",
+                "[{}]({}), {}",
                 authority.name, authority.url, authority.role
             )))
         ));
@@ -95,7 +95,7 @@ fn body(doc: &'static RuleDoc, request: &ExplainRequest, specifics: Option<Strin
         blocks.push(format!(
             "**References**\n{}",
             bullets(doc.references.iter().map(|reference| format!(
-                "[{}]({}) — {}",
+                "[{}]({}), {}",
                 reference.title, reference.url, reference.note
             )))
         ));
@@ -163,7 +163,7 @@ fn date_iso(card: &mut Explanation, request: &ExplainRequest) -> Option<String> 
     if !tz_known {
         specifics.push_str(
             " No offset was written, so the instant it refers to depends on where the document was \
-             produced — the date is certain, the moment is not.",
+             produced: the date is certain, the moment is not.",
         );
     }
     if request.text.as_deref().is_some_and(|text| text != rfc3339) {
@@ -199,8 +199,8 @@ fn company_lei(card: &mut Explanation, request: &ExplainRequest) -> Option<Strin
 
     Some(format!(
         "The check digits agree, so `{compact}` is a well-formed Legal Entity Identifier. Whether \
-         it was ever issued, and to whom, is a question for the register — the link above goes to \
-         the entry for this exact code."
+         it was ever issued, and to whom, is a question for the register. The link above goes \
+         to the entry for this exact code."
     ))
 }
 
@@ -267,9 +267,9 @@ fn company_vat(
     };
     Some(format!(
         "The number is registered with the tax administration of {country}, whose own check-digit \
-         rule the digits satisfy.{spelling} A valid number is one that was formed correctly — \
-         whether it is currently registered, and to whom, is a question for that administration's \
-         own register."
+         rule the digits satisfy.{spelling} A valid number is one that was formed correctly. \
+         Whether it is currently registered, and to whom, is a question for that \
+         administration's own register."
     ))
 }
 
@@ -296,7 +296,7 @@ fn bank_bic(
         Some(branch) => card.facts.push(Fact::new("Branch code", branch)),
         None => card
             .facts
-            .push(Fact::new("Branch code", "none — the head office")),
+            .push(Fact::new("Branch code", "none (the head office)")),
     }
 
     Some(format!(
@@ -392,7 +392,7 @@ fn phone(card: &mut Explanation, request: &ExplainRequest, data: &VendoredData) 
         Some(name) => card.facts.push(Fact::new("Country", name.as_str())),
         None => card
             .facts
-            .push(Fact::new("Country", "none — a global service")),
+            .push(Fact::new("Country", "none (a global service)")),
     }
     if !readable_type.is_empty() {
         card.facts
@@ -406,9 +406,9 @@ fn phone(card: &mut Explanation, request: &ExplainRequest, data: &VendoredData) 
             .to_string(),
     };
     Some(format!(
-        "{where_it_is}, and `{e164}` is the number in E.164 form — the one spelling that is the \
-         same wherever it is written down, which is what makes it usable as an index key. The \
-         numbering plan classifies it as a {readable_type} number. What was checked is the number, \
+        "{where_it_is}, and `{e164}` is the number in E.164 form. That is the one spelling that \
+         is the same wherever it is written down, which is what makes it usable as an index \
+         key. The numbering plan classifies it as a {readable_type} number. What was checked is the number, \
          not the subscriber: nothing here says the line is in service or whose it is."
     ))
 }
@@ -439,8 +439,8 @@ fn money(card: &mut Explanation, request: &ExplainRequest, data: &VendoredData) 
 
     Some(format!(
         "The value is stored as `{minor}`, an integer number of minor units, together with the \
-         code `{code}` and the {exponent} decimal places that code divides into — never as a \
-         decimal fraction, because binary floating point cannot hold one exactly and a sum of \
+         code `{code}` and the {exponent} decimal places that code divides into, and never as \
+         a decimal fraction, because binary floating point cannot hold one exactly and a sum of \
          money that has lost a cent has lost it silently. Written out, that is {readable} {code}."
     ))
 }
@@ -514,7 +514,7 @@ fn email(card: &mut Explanation, request: &ExplainRequest, data: &VendoredData) 
     match &kind.country {
         Some(country) => specifics.push_str(&format!(
             " `.{tld}` is the country-code top-level domain for {country}, which says where the \
-             domain is registered — not necessarily where its holder is."
+             domain is registered, not necessarily where its holder is."
         )),
         None => specifics.push_str(&format!(" `.{tld}` is a {}.", kind.description)),
     }

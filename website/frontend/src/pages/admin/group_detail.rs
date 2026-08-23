@@ -19,7 +19,7 @@ use crate::routes::Route;
 pub fn AdminGroupPage(groupname: String) -> Element {
     let groupname_for_content = groupname.clone();
     rsx! {
-        Title { "Admin — Group {groupname}" }
+        Title { "Admin: group {groupname}" }
         AdminGuard {
             AdminShell {
                 title: "Change group".to_string(),

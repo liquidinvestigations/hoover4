@@ -304,7 +304,7 @@ async def load_models():
             if actual_dim != EXPECTED_EMBEDDINGS_DIM:
                 raise RuntimeError(
                     f"embedding model {model_name} produces {actual_dim}-dim vectors but "
-                    f"EMBEDDINGS_DIM says {EXPECTED_EMBEDDINGS_DIM} — fix hoover4.ini, and "
+                    f"EMBEDDINGS_DIM says {EXPECTED_EMBEDDINGS_DIM}. Fix hoover4.ini, and "
                     f"remember a Manticore _vectors table's knn_dims cannot be altered"
                 )
             logger.info(f"Embedding dimension probe OK: {actual_dim}")

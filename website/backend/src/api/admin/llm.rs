@@ -282,7 +282,7 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
                 model_count: 0,
                 freshest_fetched_at: String::new(),
                 stale: true,
-                error: "catalog empty — click Refresh".into(),
+                error: "The catalog is empty. Click Refresh.".into(),
             },
         );
     }
@@ -437,7 +437,7 @@ async fn ensure_model_known(model_id: &str) -> anyhow::Result<()> {
         // Allow setting the env-configured model even before the first catalog refresh.
         let env_model = std::env::var("LLM_MODEL").unwrap_or_default();
         if env_model != model_id {
-            anyhow::bail!("model `{model_id}` is not in the catalog — refresh first");
+            anyhow::bail!("model `{model_id}` is not in the catalog. Refresh first.");
         }
     }
     Ok(())
@@ -514,7 +514,7 @@ async fn prior_catalog(provider: &str) -> std::collections::HashMap<String, Prio
         Err(e) => {
             tracing::warn!(
                 "catalog refresh could not read the current state of provider {provider}: \
-                 {e:#} — admin allowlist decisions for this provider may be reset"
+                 {e:#}. Admin allowlist decisions for this provider may be reset"
             );
             std::collections::HashMap::new()
         }

@@ -23,7 +23,7 @@ fn setting_description(key: &str) -> &'static str {
         "llm_model_internal_search" => "Model for documents-only chats (empty = the chat default)",
         "llm_model_full_research" => "Model for chats with the web tools on (empty = the chat default)",
         "embeddings_serving_model" | "embeddings_serving_dim" => {
-            "Written by `main.py probe-embeddings` — what the endpoint ACTUALLY serves. \
+            "Written by `main.py probe-embeddings`, and it is what the endpoint ACTUALLY serves. \
              Editing this by hand does not change the server."
         }
         _ => "",
@@ -45,7 +45,7 @@ fn deployment_description(key: &str) -> &'static str {
 #[component]
 pub fn AdminSettingsPage() -> Element {
     rsx! {
-        Title { "Admin — Settings" }
+        Title { "Admin: settings" }
         AdminGuard {
             AdminShell {
                 title: "Server settings".to_string(),

@@ -527,7 +527,7 @@ fn SearchForResultsHitCountString(
         // A *node*, though, never an empty `rsx! {}`. Every other arm here returns a text
         // node, and returning nothing from one of them panics the render with "Unable to
         // retrieve the hook that was initialized at this index" when the arm changes.
-        Some(Err(_)) => return rsx! { "—" },
+        Some(Err(_)) => return rsx! { "n/a" },
         // partial: the total is a lower bound. Some shards could not be searched.
         Some(Ok(s)) if s.partial => return rsx! { "≥ {s.total} documents found (some collections could not be searched)" },
         Some(Ok(s)) => return rsx! { "{s.total} documents found" },

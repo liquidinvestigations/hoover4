@@ -316,7 +316,7 @@ mod tests {
         assert_eq!(
             canonical.trim(),
             super::LAST_COLLECTION_MIGRATION_TABLE.trim(),
-            "READINESS_SENTINEL copies drifted — update both (see the const's doc comment)"
+            "READINESS_SENTINEL copies drifted. Update both, and see the const's doc comment."
         );
     }
 }

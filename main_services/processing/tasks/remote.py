@@ -316,7 +316,7 @@ def record_embeddings_probe() -> tuple[str, int] | None:
         model, dims = probe_embeddings(base_url)
     except Exception as exc:  # noqa: BLE001 - see the docstring
         log.warning(
-            "embeddings probe failed (%s); server_settings left unchanged — "
+            "embeddings probe failed (%s); server_settings left unchanged, so "
             "consumers will refuse until `main.py probe-embeddings` succeeds", exc,
         )
         return None

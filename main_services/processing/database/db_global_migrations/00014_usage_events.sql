@@ -2,7 +2,7 @@
 --
 -- PRIVACY RULE, do not "improve" away: record only who, which broad route class,
 -- and when. Never a URL, never a query string, never a document hash, never a
--- result count — a metrics table that accumulates search queries is a
+-- result count. A metrics table that accumulates search queries is a
 -- surveillance log.
 --
 -- The TTL is applied by background merges, so rows can outlive 24h briefly.

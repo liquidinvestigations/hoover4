@@ -12,7 +12,7 @@ use crate::components::suspend_boundary::SuspendWrapper;
 #[component]
 pub fn AdminAiStatusPage() -> Element {
     rsx! {
-        Title { "Admin — AI status" }
+        Title { "Admin: AI status" }
         AdminGuard {
             AdminShell {
                 title: "AI status".to_string(),
@@ -30,7 +30,7 @@ fn AiStatusContent() -> Element {
     let status = status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
     rsx! {
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "Configured versus actually serving. Auto-fallback to CPU twins is silent by design — this page is how you notice."
+            "Configured versus actually serving. Auto-fallback to CPU twins is silent by design, and this page is how you notice."
         }
         match status {
             None => rsx! { "Loading\u{2026}" },

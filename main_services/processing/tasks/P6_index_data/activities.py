@@ -1439,7 +1439,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
     if table_dims is None:
         raise ApplicationError(
             f"{vectors_table} does not exist while {len(rows)} vectors wait to be "
-            "indexed; the shard planner creates it from the probed dimension — "
+            "indexed; the shard planner creates it from the probed dimension. "
             "is this worker running current code?",
             non_retryable=True,
         )
@@ -1460,7 +1460,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
         raise ApplicationError(
             f"refusing to index {len(kept)} vectors of dims {sorted(dims_found)} into "
             f"{vectors_table} (knn_dims={table_dims}); a table's knn_dims cannot be "
-            "altered — drop and rebuild the _vectors tables "
+            "altered. Drop and rebuild the _vectors tables "
             "(`main.py reindex-collection`) after changing the embedding model",
             non_retryable=True,
         )

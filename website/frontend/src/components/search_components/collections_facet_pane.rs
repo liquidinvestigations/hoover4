@@ -310,7 +310,7 @@ pub fn CollectionsFacetPane(
                     background-color: rgba(255, 180, 60, 0.15); color: rgb(120, 70, 0);
                     font-size: 13px;
                 ",
-                "Some collections could not be searched — facet counts may be incomplete."
+                "Some collections could not be searched, so facet counts may be incomplete."
             }
         }
         if no_matches {

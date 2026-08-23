@@ -20,7 +20,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         let reason = if doc.file_hash.is_empty() {
             "no document id"
         } else {
-            "no dataset — the tool that returned this document did not name one"
+            "no dataset, because the tool that returned this document did not name one"
         };
         return rsx! {
             div {

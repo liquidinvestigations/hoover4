@@ -265,7 +265,7 @@ fn HighlightTextSnippetSection(
                         color: rgba(0, 0, 0, 0.55);
                         min-width: 0;
                     ",
-                    "Matched by filename — no matching text inside this document."
+                    "Matched by filename. No matching text inside this document."
                 }
                 if has_spans {
                     div {

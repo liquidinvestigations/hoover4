@@ -505,7 +505,7 @@ async def _fetch_crossref(query: str, max_results: int, timelimit: str | None) -
             SearchResult(
                 title=str(titles[0]) if titles else doi,
                 url=f"https://doi.org/{doi}",
-                snippet=" — ".join(p for p in (journal, abstract) if p),
+                snippet=". ".join(p for p in (journal, abstract) if p),
                 kind=KIND_REFERENCE,
                 published=_crossref_date(row.get("issued")),
             )
@@ -569,7 +569,7 @@ async def _fetch_factcheck(query: str, max_results: int, timelimit: str | None) 
             # The rating leads the snippet: "False" is the entire finding, and burying it
             # behind the claim text is how a model quotes the claim as if it were the
             # verdict.
-            head = " — ".join(p for p in (rating, publisher) if p)
+            head = ", ".join(p for p in (rating, publisher) if p)
             out.append(
                 SearchResult(
                     title=str(review.get("title") or text)[:300],

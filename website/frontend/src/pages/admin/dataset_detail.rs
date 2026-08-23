@@ -18,7 +18,7 @@ pub fn AdminDatasetPage(collection_id: String, dataset_id: String) -> Element {
     let collection_id_for_content = collection_id.clone();
     let dataset_id_for_content = dataset_id.clone();
     rsx! {
-        Title { "Admin — Dataset {dataset_id}" }
+        Title { "Admin: dataset {dataset_id}" }
         AdminGuard {
             AdminShell {
                 title: "Change dataset".to_string(),

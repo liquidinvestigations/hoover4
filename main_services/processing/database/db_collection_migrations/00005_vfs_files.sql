@@ -16,7 +16,7 @@
 -- A path has exactly one current row. `hash` is deliberately NOT in the sort key: with
 -- it, a file whose content changed at the same path inserts a second row beside the old
 -- one rather than replacing it, and the VFS then holds two versions of one path with no
--- way to say which is current. A path is unique within its container — including for
+-- way to say which is current. A path is unique within its container, including for
 -- email attachments, which are written to a temp directory by filename, so a duplicate
 -- name has already overwritten on disk before any row exists.
 --

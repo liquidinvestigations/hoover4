@@ -14,7 +14,7 @@
 -- with no trailing slash except for the root itself. The per-dataset pseudo-root is
 -- "{collection_dataset}\x1f\x1f/", and it is what the tree's dataset row filters on.
 --
--- Scoping the key by dataset AND container is the whole point: the bare path `/data` is
+-- Scoping the key by dataset AND container is what makes it unique: the bare path `/data` is
 -- the same string in every dataset and inside every archive, so a term id hashed from
 -- the path alone silently unions unrelated corpora.
 --

@@ -58,8 +58,8 @@ pub fn requires_session(path: &str) -> bool {
 
 /// The body of a refusal, written for whoever reads it in a network panel or a log.
 pub const NO_SESSION_MESSAGE: &str =
-    "no session: this endpoint requires a signed-in session. Load the site first — it \
-     establishes one through /api/whoami — or authenticate through the reverse proxy.";
+    "no session: this endpoint requires a signed-in session. Load the site first, which \
+     establishes one through /api/whoami, or authenticate through the reverse proxy.";
 
 #[cfg(test)]
 mod tests {

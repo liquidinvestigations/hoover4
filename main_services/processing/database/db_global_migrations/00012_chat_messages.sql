@@ -6,7 +6,7 @@
 -- calls it triggers can land inside the same second.
 --
 -- `username` is denormalised onto every message so a read never has to join
--- `chat_sessions` to prove ownership — the ACL check is a WHERE clause on the same
+-- `chat_sessions` to prove ownership. The ACL check is a WHERE clause on the same
 -- table as the data.
 CREATE TABLE IF NOT EXISTS chat_messages
 (

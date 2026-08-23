@@ -418,7 +418,7 @@ pub async fn detect_seq_collision(
     }
     tracing::error!(
         "seq collision in session {session_id} at seq {seq}: this turn is {expected_uuid}, \
-         but {others:?} already claimed it — a message will be lost to ReplacingMergeTree"
+         but {others:?} already claimed it, so a message will be lost to ReplacingMergeTree"
     );
     anyhow::bail!(
         "another message was written to this conversation at the same time; please send it again"

@@ -97,7 +97,7 @@ fn an_email_card_resolves_the_country_code_domain() {
         .body
         .contains("country-code top-level domain for United Kingdom"));
     // What acceptance does not prove matters as much as what it does.
-    assert!(card.body.contains("no lookup of any kind is made"));
+    assert!(card.body.contains("No lookup of any kind is made"));
 }
 
 #[test]

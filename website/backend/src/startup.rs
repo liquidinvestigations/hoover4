@@ -25,7 +25,7 @@ pub async fn ensure_clickhouse_reachable() -> anyhow::Result<()> {
     }
 
     anyhow::bail!(
-        "ClickHouse still unreachable at {} after {ATTEMPTS} attempts — refusing to start",
+        "ClickHouse still unreachable at {} after {ATTEMPTS} attempts, so it refuses to start",
         crate::db_utils::clickhouse_utils::clickhouse_url()
     )
 }

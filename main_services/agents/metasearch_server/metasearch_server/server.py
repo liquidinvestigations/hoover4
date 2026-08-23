@@ -46,7 +46,7 @@ mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_metasearch"),
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
-        "Search the OPEN WEB — not the user's own documents. One tool covers several "
+        "Search the OPEN WEB rather than the user's own documents. One tool covers several "
         "independent engines (DuckDuckGo, Brave, Yahoo), DuckDuckGo and GDELT news, "
         "Wikipedia, Wikidata, Crossref DOI metadata and the web archives at once. It "
         "takes a LIST of queries: every query is run across every source, the results are "
@@ -56,7 +56,7 @@ mcp = FastMCP(
         "rather than the ones most engines happened to agree on. Each result names the "
         "sources that returned it and the queries that found it: a page three sources or "
         "three queries agree on is better corroborated than one found by one. Snippets "
-        "are short by design — use the browser tools to open a promising result and read "
+        "are short by design, so use the browser tools to open a promising result and read "
         "it in full.",
     ),
 )
@@ -79,7 +79,7 @@ class WebResult(BaseModel):
     display_url: str = ""
     snippet: str = ""
     sources: list[str] = Field(
-        default_factory=list, description="Sources that returned this URL — corroboration"
+        default_factory=list, description="Sources that returned this URL, which is the corroboration"
     )
     kind: str = Field(default="web", description="web | news | reference")
     rrf_rank: int = 0
@@ -112,13 +112,13 @@ class WebSearchResponse(BaseModel):
     sources_used: list[str] = Field(default_factory=list)
     degraded: list[str] = Field(
         default_factory=list,
-        description="Sources that returned nothing — likely broken, so these results "
+        description="Sources that returned nothing and are likely broken, so these results "
         "come from fewer sources than intended",
     )
     degraded_reasons: dict[str, str] = Field(
         default_factory=dict,
         description="Why each degraded source came back empty (HTTP status, timeout, "
-        "no results). Diagnostic, not evidence — nothing here changes the answer.",
+        "no results). This is a diagnostic rather than evidence, and nothing here changes the answer.",
     )
     unknown_sources: list[str] = Field(
         default_factory=list, description="Names in `sources` that do not exist and were ignored"
@@ -156,8 +156,8 @@ MAX_QUERIES = int(os.getenv("METASEARCH_MAX_QUERIES", "5"))
 @mcp.tool(
     name="web_search",
     description=(
-        "Search the open web from several angles at once. Pass `queries` as a list — "
-        "`[\"arthur andersen enron\", \"andersen collapse 2002\"]` — and every query is "
+        "Search the open web from several angles at once. Pass `queries` as a list, for "
+        "example `[\"arthur andersen enron\", \"andersen collapse 2002\"]`. Every query is "
         "run across every source, merged into one pool and ranked together, so ask the "
         "distinct angles of your question in one call rather than one per turn. Each "
         "result names the queries that found it. Covers several independent engines, "

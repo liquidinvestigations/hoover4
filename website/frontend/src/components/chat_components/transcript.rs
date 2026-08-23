@@ -507,7 +507,7 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                                         border: 1px solid #FDE68A; border-radius: 6px;
                                         padding: 3px 7px; margin: 2px 4px;
                                     ",
-                                    "Unverified quote — this wording was not found in the document."
+                                    "Unverified quote. This wording was not found in the document."
                                 }
                             }
                         }

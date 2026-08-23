@@ -136,7 +136,7 @@ pub fn FacetSelectorList(
                     color: rgb(120, 70, 0);
                     font-size: 13px;
                 ",
-                "Some collections could not be searched — facet counts may be incomplete."
+                "Some collections could not be searched, so facet counts may be incomplete."
             }
         }
         if no_matches {

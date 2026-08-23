@@ -81,7 +81,7 @@ pub struct Reference {
 pub const CONFIDENCE_NOTE: &str = "Confidence says how likely this span is to be the thing the \
                                    rule claims, given what the validator was able to check. It is \
                                    not a probability that the identifier was ever issued, that the \
-                                   address receives mail, or that the value is true — only that \
+                                   address receives mail, or that the value is true, only that \
                                    the text was read correctly.";
 
 pub fn lookup(rule_id: &str) -> Option<&'static RuleDoc> {
@@ -97,13 +97,13 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "date.iso8601",
         entity_type: EntityType::Date,
         title: "ISO 8601 date and time",
-        matches: "A date written in the international machine-readable order — year, month, day, \
-                  largest unit first — optionally followed by a time and a UTC offset. This is the \
+        matches: "A date written in the international machine-readable order (year, month, day, \
+                  largest unit first), optionally followed by a time and a UTC offset. This is the \
                   form used by logs, exports, mail headers and databases, and it is unambiguous: \
                   unlike 03/04/2021, it cannot be read two ways.",
         standards: &[
-            "ISO 8601 — Date and time representations for information interchange",
-            "RFC 3339 — Date and Time on the Internet: Timestamps, the internet profile of ISO 8601",
+            "ISO 8601: Date and time representations for information interchange",
+            "RFC 3339, Date and Time on the Internet: Timestamps, the internet profile of ISO 8601",
         ],
         checks: &[
             "the date exists in the proleptic Gregorian calendar, so 30 February and 31 April are \
@@ -111,15 +111,15 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the clock is a real time of day, so hour 24 and minute 61 are rejected",
             "the year falls inside a plausibility window, which is what keeps version strings and \
              identifier fragments out of the date facet",
-            "nothing that could have continued the timestamp runs into the match — a digit or a \
-             letter on either side, or a field separator with a digit behind it — so neither a \
+            "nothing that could have continued the timestamp runs into the match (a digit or a \
+             letter on either side, or a field separator with a digit behind it), so neither a \
              date embedded in a longer number nor a slice of a longer timestamp is reported",
             "a day carved out of a timestamp whose clock is a real time of day is refused, because \
              the day alone would be reported without the instant it was written with; where the \
              clock is not a real time of day the day is a salvage and is kept",
         ],
         not_checked: &[
-            "whether the date is correct — only that it is a date that exists",
+            "whether the date is correct, only that it is a date that exists",
             "which time zone an offset belongs to: +02:00 is an offset from UTC, and many zones \
              share it at different times of year",
         ],
@@ -165,35 +165,35 @@ static RULE_DOCS: &[RuleDoc] = &[
         entity_type: EntityType::Email,
         title: "Email address",
         matches: "An address in the ordinary local-part@domain form that people actually write. \
-                  Full RFC 5322 syntax — quoted local parts, comments, folded whitespace — is \
+                  Full RFC 5322 syntax (quoted local parts, comments, folded whitespace) is \
                   deliberately not the target: it accepts a great deal nobody has ever typed, and \
                   on real documents the precision comes from checking the domain instead.",
         standards: &[
-            "RFC 5321 — Simple Mail Transfer Protocol, which sets the length limits",
-            "RFC 5322 — Internet Message Format, which defines the address grammar",
+            "RFC 5321: Simple Mail Transfer Protocol, which sets the length limits",
+            "RFC 5322: Internet Message Format, which defines the address grammar",
         ],
         checks: &[
             "the top-level domain is on IANA's list of delegated domains, which is what separates \
              an address from a file name such as sprite@2x.png",
-            "the local part is addressable unquoted — no leading, trailing or doubled dot",
+            "the local part is addressable unquoted, with no leading, trailing or doubled dot",
             "the local part and the domain are inside the RFC 5321 length limits of 64 and 255 \
              characters",
             "nothing addressable runs into the match from either side, so an address is not cut \
              out of a longer token",
         ],
         not_checked: &[
-            "whether the domain exists, resolves, or accepts mail — no lookup of any kind is made",
+            "whether the domain exists, resolves, or accepts mail. No lookup of any kind is made",
             "whether the mailbox exists or the address was ever in use",
             "whether the address belongs to the person the surrounding text is about",
             "a domain with no dot in it: the pattern requires at least two labels, so test@io is \
              not matched. message.rfc5322 does admit a single-label right-hand side, because RFC \
              5322 §3.6.4 says an id-right may be a bare dot-atom-text; the two rules disagree \
              about this on purpose and this is the one that asks for more",
-            "the local-part characters RFC 5322 admits that this pattern's class does not — ! # $ \
+            "the local-part characters RFC 5322 admits that this pattern's class does not: ! # $ \
              & ' * / = ? ^ ` { | } ~. An address using one is not merely skipped: the match \
              begins after the offending character, so the bounce address \
              bounces+866407-eeb4-penultim_o=yahoo.com@delivery.customeriomail.com is reported as \
-             yahoo.com@delivery.customeriomail.com — a wrong value rather than a miss",
+             yahoo.com@delivery.customeriomail.com, which is a wrong value rather than a miss",
         ],
         authorities: &[Authority {
             name: "Internet Assigned Numbers Authority",
@@ -205,7 +205,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             property: "emailMentioned",
             note: "The property FollowTheMoney defines for an address found in a document's text, \
                    as opposed to LegalEntity.email, which asserts that the address belongs to the \
-                   entity — something extraction cannot establish.",
+                   entity, which extraction cannot establish.",
         },
         references: &[
             Reference {
@@ -229,12 +229,12 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "date.rfc2822",
         entity_type: EntityType::Date,
         title: "Mail header date",
-        matches: "The date line of an email or news message — Tue, 04 Mar 2021 09:12:00 +0200. \
+        matches: "The date line of an email or news message, such as Tue, 04 Mar 2021 09:12:00 +0200. \
                   Written by mail software rather than by people, so it is consistently spelled, \
                   and it carries the day of the week alongside the date.",
         standards: &[
-            "RFC 5322 §3.3 — Internet Message Format, the date and time specification",
-            "RFC 2822 §3.3 — the previous revision, whose obsolete zone abbreviations are still \
+            "RFC 5322 §3.3: Internet Message Format, the date and time specification",
+            "RFC 2822 §3.3: the previous revision, whose obsolete zone abbreviations are still \
              emitted",
         ],
         checks: &[
@@ -249,7 +249,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         ],
         not_checked: &[
             "whether the message exists, was sent, or was sent when it says",
-            "which named time zone the offset belongs to — many zones share an offset at different \
+            "which named time zone the offset belongs to. Many zones share an offset at different \
              times of year",
         ],
         authorities: &[Authority {
@@ -281,9 +281,10 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "date.clf",
         entity_type: EntityType::Date,
         title: "Web server log timestamp",
-        matches: "The bracketed timestamp of the Common Log Format — [04/Mar/2021:09:12:00 +0200] \
-                  — emitted by Apache, nginx and everything that imitates them. The brackets and \
-                  the colon between date and clock make it self-identifying, which is why it needs \
+        matches: "The bracketed timestamp of the Common Log Format, such as \
+                  [04/Mar/2021:09:12:00 +0200], emitted by Apache, nginx and everything that \
+                  imitates them. The brackets and the colon between date and clock make it \
+                  self-identifying, which is why it needs \
                   no cue word.",
         standards: &[
             "NCSA Common Log Format, as implemented by the Apache HTTP Server mod_log_config \
@@ -323,10 +324,10 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "date.iso_week",
         entity_type: EntityType::Date,
         title: "ISO week date",
-        matches: "A day named by its ISO week and weekday — 2021-W09-4, or 2021W094 in the basic \
-                  spelling. Common in manufacturing, logistics and payroll data, where the week is \
+        matches: "A day named by its ISO week and weekday, such as 2021-W09-4, or 2021W094 in the \
+                  basic spelling. Common in manufacturing, logistics and payroll data, where the week is \
                   the planning unit.",
-        standards: &["ISO 8601 §4.1.4 — week date representations"],
+        standards: &["ISO 8601 §4.1.4: week date representations"],
         checks: &[
             "the week exists in that ISO year, so week 53 is accepted only in the years that have \
              one",
@@ -337,7 +338,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         ],
         not_checked: &[
             "the time of day, which the format does not carry",
-            "that the ISO year is the calendar year — the first days of January can belong to the \
+            "that the ISO year is the calendar year. The first days of January can belong to the \
              previous ISO year, and the value is the calendar date it resolves to",
         ],
         authorities: &[Authority {
@@ -368,14 +369,14 @@ static RULE_DOCS: &[RuleDoc] = &[
                   strongest bank identifier in an investigative corpus, because it names one \
                   account at one institution.",
         standards: &[
-            "ISO 13616 — International Bank Account Number",
-            "ISO 7064 Mod 97, 10 — the check character system it uses",
+            "ISO 13616: International Bank Account Number",
+            "ISO 7064 Mod 97, 10: the check character system it uses",
         ],
         checks: &[
             "the country code has an entry in the IBAN registry, so a country that issues no IBANs \
              is a rejection",
             "the length is exactly what the registry gives for that country",
-            "every position matches the registry's structure — digits where it says digits, \
+            "every position matches the registry's structure, with digits where it says digits and \
              letters where it says letters",
             "ISO 7064 mod-97-10 over the rearranged form, which is what makes the country code and \
              the check digits part of the arithmetic",
@@ -422,10 +423,10 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "bank.bic",
         entity_type: EntityType::BankAccount,
         title: "Business Identifier Code (SWIFT code)",
-        matches: "The code that names a financial institution rather than an account — four \
+        matches: "The code that names a financial institution rather than an account: four \
                   letters of institution, two of country, two of location, and an optional branch. \
                   It is what a payment instruction carries beside the account number.",
-        standards: &["ISO 9362 — Business identifier code (BIC)"],
+        standards: &["ISO 9362: Business identifier code (BIC)"],
         checks: &[
             "the length is eight or eleven characters, the only two ISO 9362 defines",
             "positions five and six are an ISO 3166-1 alpha-2 country code that exists",
@@ -434,7 +435,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric runs into the match from either side",
         ],
         not_checked: &[
-            "any check digit — ISO 9362 defines none, so the structure and the label beside it are \
+            "any check digit. ISO 9362 defines none, so the structure and the label beside it are \
              the whole of what can be verified",
             "that the code is registered, or that the institution it names still exists",
             "that the branch code is one the institution actually uses",
@@ -472,15 +473,15 @@ static RULE_DOCS: &[RuleDoc] = &[
                   than the account behind it, and in a document it is normally beside the words \
                   that say so.",
         standards: &[
-            "ISO/IEC 7812-1 — Identification cards: identification of issuers, numbering system",
-            "ISO/IEC 7812-2 — the application and registration procedures for issuer identifiers",
+            "ISO/IEC 7812-1, Identification cards: identification of issuers, numbering system",
+            "ISO/IEC 7812-2: the application and registration procedures for issuer identifiers",
         ],
         checks: &[
             "the number is thirteen to nineteen digits, written compactly or with one separator \
-             character used throughout — a run mixing spaces and hyphens is refused",
+             character used throughout. A run mixing spaces and hyphens is refused",
             "the Luhn check digit agrees",
             "the leading digits fall in a range allocated to a card issuer, and the number is as \
-             long as that issuer's cards are — a Luhn-valid run whose prefix belongs to no issuer \
+             long as that issuer's cards are. A Luhn-valid run whose prefix belongs to no issuer \
              is not a card",
             "one of the words card, cardholder, Visa, Mastercard, Amex, Discover, JCB, Diners or \
              Maestro appears within 48 bytes either side, in the candidate's own field. Luhn is a \
@@ -493,7 +494,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "whether the card was ever issued, is still valid, or belongs to whoever the text says",
             "the expiry date and the card verification value, which are separate fields this rule \
              does not read and does not pair with the number",
-            "the airline range — a fifteen-digit run beginning with 1 is not matched, because that \
+            "the airline range. A fifteen-digit run beginning with 1 is not matched, because that \
              is also the shape of half the reference numbers in a logistics document",
             "which account the card is presented against; a card and an account are different \
              things and this value names only the card",
@@ -537,10 +538,10 @@ static RULE_DOCS: &[RuleDoc] = &[
         entity_type: EntityType::BankAccount,
         title: "ABA routing transit number",
         matches: "The nine-digit number that names the United States financial institution an \
-                  account is held at — printed on a cheque beside the account number, and quoted \
+                  account is held at, printed on a cheque beside the account number, and quoted \
                   in a payment instruction as the routing or transit number.",
         standards: &[
-            "ABA routing transit number — the American Bankers Association's numbering system, \
+            "ABA routing transit number: the American Bankers Association's numbering system, \
              ANSI X9.13",
         ],
         checks: &[
@@ -549,7 +550,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              number whatever its checksum says",
             "the 3-7-1 weighted sum over the nine digits is zero modulo ten",
             "one of the words routing, ABA, abarouting, bankrouting, RTN or transit appears \
-             within 48 bytes either side, in the candidate's own field — two filters over nine \
+             within 48 bytes either side, in the candidate's own field. Two filters over nine \
              digits are still nine digits, and a nine-digit reference number passes the checksum \
              one time in ten",
             "nothing alphanumeric runs into the match from either side",
@@ -559,7 +560,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              Federal Reserve's directory",
             "the hyphenated fractional spelling printed on some cheques, which is not matched: \
              nine digits behind a one-in-ten checksum do not buy separator tolerance",
-            "which of an institution's routing numbers this is — a bank has several, by region \
+            "which of an institution's routing numbers this is. A bank has several, by region \
              and by transfer type",
         ],
         authorities: &[Authority {
@@ -591,13 +592,13 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "company.lei",
         entity_type: EntityType::CompanyId,
         title: "Legal Entity Identifier",
-        matches: "The twenty-character code that identifies a party to a financial transaction — \
+        matches: "The twenty-character code that identifies a party to a financial transaction: \
                   four characters naming the unit that issued it, thirteen identifying the \
                   organisation, and two check digits. It is the closest thing to a global company \
                   key, and it resolves to a named legal entity with a jurisdiction and an address.",
         standards: &[
-            "ISO 17442 — Legal entity identifier (LEI)",
-            "ISO 7064 Mod 97, 10 — the check character system it uses",
+            "ISO 17442: Legal entity identifier (LEI)",
+            "ISO 7064 Mod 97, 10: the check character system it uses",
         ],
         checks: &[
             "ISO 7064 mod-97-10 over all twenty characters, with letters counting as their base-36 \
@@ -607,11 +608,11 @@ static RULE_DOCS: &[RuleDoc] = &[
              twenty characters of a hash from being read as a code",
         ],
         not_checked: &[
-            "whether the identifier was ever issued — the arithmetic agrees for numbers GLEIF has \
+            "whether the identifier was ever issued. The arithmetic agrees for numbers GLEIF has \
              never allocated",
             "whether the registration is current: an LEI can lapse, and the code stays valid \
              arithmetic",
-            "which company it names — the card links to GLEIF's search rather than resolving it",
+            "which company it names. The card links to GLEIF's search rather than resolving it",
         ],
         authorities: &[
             Authority {
@@ -651,13 +652,13 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The tax number a business quotes for trade inside the European Union: a \
                   two-letter member-state prefix followed by that state's own registration \
                   number. Every member state is covered, each with the check-digit algorithm its \
-                  own tax administration publishes. Greece is the exception to the country code — \
-                  it writes EL where ISO 3166-1 writes GR.",
+                  own tax administration publishes. Greece is the exception to the country code. \
+                  It writes EL where ISO 3166-1 writes GR.",
         standards: &[
-            "Council Directive 2006/112/EC — the common system of value added tax",
-            "ISO 3166-1 alpha-2 — the prefix, with EL for Greece",
-            "ISO 7064 Mod 11, 10 — used by Germany and Croatia",
-            "ISO 7064 Mod 97, 10 — used by the current Dutch form",
+            "Council Directive 2006/112/EC: the common system of value added tax",
+            "ISO 3166-1 alpha-2: the prefix, with EL for Greece",
+            "ISO 7064 Mod 11, 10: used by Germany and Croatia",
+            "ISO 7064 Mod 97, 10: used by the current Dutch form",
         ],
         checks: &[
             "the prefix is one of the twenty-seven member states, and the body's length and \
@@ -665,23 +666,23 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the member state's own check digit, ported from python-stdnum: Luhn for Austria, \
              Italy and Sweden, ISO 7064 for Germany, Croatia and the Netherlands, and a weighted \
              sum for the rest",
-            "where a state admits a personal number as a VAT number — Bulgaria, Czechia, Latvia, \
-             Romania and Slovakia — the date of birth it encodes has to be a day that exists",
+            "where a state admits a personal number as a VAT number (Bulgaria, Czechia, Latvia, \
+             Romania and Slovakia), the date of birth it encodes has to be a day that exists",
             "component fields the state constrains: Italy's province code, Romania's county code, \
              Lithuania's fixed digit before the check digit, Sweden's trailing 01",
             "nothing alphanumeric runs into the match from either side, which is what keeps a \
              prefix of a longer digit run out of the facet",
         ],
         not_checked: &[
-            "whether the number is registered, or registered for intra-community trade — that is \
+            "whether the number is registered, or registered for intra-community trade. That is \
              a VIES query, and this service makes no network calls",
             "whether the business still exists: a deregistered number keeps its arithmetic",
-            "numbers written with the separators an invoice often uses — only the compact form, \
+            "numbers written with the separators an invoice often uses. Only the compact form, \
              prefix immediately followed by the body, is matched: a check digit over a short body \
              is a weak filter, and a pattern loose enough to admit every national separator \
              convention would reach far more ordinary prefixed digit runs than the arithmetic can \
              turn away",
-            "bare national company registration numbers without their VAT prefix — a nine-digit \
+            "bare national company registration numbers without their VAT prefix. A nine-digit \
              run with a check digit is still a nine-digit run",
             "Romanian numbers shorter than four digits, which the register does allocate: RO and \
              two digits is a token ordinary text produces, and one check digit does not carry it",
@@ -722,15 +723,15 @@ static RULE_DOCS: &[RuleDoc] = &[
         entity_type: EntityType::CompanyId,
         title: "VAT identification number outside the European Union",
         matches: "The same VATIN shape outside the Union: an ISO 3166-1 alpha-2 country code \
-                  followed by that country's own tax number. Eight countries are covered — the \
+                  followed by that country's own tax number. Eight countries are covered: the \
                   United Kingdom and the Isle of Man (GB), Switzerland (CH), Norway (NO), Serbia \
-                  (RS), Montenegro (ME), North Macedonia (MK), Russia (RU) and Türkiye (TR) — and \
-                  the Swiss and Norwegian numbers carry the tax abbreviation their own \
+                  (RS), Montenegro (ME), North Macedonia (MK), Russia (RU) and Türkiye (TR). The \
+                  Swiss and Norwegian numbers carry the tax abbreviation their own \
                   administrations append, MWST, TVA, IVA or TPV for Switzerland and MVA for \
                   Norway.",
         standards: &[
-            "ISO 3166-1 alpha-2 — the country prefix",
-            "ISO 7064 Mod 11, 10 — used by Serbia",
+            "ISO 3166-1 alpha-2: the country prefix",
+            "ISO 7064 Mod 11, 10: used by Serbia",
         ],
         checks: &[
             "the prefix is one of the eight countries whose check digit is implemented, and the \
@@ -747,10 +748,10 @@ static RULE_DOCS: &[RuleDoc] = &[
              prefix of a longer digit run out of the facet",
         ],
         not_checked: &[
-            "whether the number is registered — that is a query against the national register, \
+            "whether the number is registered. That is a query against the national register, \
              and this service makes no network calls",
             "whether the business still exists: a deregistered number keeps its arithmetic",
-            "numbers written with the separators an invoice often uses — only the compact form, \
+            "numbers written with the separators an invoice often uses. Only the compact form, \
              prefix immediately followed by the body, is matched: a check digit over a short body \
              is a weak filter, and a pattern loose enough to admit every national separator \
              convention would reach far more ordinary prefixed digit runs than the arithmetic can \
@@ -758,7 +759,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "countries whose VAT number carries no check digit, such as Albania, Iceland and San \
              Marino: a prefix with no arithmetic behind it is a two-letter string in front of a \
              digit run, which is the shape this rule exists to avoid",
-            "bare national company registration numbers without their country prefix — a \
+            "bare national company registration numbers without their country prefix. A \
              nine-digit run with a check digit is still a nine-digit run",
             "the five-character British GD and HA form, which the scheme gives no check digit at \
              all; it is accepted on the literal marker and the serial range, and reported with the \
@@ -809,7 +810,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         ],
         checks: &[
             "Luhn over the ten digits",
-            "the leading digit is a legal form that was allocated — 1 an estate, 2 a public \
+            "the leading digit is a legal form that was allocated: 1 an estate, 2 a public \
              authority, 3 a foreign company, 5 a limited company, 6 a simple partnership, 7 a \
              cooperative, 8 an association or foundation, 9 a partnership. 0 and 4 were never used",
             "the third digit is at least 2, which is what separates this from a personnummer \
@@ -826,7 +827,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         not_checked: &[
             "whether the number is registered, or whether the body it names still trades",
             "which of the eight legal forms is the right one for the body named beside it in the \
-             text — the leading digit is read as written",
+             text. The leading digit is read as written",
             "the Swedish VAT number this sits inside. SE556016068001 is a VAT number containing an \
              organisationsnummer, and the longer VAT reading wins the overlap on length",
         ],
@@ -867,11 +868,11 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "security.isin",
         entity_type: EntityType::Security,
         title: "International Securities Identification Number",
-        matches: "The twelve-character code that names a tradable instrument worldwide — a \
+        matches: "The twelve-character code that names a tradable instrument worldwide: a \
                   two-letter prefix, a nine-character national identifier and a check digit. It is \
                   the join key between a holding in one filing and the same holding in another.",
         standards: &[
-            "ISO 6166 — Securities and related financial instruments, international securities \
+            "ISO 6166: Securities and related financial instruments, international securities \
              identification numbering system",
         ],
         checks: &[
@@ -886,7 +887,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "whether the instrument exists, is listed, or is still traded",
             "the national identifier inside it, which may be a CUSIP or a SEDOL with its own check \
              digit that this rule does not separately verify",
-            "that the prefix says where the issuer is — it says which agency allocated the number",
+            "that the prefix says where the issuer is. It says which agency allocated the number",
         ],
         authorities: &[
             Authority {
@@ -972,7 +973,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         ],
         not_checked: &[
             "whether the security exists or is still listed",
-            "which instrument it names — resolution needs the exchange's own data",
+            "which instrument it names. Resolution needs the exchange's own data",
         ],
         authorities: &[Authority {
             name: "London Stock Exchange",
@@ -1000,8 +1001,8 @@ static RULE_DOCS: &[RuleDoc] = &[
                   what makes it the anchor for sanctions and ownership work, where the name on the \
                   stern is the least stable thing about a vessel.",
         standards: &[
-            "IMO Resolution A.1078(28) — IMO ship identification number scheme",
-            "ISO 8712 — Ships and marine technology, IMO ship identification number",
+            "IMO Resolution A.1078(28): IMO ship identification number scheme",
+            "ISO 8712: Ships and marine technology, IMO ship identification number",
         ],
         checks: &[
             "the check digit, a weighted sum of the first six digits with weights seven down to \
@@ -1011,7 +1012,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the run is exactly seven digits and nothing alphanumeric touches it on either side",
         ],
         not_checked: &[
-            "whether the ship exists, is still in class, or was ever registered — many hulls carry \
+            "whether the ship exists, is still in class, or was ever registered. Many hulls carry \
              a number whose check digit does not agree, and those are rejected here",
             "the ship's current name, flag or owner, none of which the number encodes",
         ],
@@ -1038,10 +1039,10 @@ static RULE_DOCS: &[RuleDoc] = &[
         title: "MMSI (Maritime Mobile Service Identity)",
         matches: "The nine-digit identity a ship's radio and AIS transponder broadcast. Unlike an \
                   IMO number it belongs to the station rather than the hull, so it changes when a \
-                  ship is reflagged — which is itself the signal an investigator is often looking \
+                  ship is reflagged, which is itself the signal an investigator is often looking \
                   for.",
         standards: &[
-            "ITU-R M.585 — Assignment and use of identities in the maritime mobile service",
+            "ITU-R M.585: Assignment and use of identities in the maritime mobile service",
         ],
         checks: &[
             "the first three digits are a Maritime Identification Digit triple the ITU has \
@@ -1051,7 +1052,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the run is exactly nine digits and nothing alphanumeric touches it on either side",
         ],
         not_checked: &[
-            "a check digit — an MMSI has none, which is why the match carries the no-checksum flag",
+            "a check digit. An MMSI has none, which is why the match carries the no-checksum flag",
             "coast-station, group-call and craft-associated identities, where the MID sits at \
              another position; reading the wrong three digits as a flag state is worse than not \
              reading them, so those forms are not matched",
@@ -1081,7 +1082,7 @@ static RULE_DOCS: &[RuleDoc] = &[
                   three letters of owner code, a category letter, six digits of serial and a check \
                   digit. It is what ties a bill of lading to a physical box, which is why it \
                   matters for trade and sanctions-evasion work.",
-        standards: &["ISO 6346 — Freight containers, coding, identification and marking"],
+        standards: &["ISO 6346: Freight containers, coding, identification and marking"],
         checks: &[
             "the check digit, each character's value times a power of two, summed, modulo eleven \
              then modulo ten",
@@ -1124,7 +1125,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The fifteen-digit number that identifies a mobile handset rather than its \
                   subscriber. It survives a change of SIM, which is what makes it the durable half \
                   of a mobile identity.",
-        standards: &["3GPP TS 23.003 — Numbering, addressing and identification"],
+        standards: &["3GPP TS 23.003: Numbering, addressing and identification"],
         checks: &[
             "the Luhn check digit over all fifteen digits",
             "one of the words IMEI, handset or device appears within 48 bytes either side",
@@ -1136,7 +1137,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         not_checked: &[
             "the sixteen-digit IMEISV form, which carries a software version instead of a check \
              digit and so cannot be verified",
-            "whether the type allocation code was issued, or to which manufacturer — the GSMA \
+            "whether the type allocation code was issued, or to which manufacturer. The GSMA \
              database that answers that is not public",
             "whether the handset exists or is in service",
         ],
@@ -1164,7 +1165,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The six-octet hardware address of a network interface, written with colons, \
                   hyphens or as the three dotted quads Cisco equipment prints. It ties a log line \
                   to a physical piece of equipment rather than to an account.",
-        standards: &["IEEE 802 — MAC address format and the OUI registry"],
+        standards: &["IEEE 802: MAC address format and the OUI registry"],
         checks: &[
             "the separators are consistent, so two adjacent hex fields that happen to sit beside \
              different punctuation are not read as one address",
@@ -1173,7 +1174,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              keeps a twenty-octet certificate fingerprint out of the device facet",
         ],
         not_checked: &[
-            "a check digit, because the format has none — hence the no-checksum flag",
+            "a check digit, because the format has none, so the match carries the no-checksum flag",
             "the bare twelve-hex spelling, which is indistinguishable from half a hash and is \
              deliberately not matched",
             "which manufacturer the leading three octets belong to: the IEEE OUI registry is not \
@@ -1205,13 +1206,13 @@ static RULE_DOCS: &[RuleDoc] = &[
                   IPv4-mapped form that writes the last four bytes as a dotted quad. Addresses are \
                   what tie a log line, a mail header and a hosting record to each other.",
         standards: &[
-            "RFC 791 — Internet Protocol",
-            "RFC 4291 — IP Version 6 Addressing Architecture",
-            "RFC 4632 — Classless Inter-domain Routing",
+            "RFC 791: Internet Protocol",
+            "RFC 4291: IP Version 6 Addressing Architecture",
+            "RFC 4632: Classless Inter-domain Routing",
         ],
         checks: &[
             "the address parses through the standard library's own parsers, which enforce octet \
-             ranges, group counts and the single :: elision — no arithmetic is duplicated in the \
+             ranges, group counts and the single :: elision. No arithmetic is duplicated in the \
              pattern",
             "a CIDR prefix length is within the address family's range",
             "none of the words version, versions, release, build, firmware, revision or semver \
@@ -1220,12 +1221,12 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric and no dot, colon or slash continues the address on either side",
         ],
         not_checked: &[
-            "whether the address is routable, allocated or reachable — private, loopback and \
+            "whether the address is routable, allocated or reachable. Private, loopback and \
              documentation ranges are all matched",
             "who holds the allocation: resolving that needs registry data this service does not \
              carry",
             "that a dotted quad in a document is an address at all, beyond the negative context \
-             test — hence the no-checksum flag",
+             test, so the match carries the no-checksum flag",
         ],
         authorities: &[Authority {
             name: "Internet Assigned Numbers Authority",
@@ -1249,12 +1250,12 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "network.asn",
         entity_type: EntityType::Network,
         title: "Autonomous system number",
-        matches: "The number identifying a network that announces its own routes — AS64512, or ASN \
-                  64512. It is the unit at which hosting and transit are actually bought, so it is \
+        matches: "The number identifying a network that announces its own routes, such as AS64512 \
+                  or ASN 64512. It is the unit at which hosting and transit are actually bought, so it is \
                   the level at which infrastructure ownership is visible.",
         standards: &[
-            "RFC 4271 — A Border Gateway Protocol 4",
-            "RFC 6793 — BGP support for four-octet autonomous system number space",
+            "RFC 4271: A Border Gateway Protocol 4",
+            "RFC 6793: BGP support for four-octet autonomous system number space",
         ],
         checks: &[
             "the literal prefix AS or ASN is part of the match; a bare number is never accepted",
@@ -1264,10 +1265,10 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric touches the match on either side",
         ],
         not_checked: &[
-            "whether the number is allocated, or to whom — that needs regional registry data this \
+            "whether the number is allocated, or to whom. That needs regional registry data this \
              service does not carry",
             "the private and reserved ranges, which are matched like any other",
-            "a check digit, because the format has none — hence the no-checksum flag",
+            "a check digit, because the format has none, so the match carries the no-checksum flag",
         ],
         authorities: &[Authority {
             name: "Internet Assigned Numbers Authority",
@@ -1290,7 +1291,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "vulnerability.cve",
         entity_type: EntityType::Vulnerability,
         title: "CVE identifier",
-        matches: "The public identifier of a disclosed software vulnerability — CVE-2021-44228 and \
+        matches: "The public identifier of a disclosed software vulnerability, such as CVE-2021-44228 \
                   its kind. The literal prefix makes it unmistakable, which is why it needs no \
                   check digit and no word beside it.",
         standards: &["The CVE Program's identifier syntax, CVE-YYYY-NNNN with four or more digits"],
@@ -1301,7 +1302,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric and no hyphen touches the match on either side",
         ],
         not_checked: &[
-            "whether the identifier has been assigned, published or rejected — a reserved entry \
+            "whether the identifier has been assigned, published or rejected. A reserved entry \
              looks exactly like a published one",
             "the severity, the affected product, or whether the vulnerability applies to anything \
              the surrounding text names",
@@ -1330,7 +1331,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The persistent identifier of a published work: the directory code 10, a \
                   registrant code, and a suffix the registrant chooses. It resolves to a document \
                   long after the URL it was published at has gone.",
-        standards: &["ISO 26324 — Digital object identifier system"],
+        standards: &["ISO 26324: Digital object identifier system"],
         checks: &[
             "the directory code is 10 and is followed by a registrant code of four to nine digits",
             "a slash and a non-empty suffix follow the registrant code",
@@ -1338,7 +1339,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric and no dot runs into the match from the left",
         ],
         not_checked: &[
-            "a check digit, because the format has none — hence the no-checksum flag",
+            "a check digit, because the format has none, so the match carries the no-checksum flag",
             "whether the DOI resolves, or that the registrant code was ever allocated",
             "the suffix, which is opaque by design and may hold almost any character",
         ],
@@ -1366,7 +1367,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The sixteen-digit identifier that distinguishes one researcher from another with \
                   the same name, written in four hyphenated groups. It is the closest thing \
                   academic publishing has to a persistent author key.",
-        standards: &["ISO 27729 — International Standard Name Identifier, of which ORCID is a block"],
+        standards: &["ISO 27729: International Standard Name Identifier, of which ORCID is a block"],
         checks: &[
             "the ISO 7064 mod 11-2 check character, where a final X stands for the value ten",
             "the four groups of four and the hyphens between them",
@@ -1374,7 +1375,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              keeps it out of longer hyphenated digit runs",
         ],
         not_checked: &[
-            "whether the identifier was issued, or whom it belongs to — the ORCID registry answers \
+            "whether the identifier was issued, or whom it belongs to. The ORCID registry answers \
              that and is not consulted here",
             "whether the record is public: many are restricted, and the identifier looks the same",
         ],
@@ -1402,7 +1403,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The globally unique identifier a mail or news client puts on a message, written \
                   in angle brackets. It is what threads a conversation together, and what says two \
                   copies of a mail in two archives are the same mail.",
-        standards: &["RFC 5322 — Internet Message Format, section 3.6.4"],
+        standards: &["RFC 5322: Internet Message Format, section 3.6.4"],
         checks: &[
             "the angle brackets, which are what distinguish a message id from an address and are \
              part of the span but not of the value",
@@ -1414,11 +1415,11 @@ static RULE_DOCS: &[RuleDoc] = &[
              name merely mentioned nearby names nothing",
         ],
         not_checked: &[
-            "whether the message exists, or that the generating host owns the domain — the right \
+            "whether the message exists, or that the generating host owns the domain. The right \
              side is conventionally a domain and is not required to be one",
             "uniqueness, which the standard asks of the generator and nobody can verify from the \
              text",
-            "the left-side characters RFC 5322 atext admits that this pattern's class does not — \
+            "the left-side characters RFC 5322 atext admits that this pattern's class does not, \
              $, ^ and the backtick. The Outlook-style id \
              <000401c3daea$062d4b60$c589498e@ds.mda.ca> is therefore not matched, and because \
              email.basic reads the tail of it as an address the field yields one missed message id \
@@ -1445,8 +1446,8 @@ static RULE_DOCS: &[RuleDoc] = &[
         entity_type: EntityType::Coordinates,
         title: "Decimal degree coordinates",
         matches: "A latitude and longitude written as two signed decimal numbers separated by a \
-                  comma — the form a mapping tool copies to the clipboard.",
-        standards: &["WGS84 — World Geodetic System 1984, the datum these values are read in"],
+                  comma, which is the form a mapping tool copies to the clipboard.",
+        standards: &["WGS84: World Geodetic System 1984, the datum these values are read in"],
         checks: &[
             "the latitude is within ninety degrees of the equator and the longitude within a \
              hundred and eighty of the meridian",
@@ -1455,7 +1456,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric and no dot or comma continues the pair on either side",
         ],
         not_checked: &[
-            "the datum, which is stated as WGS84 rather than read from the text — every one of \
+            "the datum, which is stated as WGS84 rather than read from the text. Every one of \
              these surface forms is conventionally written in it",
             "coarser coordinates: a pair with three or fewer decimal places is not matched, and \
              the degrees-minutes-seconds and Plus Code forms are where coarse positions are found",
@@ -1483,12 +1484,12 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "coord.dms",
         entity_type: EntityType::Coordinates,
         title: "Degrees, minutes and seconds",
-        matches: "A latitude and longitude in the sexagesimal form — 40°26'46\"N 79°58'56\"W. The \
-                  degree sign and the hemisphere letters make it unmistakable, which is why it \
+        matches: "A latitude and longitude in the sexagesimal form, such as 40°26'46\"N 79°58'56\"W. The degree \
+                  sign and the hemisphere letters make it unmistakable, which is why it \
                   needs no cue word. Minutes and seconds may be marked with the ASCII apostrophe \
                   and quote or with the typographic prime and double prime a typeset document \
                   substitutes for them.",
-        standards: &["WGS84 — World Geodetic System 1984, the datum these values are read in"],
+        standards: &["WGS84: World Geodetic System 1984, the datum these values are read in"],
         checks: &[
             "both halves are present with their hemisphere letter; a latitude on its own is not a \
              point",
@@ -1523,7 +1524,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "coord.plus_code",
         entity_type: EntityType::Coordinates,
         title: "Plus Code (Open Location Code)",
-        matches: "A short code that names a rectangle of the earth's surface rather than a point — \
+        matches: "A short code that names a rectangle of the earth's surface rather than a point, \
                   8FVC9G8F+6W and its kind. It is used where street addresses do not exist, which \
                   is exactly the material a place name cannot be resolved from.",
         standards: &["Open Location Code specification, and WGS84 as the datum"],
@@ -1531,7 +1532,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "every character is in the twenty-character alphabet, which excludes all the vowels; \
              eight of them followed by a plus sign is not a word",
             "the first character puts the latitude south of the pole and the second puts the \
-             longitude inside the meridian's range — the only range check the format offers",
+             longitude inside the meridian's range. The only range check the format offers",
             "the plus sign sits after the eighth character, where the format puts it",
             "nothing alphanumeric and no further plus sign touches the code on either side",
         ],
@@ -1540,7 +1541,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              the centre of the ten-character cell, which is about fourteen metres across",
             "short codes, which omit the leading characters and are meaningless without a \
              reference location this service does not hold",
-            "a check digit, because the format has none — hence the no-checksum flag",
+            "a check digit, because the format has none, so the match carries the no-checksum flag",
         ],
         authorities: &[Authority {
             name: "Google, as the specification's author",
@@ -1566,7 +1567,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "The twenty-byte account address used by Ethereum and by every chain that copied \
                   its address format, written as 0x and forty hexadecimal characters.",
         standards: &[
-            "EIP-55 — Mixed-case checksum address encoding",
+            "EIP-55: Mixed-case checksum address encoding",
             "The Ethereum yellow paper's account address definition",
         ],
         checks: &[
@@ -1577,7 +1578,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              address, above or below eight",
         ],
         not_checked: &[
-            "an address written entirely in one case, which carries no checksum at all — those \
+            "an address written entirely in one case, which carries no checksum at all. Those \
              are reported with the no-checksum flag and a markedly lower confidence, because \
              nothing about them was verified",
             "whether the account exists, holds a balance, or is a contract rather than a wallet",
@@ -1607,8 +1608,8 @@ static RULE_DOCS: &[RuleDoc] = &[
         matches: "A Bitcoin payment address in any of the forms in use: the legacy base58check \
                   addresses beginning 1 or 3, and the native segwit addresses beginning bc1.",
         standards: &[
-            "BIP-13 — Address format for pay-to-script-hash",
-            "BIP-173 and BIP-350 — Bech32 and bech32m addresses for native segwit",
+            "BIP-13: Address format for pay-to-script-hash",
+            "BIP-173 and BIP-350: Bech32 and bech32m addresses for native segwit",
         ],
         checks: &[
             "for a base58 address, the base58check checksum: the last four bytes are the first \
@@ -1621,7 +1622,7 @@ static RULE_DOCS: &[RuleDoc] = &[
         not_checked: &[
             "whether the address has ever been used, holds a balance, or belongs to anyone the \
              surrounding text names",
-            "addresses of other chains that share the base58check format — the version byte is \
+            "addresses of other chains that share the base58check format. The version byte is \
              what excludes them, and it excludes them silently",
         ],
         authorities: &[Authority {
@@ -1694,8 +1695,8 @@ static RULE_DOCS: &[RuleDoc] = &[
         not_checked: &[
             "the CIF form issued to companies, which shares the length and uses a different check",
             "whether the number was issued, or to whom",
-            "the number written in lower case, or split by hyphens as a form often prints it — \
-             X-5253868-R: one check letter over a seven-digit body turns away twenty-two in \
+            "the number written in lower case, or split by hyphens as a form often prints it, such \
+             as X-5253868-R. One check letter over a seven-digit body turns away twenty-two in \
              twenty-three, and the hyphenated shape is also the shape of a part number, so only \
              the compact upper-case form is matched",
         ],
@@ -1767,8 +1768,8 @@ static RULE_DOCS: &[RuleDoc] = &[
             "nothing alphanumeric touches the match on either side",
         ],
         not_checked: &[
-            "the check character, whose algorithm the department has never published — hence the \
-             no-checksum flag and the lower confidence",
+            "the check character, whose algorithm the department has never published, so the match \
+             carries the no-checksum flag and the lower confidence",
             "the fifth character, which is the first letter of a surname or of an entity name",
             "whether the number was issued, or to whom",
         ],
@@ -1796,7 +1797,7 @@ static RULE_DOCS: &[RuleDoc] = &[
                   national and by resident foreigners. It is digits and nothing else, so it is \
                   reported only where the text says what it is.",
         standards: &[
-            "PESEL — Powszechny Elektroniczny System Ewidencji Ludności, the Polish population \
+            "PESEL: Powszechny Elektroniczny System Ewidencji Ludności, the Polish population \
              register",
         ],
         checks: &[
@@ -1817,7 +1818,7 @@ static RULE_DOCS: &[RuleDoc] = &[
              to reject a number whose date could never have existed, and neither it nor the sex \
              reaches the value: detecting that a document mentions an identity number is a \
              different act from deriving personal attributes out of it",
-            "the hyphenated spellings some forms print, which are not matched — the number is \
+            "the hyphenated spellings some forms print, which are not matched. The number is \
              registered as eleven digits",
         ],
         authorities: &[Authority {
@@ -1849,7 +1850,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "Luhn algorithm, ISO/IEC 7812-1 annex B",
         ],
         checks: &[
-            "Luhn over the last ten digits, which is the number without its century — so the two \
+            "Luhn over the last ten digits, which is the number without its century, so the two \
              spellings of one number agree",
             "the leading digits are a day that could exist. The twelve-digit form carries its \
              century and gets a full calendar check; the ten-digit form is checked for a real \
@@ -1865,8 +1866,8 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the date of birth and the sex the number encodes. The date is read only to reject a \
              number whose date could never have existed, and neither it nor the sex reaches the \
              value",
-            "which century a ten-digit number belongs to. The separator says it — a plus sign \
-             once the holder turns 100 — and resolving it into a year needs the date the document \
+            "which century a ten-digit number belongs to. The separator says it (a plus sign \
+             once the holder turns 100), and resolving it into a year needs the date the document \
              was written, which this service does not hold. The value therefore keeps the \
              separator instead of stripping it, which is the one place this scheme departs from \
              compact-form normalisation: two people born a hundred years apart write the same ten \
@@ -1892,22 +1893,22 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "phone.international",
         entity_type: EntityType::Phone,
         title: "Telephone number, international form",
-        matches: "A number written the way it would be dialled from another country — with a \
+        matches: "A number written the way it would be dialled from another country, with a \
                   leading plus sign, or with the 00 prefix that stands for one. Punctuation is \
                   read as written: spaces, hyphens, dots and an area code in brackets all reach \
                   the same number. A number in national form is deliberately not matched, because \
                   the same digits name a different subscriber in every country and nothing in the \
                   text says which one is meant.",
         standards: &[
-            "ITU-T E.164 — The international public telecommunication numbering plan",
-            "ITU-T E.123 — Notation for national and international telephone numbers",
+            "ITU-T E.164: The international public telecommunication numbering plan",
+            "ITU-T E.123: Notation for national and international telephone numbers",
         ],
         checks: &[
             "the country calling code is one the ITU has assigned, and the national number matches \
              a pattern that country actually issues, both taken from Google's libphonenumber \
              metadata",
             "where no line type claims the digits but the region's own pattern still accepts them, \
-             the number is reported at the lower confidence rather than dropped — that is where a \
+             the number is reported at the lower confidence rather than dropped. That is where a \
              number written before a renumbering lands",
             "brackets open, hold digits and close, so a number is not assembled across two pieces \
              of text",
@@ -1922,7 +1923,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "national-format numbers, which need a region the document does not supply; no default \
              region exists, because assuming one mislabels every document written elsewhere",
             "whether the number is assigned, in service, or belongs to whoever the text is about",
-            "extensions, which are dropped rather than parsed — the span ends at the number itself",
+            "extensions, which are dropped rather than parsed. The span ends at the number itself",
             "vanity spellings such as 1-800-FLOWERS, and short codes, neither of which is \
              dialable from abroad",
         ],
@@ -1962,11 +1963,11 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "money.iso_code",
         entity_type: EntityType::Money,
         title: "Sum of money, ISO 4217 code",
-        matches: "An amount written beside its three-letter currency code — EUR 1.234,56, \
-                  1,234.56 USD. The code is the unambiguous way to write a currency, which makes \
+        matches: "An amount written beside its three-letter currency code, such as EUR 1.234,56 \
+                  or 1,234.56 USD. The code is the unambiguous way to write a currency, which makes \
                   this the high-precision half of the money facet.",
         standards: &[
-            "ISO 4217 — Codes for the representation of currencies",
+            "ISO 4217: Codes for the representation of currencies",
             "Unicode CLDR supplemental currency data, for the minor units each code divides into",
         ],
         checks: &[
@@ -1977,10 +1978,10 @@ static RULE_DOCS: &[RuleDoc] = &[
              numbers and dotted reference numbers",
             "the fraction is no longer than the currency's own minor units, so a four-decimal \
              rate is not read as a price",
-            "a code that is also an ordinary English capitalised word — ALL, TOP, CUP, TRY, PEN, \
-             GEL, MOP, COP, MAD, BOB, SOS — additionally needs a word about money within 48 bytes",
+            "a code that is also an ordinary English capitalised word (ALL, TOP, CUP, TRY, PEN, \
+             GEL, MOP, COP, MAD, BOB, SOS) additionally needs a word about money within 48 bytes",
             "nothing alphanumeric touches the match, and a dot, comma or hyphen beside it is read \
-             as punctuation only when no digits follow it — so an amount may end a sentence or a \
+             as punctuation only when no digits follow it, so an amount may end a sentence or a \
              list item, while a separator with digits on the far side means the number continues \
              past the span",
         ],
@@ -1991,8 +1992,8 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the decimal convention where the number allows both readings: a single separator \
              followed by three digits is read as a thousands group and reported with the \
              separator-inferred flag",
-            "currency names and national symbols spelled out in words — lei, złoty, kroner",
-            "an amount whose separator is followed by a space and then more digits — 1.837, 32 — \
+            "currency names and national symbols spelled out in words, lei, złoty, kroner",
+            "an amount whose separator is followed by a space and then more digits (1.837, 32), \
              which is one number in some documents and two in others: the span is refused rather \
              than truncated at the separator, because a wrong amount is worse than no amount",
         ],
@@ -2023,27 +2024,27 @@ static RULE_DOCS: &[RuleDoc] = &[
         rule_id: "money.symbol",
         entity_type: EntityType::Money,
         title: "Sum of money, currency symbol",
-        matches: "An amount written beside a currency sign — €1.234,56, $1,200, R$49,90. Most \
+        matches: "An amount written beside a currency sign, such as €1.234,56, $1,200 or R$49,90. Most \
                   money in running text is written this way, and most currency signs are shared \
                   by several currencies.",
         standards: &[
-            "ISO 4217 — Codes for the representation of currencies",
+            "ISO 4217: Codes for the representation of currencies",
             "Unicode CLDR currency display data, for the sign each code is written with",
         ],
         checks: &[
             "the sign is one CLDR publishes for a currency in current use, in either its standard \
              or its narrow form",
             "capitals in front of the sign are kept only where the pair is a symbol somebody \
-             writes — A$, CN¥, R$; otherwise the span narrows to the sign alone",
+             writes, such as A$, CN¥ and R$. Otherwise the span narrows to the sign alone",
             "an ISO 4217 code standing immediately in front of the sign settles which of the \
-             sign's currencies is meant — NZD $100.70 is not United States dollars — and the code \
+             sign's currencies is meant (NZD $100.70 is not United States dollars), and the code \
              has to be one that sign is actually written for",
             "every thousands group is exactly three digits, whether it is grouped by a space or by \
              the apostrophe Switzerland writes",
             "the fraction is no longer than the currency's own minor units; beside a sign it may \
              also stand alone, so the $.75 of a shelf label is seventy-five cents",
             "nothing alphanumeric touches the match, and a dot, comma or hyphen beside it is read \
-             as punctuation only when no digits follow it — so an amount may end a sentence or a \
+             as punctuation only when no digits follow it, so an amount may end a sentence or a \
              list item, while a separator with digits on the far side means the number continues \
              past the span",
         ],
@@ -2054,7 +2055,7 @@ static RULE_DOCS: &[RuleDoc] = &[
             "the decimal convention where the number allows both readings, reported with the \
              separator-inferred flag",
             "currency names spelled out in words, and the letter-only symbols such as kr and zł",
-            "an amount whose separator is followed by a space and then more digits — $ 8. 94 — \
+            "an amount whose separator is followed by a space and then more digits ($ 8. 94), \
              which is one number in some documents and two in others: the span is refused rather \
              than truncated at the separator, because a wrong amount is worse than no amount",
         ],

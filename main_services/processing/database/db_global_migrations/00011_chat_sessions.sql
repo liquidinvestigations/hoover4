@@ -5,7 +5,7 @@
 --
 -- Ownership is by `username`, and every read path filters on it. A chat transcript can
 -- quote documents from restricted collections, so a session must never be reachable by
--- anyone but its owner — not even by another user who happens to know the id.
+-- anyone but its owner, not even by another user who happens to know the id.
 CREATE TABLE IF NOT EXISTS chat_sessions
 (
     session_id String COMMENT 'Unique conversation id (uuid)',

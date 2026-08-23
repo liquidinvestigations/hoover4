@@ -258,7 +258,7 @@ async def _fetch_engine(
         log.warning("engine %s parse failed (selector rot?): %s", name, exc)
         return [], f"parse error: {exc}"
     if not results:
-        log.warning("engine %s returned 0 results — selector may have rotted", name)
+        log.warning("engine %s returned 0 results, so the selector may have rotted", name)
         return [], "answered with no results (selector rot?)"
     # One page listed by both an outer and an inner selector, or repeated by the engine
     # itself, must not take two RRF slots. Fusion dedupes too, but only after ranks are

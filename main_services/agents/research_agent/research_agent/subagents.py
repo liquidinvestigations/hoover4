@@ -257,7 +257,7 @@ class Briefing(BaseModel):
     bring_back: str = Field(
         default="",
         description=(
-            "What the report must contain to be usable — the facts, the quotes, the "
+            "What the report must contain to be usable: the facts, the quotes, the "
             "documents to cite."
         ),
     )

@@ -813,7 +813,7 @@ def preflight_cdi_prune(rt):
     installed, and crun refuses to start the GPU containers over a missing bind
     source. Host-A (ai_services) preflight."""
     if not os.path.isfile(CDI_SPEC) or not os.access(CDI_SPEC, os.R_OK):
-        print("preflight: no readable CDI spec at %s — skipping prune" % CDI_SPEC)
+        print("preflight: no readable CDI spec at %s, so the prune is skipped" % CDI_SPEC)
         return
     with open(CDI_SPEC, "r", encoding="utf-8") as fh:
         lines = fh.readlines()
@@ -823,7 +823,7 @@ def preflight_cdi_prune(rt):
         if match and not os.path.exists(match.group(1)):
             stale.append(match.group(1))
     if not stale:
-        print("preflight: CDI spec ok — every mount resolves")
+        print("preflight: CDI spec ok, every mount resolves")
         return
     for path in stale:
         print("preflight: CDI spec references missing file: %s" % path)
@@ -871,7 +871,7 @@ def preflight_secrets(cfg):
                  "chmod 600 it" % (section, key, path, mode))
         real = os.path.realpath(path)
         if real == repo or real.startswith(repo + os.sep):
-            fail("[%s] %s: secret file %s is inside the repository checkout — keys "
+            fail("[%s] %s: secret file %s is inside the repository checkout. Keys "
                  "inside the checkout leak into build contexts and commits"
                  % (section, key, path))
 
@@ -988,14 +988,14 @@ def preflight_ner_spacy(cfg, side):
     if cfg.get("main_services", "ner_provider") != "spacy":
         return
     if not cfg.get_bool("main_services", "ner_spacy_enabled"):
-        fail("[main_services] ner_provider = spacy but ner_spacy_enabled = false — the "
+        fail("[main_services] ner_provider = spacy but ner_spacy_enabled = false. The "
              "spaCy twin would not be running, so no entities would be extracted at "
              "all. Set ner_spacy_enabled = true, or pick another ner_provider.")
 
 
 def preflight_ai_enabled(cfg, side):
     if side == "ai" and not cfg.get_bool("ai_services", "enabled"):
-        fail("--ai-services was requested but [ai_services] says enabled = false — "
+        fail("--ai-services was requested but [ai_services] says enabled = false. "
              "the ini has this tier off")
 
 
@@ -1178,7 +1178,7 @@ def ensure_network(rt, name):
                   "(external lookups from containers will be flaky until then)"
                   % name)
             return
-        print("network %s exists without DNS resolvers — recreating (dns: %s)"
+        print("network %s exists without DNS resolvers, so it is recreated (dns: %s)"
               % (name, ", ".join(resolvers)))
         rm = rt.run(["network", "rm", name], capture_output=True, text=True)
         if rm.returncode != 0:
@@ -1220,7 +1220,7 @@ def verify_network_dns(rt, cfg, side):
                        capture_output=True, text=True)
     if check.returncode != 0:
         fail("containers on the %s network cannot resolve each other "
-             "(%s -> %s failed) — fresh podman networks need resolvers attached"
+             "(%s -> %s failed). Fresh podman networks need resolvers attached"
              % (project_name(side), first, second))
     print("network %s: %s resolves %s" % (project_name(side), first, second))
 
@@ -1279,7 +1279,7 @@ def report_worker_stop_timeout(cfg, rt):
         print("preflight: worker stop grace period %ds, as configured" % effective)
         return
     print("preflight: WARNING: hoover4-worker was created with a %ds stop timeout, not "
-          "the configured %ds — %s drops stop_grace_period at creation and cannot set it "
+          "the configured %ds, because %s drops stop_grace_period at creation and cannot set it "
           "afterwards." % (effective, want, rt.describe()))
     print("preflight:          `./deploy --down` and `%s compose stop` still honour the "
           "full period; a direct `stop`/`restart` of this container does not, and must "
@@ -1305,7 +1305,7 @@ def podman_stale_image_fix(cfg, side, rt, files):
             stale.append(name)
     if not stale:
         return
-    print("podman kept old images running for: %s — recreating" % ", ".join(stale))
+    print("podman kept old images running for: %s, so they are recreated" % ", ".join(stale))
     rt.run(["rm", "-f", "--depend"] + stale)
     run_or_fail(compose_command(cfg, side, rt, ["up", "-d"]))
 
@@ -1497,7 +1497,7 @@ def load_config(args):
     if INI_PATH.exists():
         return Config(INI_PATH)
     if args.print_env or args.print_command:
-        print("note: hoover4.ini not found — rendering from hoover4.ini.example "
+        print("note: hoover4.ini not found, so this renders from hoover4.ini.example "
               "defaults", file=sys.stderr)
         if not INI_EXAMPLE_PATH.exists():
             fail("neither hoover4.ini nor hoover4.ini.example exists")
@@ -1547,7 +1547,7 @@ def main(argv=None):
         if side == "ai" and not cfg.get_bool("ai_services", "enabled"):
             # Show what WOULD run, but do not let the output imply the tier is
             # deployable: a real `--ai-services` run refuses in the preflights.
-            print("note: [ai_services] enabled = false — a real --ai-services run "
+            print("note: [ai_services] enabled = false, so a real --ai-services run "
                   "refuses; the command below is what it would render if enabled",
                   file=sys.stderr)
         cmd = compose_command(cfg, side, rt, action)

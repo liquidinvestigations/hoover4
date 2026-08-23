@@ -1,7 +1,7 @@
 -- Rolling 24h per-API-call timings and sizes for the admin metrics page.
 --
--- Same privacy rule as usage_events: function names only — a bounded,
--- low-cardinality set of Rust handler / server-function names — never a URL,
+-- Same privacy rule as usage_events: function names only (a bounded,
+-- low-cardinality set of Rust handler / server-function names), never a URL,
 -- never a query string.
 --
 -- The TTL is applied by background merges, so rows can outlive 24h briefly.

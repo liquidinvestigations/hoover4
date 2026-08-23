@@ -17,7 +17,7 @@ use crate::components::svg_title::dioxus_elements;
 #[component]
 pub fn AdminMetricsPage() -> Element {
     rsx! {
-        Title { "Admin — Metrics" }
+        Title { "Admin: metrics" }
         AdminGuard {
             AdminShell {
                 title: "Metrics".to_string(),
@@ -47,7 +47,7 @@ fn MetricsContent() -> Element {
         // Live first: it is the only thing on this page that is actionable right now.
         LiveChatsPanel {}
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "Rolling last 24 hours. Events record who, which route class or function name, and when — never a URL or a query string."
+            "Rolling last 24 hours. Events record who, which route class or function name, and when. Never a URL or a query string."
         }
         match metrics {
             None => rsx! { "Loading\u{2026}" },
@@ -64,7 +64,7 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
     let max_series = usage.series.iter().map(|p| p.count).max().unwrap_or(1).max(1);
     rsx! {
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Usage — last 24 h" }
+            h2 { style: MODULE_CAPTION, "Usage (last 24 h)" }
             div { style: MODULE_BODY,
                 h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Events by type" }
                 table { style: "{TABLE} margin-bottom: 20px;",
@@ -259,7 +259,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                             width: "{bar_w}", height: "{height}",
                             rx: "2",
                             fill: "#79aec8",
-                            svgtitle { "{point.bucket} — {point.count} events" }
+                            svgtitle { "{point.bucket}: {point.count} events" }
                         }
                     }
                 }
@@ -292,7 +292,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
 fn ApiPanel(api: Vec<ApiFunctionStats>) -> Element {
     rsx! {
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "API calls — last 24 h" }
+            h2 { style: MODULE_CAPTION, "API calls (last 24 h)" }
             div { style: MODULE_BODY,
                 if api.is_empty() {
                     p { style: HELP_TEXT, "No API calls recorded yet." }

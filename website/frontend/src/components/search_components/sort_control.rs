@@ -127,12 +127,12 @@ pub fn SortControl(
 
     let direction_tooltip = use_memo(move || {
         let base = if effective().desc {
-            "Descending — click for ascending"
+            "Descending. Click for ascending."
         } else {
-            "Ascending — click for descending"
+            "Ascending. Click for descending."
         };
         if direction_pending() {
-            format!("{base}. Not applied yet — press Apply Filters.")
+            format!("{base}. Not applied yet. Press Apply Filters.")
         } else {
             base.to_string()
         }

@@ -73,10 +73,10 @@ mcp = FastMCP(
     instructions=os.getenv(
         "SERVER_INSTRUCTIONS",
         "Read web pages with a real browser, and drive one when a page needs it. To read "
-        "pages — including ones that render their content with JavaScript — call "
+        "pages, including ones that render their content with JavaScript, call "
         "`read_page` with a list of URLs; it returns each page's text in one call. Only "
-        "when a page must be *operated* — a form filled, a control clicked, results paged "
-        "through — use `browser_navigate` then `browser_snapshot` to see the page as an "
+        "when a page must be *operated* (a form filled, a control clicked, results paged "
+        "through) use `browser_navigate` then `browser_snapshot` to see the page as an "
         "accessibility tree with a `ref` for every element, then `browser_click`, "
         "`browser_type`, `browser_select_option` and `browser_press_key`. Each "
         "conversation has its own browser: cookies and logged-in state persist between "
@@ -401,8 +401,8 @@ class RetiredNames(Middleware):
         replacement, what = retired
         log.info("call to retired tool %s; pointing at %s", context.message.name, replacement)
         return _refusal(
-            f"`{context.message.name}` no longer exists. Call `{replacement}` instead — "
-            f"{what}."
+            f"`{context.message.name}` no longer exists. Call `{replacement}` instead, "
+            f"which {what}."
         )
 
 
@@ -481,7 +481,7 @@ READ_PAGE_DESCRIPTION = (
     "screenshot and an archived copy the user can open. This is how you read a page: use "
     "it instead of navigating and snapshotting one URL at a time. Pass `goal` to say what "
     "you are looking for, so long pages are cut around the relevant part. Pages that "
-    "refuse, time out or return nothing are reported individually — the rest still come "
+    "refuse, time out or return nothing are reported individually, and the rest still come "
     "back."
 )
 

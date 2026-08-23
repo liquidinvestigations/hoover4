@@ -14,7 +14,7 @@ use crate::routes::Route;
 #[component]
 pub fn AdminCollectionsPage() -> Element {
     rsx! {
-        Title { "Admin — Collections" }
+        Title { "Admin: collections" }
         AdminGuard {
             AdminShell {
                 title: "Select collection to change".to_string(),

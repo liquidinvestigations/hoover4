@@ -480,8 +480,8 @@ fn AiChatSessionRoot(
                                 border: 1px solid #FDE68A; border-radius: 8px; font-size: 13px; \
                                 color: #92400E; display: flex; align-items: center; gap: 10px;",
                         span { style: "flex: 1;",
-                            "This answer was interrupted before it finished — the page or the \
-                             server stopped mid-turn. Ask again to retry."
+                            "This answer was interrupted before it finished, because the page or \
+                             the server stopped mid-turn. Ask again to retry."
                         }
                         button {
                             style: "background: none; border: 1px solid #D97706; border-radius: 6px; \

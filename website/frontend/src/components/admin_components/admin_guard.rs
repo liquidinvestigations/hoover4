@@ -25,7 +25,7 @@ pub fn AdminGuard(children: Element) -> Element {
                         style: "padding: 40px;",
                         div {
                             style: "max-width: 520px; border: 1px solid #eee; padding: 24px;",
-                            h1 { style: "margin: 0 0 12px; color: {C_DANGER}; font-size: 20px; font-weight: 400;", "403 — Admin access required" }
+                            h1 { style: "margin: 0 0 12px; color: {C_DANGER}; font-size: 20px; font-weight: 400;", "403: admin access required" }
                             p { style: "color: #333; font-size: 13px; margin: 0 0 8px;", "Signed in as: {u.username}" }
                             p { style: "color: #666; font-size: 13px; margin: 0;", "Contact an administrator if you need access to this section." }
                         }

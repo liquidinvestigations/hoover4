@@ -24,7 +24,7 @@ const PAGE_SIZE: u32 = 25;
 #[component]
 pub fn AdminOperationsPage() -> Element {
     rsx! {
-        Title { "Admin — Operations" }
+        Title { "Admin: operations" }
         AdminGuard {
             AdminShell {
                 title: "Operations".to_string(),
@@ -181,7 +181,7 @@ fn TaskErrorRatePanel(
     let above: Vec<&TaskErrorRate> = rates.iter().filter(|r| r.above_threshold).collect();
     rsx! {
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Failure rate by task type — {collectionname}" }
+            h2 { style: MODULE_CAPTION, "Failure rate by task type ({collectionname})" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
                     "One row per activity execution, retries included. Anything over "
@@ -356,7 +356,7 @@ fn OperationTableRow(
                 } else if running {
                     span { style: HELP_TEXT, "no estimate yet" }
                 } else {
-                    span { style: HELP_TEXT, "—" }
+                    span { style: HELP_TEXT, "n/a" }
                 }
             }
             td { style: TD, OutcomeCell { row: row.clone() } }
@@ -450,7 +450,7 @@ fn ProgressCell(row: OperationRow) -> Element {
                 if row.state == "running" || row.state == "pending" {
                     "counting work…"
                 } else {
-                    "—"
+                    "n/a"
                 }
             }
         };

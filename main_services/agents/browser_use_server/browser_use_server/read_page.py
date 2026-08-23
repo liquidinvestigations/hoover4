@@ -171,7 +171,7 @@ def render(result: ReadResult) -> str:
         if page.error:
             blocks.append(f"{head}\n\nCOULD NOT READ: {page.error}")
             continue
-        tail = "\n\n[truncated — this page's share of the shared budget ran out]" if page.truncated else ""
+        tail = "\n\n[truncated, because this page's share of the shared budget ran out]" if page.truncated else ""
         blocks.append(f"{head}\n\n{page.text}{tail}")
     if result.note:
         blocks.append(f"NOTE: {result.note}")

@@ -79,7 +79,7 @@ fn balance_quotes(query: &str) -> (String, Vec<String>) {
     let mut out = String::with_capacity(query.len() - 1);
     out.push_str(&query[..cut]);
     out.push_str(&query[cut + 1..]);
-    (out, vec![r#"dropped an unbalanced " — a phrase search needs both quotes"#.to_string()])
+    (out, vec![r#"dropped an unbalanced ": a phrase search needs both quotes"#.to_string()])
 }
 
 /// Close or drop unbalanced `(`. Same `unexpected $end` failure as a stray quote.

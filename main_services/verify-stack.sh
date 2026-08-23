@@ -213,7 +213,7 @@ wait_for_temporal
 echo "== testdata =="
 testdata_dir_host=$(grep -E '^HOOVER4_TESTDATA_DIR=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
 HOOVER4_TESTDATA_DIR="${testdata_dir_host:-${HOOVER4_TESTDATA_DIR:-}}" \
-    ./fetch-testdata.sh --check || fail "testdata fixtures are missing — run ./fetch-testdata.sh"
+    ./fetch-testdata.sh --check || fail "testdata fixtures are missing. Run ./fetch-testdata.sh"
 
 echo "== migrate =="
 run_step migrate
@@ -460,7 +460,7 @@ echo "== invariants =="
 COLLECTIONS=$(CH "SELECT collectionname FROM Hoover4_Processing.collections FINAL
                   WHERE is_deleted = 0 ORDER BY collectionname")
 if [ -z "$COLLECTIONS" ]; then
-    fail "no collections registered — nothing to verify"
+    fail "no collections registered, so there is nothing to verify"
 fi
 with_db=""
 for coll in $COLLECTIONS; do
@@ -702,7 +702,7 @@ if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
     docs=$(CH "SELECT count() FROM Hoover4_Collection_testdata.index_state FINAL
                WHERE collection_dataset = 'testdata_shapes'")
     [ "${docs:-0}" -le 20 ] && ok "shapes fixture: $docs documents from 668 deduped files" \
-        || fail "shapes fixture: $docs documents (expected <= 20 — content dedupe regressed?)"
+        || fail "shapes fixture: $docs documents (expected <= 20, has content dedupe regressed?)"
 fi
 
 # 7. The website serves.
@@ -856,7 +856,7 @@ done
 if [ "$derived_blobs" -eq 0 ]; then
     ok "no blobs row references derived/ (the walker sees neither chat artifacts nor OCR'd PDFs)"
 else
-    fail "$derived_blobs blobs row(s) reference derived/ — P0_scan_disk is walking the derived prefix"
+    fail "$derived_blobs blobs row(s) reference derived/, so P0_scan_disk is walking the derived prefix"
 fi
 
 # 7g. The blob store holds what ClickHouse claims it holds. For every `blobs` row that
@@ -1066,7 +1066,7 @@ else
         if grep -q hoover4_session "$cookie_jar" 2>/dev/null; then
             ok "the site issued a session at $whoami_path ($(printf '%s' "$identity" | head -c 60))"
         else
-            fail "no session issued at $whoami_path — with HOOVER4_DEMO_MODE off that is expected, and every API check below is refused: $identity"
+            fail "no session issued at $whoami_path. With HOOVER4_DEMO_MODE off that is expected, and every API check below is refused: $identity"
         fi
     fi
 

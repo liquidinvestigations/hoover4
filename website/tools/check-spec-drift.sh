@@ -72,5 +72,5 @@ if [[ -d "$SPEC/interface" ]]; then
   echo "  checked $(echo "$sk" | wc -w) sort keys"
 fi
 
-printf '\n%s\n' "$([[ $fail -eq 0 ]] && echo 'no drift reported' || echo 'drift reported above — read it, do not treat it as a gate')"
+printf '\n%s\n' "$([[ $fail -eq 0 ]] && echo 'no drift reported' || echo 'drift reported above, read it and do not treat it as a gate')"
 exit 0

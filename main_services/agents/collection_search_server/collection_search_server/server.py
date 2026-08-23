@@ -456,7 +456,7 @@ def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
     description=(
         "Full-text search across the user's document collections. Returns matching "
         "text passages with the document id needed to read the full document.\n\n"
-        "**Pass several queries at once** in `queries` — different angles on the same "
+        "**Pass several queries at once** in `queries`, as different angles on the same "
         "question, phrased as sentences or several descriptive words rather than single "
         "keywords. They run together and the results are merged, and **every hit lists "
         "the queries that found it** in `matched_queries`: a passage three of your "
@@ -894,7 +894,7 @@ def _attach_paths(hits: list[SearchHit]) -> None:
     name="read_documents",
     description=(
         "Read the extracted text of several documents at once. Each entry names its "
-        "collection and the file_hash a search returned — pass them as "
+        "collection and the file_hash a search returned. Pass them as "
         "`[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
         "parallel lists in `collectionname` and `file_hash`. Read every promising hit "
         "in one call rather than one per turn. The character budget is shared across "
@@ -1067,12 +1067,12 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
     name="list_document_entities",
     description=(
         "List what the pipeline extracted from several documents at once, in two tiers. "
-        "Each entry names its collection and the file_hash a search returned — pass them "
+        "Each entry names its collection and the file_hash a search returned. Pass them "
         "as `[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
         "parallel lists in `collectionname` and `file_hash`. `entities` is a language "
         "model's reading of the prose: people, organisations, locations. `structured` is "
         "what a rule's validator accepted: checksum-validated identifiers, normalised "
-        "dates, money with an ISO 4217 code. Treat the two differently — a name is a "
+        "dates, money with an ISO 4217 code. Treat the two differently, because a name is a "
         "judgement, an IBAN either has a valid check digit or it does not. Ask about "
         "every promising document in one call: this is how you find the names and "
         "identifiers to search for next."
@@ -1352,7 +1352,7 @@ def _session_id() -> str:
         "document, a quote copied verbatim from it, and why it matters. You get back a "
         "handle like [D1] for each; write those handles into your prose where the claim "
         "is made, and the reader sees the document beside it. The quote is checked "
-        "against the document's text — one that does not check out comes back marked, so "
+        "against the document's text, and one that does not check out comes back marked, so "
         "re-read rather than paraphrase. Cite what you relied on, not everything a "
         "search returned."
     ),

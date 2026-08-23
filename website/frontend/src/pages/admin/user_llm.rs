@@ -16,7 +16,7 @@ use crate::routes::Route;
 pub fn AdminUserLlmPage(username: String) -> Element {
     let for_content = username.clone();
     rsx! {
-        Title { "Admin — LLM use — {username}" }
+        Title { "Admin: LLM use by {username}" }
         AdminGuard {
             AdminShell {
                 title: "LLM usage".to_string(),
@@ -67,7 +67,7 @@ fn UserLlmContent(username: String) -> Element {
 fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Totals — all time" }
+            h2 { style: MODULE_CAPTION, "Totals (all time)" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
                     tbody {
@@ -87,7 +87,7 @@ fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
                             td { style: "{TD} font-weight: 600;", "Agent time" }
                             td { style: TD,
                                 "{humanize_ms(metrics.agent_duration_ms_total)} "
-                                span { style: HELP_TEXT, "— wall time the agent spent on this user's turns; what the chat rate limit exists to bound" }
+                                span { style: HELP_TEXT, "wall time the agent spent on this user's turns, which is what the chat rate limit exists to bound" }
                             }
                         }
                     }

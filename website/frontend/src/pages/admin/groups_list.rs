@@ -14,7 +14,7 @@ use crate::routes::Route;
 #[component]
 pub fn AdminGroupsPage() -> Element {
     rsx! {
-        Title { "Admin — Groups" }
+        Title { "Admin: groups" }
         AdminGuard {
             AdminShell {
                 title: "Select group to change".to_string(),

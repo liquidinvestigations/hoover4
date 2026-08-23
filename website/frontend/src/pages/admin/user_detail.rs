@@ -18,7 +18,7 @@ use crate::routes::Route;
 pub fn AdminUserPage(username: String) -> Element {
     let username_for_content = username.clone();
     rsx! {
-        Title { "Admin — User {username}" }
+        Title { "Admin: user {username}" }
         AdminGuard {
             AdminShell {
                 title: "Change user".to_string(),

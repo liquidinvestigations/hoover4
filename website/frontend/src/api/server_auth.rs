@@ -35,5 +35,5 @@ pub async fn extract_user() -> Result<common::current_user::CurrentUser, dioxus:
 #[cfg(feature = "server")]
 pub const NOT_SIGNED_IN: &str =
     "Not signed in. This deployment requires an authenticated session and does not issue \
-     anonymous ones — sign in through your organisation's proxy, or ask an administrator \
+     anonymous ones. Sign in through your organisation's proxy, or ask an administrator \
      for access.";

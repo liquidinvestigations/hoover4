@@ -41,8 +41,12 @@ no figures of speech. Meet the plain-language standard **ISO 24495-1**: a reader
 to find what they need, understand it, and act on it. Both are named because you know them.
 Apply their vocabulary and their sentence rules.
 
-This governs every Readme, docstring, comment, plan, report and reply in this repository. Code
-identifiers, error strings and quoted output keep their exact wording.
+This governs every Readme, docstring, comment, plan, report and reply in this repository, and
+every word the product itself shows a person: interface copy, button and field labels, error
+and status messages, entity explainer cards, tool descriptions, and what a script prints. Three
+things keep their exact wording, because something else depends on the bytes. Code identifiers
+and the format strings that build a log line. Text quoted from another system, such as a tool's
+own output or an upstream error. A value a test compares against, until the test moves with it.
 
 - **State the claim. Do not build to a turn of phrase.** If a sentence is arranged so its last
   few words land, rewrite it. Punchy is the failure, not the goal.
@@ -104,11 +108,14 @@ edit that adds one.
   refuses and tells you. Bash editing stays available for the cases where it is genuinely
   the practical tool. The rule is about which one you try first.
 - **Change the comment in the same patch that changes what it describes.** A stale comment
-  outlives the code it lied about. **An already-applied migration is the exception, and it
-  is frozen, comments included.** The runner records an md5 of the whole file, so correcting
-  a stale word in one refuses to start on every deployment that already ran it. A prose
-  sweep that reaches `db_global_migrations/` or `db_collection_migrations/` has gone too
-  far. The fix belongs in a new numbered file, or beside the code that reads the table.
+  outlives the code it lied about. **An already-applied migration is the exception, because
+  editing one is a breaking change, comments included.** The runner records an md5 of the
+  whole file, so correcting a stale word in one makes it refuse to start on every deployment
+  that already ran it. Ordinary work therefore does not touch `db_global_migrations/` or
+  `db_collection_migrations/`, and the fix belongs in a new numbered file or beside the code
+  that reads the table. Editing one is a decision the repository owner takes, and it comes
+  with resetting every deployment that applied it. When that decision is taken, the register
+  applies to those files like any other.
 - **A change that adds, removes or re-scopes a capability edits its row in
   `docs/technical-specification/` in the same patch**, never in a follow-up. A capability
   with no row was never agreed. A row with no code is false. Read the affected rows before

@@ -46,7 +46,7 @@ if [ "${1:-}" = "--only" ]; then
 fi
 
 if ! docker inspect -f '{{.State.Running}}' "$BROWSER_CONTAINER" 2>/dev/null | grep -q true; then
-    echo "error: $BROWSER_CONTAINER is not running — start the stack with ./deploy" >&2
+    echo "error: $BROWSER_CONTAINER is not running. Start the stack with ./deploy" >&2
     exit 1
 fi
 

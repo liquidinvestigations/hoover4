@@ -1,6 +1,6 @@
 -- The scan stage's watermark, mirroring nlp_processed. The stage left-anti-joins
 -- text_content against this table for the rule set version the scanner currently
--- reports, so a version bump makes every segment eligible again — and nothing re-runs
+-- reports, so a version bump makes every segment eligible again, and nothing re-runs
 -- until a rescan is asked for, which is what makes a bump a decision rather than an
 -- accident.
 --

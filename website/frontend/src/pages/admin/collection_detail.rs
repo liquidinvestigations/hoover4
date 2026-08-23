@@ -20,7 +20,7 @@ use crate::routes::Route;
 pub fn AdminCollectionPage(collection_id: String) -> Element {
     let collection_id_for_content = collection_id.clone();
     rsx! {
-        Title { "Admin — Collection {collection_id}" }
+        Title { "Admin: collection {collection_id}" }
         AdminGuard {
             AdminShell {
                 title: "Change collection".to_string(),

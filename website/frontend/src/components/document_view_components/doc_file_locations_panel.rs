@@ -137,7 +137,7 @@ pub fn DocumentFileLocationsPanel(
                     style: "padding: 4px 2px; color: rgba(0,0,0,0.6);",
                     "This document is not recorded at any path in "
                     b { "{document_identifier().collection_dataset}" }
-                    " — nothing to browse to."
+                    ", so there is nothing to browse to."
                 }
             }
             for location in value.locations.iter() {

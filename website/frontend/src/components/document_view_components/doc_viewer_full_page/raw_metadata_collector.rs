@@ -352,7 +352,7 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             div {
                 style: "color: rgba(0,0,0,0.6);",
                 "No confirmed dates. Nothing in this document's metadata gave a date we
-                 trust, so it will not match any date range — only "
+                 trust, so it will not match any date range except "
                 b { "Unknown only" }
                 "."
             }
@@ -477,7 +477,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                 div {
                     style: "display: flex; align-items: center; gap: 6px; margin-top: 10px; color: rgba(0,0,0,0.7);",
                     Icon { icon: MdAttachment, style: "width: 20px; height: 20px;" }
-                    "{value.attachment_count} attachment(s) — browse them by opening this email in Storage."
+                    "{value.attachment_count} attachment(s). Browse them by opening this email in Storage."
                 }
             }
         }

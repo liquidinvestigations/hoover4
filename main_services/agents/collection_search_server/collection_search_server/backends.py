@@ -162,7 +162,7 @@ def _balance_quotes(query: str) -> tuple[str, list[str]]:
     cut = query.rfind('"')
     return (
         query[:cut] + query[cut + 1:],
-        ['dropped an unbalanced " — a phrase search needs both quotes'],
+        ['dropped an unbalanced ": a phrase search needs both quotes'],
     )
 
 

@@ -187,7 +187,7 @@ fn SearchResultsView() -> Element {
                     color: rgb(120, 70, 0);
                     font-size: 14px;
                 ",
-                "Some collections could not be searched — results may be incomplete."
+                "Some collections could not be searched, so results may be incomplete."
             }
         }
         ul {

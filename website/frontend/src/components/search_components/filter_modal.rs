@@ -1293,9 +1293,9 @@ fn DateHistogramChart(
                 // The bars are not comparable with the other histogram's: a document
                 // naming three days in one bin contributes three to it. Saying so is
                 // cheaper than a reader working out why the totals do not add up.
-                "Mentions by date — click a bar to filter"
+                "Mentions by date. Click a bar to filter."
             } else {
-                "Documents by date — click a bar to filter"
+                "Documents by date. Click a bar to filter."
             }
         }
         div {
@@ -1898,7 +1898,7 @@ fn PartialNotice() -> Element {
                 background-color: rgba(255, 180, 60, 0.15); color: rgb(120, 70, 0);
                 font-size: 13px;
             ",
-            "Some collections could not be searched — counts may be incomplete."
+            "Some collections could not be searched, so counts may be incomplete."
         }
     }
 }

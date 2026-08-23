@@ -3,7 +3,7 @@
 -- It exists because Temporal's namespace retention here is 24 hours and a CLI process is
 -- mortal: without this table an ingest interrupted by a lost ssh session leaves a
 -- half-built collection and no evidence anywhere that the command was ever run. The log
--- has no TTL — its whole value is answering that question about something that happened
+-- has no TTL, because it exists to answer that question about something that happened
 -- longer ago than a workflow history survives.
 --
 -- op_id is also the Temporal workflow id, and it carries a timestamp, so two dispatches
@@ -14,7 +14,7 @@
 -- flight.
 --
 -- started_at leads the sort key because it is immutable for a given op_id and because
--- the admin list reads the newest rows first — with it first, that list reads the tail of
+-- the admin list reads the newest rows first. With it first, that list reads the tail of
 -- the primary key instead of sorting the table.
 CREATE TABLE IF NOT EXISTS operations
 (

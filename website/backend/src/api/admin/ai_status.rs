@@ -137,7 +137,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
         ai_body
             .get("embedding_model")
             .and_then(|v| v.as_str())
-            .unwrap_or("—")
+            .unwrap_or("n/a")
             .to_string()
     } else {
         "unreachable".into()

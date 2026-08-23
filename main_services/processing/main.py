@@ -479,7 +479,7 @@ def reindex_collection(collectionname: str):
     if holding:
         names = ", ".join(f"{r['op_id']} ({r['kind']}, {r['state']})" for r in holding[:5])
         raise click.ClickException(
-            f"{len(holding)} operation(s) are still open for {collectionname} — "
+            f"{len(holding)} operation(s) are still open for {collectionname}: "
             f"{names}. Wait for them, or cancel one with `main.py operations cancel "
             f"<op_id>`, then run this again."
         )
@@ -488,7 +488,7 @@ def reindex_collection(collectionname: str):
     if running:
         raise click.ClickException(
             f"{len(running)} IndexDatasetPlan workflow(s) are still open for "
-            f"{collectionname} — {', '.join(running[:5])}. Wait for them, or cancel "
+            f"{collectionname}: {', '.join(running[:5])}. Wait for them, or cancel "
             f"them in the Temporal UI, then run this again."
         )
 

@@ -31,9 +31,9 @@ EM_DASH = "—"
 
 EXTENSIONS = (".md", ".rs", ".py", ".sh", ".sql", ".toml", ".yaml", ".yml")
 
-# Paths whose text may hold a banned word. The first five define the rule and have to quote
-# it. The migrations are frozen, because the runner records an md5 of the whole file. The
-# rest are vendored or generated, or are gitignored scratch.
+# Paths whose text may hold a banned word. The first six define the rule and have to quote
+# it. The rest are vendored or generated, or are gitignored scratch. The migration
+# directories are not here: a new migration is written in the register like anything else.
 EXEMPT = (
     "AGENTS.md",
     ".agents/check-prose-style.py",
@@ -42,8 +42,6 @@ EXEMPT = (
     "docs/development/Documentation_Standards.md",
     # It probes this hook, so it has to hold a phrase the hook rejects.
     ".agents/verify-wiring.sh",
-    "/db_global_migrations/",
-    "/db_collection_migrations/",
     "/plans/",
     "/website/backend/pdf-viewer/_server/dist/",
     "/website/frontend/assets/",

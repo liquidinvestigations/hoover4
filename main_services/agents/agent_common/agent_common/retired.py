@@ -46,7 +46,7 @@ class RetiredNames(Middleware):
         payload = {
             "success": False,
             "error": (
-                f"`{name}` no longer exists. Call `{replacement}` instead — {what}."
+                f"`{name}` no longer exists. Call `{replacement}` instead, which {what}."
             ),
         }
         return ToolResult(

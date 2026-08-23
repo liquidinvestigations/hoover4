@@ -147,7 +147,7 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         if served_version != rule_set_version:
             raise RuntimeError(
                 f"the scanner reported rule set {rule_set_version} on /health and "
-                f"{served_version} on /scan_batch — the image changed mid-activity, and "
+                f"{served_version} on /scan_batch. The image changed mid-activity, and "
                 f"writing these rows would file them under the wrong version"
             )
         scanned.extend(result.data["results"])

@@ -101,7 +101,7 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
     ),
     ToolGroup(
         ("list_document_entities",),
-        "the names, dates and places found in one document — where the next query "
+        "the names, dates and places found in one document, which is where the next query "
         "usually comes from.",
     ),
     ToolGroup(
@@ -129,7 +129,7 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
             "browser_select_option",
             "browser_press_key",
         ),
-        "for pages that have to be *operated* rather than read — a form, a login, a "
+        "for pages that have to be *operated* rather than read, such as a form, a login, a "
         "control that reveals the content. Reading a page needs none of them.",
     ),
     ToolGroup(
@@ -217,7 +217,7 @@ def _render_tool_surface(bound: Sequence[str]) -> str:
         if not named:
             continue
         described.update(named)
-        lines.append("* " + " / ".join(f"`{name}`" for name in named) + " — " + group.note)
+        lines.append("* " + " / ".join(f"`{name}`" for name in named) + ": " + group.note)
     rest = sorted(present - described)
     if rest:
         lines.append(
