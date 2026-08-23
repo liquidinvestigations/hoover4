@@ -61,6 +61,7 @@ const DRIVEN_KINDS: &[&str] = &[
     "retry_failed_files",
     "ensure_collection",
     "drop_collection_database",
+    "export_collection",
 ];
 
 fn kind_entry(kind: &str) -> Option<&'static (&'static str, &'static str, bool)> {
