@@ -154,8 +154,10 @@ model is usually still working with what it just read.
 
 | variable | default | meaning |
 |---|---|---|
-| `AGENT_COMPACTION_FRACTION` | `0.6` | fraction of the stated window at which eviction fires. Out of range, or unparseable, turns compaction off rather than clamping |
-| `AGENT_COMPACTION_KEEP_RECENT` | `3` | most recent tool results left intact |
+| `AGENT_COMPACTION_FRACTION` | `0.6` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off rather than clamping |
+| `AGENT_COMPACTION_KEEP_RECENT` | `3` | most recent tool results left intact by eviction |
+| `AGENT_COMPACTION_KEEP_RECENT_MESSAGES` | `6` | trailing messages summarisation leaves alone, on top of what it may never touch |
+| `LLM_MODEL_COMPACTION` | the answering model | model that writes the handoff document |
 
 **It does not fire on the traffic this stack produces.** The widest turn measured here —
 the full research profile, sixteen tool calls, three web pages read and cited — peaked at
@@ -177,10 +179,41 @@ Three properties are load-bearing:
   source rather than the provider directly, so the number the trigger divides by is the
   number the transcript footer shows the user.
 
-Every applied compaction writes a `chat_compactions` row — what was evicted, the trigger
-and its denominator, and the token counts before and after. The "after" is the prompt of
-the first call made on the shortened list, so it arrives one call later and supersedes the
-first insert under the same compaction id.
+### Layer two — summarisation
+
+Eviction runs first, always, because it makes no model call and cannot lose a fact: every
+result it takes away is still in the transcript and can be re-read. Summarisation runs
+only on what eviction leaves, and only when the list is still projected to be over the
+threshold. That projection is an estimate and is labelled one — the only honest token
+count available is what the provider billed for the *previous* call, so the saving is
+scaled by the fraction of the list's characters eviction removed.
+
+Layer two drops whole call-and-result groups and puts one structured handoff document in
+their place: what was replaced, the citations that stand, and three model-written sections
+quoting verbatim rather than paraphrasing. If the summariser answers with nothing, or the
+handoff would be no smaller than what it replaces, the list is sent as layer one left it.
+
+**Some messages are never summarised, and that is enforced by selecting them in code, not
+by asking the summariser to spare them.** `protected_indexes` picks out the user's own
+messages, every todo call and result, the `cite_documents` result that says which document
+`[D3]` means, any message whose text carries a handle, and the most recent exchanges;
+those are copied into the outgoing list unchanged and the summariser never sees them. A
+model asked politely to preserve a citation will eventually not, and **a compaction that
+loses a citation the answer already made is a correctness bug, not a compression
+trade-off.** Protection is closed over call-and-result groups, so a preserved result never
+arrives without the call that asked for it. Eviction honours the same set.
+
+**A summarised turn says so to the user; an evicted one does not.** The difference is what
+a reader can still check. Eviction leaves every result in the transcript, so the evidence
+is there. Summarisation replaces the model's own working prose, and the answer was written
+from that summary rather than from what the agent read — which is a fact about how much to
+trust it, so the answer carries one line saying so.
+
+Every applied compaction writes a `chat_compactions` row — what was evicted, the handoff
+document whole, the citation handles that were live, the model-visible list either side,
+the trigger and its denominator, and the token counts before and after. The "after" is the
+prompt of the first call made on the shortened list, so it arrives one call later and
+supersedes the first insert under the same compaction id.
 
 ## `LLM_STREAMING` and `disable_streaming`
 
