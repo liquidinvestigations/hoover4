@@ -95,6 +95,17 @@ comments included, so correcting a stale word in one makes it refuse to start on
 deployment that already ran it. A prose sweep that reaches the migration directories has gone
 too far.
 
+## Reviewing against the plan
+
+The checklist above covers whether the code is right. This section covers whether the code is
+what the plan asked for, which is a different question and a short one to answer, because the
+tree already holds the fixed point. A work package stamps the commit it was written against,
+and a plan folder holds the scope it agreed.
+
+Read the scope list against the diff, and report, item by item, what the diff did not do. Keep
+this separate from the silent-failure checklist above, which is about defects rather than about
+scope.
+
 ## The four shape tests
 
 These read the design rather than the defect, so they also apply when a plan is deciding how to

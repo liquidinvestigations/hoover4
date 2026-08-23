@@ -112,6 +112,22 @@ out of scope.
 | what the product does, as agreed | `docs/technical-specification/` |
 | a decision that keeps being re-opened | `docs/architecture/Settled_Decisions.md` |
 
+## Writing a skill
+
+A skill loads in three levels. Level one is the name and the description, preloaded for every
+skill at session start. Level two is the body of `SKILL.md`, read only when the description
+matches. Level three is a reference file or a script, read only when the body points at it.
+
+**The description is a selector, never a tutorial.** It states when to use the skill, in the
+phrasing a session would actually reach for, and it says nothing about how the skill works
+inside. A body that grows past readable length is split into a reference file rather than left
+to run long.
+
+**A new catalogue entry is admitted when its trigger sentence cannot be confused with an
+existing skill's, and when a session that needed it would not have loaded a different skill
+instead.** A skill that fails that test belongs as a section inside the skill a session would
+have loaded anyway.
+
 ## When a decision is settled, and where it goes
 
 A decision earns a line in `Settled_Decisions.md` when **all three** are true. Two out of three

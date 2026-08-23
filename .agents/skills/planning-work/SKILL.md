@@ -100,6 +100,10 @@ asked**, which is whether the ten items were the same shape.
 
 ## Scope by churn before scanning
 
+**Investigate against primary sources**, meaning official documentation, source code,
+specifications and first-party interfaces, and follow every claim back to the source that
+owns it.
+
 **Read what has been changing before deciding where to look.** A tree is too large to scan and
 the parts that keep moving are where the design questions are.
 

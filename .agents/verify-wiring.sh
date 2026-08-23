@@ -71,6 +71,11 @@ if [ -f "$h/deny-unscoped-search.py" ]; then
     [[ "$b4" == *"19 left"* ]] \
         && ok "budget hook reports the remaining tool calls" \
         || no "budget hook wrong: $b4"
+    b5=$(python3 "$h/deny-push.py" --test 'git push')
+    g5=$(python3 "$h/deny-push.py" --test 'git status')
+    [[ "$b5" == DENY* && "$g5" == allow ]] \
+        && ok "push hook denies git push and allows git status" \
+        || no "push hook verdicts wrong: bad=$b5 good=$g5"
 else
     no "hook scripts are missing from .agents/hooks"
 fi

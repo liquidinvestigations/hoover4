@@ -163,6 +163,7 @@ skill yourself. Rules in `.agents/rules/` load on their own when you open a file
 | say it works, is fixed, or passes (build, test, check, browser pass) | `verifying-before-claiming` |
 | start or archive an epic, write a prompt/report pair, fan out artefacts | `planning-work` |
 | hand work to a sub-agent | `running-consecutive-subagents` |
+| run out of room, pause unfinished work, or hand a job to a fresh session | `writing-handoffs` |
 | write or fix a `Readme.md`, a docstring, or a comment | `writing-project-docs` |
 | review a diff before committing | `reviewing-changes` |
 | deploy, rebuild, reset, or wait on a long job | `deploying-the-stack` |

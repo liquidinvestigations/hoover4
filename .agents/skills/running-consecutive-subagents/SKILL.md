@@ -128,6 +128,18 @@ and switching invalidates every check the pass just ran.
 this failing once: a push during a live pass interleaved commits and sent unreviewed work to the
 remote.
 
+## Resolving a conflict
+
+The one shape this tree produces is the working branch moving under a live pass. Before
+touching a hunk, read the intent of both sides, because intent is the input the model
+otherwise lacks.
+
+**Resolve what the intent settles. Stop and ask on what it does not.** The best models
+measured on 7,938 real conflict hunks resolve under 60% correctly, and a preserved conflict is
+worth more than a confident wrong merge.
+
+Then run the checks the change owes. `writing-tests`'s `scripts/gate-map.sh` names them.
+
 ## Reviewing a pass
 
 **Read the diff. The report is a claim, not evidence.** A pass reporting success on a check
