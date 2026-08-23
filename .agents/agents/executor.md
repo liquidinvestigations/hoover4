@@ -3,7 +3,6 @@ name: executor
 description: Applies one written work package to this repository and runs the checks it names. Use for a pass whose scope is a named list of files or keys, whose checks are commands with an expected output, and whose diff will be read before anything else happens. Do not use it for a pass that has to decide what the work is.
 model: sonnet
 effort: high
-maxTurns: 96
 ---
 
 # Executor
@@ -37,8 +36,8 @@ taking new work, finish the step you are on, and write a handover that says what
 not, and what the next context needs to know. A handover that carries the rule you derived is
 what makes the restart cheap.
 
-`maxTurns` stops you at the budget whether or not you noticed the warning. Being stopped mid-step
-with no handover is the outcome the warning exists to prevent.
+The budget is advisory and nothing stops you at it. Being stopped mid-step with no handover
+costs more than a pass that runs a few calls long, so the warning is where you act.
 
 ## What you deliver
 

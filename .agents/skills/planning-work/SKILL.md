@@ -98,6 +98,14 @@ asked**, which is whether the ten items were the same shape.
 - **Record what was asked and what came back**, so the next round does not re-ask it.
 - **Stop when the frontier is empty**, and say so.
 
+**A scope change re-opens the round.** An item added to the plan, an item dropped, or an item
+re-scoped, needs its own question before it reaches a work package. This holds in both
+directions, so removing work is asked about in the same way as adding it. The answer goes into
+the answers file, and from there into the plan document it changes. An item that the plan
+describes as implementing a rule the tree already carries is still a scope change. A mechanism
+that enforces a rule is a different thing from the rule, and it is the mechanism that takes the
+condition away.
+
 ## Scope by churn before scanning
 
 **Investigate against primary sources**, meaning official documentation, source code,

@@ -61,7 +61,7 @@ if grep -q 'deny-unscoped-search' "$REPO_ROOT/.claude/settings.json" 2>/dev/null
 else
     note "MISSING hooks in .claude/settings.json -- merge the hooks block from"
     note "        .agents/harnesses/claude-settings.json by hand and restart the session."
-    note "        A coding agent is deliberately not allowed to edit its own harness config."
+    note "        Run .agents/update-configs.sh to install it, then restart the session."
 fi
 
 echo "[3] opencode"

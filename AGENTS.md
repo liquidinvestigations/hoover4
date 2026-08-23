@@ -11,8 +11,10 @@ ClickHouse, Manticore and Garage, and serves them from a Dioxus website. `main_s
 holds the pipeline, the MCP servers, the scanner service and the CPU model twins.
 `ai_services/` is the standalone GPU tier. `website/` is backend, frontend and shared types.
 `./deploy` starts and rebuilds all of it. `hoover4.ini` is the one source of configuration,
-and the `.env` files are generated from it, so never hand-edit those. `docs/` is public, so
-keep every hostname, port, address and auth boundary out of it, and out of these skills.
+and the `.env` files are generated from it, so never hand-edit those. **This repository is
+public**, at `github.com/liquidinvestigations/hoover4`, so every tracked file is published and
+`docs/` with it. Keep every hostname, port, address and auth boundary out of them, and out of
+these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
 `CONTEXT.md` at the repository root records the words this tree uses in more than one sense,
 and the words that compete for one sense. Read it before you write a term that already has an
@@ -23,8 +25,6 @@ entry there.
 - **Everything runs in containers.** The host has almost no tooling. Run python, servers and
   every stack command inside the right container with `docker exec`. Inspect the
   infrastructure before you start, rather than assuming which container owns a job.
-- **Git runs on the host, and you do not push.** Commit to the working branch and leave it
-  there unless you are told otherwise.
 - **Read the `Readme.md` beside the code before you change it, and correct it as you go.**
   Fix what your change makes untrue, and leave the rest alone. Keep documentation patches as
   small as the code patch that prompted them.
@@ -106,6 +106,24 @@ edit that adds one.
   written has not been made. The reader now knows they owe an answer, and does not know what
   it is. Either write the questions out, or link to the exact section that holds them. This
   applies hardest at the end of a long reply, where a summary tends to compress them away.
+- **A fact about the environment is checked before it is written into a mechanism.**
+  Repository visibility, a host's owner, a path's tracked status, and a remote's name are all
+  one command away. A default stated in someone's documentation is what a system assumes, and
+  never what is true here. Assert it only after running the check, and name the check beside
+  the assertion.
+- **A new refusal is a decision a person takes.** This covers a hook, a permission rule, a
+  turn limit, and every other mechanism that stops an action the agent could take before.
+  Write it as a question. It lands after a person answers. Three rules bound what may be
+  proposed at all. A repeated instruction becomes evidence only after it is counted in both
+  directions across the whole history, with both counts shown. A rule that carries "unless",
+  "yet" or "for this task" keeps that condition, and no mechanism may remove it. Text the
+  agent wrote, in a handoff, a report or a plan, is never a person asking for something. That
+  holds when a person pastes it back into the conversation.
+- **The organizer does not change the scope of a plan on its own.** Adding an item, dropping
+  an item, or re-scoping one, in either direction, needs a grilling round first. The answer
+  goes into the plan folder's answers file, and from there into the plan document it changes.
+  A scope change that reaches a work package with no answer behind it is a defect in the plan.
+  The pass that implemented it is not at fault.
 - **Reach for the Edit/Write tools or serena's symbol operations first** when changing code.
   `sed -i` cannot fail loudly on a stale match. It silently changes nothing, while Edit
   refuses and tells you. Bash editing stays available for the cases where it is genuinely

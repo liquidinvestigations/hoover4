@@ -71,11 +71,6 @@ if [ -f "$h/deny-unscoped-search.py" ]; then
     [[ "$b4" == *"19 left"* ]] \
         && ok "budget hook reports the remaining tool calls" \
         || no "budget hook wrong: $b4"
-    b5=$(python3 "$h/deny-push.py" --test 'git push')
-    g5=$(python3 "$h/deny-push.py" --test 'git status')
-    [[ "$b5" == DENY* && "$g5" == allow ]] \
-        && ok "push hook denies git push and allows git status" \
-        || no "push hook verdicts wrong: bad=$b5 good=$g5"
 else
     no "hook scripts are missing from .agents/hooks"
 fi
@@ -86,6 +81,11 @@ if grep -q 'deny-unscoped-search' "$REPO_ROOT/.claude/settings.json" 2>/dev/null
     ok "settings.json declares the PreToolUse hooks"
 else
     no "settings.json does not declare the hooks -- merge the block from .agents/harnesses/claude-settings.json"
+fi
+if "$REPO_ROOT/.agents/update-configs.sh" --check >/dev/null 2>&1; then
+    ok "the live settings match the harness template"
+else
+    no "the live settings differ from .agents/harnesses/claude-settings.json -- run .agents/update-configs.sh"
 fi
 if grep -q 'warn-tool-call-budget' "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
     ok "settings.json declares the PostToolUse budget hook"
