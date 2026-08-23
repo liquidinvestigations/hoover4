@@ -42,3 +42,49 @@ class DatasetProgressParams:
     op_id: str
     collectionname: str
     collection_dataset: str
+
+
+@dataclass
+class RetryFailedFilesParams:
+    """Which dataset's failures to retry, and which stage recorded them.
+
+    `task_name` is the `processing_errors.task_name` to retry and it is required: one
+    dispatch retries one stage, because retrying every stage at once re-runs the whole
+    pipeline for every failed document, which is the thing the operation exists to
+    avoid.
+    """
+
+    op_id: str
+    collectionname: str
+    collection_dataset: str
+    task_name: str = ""
+
+
+@dataclass
+class RetryPlanResult:
+    """What one `retry_failed_files` dispatch is going to re-run.
+
+    Computed once, before anything re-runs, and carried through the workflow: the
+    verification at the end compares against exactly these hashes, and `started_at` is
+    read from the ClickHouse server's clock rather than a worker's, because the
+    `processing_errors` rows it is compared against are timestamped by other hosts.
+    """
+
+    task_name: str = ""
+    retry_kind: str = ""
+    plan_hashes: list[str] = field(default_factory=list)
+    hashes: list[str] = field(default_factory=list)
+    started_at: str = ""
+
+
+@dataclass
+class FinishRetryParams:
+    """The verification pass that decides which error rows a retry may delete."""
+
+    op_id: str
+    collectionname: str
+    collection_dataset: str
+    task_name: str = ""
+    retry_kind: str = ""
+    hashes: list[str] = field(default_factory=list)
+    started_at: str = ""

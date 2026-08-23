@@ -103,20 +103,23 @@ pub struct ServerSettingItem {
 }
 
 // ---------------------------------------------------------------------------
-// Per-dataset OCR settings, the apply job, and dataset creation
+// Per-dataset OCR settings, the apply operation, and dataset creation
 // ---------------------------------------------------------------------------
 
-/// One long-running admin job, as the dataset page's status strip renders it.
+/// The newest operation touching one dataset, as the dataset page's strip renders it.
 ///
-/// The strip exists because a form that disables itself while a job runs locks forever if
-/// the job becomes invisible. `stale_seconds` is how long the row has gone without an
-/// update: a `running` job that has stopped advancing is the failure that has no error
-/// message, so it needs a number of its own rather than an absence of one.
+/// A projection of the `operations` row, which is the one place a long run is recorded:
+/// the strip and the admin operations log show the same run rather than two mechanisms
+/// that can disagree. The strip exists because a form that disables itself while a run is
+/// in flight locks forever if that run becomes invisible. `stale_seconds` is how long the
+/// row has gone without an update: a running operation that has stopped advancing is the
+/// failure that has no error message, so it needs a number of its own rather than an
+/// absence of one.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DatasetJobStatus {
-    pub job_id: String,
+pub struct DatasetOperationStatus {
+    pub op_id: String,
     pub kind: String,
-    /// `running | done | failed`.
+    /// `pending | running | finished | errored | cancelled`.
     pub state: String,
     /// JSON written by the workflow: `{"stage": …, "added": […], "removed": […]}`.
     pub detail: String,
@@ -126,9 +129,12 @@ pub struct DatasetJobStatus {
     pub stale_seconds: u64,
 }
 
-impl DatasetJobStatus {
+impl DatasetOperationStatus {
+    /// `pending` counts as running: the row exists, it holds the lock, and the work is
+    /// on its way to a worker. Treating it as idle is what would let a second dispatch
+    /// through in the seconds before the workflow starts.
     pub fn is_running(&self) -> bool {
-        self.state == "running"
+        matches!(self.state.as_str(), "pending" | "running")
     }
 }
 
@@ -171,7 +177,7 @@ pub struct DatasetOcrPanel {
     pub ocr_pdf_configured: bool,
     pub text_variants: Vec<DatasetTextVariant>,
     pub pdf_variants: Vec<DatasetPdfVariant>,
-    pub job: Option<DatasetJobStatus>,
+    pub operation: Option<DatasetOperationStatus>,
 }
 
 /// One candidate folder under `datasets_mount_path`, for the creation form.

@@ -49,7 +49,14 @@ const KINDS: &[(&str, &str, bool)] = &[
 /// Kinds the operations workflow can actually drive today. The rest are registered —
 /// the table, the lock and the destructive flag know them — but dispatching one raises
 /// a named error, so the UI must not offer to start or re-run them.
-const DRIVEN_KINDS: &[&str] = &["add_dataset", "rescan_dataset", "reindex_collection"];
+const DRIVEN_KINDS: &[&str] = &[
+    "add_dataset",
+    "rescan_dataset",
+    "reindex_collection",
+    "purge_dataset",
+    "change_ocr_languages",
+    "retry_failed_files",
+];
 
 fn kind_entry(kind: &str) -> Option<&'static (&'static str, &'static str, bool)> {
     KINDS.iter().find(|(k, _, _)| *k == kind)
@@ -336,12 +343,18 @@ pub async fn admin_rerun_operation(
             display.kind
         );
     }
+    // The original row's `detail` is what the re-run is dispatched with. A kind whose
+    // behaviour is decided by parameters — which languages, which failed task — would
+    // otherwise be re-run against whatever the dataset is set to now, which is not what
+    // the row in front of the person says.
+    let detail = display.detail.clone();
     dispatch_operation(
         &display.kind,
         &display.collectionname,
         &display.collection_dataset,
         &user.username,
         &display.op_id,
+        &detail,
     )
     .await
 }
@@ -352,12 +365,18 @@ pub async fn admin_rerun_operation(
 /// invisible to everything except Temporal, and Temporal here forgets after a day. If
 /// the start then fails, the row is landed in `errored` rather than left holding the
 /// lock for ever.
+///
+/// `detail` is the JSON object the operation is dispatched with — the languages of an
+/// OCR change, the failed task of a retry. It goes onto the row *and* into the workflow
+/// input, which is what makes a re-run of that row ask for the same thing. Empty falls
+/// back to whatever the kind can work out for itself.
 pub async fn dispatch_operation(
     kind: &str,
     collectionname: &str,
     collection_dataset: &str,
     user_id: &str,
     rerun_of: &str,
+    detail: &str,
 ) -> anyhow::Result<String> {
     let Some((_, target_kind, _)) = kind_entry(kind) else {
         anyhow::bail!("unknown operation kind: {kind}");
@@ -400,6 +419,10 @@ pub async fn dispatch_operation(
         }
     }
 
+    let detail = match detail.trim() {
+        "" | "{}" => dispatch_detail(kind, collection_dataset).await,
+        given => given.to_string(),
+    };
     let epoch = time::OffsetDateTime::from_unix_timestamp(0)?;
     let row = OperationDbRow {
         op_id: op_id.clone(),
@@ -414,7 +437,7 @@ pub async fn dispatch_operation(
         progress_done: 0,
         progress_total: 0,
         eta_seconds: 0,
-        detail: dispatch_detail(kind, collection_dataset).await,
+        detail: detail.clone(),
         error: String::new(),
         user_id: user_id.to_string(),
         rerun_of: rerun_of.to_string(),
@@ -423,7 +446,8 @@ pub async fn dispatch_operation(
     insert.write(&row).await?;
     insert.end().await?;
 
-    match start_operation_workflow(&op_id, kind, collectionname, collection_dataset).await {
+    match start_operation_workflow(&op_id, kind, collectionname, collection_dataset, &detail).await
+    {
         Ok(()) => Ok(op_id),
         Err(e) => {
             let mut failed = row;
@@ -475,6 +499,7 @@ async fn start_operation_workflow(
     kind: &str,
     collectionname: &str,
     collection_dataset: &str,
+    detail: &str,
 ) -> anyhow::Result<()> {
     let base_url = std::env::var("TEMPORAL_HTTP_URL")
         .unwrap_or_else(|_| "http://localhost:21908".to_string());
@@ -497,7 +522,11 @@ async fn start_operation_workflow(
             "collectionname": collectionname,
             "collection_dataset": collection_dataset,
             "dataset_path": dataset_path,
-            "detail": {},
+            // The same object the row carries: the workflow reads its parameters from
+            // here, so a row and the execution it names can never describe two
+            // different requests.
+            "detail": serde_json::from_str::<serde_json::Value>(detail)
+                .unwrap_or_else(|_| serde_json::json!({})),
         } ],
     });
     let url = format!("{base_url}/api/v1/namespaces/default/workflows/{op_id}");

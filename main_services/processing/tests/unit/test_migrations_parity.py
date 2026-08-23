@@ -30,6 +30,10 @@ COLLAPSED_BASELINE = {
     "db_collection_migrations": 31,
 }
 
+#: Every table a global migration creates. It mirrors the `CREATE TABLE` statements in
+#: the directory, not the live schema, so a table a later migration drops stays listed:
+#: the applied file that created it is frozen and cannot be edited away. `dataset_jobs`
+#: is one of those — created, then dropped once the operations log replaced it.
 EXPECTED_GLOBAL_TABLES = {
     "api_events",
     "chat_artifacts",
@@ -344,8 +348,8 @@ def test_settings_and_job_tables_are_in_the_right_directory():
     """These tables split across both directories, which is the exact mistake this
     module exists to catch.
 
-    Per-dataset settings and job status are global — the admin UI edits them before the
-    collection database is necessarily built, and workers read them across collections.
+    Per-dataset settings are global — the admin UI edits them before the collection
+    database is necessarily built, and workers read them across collections.
     Chunks, vectors and derived-PDF records are per collection because they are corpus
     data. Getting either backwards produces a migration that applies cleanly and a table
     the reading code never finds.
@@ -353,7 +357,7 @@ def test_settings_and_job_tables_are_in_the_right_directory():
     global_tables = set(_table_names(GLOBAL_MIGRATIONS_PATH))
     collection_tables = set(_table_names(COLLECTION_MIGRATIONS_PATH))
 
-    for name in ("dataset_settings", "dataset_jobs", "chat_message_stream",
+    for name in ("dataset_settings", "chat_message_stream",
                  "llm_models", "llm_call_events"):
         assert name in global_tables, f"{name} must be a global table"
 

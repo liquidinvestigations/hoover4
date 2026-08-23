@@ -59,7 +59,7 @@ admin_server_fn!(admin_delete_dataset, backend::api::admin::datasets::admin_dele
 admin_server_fn!(admin_trigger_workflow, backend::api::admin::datasets::admin_trigger_workflow, (collection_dataset: String, kind: String) -> String);
 
 admin_server_fn!(admin_get_dataset_ocr, backend::api::admin::dataset_ocr::admin_get_dataset_ocr, (collection_dataset: String) -> DatasetOcrPanel);
-admin_server_fn!(admin_get_dataset_job, backend::api::admin::dataset_ocr::admin_get_dataset_job, (collection_dataset: String) -> Option<DatasetJobStatus>);
+admin_server_fn!(admin_get_dataset_operation, backend::api::admin::dataset_ocr::admin_get_dataset_operation, (collection_dataset: String) -> Option<DatasetOperationStatus>);
 admin_server_fn!(admin_apply_ocr_languages, backend::api::admin::dataset_ocr::admin_apply_ocr_languages, (collection_dataset: String, tesseract_languages: String, easyocr_languages: String) -> String);
 admin_server_fn!(admin_get_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_get_collection_ocr_defaults, (collectionname: String) -> (String, String));
 admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_set_collection_ocr_defaults, (collectionname: String, tesseract_languages: String, easyocr_languages: String));

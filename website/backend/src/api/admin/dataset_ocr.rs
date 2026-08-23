@@ -6,10 +6,10 @@
 //!
 //! Two rules run through all of it:
 //!
-//! * **One job per dataset, refused here.** The disabled button on the form is courtesy.
-//!   Two admins in two browsers are stopped by [`assert_no_running_job`], which reads the
-//!   `dataset_jobs` row — the same row the status strip polls, so what refuses the second
-//!   admin is exactly what the first one can see.
+//! * **One language change per dataset, refused by the operations lock.** The disabled
+//!   button on the form is courtesy. Two admins in two browsers are stopped by the
+//!   non-terminal `operations` row, which is the same row the status strip polls — so
+//!   what refuses the second admin is exactly what the first one can see.
 //! * **The creation form never takes a path.** It takes a folder *name*, which is
 //!   validated against the listing of `DATASETS_MOUNT_PATH` and joined server-side. A
 //!   free-text path in a browser form is a way to point the ingest walker at any
@@ -18,12 +18,13 @@
 use std::time::Duration;
 
 use common::admin_types::{
-    DatasetFolderOption, DatasetJobStatus, DatasetOcrPanel, DatasetPdfVariant, DatasetTextVariant,
+    DatasetFolderOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
+    DatasetTextVariant,
 };
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::temporal_trigger;
+use crate::api::admin::{operations, temporal_trigger};
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
@@ -39,12 +40,9 @@ const KEY_EASYOCR_LANGUAGES: &str = "ocr.easyocr.languages";
 const KEY_DEFAULT_TESSERACT_LANGUAGES: &str = "ocr.default.tesseract.languages";
 const KEY_DEFAULT_EASYOCR_LANGUAGES: &str = "ocr.default.easyocr.languages";
 
-const JOB_KIND_OCR_LANGUAGES: &str = "change_ocr_languages";
-
-/// A `running` row older than this is shown as stuck. Generous on purpose: a full re-OCR
-/// of a large dataset legitimately spends minutes inside one activity, and every stage of
-/// the workflow rewrites the row, so silence past this is not slowness.
-const JOB_STALE_SECONDS: u64 = 900;
+/// The operation kind this module dispatches. Registered in `operations.rs` beside every
+/// other kind, which is what makes the lock and the destructive flag one rule.
+const OPERATION_KIND_OCR_LANGUAGES: &str = "change_ocr_languages";
 
 fn format_ts(unix_seconds: i64) -> String {
     if unix_seconds <= 0 {
@@ -66,59 +64,56 @@ async fn collection_of(collection_dataset: &str) -> anyhow::Result<String> {
 }
 
 #[derive(Debug, clickhouse::Row, serde::Deserialize)]
-struct JobRow {
-    job_id: String,
+struct OperationSummaryRow {
+    op_id: String,
     kind: String,
     state: String,
     detail: String,
     error: String,
     started_at: i64,
     finished_at: i64,
-    /// Aliased `last_update`, not `updated_at`: an alias with the column's own name makes
-    /// `argMax(is_deleted, updated_at)` in the HAVING clause resolve to the alias, and
-    /// ClickHouse refuses the resulting `max()` nested inside `argMax()`.
+    /// Aliased rather than selected as `updated_at`: `clickhouse::Row` binds by column
+    /// name, and an alias carrying the column's own name shadows the column it derives
+    /// from.
     last_update: i64,
 }
 
-/// The newest job row for a dataset, whatever its state.
+/// The newest operation touching a dataset, whatever its kind or state.
 ///
-/// `argMax` over the whole group rather than `FINAL` on a filtered read: `dataset_jobs` is
-/// keyed `(collection_dataset, kind, job_id)`, so `FINAL` would give the newest version of
-/// *every* job, and "the current job" is the one with the latest `started_at`.
-pub async fn latest_job(collection_dataset: &str) -> anyhow::Result<Option<DatasetJobStatus>> {
+/// One progress mechanism, not two: this is the same `operations` row the admin
+/// operations log renders, read here so the dataset page shows the run a person started
+/// from it without a per-dataset job table of its own.
+pub async fn latest_operation(
+    collection_dataset: &str,
+) -> anyhow::Result<Option<DatasetOperationStatus>> {
     let client = get_global_client();
     let rows = client
-        // Every aggregate is aliased to its struct field. `clickhouse::Row` matches by
-        // column NAME, so a bare `argMax(state, updated_at)` arrives as a column called
-        // `argMax(state, updated_at)` and the decode fails with a schema mismatch — at
-        // request time, on a query that is perfectly valid SQL.
         .query(
-            "SELECT job_id, \
+            "SELECT op_id, \
                     kind, \
-                    argMax(state, updated_at) AS state, \
-                    argMax(detail, updated_at) AS detail, \
-                    argMax(error, updated_at) AS error, \
-                    toInt64(toUnixTimestamp(argMax(started_at, updated_at))) AS started_at, \
-                    toInt64(toUnixTimestamp(argMax(finished_at, updated_at))) AS finished_at, \
-                    toInt64(toUnixTimestamp(max(updated_at))) AS last_update \
-             FROM dataset_jobs \
+                    state, \
+                    detail, \
+                    error, \
+                    toInt64(toUnixTimestamp(started_at)) AS started_at, \
+                    toInt64(toUnixTimestamp(finished_at)) AS finished_at, \
+                    toInt64(toUnixTimestamp(updated_at)) AS last_update \
+             FROM operations FINAL \
              WHERE collection_dataset = ? \
-             GROUP BY job_id, kind \
-             HAVING argMax(is_deleted, updated_at) = 0 \
-             ORDER BY started_at DESC LIMIT 1",
+             ORDER BY started_at DESC, op_id DESC LIMIT 1",
         )
         .bind(collection_dataset)
-        .fetch_all::<JobRow>()
+        .fetch_all::<OperationSummaryRow>()
         .await?;
 
     let Some(row) = rows.into_iter().next() else {
         return Ok(None);
     };
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
-    Ok(Some(DatasetJobStatus {
-        job_id: row.job_id,
+    let running = matches!(row.state.as_str(), "pending" | "running");
+    Ok(Some(DatasetOperationStatus {
+        op_id: row.op_id,
         kind: row.kind,
-        stale_seconds: if row.state == "running" {
+        stale_seconds: if running {
             (now - row.last_update).max(0) as u64
         } else {
             0
@@ -129,35 +124,6 @@ pub async fn latest_job(collection_dataset: &str) -> anyhow::Result<Option<Datas
         started_at: format_ts(row.started_at),
         finished_at: format_ts(row.finished_at),
     }))
-}
-
-/// Refuse a dispatch while a job for this dataset is unfinished.
-///
-/// This is the server-side half of "one job per dataset". It deliberately does **not**
-/// treat a stale row as free: a job that has stopped reporting may still be running
-/// activities, and starting a second one would have two workflows reopening the same
-/// plans and purging each other's variants. A genuinely dead job is cleared by the
-/// workflow failing, which writes `failed`.
-async fn assert_no_running_job(collection_dataset: &str) -> anyhow::Result<()> {
-    if let Some(job) = latest_job(collection_dataset).await? {
-        if job.is_running() {
-            let stuck = if job.stale_seconds > JOB_STALE_SECONDS {
-                format!(
-                    " It has not reported progress for {} minutes and may be stuck.",
-                    job.stale_seconds / 60
-                )
-            } else {
-                String::new()
-            };
-            anyhow::bail!(
-                "a {} job is already running for this dataset (started {}).{stuck} \
-                 Wait for it to finish before applying another change.",
-                job.kind,
-                job.started_at
-            );
-        }
-    }
-    Ok(())
 }
 
 async fn read_setting(collection_dataset: &str, key: &str) -> anyhow::Result<Option<String>> {
@@ -311,17 +277,18 @@ pub async fn admin_get_dataset_ocr(
         ocr_pdf_configured: !env_url("OCR_PDF_URL").is_empty(),
         text_variants,
         pdf_variants,
-        job: latest_job(&collection_dataset).await?,
+        operation: latest_operation(&collection_dataset).await?,
     })
 }
 
-/// Polled by the job strip on both the dataset page and the collection processing page.
-pub async fn admin_get_dataset_job(
+/// Polled by the operation strip on both the dataset page and the collection processing
+/// page.
+pub async fn admin_get_dataset_operation(
     user: &CurrentUser,
     collection_dataset: String,
-) -> anyhow::Result<Option<DatasetJobStatus>> {
+) -> anyhow::Result<Option<DatasetOperationStatus>> {
     guard::require_admin(user)?;
-    latest_job(&collection_dataset).await
+    latest_operation(&collection_dataset).await
 }
 
 /// A language string as the pipeline stores it: `+`-joined, deduplicated, order kept.
@@ -366,10 +333,12 @@ fn validate_languages(raw: &str, field: &str) -> anyhow::Result<String> {
     Ok(joined)
 }
 
-/// Dispatch `change_ocr_languages` for one dataset.
+/// Dispatch the `change_ocr_languages` operation for one dataset.
 ///
-/// Returns the job id, which the form uses to start polling immediately rather than
-/// waiting for the first refresh to notice the row.
+/// Returns the operation id, which the form uses to start polling immediately rather
+/// than waiting for the first refresh to notice the row. The languages travel in the
+/// operation's `detail`, so the log records what was asked for and a re-run of that row
+/// asks for the same thing.
 pub async fn admin_apply_ocr_languages(
     user: &CurrentUser,
     collection_dataset: String,
@@ -399,13 +368,21 @@ pub async fn admin_apply_ocr_languages(
         }
     }
 
-    assert_no_running_job(&collection_dataset).await?;
-
-    temporal_trigger::start_ocr_language_job(
+    // No second check here: the operations lock refuses a second dispatch while a
+    // non-terminal `change_ocr_languages` row holds the dataset, and it names the row in
+    // the way. A separate guard would be a second rule that can disagree with it.
+    let detail = serde_json::json!({
+        "tesseract_languages": tesseract,
+        "easyocr_languages": easyocr,
+    })
+    .to_string();
+    operations::dispatch_operation(
+        OPERATION_KIND_OCR_LANGUAGES,
         &collectionname,
         &collection_dataset,
-        &tesseract,
-        &easyocr,
+        &user.username,
+        "",
+        &detail,
     )
     .await
 }

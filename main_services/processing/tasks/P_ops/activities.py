@@ -2,6 +2,11 @@
 
 Everything here runs on the operations queues, in the operations container, so a long
 backup or a slow ClickHouse poll cannot take an activity slot away from ingestion.
+
+The pipeline modules an activity needs are imported **inside the function**, never at
+module scope: this module is loaded by a workflow file that the sandbox re-imports, and
+dragging the pipeline's C extensions through that importer fails with a bare
+`SystemError` naming nothing in this repository.
 """
 
 import logging
@@ -10,7 +15,10 @@ import time
 from temporalio import activity
 
 from ..heartbeat import with_heartbeat
-from .params import DatasetProgressParams, OperationStateParams
+from .params import (
+    DatasetProgressParams, FinishRetryParams, OperationStateParams,
+    RetryFailedFilesParams, RetryPlanResult,
+)
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +114,118 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     merge_detail(params.op_id, failed_documents=failed_documents,
                  failed_tasks=failed_tasks)
     return [done, total]
+
+
+@activity.defn
+@with_heartbeat
+def count_dataset_rows_activity(params: DatasetProgressParams) -> int:
+    """How many rows of the dataset are still in the two stores.
+
+    What the purge driver counts progress with: the total taken before the purge starts
+    is the denominator, and the same count taken again while it runs is what is left, so
+    `done` is rows actually gone rather than a stage number. Physical rows, not `FINAL`
+    rows -- the honest answer to "what is still there" and far cheaper on a large
+    collection.
+    """
+    from tasks.P_admin.activities import count_dataset_rows
+
+    counts = count_dataset_rows(params.collectionname, params.collection_dataset)
+    return sum(counts["manticore"].values()) + sum(counts["clickhouse"].values())
+
+
+@activity.defn
+@with_heartbeat
+def begin_failed_file_retry(params: RetryFailedFilesParams) -> RetryPlanResult:
+    """Decide what a retry re-runs, and clear the state that would make it a no-op.
+
+    The stage that failed decides the shape: an NER failure needs its watermarks gone
+    before P4 will look at the page again, a parse failure needs the plan's finished
+    marker gone before `ExecutePlans` will pick it up, and an index or embed failure
+    needs nothing cleared because both stages are idempotent and skip what is done.
+
+    Returns an empty plan rather than raising when there is nothing to retry: a dataset
+    with no recorded failures for that task is a finished operation, not a failed one.
+    """
+    from database.clickhouse import get_collection_client
+    from tasks.P_admin.failed_file_retry import (
+        RETRY_NLP, RETRY_PLAN, clear_nlp_state, failed_hashes, plans_for_hashes,
+        reopen_plans, retry_kind_for_task,
+    )
+
+    if not params.task_name:
+        raise ValueError(
+            "retry_failed_files needs a task_name in its detail: one dispatch retries "
+            "one stage of one dataset"
+        )
+    kind = retry_kind_for_task(params.task_name)
+    hashes = failed_hashes(params.collectionname, params.collection_dataset,
+                           params.task_name)
+    plan_hashes = plans_for_hashes(params.collectionname, params.collection_dataset,
+                                   hashes) if hashes else []
+
+    # The server's clock, not this worker's: the "did it fail again" check compares
+    # against `processing_errors.timestamp`, written by activities on other hosts.
+    with get_collection_client(params.collectionname) as client:
+        started_at = str(client.query("SELECT toString(now())").result_rows[0][0])
+
+    if not plan_hashes:
+        log.info("[P_ops] %s has nothing to retry for %s",
+                 params.collection_dataset, params.task_name)
+        return RetryPlanResult(task_name=params.task_name, retry_kind=kind,
+                         started_at=started_at)
+
+    if kind == RETRY_NLP:
+        clear_nlp_state(params.collectionname, params.collection_dataset, hashes)
+    elif kind == RETRY_PLAN:
+        reopen_plans(params.collectionname, params.collection_dataset, plan_hashes)
+
+    return RetryPlanResult(task_name=params.task_name, retry_kind=kind,
+                     plan_hashes=plan_hashes, hashes=hashes, started_at=started_at)
+
+
+@activity.defn
+@with_heartbeat
+def finish_failed_file_retry(params: FinishRetryParams) -> str:
+    """Clear only the error rows of the documents the re-run demonstrably fixed.
+
+    A document that failed again keeps exactly one row -- the one this run wrote,
+    replacing the one it started from. Appending instead would double the failure count
+    the file browser and the admin processing page show, and again on every further
+    retry.
+    """
+    from tasks.P_admin.failed_file_retry import (
+        RETRY_NLP, clear_error_rows, drop_superseded_error_rows,
+        hashes_without_entities, partition_retry_result, refreshed_hashes,
+    )
+    from database.operations import merge_detail
+
+    if not params.hashes:
+        return "nothing to retry"
+
+    refreshed = refreshed_hashes(params.collectionname, params.collection_dataset,
+                                 params.task_name, params.started_at)
+    still_broken = (
+        hashes_without_entities(params.collectionname, params.collection_dataset,
+                                params.hashes)
+        if params.retry_kind == RETRY_NLP else []
+    )
+    outcome = partition_retry_result(params.hashes, refreshed, still_broken)
+    if outcome.recovered:
+        clear_error_rows(params.collectionname, params.collection_dataset,
+                         params.task_name, outcome.recovered)
+    if outcome.superseded:
+        drop_superseded_error_rows(params.collectionname, params.collection_dataset,
+                                   params.task_name, outcome.superseded,
+                                   params.started_at)
+    still_failing = len(outcome.superseded) + len(outcome.unchanged)
+    # On the row rather than only in the return value: an operation whose stages all ran
+    # finishes `finished` whether or not the documents recovered, so the counts are the
+    # only thing that tells a reader which of the two happened.
+    merge_detail(params.op_id, retried_documents=len(params.hashes),
+                 recovered_documents=len(outcome.recovered),
+                 still_failing_documents=still_failing)
+    return (f"retried {len(params.hashes)} document(s): {len(outcome.recovered)} "
+            f"recovered, {still_failing} still failing")
 
 
 @activity.defn

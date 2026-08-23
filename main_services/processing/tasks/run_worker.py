@@ -639,6 +639,7 @@ async def run_operations_worker():
   activity, and because it is the one activity every store path needs anyway.
   """
   from .P_ops.activities import (
+      begin_failed_file_retry, count_dataset_rows_activity, finish_failed_file_retry,
       record_operation_state, reindex_collection_activity, sample_dataset_progress,
   )
   from .P_ops.workflows import Operation
@@ -659,7 +660,8 @@ async def run_operations_worker():
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[Operation],
       activities=[record_operation_state, sample_dataset_progress,
-                  reindex_collection_activity],
+                  reindex_collection_activity, count_dataset_rows_activity,
+                  begin_failed_file_retry, finish_failed_file_retry],
       activity_executor=executor,
       max_concurrent_activities=orchestration,
     )]

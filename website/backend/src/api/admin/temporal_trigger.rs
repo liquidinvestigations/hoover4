@@ -38,61 +38,11 @@ fn collection_dataset_search_attribute(collection_dataset: &str) -> serde_json::
     })
 }
 
-/// Start `ChangeOcrLanguages` for one dataset and return its job id.
-///
-/// The workflow id carries a timestamp, unlike the pipeline kinds in `trigger_workflow`
-/// below, and that is the
-/// difference that matters: `execute-plans-<dataset>` is deliberately reused so a second
-/// click is a no-op, while two OCR-language changes are two *different* jobs with
-/// different before/after states. Reusing the id would make the second one silently
-/// resolve to the first one's result. The job id is also the `dataset_jobs` key, so the
-/// form can poll the row it just created rather than guessing which is newest.
-pub async fn start_ocr_language_job(
-    collectionname: &str,
-    collection_dataset: &str,
-    tesseract_languages: &str,
-    easyocr_languages: &str,
-) -> anyhow::Result<String> {
-    let base_url = std::env::var("TEMPORAL_HTTP_URL")
-        .unwrap_or_else(|_| "http://localhost:21908".to_string());
-    let job_id = format!(
-        "ocr-languages-{collection_dataset}-{}",
-        time::OffsetDateTime::now_utc().unix_timestamp()
-    );
-
-    let body = serde_json::json!({
-        "workflowType": { "name": "ChangeOcrLanguages" },
-        "taskQueue": { "name": "processing-common-queue" },
-        "input": [ {
-            "collectionname": collectionname,
-            "collection_dataset": collection_dataset,
-            "job_id": job_id,
-            "tesseract_languages": tesseract_languages,
-            "easyocr_languages": easyocr_languages,
-        } ],
-        "searchAttributes": collection_dataset_search_attribute(collection_dataset),
-    });
-
-    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{job_id}");
-    let response = reqwest::Client::new()
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
-    if !response.status().is_success() {
-        let text = response.text().await.unwrap_or_default();
-        anyhow::bail!("could not start the OCR language job: {text}");
-    }
-    Ok(job_id)
-}
-
 /// Start a Temporal workflow over the HTTP API.
 ///
 /// `target` is a `collection_dataset` for the pipeline kinds (`rescan`,
-/// `ingest_and_process`, `compute_plans`, `execute_plans`, `purge_dataset`) and a
-/// `collectionname` for the collection-database kinds (`ensure_collection`,
-/// `drop_collection_database`).
+/// `ingest_and_process`, `compute_plans`, `execute_plans`) and a `collectionname` for the
+/// collection-database kinds (`ensure_collection`, `drop_collection_database`).
 ///
 /// Pipeline inputs carry `collectionname` alongside `collection_dataset`: the
 /// processing side routes every ClickHouse call by collection and never re-derives it
@@ -183,29 +133,6 @@ pub async fn trigger_workflow(target: &str, kind: &str) -> anyhow::Result<String
             "processing-common-queue",
             serde_json::json!({ "collectionname": target }),
         ),
-        // Purge after admin_delete_dataset: the registry row is already
-        // soft-deleted, so the lookup must not filter is_deleted.
-        "purge_dataset" => {
-            let client = get_global_client();
-            let rows = client
-                .query("SELECT collectionname FROM dataset FINAL WHERE collection_dataset = ? ORDER BY date_modified DESC LIMIT 1")
-                .bind(collection_dataset)
-                .fetch_all::<String>()
-                .await?;
-            let collectionname = rows
-                .into_iter()
-                .next()
-                .ok_or_else(|| anyhow::anyhow!("dataset not found"))?;
-            (
-                "PurgeDataset",
-                format!("purge-dataset-{collection_dataset}"),
-                "processing-common-queue",
-                serde_json::json!({
-                    "collectionname": collectionname,
-                    "collection_dataset": collection_dataset,
-                }),
-            )
-        }
         _ => anyhow::bail!("unknown workflow kind: {kind}"),
     };
 
@@ -221,7 +148,7 @@ pub async fn trigger_workflow(target: &str, kind: &str) -> anyhow::Result<String
     // collection-lifecycle kinds have no dataset to tag.
     if matches!(
         kind,
-        "rescan" | "ingest_and_process" | "compute_plans" | "execute_plans" | "purge_dataset"
+        "rescan" | "ingest_and_process" | "compute_plans" | "execute_plans"
     ) {
         body["searchAttributes"] = collection_dataset_search_attribute(collection_dataset);
     }

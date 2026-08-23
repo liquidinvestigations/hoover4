@@ -19,7 +19,7 @@ use common::current_user::CurrentUser;
 use common::processing_types::*;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::temporal_trigger;
+use crate::api::admin::{operations, temporal_trigger};
 use crate::auth::guard;
 use crate::db_auth::collections;
 use crate::db_utils::clickhouse_utils::{get_collection_client, get_global_client};
@@ -1104,11 +1104,13 @@ async fn reopen_plans_for_hashes(
     Ok(plan_hashes.len() as u64)
 }
 
-/// Re-run the pipeline for the documents a task failed on.
+/// Re-run the stage that failed, for the documents it failed on.
 ///
-/// Reopens every plan containing a document that `task_name` failed on, clears those
-/// error rows, and restarts `ExecutePlans`. The workflow id is dataset-keyed, so a
-/// second click while one is running is a no-op rather than a duplicate run.
+/// Dispatched as a `retry_failed_files` operation, so the retry takes the dataset's lock,
+/// leaves a row saying what was retried and how it ended, and re-runs only the stage that
+/// recorded the failures rather than the whole pipeline. The error rows survive until the
+/// documents they describe are demonstrably fixed: clearing them up front, which this did
+/// before, loses the record of every retry that fails the same way.
 pub async fn admin_retry_failed_task(
     user: &CurrentUser,
     collectionname: String,
@@ -1116,34 +1118,19 @@ pub async fn admin_retry_failed_task(
     task_name: String,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
-    let client = get_collection_client(&collectionname);
-
-    let hashes: Vec<String> = client
-        .query(
-            "SELECT DISTINCT hash FROM processing_errors \
-             WHERE collection_dataset = ? AND task_name = ? AND hash != ''",
-        )
-        .bind(&collection_dataset)
-        .bind(&task_name)
-        .fetch_all::<String>()
-        .await?;
-
-    let reopened = reopen_plans_for_hashes(&client, &collection_dataset, &hashes).await?;
-
-    // Clear the errors we are about to retry. Bounded to one task of one dataset; a
-    // mutation is the only way to delete from a plain MergeTree.
-    client
-        .query(
-            "ALTER TABLE processing_errors DELETE \
-             WHERE collection_dataset = ? AND task_name = ?",
-        )
-        .bind(&collection_dataset)
-        .bind(&task_name)
-        .execute()
-        .await?;
-
-    let run_id = temporal_trigger::trigger_workflow(&collection_dataset, "execute_plans").await?;
-    Ok(format!("{run_id} ({reopened} plan(s) reopened)"))
+    if task_name.is_empty() {
+        anyhow::bail!("no task name given");
+    }
+    let detail = serde_json::json!({ "task_name": task_name }).to_string();
+    operations::dispatch_operation(
+        "retry_failed_files",
+        &collectionname,
+        &collection_dataset,
+        &user.username,
+        "",
+        &detail,
+    )
+    .await
 }
 
 /// Retry the processing of a single document.

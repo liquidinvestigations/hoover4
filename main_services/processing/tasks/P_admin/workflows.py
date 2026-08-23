@@ -23,7 +23,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P_admin.ocr_languages import (
         ApplyOcrLanguagesParams,
-        JobProgressParams,
+        OcrStageParams,
         PurgeVariantsParams,
         ReopenParams,
         begin_ocr_language_job,
@@ -126,14 +126,14 @@ class ChangeOcrLanguages:
     """Apply a dataset's new OCR language settings, end to end.
 
     See `tasks/P_admin/ocr_languages.py` for why the order of the stages below is not
-    interchangeable. Every stage writes the `dataset_jobs` row before it starts, because
-    a form that disables itself on a job it cannot see is a form that locks forever — the
-    strip on the dataset page polls exactly this row, and a `running` row that has stopped
-    advancing is what it renders as stuck.
+    interchangeable. Every stage merges its name and its counters into the operation
+    row's `detail` before it starts, so a change that is still running says which of the
+    four stages it is in rather than only that it has not finished.
 
-    A failure marks the row `failed` with the message and re-raises, so the form unlocks
-    and the admin can read what went wrong instead of waiting on a job that ended
-    silently.
+    It is always a child of the `change_ocr_languages` operation, and the operation owns
+    the row's state: this workflow reports stages and raises, and the parent is what
+    writes `finished` or `errored`. Writing a terminal state from in here would release
+    the operations lock while this workflow was still deleting variants.
     """
 
     @workflow.run
@@ -141,145 +141,100 @@ class ChangeOcrLanguages:
         async def progress(stage: str, extra: dict | None = None) -> None:
             await workflow.execute_activity(
                 report_ocr_language_progress,
-                JobProgressParams(
+                OcrStageParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    job_id=params.job_id,
-                    state="running",
-                    detail=json.dumps({"stage": stage, **(extra or {})}),
+                    op_id=params.op_id,
+                    stage=stage,
+                    detail=json.dumps(extra or {}),
                 ),
                 start_to_close_timeout=timedelta(minutes=5),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
-        try:
-            diff = await workflow.execute_activity(
-                begin_ocr_language_job,
-                params,
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
+        diff = await workflow.execute_activity(
+            begin_ocr_language_job,
+            params,
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
 
-            if not diff.changed_engines:
-                # The settings are already what was asked for. Saying so is better than
-                # re-running the corpus to reach the state it is already in.
-                await workflow.execute_activity(
-                    report_ocr_language_progress,
-                    JobProgressParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        job_id=params.job_id,
-                        state="done",
-                        detail=json.dumps({"stage": "no change"}),
-                    ),
-                    start_to_close_timeout=timedelta(minutes=5),
-                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                )
-                return "no change"
+        if not diff.changed_engines:
+            # The settings are already what was asked for. Saying so is better than
+            # re-running the corpus to reach the state it is already in.
+            await progress("no change")
+            return "no change"
 
-            reopened = await workflow.execute_activity(
-                reopen_plans_for_ocr_change,
-                ReopenParams(
+        reopened = await workflow.execute_activity(
+            reopen_plans_for_ocr_change,
+            ReopenParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                engines=diff.changed_engines,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
+        await progress("reopened plans", {"plans": reopened})
+
+        if reopened:
+            # The re-run carries the whole downstream chain with it — parse, OCR, NER,
+            # chunk+embed and index are all stages of ExecutePlans, so "re-run" and
+            # "reindex" in the spec are one call, not two.
+            await progress("reprocessing")
+            await workflow.execute_child_workflow(
+                ExecutePlans.run,
+                ExecutePlansParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    engines=diff.changed_engines,
+                    base_temp_dir="/tmp/hoover4",
                 ),
-                start_to_close_timeout=timedelta(minutes=30),
+                id=f"ocr-languages-execute-{params.op_id}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
+
+        purged = {}
+        if diff.removed_variants:
+            await progress("purging dropped variants",
+                           {"removed": diff.removed_variants})
+            purged = await workflow.execute_activity(
+                purge_dropped_ocr_variants,
+                PurgeVariantsParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    variants=diff.removed_variants,
+                    removed_pairs=diff.removed_pairs,
+                ),
+                start_to_close_timeout=timedelta(minutes=60),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
-            await progress("reopened plans", {"plans": reopened})
 
-            if reopened:
-                # The re-run carries the whole downstream chain with it — parse, OCR, NER,
-                # chunk+embed and index are all stages of ExecutePlans, so "re-run" and
-                # "reindex" in the spec are one call, not two.
-                await progress("reprocessing")
-                await workflow.execute_child_workflow(
-                    ExecutePlans.run,
-                    ExecutePlansParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        base_temp_dir="/tmp/hoover4",
-                    ),
-                    id=f"ocr-languages-execute-{params.collection_dataset}-{params.job_id}",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params.collection_dataset),
-                )
-
-            purged = {}
-            if diff.removed_variants:
-                await progress("purging dropped variants",
-                               {"removed": diff.removed_variants})
-                purged = await workflow.execute_activity(
-                    purge_dropped_ocr_variants,
-                    PurgeVariantsParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        variants=diff.removed_variants,
-                        removed_pairs=diff.removed_pairs,
-                    ),
-                    start_to_close_timeout=timedelta(minutes=60),
-                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                )
-
-                await progress("deleting derived objects")
-                await workflow.execute_activity(
-                    delete_orphaned_derived_pdfs,
-                    PurgeVariantsParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        variants=diff.removed_variants,
-                        removed_pairs=diff.removed_pairs,
-                    ),
-                    start_to_close_timeout=timedelta(minutes=60),
-                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                )
-
+            await progress("deleting derived objects")
             await workflow.execute_activity(
-                report_ocr_language_progress,
-                JobProgressParams(
+                delete_orphaned_derived_pdfs,
+                PurgeVariantsParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    job_id=params.job_id,
-                    state="done",
-                    detail=json.dumps({
-                        "stage": "done",
-                        "plans": reopened,
-                        "added": diff.added_variants,
-                        "removed": diff.removed_variants,
-                        "purged": purged,
-                    }),
+                    variants=diff.removed_variants,
+                    removed_pairs=diff.removed_pairs,
                 ),
-                start_to_close_timeout=timedelta(minutes=5),
+                start_to_close_timeout=timedelta(minutes=60),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
-            return "done"
-        except Exception as exc:
-            # The row is what unlocks the form. Marking it failed is more important than
-            # the exception surviving cleanly, so this write gets its own retries and the
-            # original error is re-raised afterwards.
-            await workflow.execute_activity(
-                report_ocr_language_progress,
-                JobProgressParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    job_id=params.job_id,
-                    state="failed",
-                    detail=json.dumps({"stage": "failed"}),
-                    error=str(exc)[:2000],
-                ),
-                start_to_close_timeout=timedelta(minutes=5),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=5),
-            )
-            raise
+
+        await progress("done", {
+            "plans": reopened,
+            "added": diff.added_variants,
+            "removed": diff.removed_variants,
+            "purged": purged,
+        })
+        return "done"
 
 
 @workflow.defn

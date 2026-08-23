@@ -24,14 +24,14 @@ The order below is not interchangeable:
    derived PDF exists, so the row must survive until the object is gone. Deleting the row
    first orphans the object permanently.
 
-**One job per dataset**, refused at the API (`api/admin/processing.rs`) when a
-non-terminal `dataset_jobs` row exists. The disabled button is UI courtesy; two admins in
-two browsers are stopped by the row.
+**One change at a time per dataset**, and it is the operations lock that refuses the
+second: this runs as the `change_ocr_languages` operation, whose non-terminal row holds
+the dataset. The disabled button is UI courtesy; two admins in two browsers are stopped
+by the row.
 """
 
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Dict, List
 
@@ -54,7 +54,10 @@ from tasks.text_sources import (
 
 log = logging.getLogger(__name__)
 
-JOB_KIND = "change_ocr_languages"
+#: The operation kind this module implements. Registered in `database/operations.py`,
+#: which is what makes the lock and the destructive flag agree across the CLI and the
+#: admin page.
+OPERATION_KIND = "change_ocr_languages"
 
 #: Collection tables whose rows are keyed by `extracted_by` and therefore have to be
 #: purged variant by variant. Named explicitly rather than discovered by column, because
@@ -77,7 +80,9 @@ MANTICORE_VARIANT_SUFFIXES = ("_pages", "_vectors")
 class ApplyOcrLanguagesParams:
     collectionname: str
     collection_dataset: str
-    job_id: str
+    #: The operation this runs under. Its row is where the stages are reported and where
+    #: the terminal state is written, so the workflow needs no state table of its own.
+    op_id: str
     tesseract_languages: str
     easyocr_languages: str
 
@@ -110,8 +115,8 @@ class PurgeVariantsParams:
 
 
 @dataclass
-class JobProgressParams:
-    #: Carried even though `dataset_jobs` is a GLOBAL table and this write needs no
+class OcrStageParams:
+    #: Carried even though the operations table is GLOBAL and this write needs no
     #: collection client. `collectionname` travels with `collection_dataset` through every
     #: params dataclass in this codebase, resolved once at the workflow entry point and
     #: never re-derived inside an activity -- `tests/unit/test_params_carry_collection.py`
@@ -119,10 +124,10 @@ class JobProgressParams:
     #: shows up in the one activity that was missed.
     collectionname: str
     collection_dataset: str
-    job_id: str
-    state: str
+    op_id: str
+    stage: str
+    #: A JSON object merged into the row's `detail` beside the stage name.
     detail: str = ""
-    error: str = ""
 
 
 def _variants_for(engine: str, languages: str) -> List[str]:
@@ -169,61 +174,35 @@ def compute_diff(current: Dict[str, str], requested: Dict[str, str]) -> OcrLangu
     return diff
 
 
-def _write_job(params: JobProgressParams) -> None:
-    """Upsert the `dataset_jobs` row. Best-effort by design at the failure path.
+def _report_stage(params: OcrStageParams) -> None:
+    """Merge this stage, and whatever it counted, into the operation row's `detail`.
 
-    `updated_at` is both the ReplacingMergeTree version and the staleness clock the UI
-    reads: a `running` row that has stopped advancing is what the job strip shows as
-    stuck, so every stage writes one even when nothing else changed.
+    Merged rather than written over: `detail` also carries the languages the operation
+    was dispatched with, and the progress sampler's own counters. The row's *state* is
+    not touched here -- the operation workflow owns it, and writing a terminal state
+    from inside the child would release the lock while the child was still running.
     """
-    import pyarrow as pa
+    from database.operations import merge_detail
 
-    from database.clickhouse import get_global_client
-
-    now = int(time.time())
-    finished = pa.array(
-        [now if params.state in ("done", "failed") else 0],
-        type=pa.int64(),
-    ).cast(pa.timestamp("s"))
-
-    with get_global_client() as client:
-        # Every stage rewrites the row, and `started_at` must survive that: the readers
-        # take argMax over updated_at, so writing now() each time would walk the start
-        # time forward and the strip would report a long job as having just begun.
-        started = now
+    extra = {}
+    if params.detail:
         try:
-            rows = client.query(
-                "SELECT toUnixTimestamp(min(started_at)) FROM dataset_jobs "
-                "WHERE collection_dataset = {cd:String} AND kind = {k:String} "
-                "AND job_id = {j:String}",
-                parameters={"cd": params.collection_dataset, "k": JOB_KIND,
-                            "j": params.job_id},
-            ).result_rows
-            if rows and rows[0] and int(rows[0][0]) > 0:
-                started = int(rows[0][0])
-        except Exception:
-            log.warning("[P_admin] could not read the job's start time", exc_info=True)
-
-        client.insert_arrow("dataset_jobs", pa.table({
-            "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-            "job_id": pa.array([params.job_id], type=pa.string()),
-            "kind": pa.array([JOB_KIND], type=pa.string()),
-            "state": pa.array([params.state], type=pa.string()),
-            "detail": pa.array([params.detail], type=pa.string()),
-            "error": pa.array([params.error], type=pa.string()),
-            "started_at": pa.array([started], type=pa.int64()).cast(pa.timestamp("s")),
-            "finished_at": finished,
-        }))
+            loaded = json.loads(params.detail)
+        except ValueError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            extra = loaded
+    merge_detail(params.op_id, stage=params.stage, **extra)
 
 
 @activity.defn
 @with_heartbeat
 def begin_ocr_language_job(params: ApplyOcrLanguagesParams) -> OcrLanguageDiff:
-    """Write the settings and the `running` row, and return what changed.
+    """Write the settings, report the first stage, and return what changed.
 
     Settings first — see the module docstring. The diff is computed against what was
-    stored *before* the write, so a job dispatched twice with the same values reports no
-    changed engines and the workflow finishes without touching the corpus.
+    stored *before* the write, so an operation dispatched twice with the same values
+    reports no changed engines and the workflow finishes without touching the corpus.
     """
     from tasks.dataset_config import get_dataset_settings, set_dataset_setting
 
@@ -244,13 +223,12 @@ def begin_ocr_language_job(params: ApplyOcrLanguagesParams) -> OcrLanguageDiff:
                         requested[ENGINE_EASYOCR])
     invalidate(params.collection_dataset)
 
-    _write_job(JobProgressParams(
+    _report_stage(OcrStageParams(
         collectionname=params.collectionname,
         collection_dataset=params.collection_dataset,
-        job_id=params.job_id,
-        state="running",
+        op_id=params.op_id,
+        stage="settings written",
         detail=json.dumps({
-            "stage": "settings written",
             "tesseract": requested[ENGINE_TESSERACT],
             "easyocr": requested[ENGINE_EASYOCR],
             "added": diff.added_variants,
@@ -264,9 +242,9 @@ def begin_ocr_language_job(params: ApplyOcrLanguagesParams) -> OcrLanguageDiff:
 
 @activity.defn
 @with_heartbeat
-def report_ocr_language_progress(params: JobProgressParams) -> str:
-    _write_job(params)
-    return "ok"
+def report_ocr_language_progress(params: OcrStageParams) -> str:
+    _report_stage(params)
+    return params.stage
 
 
 @activity.defn

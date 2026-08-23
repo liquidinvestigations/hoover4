@@ -16,7 +16,7 @@ use crate::api::admin_api::{
     admin_task_time_breakdown, admin_task_time_live,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, DatasetJobStrip, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK,
+    AdminGuard, AdminShell, DatasetOperationStrip, ErrorBar, SuccessBar, BTN_SMALL, HELP_TEXT, LINK,
     MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -157,7 +157,7 @@ fn ProcessingContent(collection_id: String) -> Element {
         // most likely reason the dataset's own form is locked.
         if let Some(Ok(status)) = status_res.read().as_ref() {
             for dataset in status.datasets.iter() {
-                DatasetJobStrip {
+                DatasetOperationStrip {
                     key: "{dataset.collection_dataset}",
                     collection_dataset: dataset.collection_dataset.clone(),
                 }

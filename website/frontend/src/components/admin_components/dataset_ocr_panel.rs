@@ -1,31 +1,35 @@
-//! The dataset OCR language form and the job status strip that keeps it unlockable.
+//! The dataset OCR language form and the operation strip that keeps it unlockable.
 //!
 //! These two are one file because they are one mechanism. The form disables itself while
-//! an apply job runs; the strip is what makes that job visible. A form that hides its own
-//! lock is a form that locks forever — so the strip polls, reports staleness, and shows
-//! the error when a job fails.
+//! an apply operation runs; the strip is what makes that operation visible. A form that
+//! hides its own lock is a form that locks forever — so the strip polls, reports
+//! staleness, and shows the error when an operation fails.
 //!
 //! Neither of them is the actual guard. `admin_apply_ocr_languages` refuses a second
-//! dispatch server-side by reading the same `dataset_jobs` row, because two admins in two
-//! browsers are not stopped by a disabled button.
+//! dispatch server-side through the operations lock, reading the same row the strip
+//! polls, because two admins in two browsers are not stopped by a disabled button.
 
 use dioxus::prelude::*;
 
-use common::admin_types::{DatasetJobStatus, DatasetOcrPanel};
+use common::admin_types::{DatasetOcrPanel, DatasetOperationStatus};
 
-use crate::api::admin_api::{admin_apply_ocr_languages, admin_get_dataset_job, admin_get_dataset_ocr};
+use crate::api::admin_api::{
+    admin_apply_ocr_languages, admin_get_dataset_ocr, admin_get_dataset_operation,
+};
 use crate::components::admin_components::{
     ErrorBar, SuccessBar, BTN, C_HEADER, HELP_TEXT, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 
-/// How often the strip re-reads the job row while one is running. Fast enough that Apply
-/// feels answered, slow enough that an admin leaving the page open is not a load source.
+/// How often the strip re-reads the operation row while one is running. Fast enough that
+/// Apply feels answered, slow enough that an admin leaving the page open is not a load
+/// source.
 const POLL_SECONDS: u64 = 3;
 
-/// Past this, a `running` job that has not advanced is called out as possibly stuck.
-/// Matches `JOB_STALE_SECONDS` in the backend, which is what actually refuses a second
-/// dispatch — the number is repeated rather than shared because one is a warning and the
-/// other is a decision, and they are allowed to diverge later.
+/// Past this, a running operation that has not advanced is called out as possibly stuck.
+///
+/// A warning and nothing else: the lock deliberately has no staleness timeout, because a
+/// run that stopped reporting may still have activities in flight. Releasing it is a
+/// cancellation, which is a decision a person makes with this number in front of them.
 const STALE_SECONDS: u64 = 900;
 
 /// `{"stage": "...", "added": [...], "removed": [...]}` as one readable line.
@@ -70,21 +74,21 @@ fn describe(detail: &str) -> String {
     parts.join(" \u{b7} ")
 }
 
-/// Polled `dataset_jobs` strip. Renders nothing when the dataset has never had a job.
+/// Polled `operations` strip. Renders nothing until the dataset has had an operation.
 ///
 /// `on_change` fires when the state transitions, so the page holding the form can refetch
-/// once the job finishes rather than leaving stale variant counts on screen.
+/// once the operation finishes rather than leaving stale variant counts on screen.
 #[component]
-pub fn DatasetJobStrip(
+pub fn DatasetOperationStrip(
     /// A `ReadSignal`, not a `String`, for the reason spelled out at length in
     /// `ai_chat/session_page.rs`: the router **reuses** these components when it navigates
     /// between two datasets. A handler that closes over a `String` cloned on first render
     /// keeps polling the dataset the admin has left, and writes its answers into the
     /// signals now rendering the new one.
     collection_dataset: ReadSignal<String>,
-    #[props(default = None)] on_change: Option<EventHandler<DatasetJobStatus>>,
+    #[props(default = None)] on_change: Option<EventHandler<DatasetOperationStatus>>,
 ) -> Element {
-    let mut job = use_signal(|| None::<DatasetJobStatus>);
+    let mut job = use_signal(|| None::<DatasetOperationStatus>);
     let mut last_state = use_signal(String::new);
     // Bumped when the dataset changes, to retire the loop that was polling the old one.
     let mut poll_gen = use_signal(|| 0_u64);
@@ -108,13 +112,13 @@ pub fn DatasetJobStrip(
                 if *poll_gen.peek() != generation {
                     return;
                 }
-                if let Ok(current) = admin_get_dataset_job(dataset.clone()).await {
+                if let Ok(current) = admin_get_dataset_operation(dataset.clone()).await {
                     if *poll_gen.peek() != generation {
                         return;
                     }
                     let state = current
                         .as_ref()
-                        .map(|j| format!("{}:{}", j.job_id, j.state))
+                        .map(|j| format!("{}:{}", j.op_id, j.state))
                         .unwrap_or_default();
                     if state != *last_state.peek() {
                         last_state.set(state);
@@ -124,9 +128,9 @@ pub fn DatasetJobStrip(
                     }
                     job.set(current);
                 }
-                // Keep polling after a job ends: the next Apply on this page has to be
-                // picked up too, and the alternative is a strip that goes silent exactly
-                // when the admin presses the button.
+                // Keep polling after an operation ends: the next Apply on this page has to
+                // be picked up too, and the alternative is a strip that goes silent
+                // exactly when the admin presses the button.
                 n0_future::time::sleep(std::time::Duration::from_secs(POLL_SECONDS)).await;
             }
         });
@@ -138,9 +142,10 @@ pub fn DatasetJobStrip(
 
     let stale = current.is_running() && current.stale_seconds > STALE_SECONDS;
     let (background, border, ink) = match current.state.as_str() {
-        "failed" => ("#fdecea", "#f5c6cb", "#a94442"),
-        "running" if stale => ("#fff4e5", "#ffd8a8", "#8a5a00"),
-        "running" => ("#e8f4fa", "#bcdff1", "#31708f"),
+        "errored" => ("#fdecea", "#f5c6cb", "#a94442"),
+        "cancelled" => ("#f3f3f3", "#dcdcdc", "#666666"),
+        _ if stale => ("#fff4e5", "#ffd8a8", "#8a5a00"),
+        "pending" | "running" => ("#e8f4fa", "#bcdff1", "#31708f"),
         _ => ("#eaf6ea", "#c3e6cb", "#3c763d"),
     };
 
@@ -159,7 +164,7 @@ pub fn DatasetJobStrip(
             }
             if stale {
                 div { style: "margin-top: 3px; font-weight: 600;",
-                    "No progress for {current.stale_seconds / 60} minutes. The job may be stuck \u{2014} check the Temporal workflow before assuming it will finish."
+                    "No progress for {current.stale_seconds / 60} minutes. It may be stuck \u{2014} check the Temporal workflow, and cancel the operation if it is, because the lock is released by cancelling and by nothing else."
                 }
             }
             if !current.error.is_empty() {
@@ -293,19 +298,19 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
         };
     };
 
-    let job_running = panel.job.as_ref().is_some_and(|j| j.is_running());
+    let operation_running = panel.operation.as_ref().is_some_and(|o| o.is_running());
     let current_tesseract = split_languages(&panel.tesseract_languages);
     let selected_tesseract = tesseract.read().clone();
     let dirty = selected_tesseract != current_tesseract
         || *easyocr_raw.read() != panel.easyocr_languages;
-    let can_apply = dirty && !job_running && !*submitting.read() && !selected_tesseract.is_empty();
+    let can_apply = dirty && !operation_running && !*submitting.read() && !selected_tesseract.is_empty();
 
     let apply_style = if can_apply { "" } else { "opacity: 0.5; cursor: not-allowed;" };
     let dataset_for_apply = panel.collection_dataset.clone();
     let dataset_for_strip = panel.collection_dataset.clone();
 
     rsx! {
-        DatasetJobStrip {
+        DatasetOperationStrip {
             collection_dataset: dataset_for_strip,
             on_change: move |_| panel_res.restart(),
         }
@@ -338,7 +343,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                         LanguageChecklist {
                             available: panel.tesseract_available.clone(),
                             selected: tesseract,
-                            disabled: job_running,
+                            disabled: operation_running,
                         }
                         p { style: "{HELP_TEXT} margin: 6px 0 0;",
                             "Order matters: the first language is the primary one, so eng+ron and ron+eng are different variants. "
@@ -356,7 +361,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                         input {
                             style: "{INPUT} width: 260px;",
                             value: "{easyocr_raw}",
-                            disabled: job_running,
+                            disabled: operation_running,
                             oninput: move |e| easyocr_raw.set(e.value()),
                         }
                     } else {
@@ -412,9 +417,9 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 }
 
                 div {
-                    if job_running {
+                    if operation_running {
                         p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                            "We're working on it. The form unlocks when the job above finishes, and you can change the languages again then."
+                            "We're working on it. The form unlocks when the operation above finishes, and you can change the languages again then."
                         }
                     }
                     button {
@@ -443,7 +448,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                         },
                         if *submitting.read() { "Starting\u{2026}" } else { "Apply" }
                     }
-                    if !dirty && !job_running {
+                    if !dirty && !operation_running {
                         span { style: "{HELP_TEXT} margin-left: 10px;", "No changes to apply." }
                     }
                 }

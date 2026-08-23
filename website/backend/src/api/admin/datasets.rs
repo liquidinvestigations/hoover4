@@ -144,10 +144,19 @@ pub async fn admin_delete_dataset(
     let mut insert = client.insert::<DatasetRow>("dataset").await?;
     insert.write(&row).await?;
     insert.end().await?;
-    // Purge the dataset's rows from the collection database and its Manticore
-    // shards, then recompute the shard ledger (part 6). The workflow is
-    // idempotent, so a failed trigger can be retried by deleting again.
-    temporal_trigger::trigger_workflow(&collection_dataset, "purge_dataset").await?;
+    // Purge the dataset's rows from the collection database and its Manticore shards,
+    // then recompute the shard ledger. Dispatched as an operation, so the deletion has a
+    // row in the same log as everything else and a purge that fails half way can be
+    // re-run from it rather than by deleting an already-deleted dataset again.
+    operations::dispatch_operation(
+        "purge_dataset",
+        &row.collectionname,
+        &collection_dataset,
+        &user.username,
+        "",
+        "",
+    )
+    .await?;
     Ok(())
 }
 
@@ -183,6 +192,7 @@ pub async fn admin_trigger_workflow(
             &row.collectionname,
             &collection_dataset,
             &user.username,
+            "",
             "",
         )
         .await;
