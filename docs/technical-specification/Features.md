@@ -104,7 +104,7 @@ languages.
 | `F-chat-13` | List every agent turn running anywhere, and cancel one | `chat::admin_list_live_runs`, Temporal visibility |
 | `F-chat-14` | Keep a plan for the conversation — a goal and steps — written whole, read back, its rows edited and its steps marked off in a batch, versioned so every revision survives | `main_services/agents/agent_todo_server/`, `chat_todos` |
 | `F-chat-14a` | Refuse a step abandoned with no reason, so giving up on part of a plan is recorded rather than free | `chat_todos.normalise_item` |
-| `F-chat-14b` | Open a turn that has no live plan by restating the task and weighing two or three approaches in the answer itself, before writing the chosen one into the plan | `research_agent.prompts.PLAN_FIRST`, `keeps_preamble` |
+| `F-chat-14b` | Open a turn that has no live plan by restating the task and weighing two or three approaches in the answer itself, before writing the chosen one into the plan — and ask it only of a profile that binds the tools to write one | `research_agent/prompts/_blocks/plan_first.md.j2`, `keeps_preamble` |
 | `F-chat-15` | Run the agent again, in the same turn, when it stops with steps still unresolved — twice while the plan is not moving, five times in all, each nag buying a fixed extra tool budget | `ChatTurn`, `tasks/P_agent/nagging.py` |
 | `F-chat-15a` | Show each nudge in the transcript as its own kind of entry, neither the user's words nor an error | `ChatRole::Nag` |
 | `F-chat-16` | Count what a turn cost in tokens — the conversation it carried and the largest single context it was billed for, summed across every nudge round — and keep the conversation's running peak | `tasks/P_agent/`, `chat_messages`, `chat_sessions.peak_context_tokens` |
@@ -122,6 +122,9 @@ languages.
 | `F-chat-18c` | Give a worker page reading and not the tools that drive a page, and the plan to read and not to write, so a delegating turn costs the browser server what a plain turn costs it and no worker rewrites the conversation's plan | `subagents.WORKER_DENIED_TOOLS` |
 | `F-chat-18d` | Make a worker's citations resolve in the conversation that delegated to it, by running it on the lead's own tool connections and therefore its citation session | `subagents.make_delegation_tool`, `citations.HandleTable` |
 | `F-chat-18e` | Count what the workers cost into the turn's own token total, and report their share separately — their model calls happen inside a tool call and reach no other counter | `subagents.TurnBudget`, `subagents.worker_usage` |
+| `F-chat-19` | Render each profile's system prompt from the tools that profile actually binds, so it can neither describe a tool the model does not have nor omit one it does, and state the tool-turn budget the graph enforces rather than a number typed into the prose. A template that names an unbound tool, or a budget the code does not use, fails a test | `research_agent/prompts/`, `research_agent/tests/test_prompts.py` |
+| `F-chat-19a` | Render the collection-search server's discovery instructions — read by whichever agent connects, before it writes a query — from the tools that server registers, so a renamed tool is a test failure and not an instruction to call something that no longer exists | `collection_search_server/prompts/`, `collection_search_server/tests/test_prompts.py` |
+| `F-chat-19b` | Tell the model plainly, in its own instructions, when the conversation can read no collection at all, instead of leaving it to infer that from three empty searches | `prompts.render`'s `collections_hint`, `agent._create_graph` |
 
 ## Administration
 

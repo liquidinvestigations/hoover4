@@ -60,10 +60,18 @@ def test_only_the_full_research_profile_delegates():
 
 
 def test_the_worker_profile_exists_and_never_asks_for_a_plan():
-    """A worker has no todo writers, so a plan-first instruction would be uncallable."""
+    """A worker has no todo writers, so a plan-first instruction would be uncallable.
+
+    Rendered from the worker's real pool rather than read off a constant: the plan-first
+    block is guarded by the todo writers being bound, so this asserts the guard rather
+    than a template that happens not to include it today. `tests/test_prompts.py` is where
+    the rest of that mechanism is checked.
+    """
     assert "research_subagent" in prompts.PROFILES
-    assert prompts.PLAN_FIRST not in prompts.RESEARCH_SUBAGENT
-    assert "write_todo" not in prompts.RESEARCH_SUBAGENT
+    pool = subagents.worker_tools(ALL_TOOLS)
+    text = prompts.render("research_subagent", tools=pool, strict=True)
+    assert "write_todo" not in text
+    assert "restate what you understand the task to be" not in text
 
 
 # ------------------------------------------------------------------ the tool surface

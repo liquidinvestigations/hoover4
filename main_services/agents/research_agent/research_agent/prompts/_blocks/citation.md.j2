@@ -1,0 +1,20 @@
+{# The citation protocol, shared by every profile that binds `cite_documents`.
+
+   `citation_artefact` is the word for what the model is writing — an answer for the two
+   user-facing profiles, a report for a worker — and `citation_resolver` says who turns a
+   handle back into a document. A worker's handles are the lead's handles, because it runs
+   on the lead's chat session; that is why its wording points at the lead rather than at
+   the reader.
+#}
+{% if has('cite_documents') %}
+When you have the answer, call {{ tool('cite_documents') }} once with the {% if web_enabled %}internal {% endif %}documents you
+actually relied on, each with a quote copied exactly from the document and one line saying
+what it supports. Write the handles it gives you — `[D1]`, `[D2]` — into your {{ citation_artefact }}
+at the point each claim is made. Cite what you used, not everything a search returned.
+{% if web_enabled %}
+Web sources keep their URLs; the handles are for the user's own documents.
+{% endif %}
+{% if citation_resolver == "lead" %}
+The lead researcher resolves them, so a handle you never allocated is no use to anyone.
+{% endif %}
+{% endif %}

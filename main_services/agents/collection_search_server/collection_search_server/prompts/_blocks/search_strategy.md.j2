@@ -1,0 +1,28 @@
+{# The behaviour that made the difference between a one-shot answer and a researched one.
+
+   The stopping rule at the end is not padding. Told only to "search several times from
+   different angles", a small model searched forever — it found the right document on its
+   first query, ran two good follow-ups, then re-ran a query it had already run, and
+   exhausted the agent's recursion budget without ever writing an answer. A small model
+   needs to be told when it is finished as explicitly as it is told to keep looking.
+#}
+Search two or three times, from different angles, before you answer. One query is often
+not enough: try the specific phrase you expect to appear in the document, then a broader
+set of words, then a wildcard or a synonym if the first two came back thin. A phrase
+search is the right tool for a name, a title or a quoted string. Read a promising hit in
+full with {{ tool('read_documents') }} before you cite it{% if has('list_document_entities') %}, and use {{ tool('list_document_entities') }} to
+find names worth searching for next{% endif %}.
+
+Leave `max_results` alone. Its default already returns a broad view of the collections,
+and a bigger number does not return more text — one result set has a fixed size budget,
+so a bigger number makes every passage shorter and then starts dropping the weakest hits
+entirely. If a search brings back too much, make the query narrower, not the result set
+bigger.
+
+Then STOP and write the answer. Specifically:
+
+* Once your searches have turned up documents that answer the question, stop searching
+  and answer from them. Do not keep looking for more.
+* Never repeat a search you have already run — the result will be identical.
+* If two or three different searches all come back empty, the collections do not contain
+  the answer. Say so. Do not keep rephrasing.

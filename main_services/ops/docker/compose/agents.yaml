@@ -315,13 +315,14 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
-      # Left EMPTY on purpose. The canonical prompt — including the Manticore MATCH
-      # syntax the model needs to search well — lives in
-      # main_services/agents/collection_search_server/collection_search_server/prompts.py, and
-      # reaches the model twice: as the MCP server's `instructions` at tool-discovery
-      # time, and as the agent's default system prompt. A multi-paragraph prompt inlined
-      # as a YAML default was unreadable and drifted from the tool descriptions.
-      # Set this only to override for an experiment.
+      # Left EMPTY on purpose, and emptier than it looks: the prompt is not a constant
+      # this could hold. It is rendered per graph from the tools that graph actually
+      # binds, in main_services/agents/research_agent/research_agent/prompts/, so the tool
+      # list in the prose and the tool list on the model are the same list. The Manticore
+      # MATCH syntax reaches the model separately, as the collection server's own
+      # `instructions` at tool-discovery time. Set this only to override for an
+      # experiment; it replaces the words and deliberately not the profile, which is what
+      # decides tool binding.
       - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
       # Collections, plus the todo server: a plan is not a research tool and both
       # profiles keep one.
@@ -400,9 +401,9 @@ services:
       # profile in-process on these same MCP connections. The workers' own profile does
       # not bind the delegation tool, which is the whole of the one-level depth limit.
       - AGENT_PROFILE=full_research
-      # As above: empty means "use the canonical prompt from the agent package". The
-      # collection MCP server contributes the MATCH syntax through its own instructions,
-      # so it does not need repeating here.
+      # As above: empty means "render this profile's templates against the bound tools".
+      # The collection MCP server contributes the MATCH syntax through its own
+      # instructions, so it does not need repeating here.
       - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
       # One search server, one browser router, one whois. Do not add a second
       # web-search server here; every source belongs inside metasearch.

@@ -41,9 +41,25 @@ cannot widen them. An empty list is sent as an empty header rather than omitted:
 may read nothing" and "no ACL was supplied" must not look the same to the MCP server, which
 denies the second outright.
 
-## System prompts live in `research_agent/prompts.py`
+## System prompts live in `research_agent/prompts/`
 
-Not in compose. `SYSTEM_PROMPT` overrides; empty means "use the profile's canonical text".
+Not in compose, and not as string literals. Each profile is a `.md.j2` template beside the
+loader in `research_agent/prompts/__init__.py`, which is the only thing that renders one.
+`SYSTEM_PROMPT` overrides the whole rendered text; empty means "render the templates".
+
+**The prompt is a function of the deployment.** It is rendered in `_create_graph`, at the
+first point where the tool list is real, and it takes named parameters: the bound tool
+names, the tool-turn budget the graph will enforce, whether delegation is bound, whether
+the caller can read any collection at all, and whether the open web is reachable. The tool
+section is generated from the bound names, so a prompt can neither describe a tool the
+model does not have nor leave out one it does. `tests/test_prompts.py` fails when a
+template names an unbound tool or states a budget the code does not use — renaming a tool
+used to mean correcting the same sentence by hand in several prose files, and the one that
+was missed told the model to call a name that no longer existed.
+
+Blocks in `prompts/_blocks/` are shared, and each guards itself: the plan-first block
+renders only where the todo writers are bound, so a worker profile cannot be handed an
+instruction to call a tool it does not have.
 
 **Keep them short.** Qwen3.5-2B follows a long, numbered, multi-clause prompt by doing all
 of it forever: an earlier five-step draft made the model search, search again, then re-run
@@ -342,7 +358,7 @@ The application is configured entirely via environment variables (rendered from
 - `LLM_MODEL`: Model name to use
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
 - `AGENT_NAME`: Name of the agent
-- `SYSTEM_PROMPT`: System prompt for the agent
+- `SYSTEM_PROMPT`: overrides the rendered prompt; empty means render this profile's templates
 - `HOST`: Host to bind to (default: 0.0.0.0)
 - `PORT`: Port to bind to (default: 8000)
 - `RELOAD`: Enable auto-reload for development (default: false)

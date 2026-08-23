@@ -179,7 +179,12 @@ class MCPGatewayAgent:
         """Initialize the MCP Gateway Agent with MCP servers."""
         self.name = name
         self.mcp_servers = mcp_servers
-        self.system_prompt = system_prompt
+        # An override, not the prompt itself. The prompt is rendered per graph in
+        # `_create_graph`, because it is a function of what that graph binds: the tool
+        # section comes from the bound tool names and the budget from `MAX_TOOL_TURNS`,
+        # neither of which is known here. A non-empty value here — `SYSTEM_PROMPT` in
+        # compose, or a literal handed in by a test — wins outright.
+        self.system_prompt_override = (system_prompt or "").strip()
         self.llm_model = llm_model
         # The profile decides more than the wording: it decides whether the delegation
         # tool is bound at all. Carried as an attribute rather than read from the
@@ -367,7 +372,14 @@ class MCPGatewayAgent:
                     **llm_kwargs, extra_body=tool_turn_kwargs()
                 ).bind_tools(worker_pool),
                 ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs()),
-                prompts.RESEARCH_SUBAGENT,
+                # Rendered from the worker's own pool, not the lead's: a worker's prompt
+                # describes the ten tools it has, and `run_subagent` is not among them,
+                # so the prompt cannot suggest a recursion the binding forbids.
+                prompts.render(
+                    "research_subagent",
+                    tools=worker_pool,
+                    collections_hint=bool(allowed_collections),
+                ),
                 worker_pool,
                 AgentState,
             )
@@ -394,9 +406,23 @@ class MCPGatewayAgent:
         llm = ThinkingChatOpenAI(
             **llm_kwargs, extra_body=tool_turn_kwargs()
         ).bind_tools(tools)
+
+        # The prompt is rendered here and nowhere else, because here is the first point
+        # at which the tool list is real. Everything it says about the tool surface comes
+        # from `tools` — which now includes the delegation tool if this profile binds it —
+        # so a prompt cannot claim a tool the model does not have, and a tool the model
+        # does have cannot go unmentioned. `collections_hint` is the caller's ACL: an
+        # empty one means every collection search will come back empty, which the model
+        # should be told rather than left to discover three searches later.
+        system_text = self.system_prompt_override or prompts.system_prompt(
+            self.profile,
+            tools=tools,
+            max_tool_turns=MAX_TOOL_TURNS,
+            collections_hint=bool(allowed_collections),
+        )
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", self.system_prompt),
+                ("system", system_text),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
@@ -559,7 +585,7 @@ class MCPGatewayAgent:
         # tools) and the default 25 is only ~12 tool calls. A thorough research run
         # legitimately needs more than that, and hitting the limit is a hard 500 with no
         # partial answer — the least useful possible failure. The prompt is what stops
-        # the model looping (see research_agent/prompts.py); this is only the backstop.
+        # the model looping (see research_agent/prompts/); this is only the backstop.
         config = {"recursion_limit": int(os.getenv("AGENT_RECURSION_LIMIT", "40"))}
         if self.langfuse_handler and user_id and session_id:
             config["callbacks"] = [self.langfuse_handler]
@@ -995,7 +1021,8 @@ async def build_agent(
     Args:
         mcp_servers: List of MCP server URLs to connect to
         name: Name of the agent
-        system_prompt: System prompt for the agent
+        system_prompt: Overrides the rendered prompt when non-empty; empty means render
+            this profile's templates from the tools the graph actually binds
         llm_model: Optional LLM model override
         profile: Agent profile, which decides whether delegation is bound. Defaults to
             the container's `AGENT_PROFILE`.

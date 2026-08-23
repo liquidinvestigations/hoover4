@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from enum import Enum
 from research_agent.agent import build_agent
-from research_agent.prompts import active_profile, system_prompt
+from research_agent.prompts import active_profile, system_prompt_override
 
 
 class MessageType(str, Enum):
@@ -127,9 +127,11 @@ async def lifespan(app: FastAPI):
     app.state.config = {
         "mcp_servers": os.getenv("MCP_SERVERS", "").split(",") if os.getenv("MCP_SERVERS") else [],
         "agent_name": os.getenv("AGENT_NAME", "Research Agent"),
-        # SYSTEM_PROMPT overrides; otherwise the canonical prompt for this container's
-        # AGENT_PROFILE. See research_agent/prompts.py for why the text is not in compose.
-        "system_prompt": system_prompt(),
+        # `SYSTEM_PROMPT` only, and empty when it is not set. The prompt itself is
+        # rendered per graph from the tools that graph binds, which is not known until
+        # the MCP connections are open — see research_agent/prompts/ for why a prompt is
+        # a function of the deployment rather than a constant.
+        "system_prompt": system_prompt_override(),
         # The profile by name, separately from its prompt: it also decides whether this
         # container binds the delegation tool. A `SYSTEM_PROMPT` override changes the
         # words and deliberately not that.
@@ -144,7 +146,11 @@ async def lifespan(app: FastAPI):
 
     print(f"📡 Agent Name: {app.state.config.get('agent_name', 'Research Agent')}")
     print(f"🔗 MCP Servers: {', '.join(app.state.config.get('mcp_servers', []))}")
-    print(f"💭 System Prompt: {app.state.config.get('system_prompt', '')[:50]}...")
+    override = app.state.config.get("system_prompt") or ""
+    print(
+        f"💭 Profile: {app.state.config.get('profile')}"
+        + (f" (SYSTEM_PROMPT override: {override[:50]}...)" if override else "")
+    )
 
     # Initialize the agent
     try:

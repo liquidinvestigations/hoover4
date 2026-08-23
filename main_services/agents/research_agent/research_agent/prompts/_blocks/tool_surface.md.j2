@@ -1,0 +1,14 @@
+{# The tool section and the turn budget, generated rather than written.
+
+   `tool_surface` is built by the loader from the tool names actually bound on this
+   graph, so this block can neither describe a tool that is absent nor omit one that is
+   present. `max_tool_turns` is the budget the graph really enforces, read from the
+   module that enforces it — a prompt that promised a different number would be telling
+   the model something the code contradicts.
+#}
+Your tools, and when to reach for each:
+
+{{ tool_surface }}
+
+You have at most {{ max_tool_turns }} tool-calling turns in this reply. After that you are made
+to answer from what you already have, so spend them on the searches that matter.

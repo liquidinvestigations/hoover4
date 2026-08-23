@@ -11,6 +11,9 @@ dependencies = [
     "pydantic>=2.0",
     "requests>=2.31",
     "python-dotenv>=1.0",
+    # The server's `instructions` is a Jinja template rendered from the tools it
+    # registers, not a string literal. See collection_search_server/prompts/.
+    "jinja2>=3.1",
     # agent_common's own dependencies, declared here as well because the image installs
     # `./agent_common` before this package (see the Dockerfile) and pip resolves the
     # two separately.
@@ -29,6 +32,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["collection_search_server*"]
+
+# The prompt templates are data, and setuptools ships no non-Python file unless told to.
+# `_blocks/` is a plain directory rather than a package, so it needs its own glob.
+[tool.setuptools.package-data]
+"collection_search_server.prompts" = ["*.md.j2", "_blocks/*.md.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

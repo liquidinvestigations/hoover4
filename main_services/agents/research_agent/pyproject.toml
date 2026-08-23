@@ -5,6 +5,10 @@ description = "Hoover4 Research Agent Package"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 packages = [{include = "research_agent"}]
+# The prompt templates are data, and they must reach the image: the loader reads them off
+# disk beside itself, so an install that shipped only the `.py` files would start and then
+# fail on the first request.
+include = [{path = "research_agent/prompts/**/*.md.j2", format = ["sdist", "wheel"]}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
@@ -20,6 +24,9 @@ langchain-mcp-adapters = "^0.1.0"
 mcp = "^1.9.2"
 pydantic = "^2.5.0"
 fastapi = "^0.117.1"
+# The system prompts are Jinja templates, not string literals, so that the tool list in
+# the prose is rendered from the tools actually bound. See research_agent/prompts/.
+jinja2 = "^3.1"
 aiohttp = "^3.9.0"
 langfuse = "^3.0.0"
 

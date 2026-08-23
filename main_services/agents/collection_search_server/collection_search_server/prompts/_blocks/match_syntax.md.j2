@@ -1,0 +1,44 @@
+{# The one thing that is deployment-specific and most often got wrong: there is exactly
+   one full-text field. `@title`, `@path`, `@filename` and friends are 500s, not misses.
+
+   Also handed back verbatim when a query fails to parse, so it has to read as a complete
+   reference on its own.
+#}
+Search syntax for {{ tool('search_collections') }}
+
+The query is a Manticore full-text expression. Plain words work and are the right
+default: several descriptive words beat one keyword. These operators are available when
+you need them:
+
+  water testing          both words must appear (words are ANDed)
+  water | sewage         either word
+  water -draft           has "water", excludes "draft" (needs a positive word too)
+  "public water supply"  exact phrase, in this order
+  "public water"~5       the words within 5 positions of each other
+  "one two three"/2      any 2 of the 3 words
+  water NEAR/3 testing   within 3 words, either order
+  water SENTENCE testing in the same sentence (also PARAGRAPH)
+  water MAYBE sewage     "water", ranking pages that also mention sewage higher
+  (water | sewage) plant grouping
+  water^3 testing        boost "water" three-fold in the ranking
+  =testing               that exact word form, no stemming
+  ^Dear                  the field must start with this word
+
+Wildcards work and are how you search fuzzily:
+
+  contract*              contract, contracts, contractual, contractor
+  *ollution*             pollution, and anything else containing "ollution"
+
+Use them when you are unsure of a word's ending or spelling — but they are broad and
+cost more to run, so prefer a real word when you know it.
+
+Two rules specific to this deployment:
+
+  * `page_text` is the ONLY searchable field. `@page_text water` is valid; `@title`,
+    `@filename`, `@path` and anything else do not exist and will fail. To narrow by
+    dataset, file type or path, do not put it in the query — read the hits and filter.
+  * A bare `@` in ordinary prose is read as a field prefix. Write `who paid acme`, not
+    `who paid @acme`.
+
+If a search returns an error, the `error` field says what was wrong with the query —
+read it and retry with corrected syntax rather than giving up on the search.

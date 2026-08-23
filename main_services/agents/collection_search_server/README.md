@@ -82,8 +82,12 @@ the website's. See [`collection_search_server/acl.py`](collection_search_server/
 `sanitize_match_query` used to **strip** every operator character (`!"$()-/<@^|~*`) on the
 grounds that an LLM writes prose, not query syntax. That is wrong: the operators are
 valuable and the model is told how to use them. The canonical syntax reference lives in
-[`collection_search_server/prompts.py`](collection_search_server/prompts.py) and reaches
-the model as the server's FastMCP `instructions`, i.e. at tool-discovery time.
+[`collection_search_server/prompts/`](collection_search_server/prompts/) and reaches the
+model as the server's FastMCP `instructions`, i.e. at tool-discovery time. The instructions
+are rendered from `SERVER_TOOLS`, the tool names this server registers, and
+`tests/test_prompts.py` fails when that list stops matching what `server.py` decorates —
+so a renamed tool is caught rather than left as prose telling a model to call something
+that no longer exists.
 
 What the sanitiser does instead is head off the three shapes that come back as an HTTP 500
 the model cannot interpret, plus the empty query that is worse than an error:
@@ -204,7 +208,7 @@ versions:
 | `COLLECTION_SEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` |
 | `COLLECTION_SEARCH_FUSION_CANDIDATES` | `60` |
 | `MAX_DOCUMENT_CHARS` | `40000` |
-| `SERVER_INSTRUCTIONS` | overrides the canonical prompt; empty means use `prompts.py` |
+| `SERVER_INSTRUCTIONS` | overrides the rendered instructions; empty means render `prompts/` |
 
 ## Tests
 

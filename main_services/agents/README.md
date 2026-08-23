@@ -142,17 +142,26 @@ is a conversation id, and unlike the ACL headers nothing verifies who it belongs
 ## Where the system prompts live
 
 Not in compose. A multi-paragraph prompt inlined as a YAML default was unreadable and
-drifted from the tool descriptions it was supposed to agree with. There are two files:
+drifted from the tool descriptions it was supposed to agree with. There are two template
+folders, each with a loader that is the only thing that renders them:
 
-* [`collection_search_server/collection_search_server/prompts.py`](collection_search_server/collection_search_server/prompts.py)
+* [`collection_search_server/collection_search_server/prompts/`](collection_search_server/collection_search_server/prompts/)
   — the MATCH syntax reference and search strategy. Reaches the model as the MCP server's
   FastMCP `instructions`, i.e. at tool-discovery time, for **whichever** agent connects,
   and is appended to the error text when a query is rejected.
-* [`research_agent/research_agent/prompts.py`](research_agent/research_agent/prompts.py)
-  — one system prompt per agent profile, selected by `AGENT_PROFILE`.
+* [`research_agent/research_agent/prompts/`](research_agent/research_agent/prompts/)
+  — one template per agent profile, selected by `AGENT_PROFILE`, plus the blocks they share.
+
+**A prompt is rendered from what the deployment binds, not written as a constant.** The
+tool section of every profile is generated from the tool names on the graph, and the
+tool-turn budget comes from the constant the graph enforces, so a prompt cannot claim a
+tool the model does not have, cannot omit one it does, and cannot promise a budget the
+code contradicts. Each package's `tests/test_prompts.py` is what turns a drifted sentence
+into a failing test — which is the whole reason the text is not a string literal.
 
 `SYSTEM_PROMPT` / `SERVER_INSTRUCTIONS` remain as thin env overrides for experiments;
-empty means "use the canonical text".
+empty means "render the templates". `SYSTEM_PROMPT` changes only the words: the profile
+name still decides which tools are bound.
 
 **Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
 of it forever — an earlier five-step draft made it search, search again, then re-run a

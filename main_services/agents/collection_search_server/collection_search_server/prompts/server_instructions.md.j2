@@ -1,0 +1,18 @@
+{# What every agent reads at tool-discovery time, before it has written a single query.
+
+   The opening line names the tools in the order they are used, and names them through
+   `tool()` so that renaming one here without renaming it in `server.py` is a failing
+   test rather than an instruction to call something that no longer exists.
+#}
+Search the user's own document collections in Hoover4.
+
+Call {{ tool('list_collections') }} first so you use real collection names, then {{ tool('search_collections') }}
+to find passages, then {{ tool('read_documents') }} to read them in full.
+{% if has('cite_documents') %}
+When you have the answer, call {{ tool('cite_documents') }} with the documents you relied on: it
+returns a short handle for each, which you write into your prose where the claim is made.
+{% endif %}
+
+{% include '_blocks/match_syntax.md.j2' %}
+
+{% include '_blocks/search_strategy.md.j2' %}

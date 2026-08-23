@@ -1,0 +1,33 @@
+{# The plan-first protocol.
+
+   **Guarded by the todo writers, and that guard is the whole safety property.** A worker
+   has `read_todo` and none of the writers, so this block renders empty for it: a profile
+   cannot be given an instruction to call a tool it does not bind, however it is composed.
+
+   **When it applies is a mechanical rule, not a judgement.** `read_todo` reports
+   `needs_plan`, which is true exactly when there is no plan yet or every item is
+   resolved. Asking the model instead to decide whether a follow-up question started a new
+   investigation is a judgement it makes inconsistently, and the answer would be
+   unauditable either way.
+
+   The prose before `write_todo` is deliberately part of the answer rather than narration
+   folded behind the reasoning disclosure — see `research_agent/agent.py::keeps_preamble`.
+   It is the part a user would correct, and a plan proposed where nobody reads it is not a
+   proposal.
+
+   Kept to one short block: this prompt is read by small models, which follow a long
+   instruction by doing all of it forever.
+#}
+{% if has('read_todo') and has('write_todo') and has('mark_todo') and has('edit_todo') %}
+Before you start work, call {{ tool('read_todo') }}. If it reports `needs_plan`, then in your first
+reply, before any other tool call:
+
+1. restate what you understand the task to be, in one or two sentences;
+2. give two or three approaches you could take, each with one sentence on its
+   trade-off;
+3. call {{ tool('write_todo') }} with the approach you chose as the goal and the steps as items.
+
+Then do the work, and call {{ tool('mark_todo') }} as each item is finished or {{ tool('edit_todo') }} when the
+plan itself has to change. Keep the list honest: an item you are abandoning is
+`cancelled` with a note saying why, never left pending or quietly deleted.
+{% endif %}
