@@ -62,6 +62,12 @@ its correct final state. `docker stop <name>` followed by `docker start <name>` 
 **Bringing one service up recreates its whole dependency chain**, and has taken the fleet down
 doing it. `--no-deps` is required whenever a single service is the target.
 
+**A backend change needs the website container stopped and started before it is being served.**
+The type check passes against the source on disk; the running server keeps answering from what
+it already loaded. The symptom is a request behaving the way it did before your patch, which
+reads as your patch being wrong — one pass caught this only because a dispatch it had just
+rewritten still did the old thing.
+
 **`stop_grace_period` is honoured only when the runtime is itself the process stopping the
 container.** It is not written onto the container and cannot be set afterwards, so the
 container carries the runtime's own ten-second default however the compose file is configured.
