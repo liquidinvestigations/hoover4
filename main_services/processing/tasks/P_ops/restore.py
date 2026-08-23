@@ -419,8 +419,8 @@ def import_manticore(params: ImportParams) -> ExportStoreResult:
     per-table path is the one that works against a live daemon — stage the table's files,
     then hand the daemon the staging directory — and it needs no restart.
 
-    Two constraints found the hard way and encoded here: the destination directory must
-    not already exist, and the staging directory must not *be* the destination, because
+    Two constraints shape the rest: the destination directory must not already exist,
+    and the staging directory must not *be* the destination, because
     `IMPORT TABLE` moves the files rather than copying them. The staging directory lives
     on the data directory's own filesystem for the same reason — a move across
     filesystems is not a rename.
