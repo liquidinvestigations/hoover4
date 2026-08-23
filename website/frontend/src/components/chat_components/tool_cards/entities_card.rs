@@ -26,6 +26,13 @@ use crate::components::chat_components::tool_cards::{
 };
 use crate::routes::Route;
 
+/// Model-found values rendered before the rest become a count.
+///
+/// A mail archive or a paper routinely yields two hundred names, and a transcript that
+/// carries all of them is a transcript nobody scrolls past. The rule tier is not capped
+/// the same way: it is the tier with cards behind it, and it is short.
+const MODEL_VALUES_SHOWN: usize = 24;
+
 /// One document's answer, in the shape the card renders it.
 #[derive(Debug, Clone, PartialEq)]
 struct DocumentEntities {
@@ -221,7 +228,7 @@ fn DocumentEntityRow(
             if !document.model_found.is_empty() {
                 div {
                     style: "display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;",
-                    for value in document.model_found.clone() {
+                    for value in document.model_found.iter().take(MODEL_VALUES_SHOWN).cloned() {
                         span {
                             key: "m{value}",
                             style: "border: 1px solid #E5E7EB; background: #F8FAFC; \
@@ -233,6 +240,12 @@ fn DocumentEntityRow(
                 }
                 div {
                     style: "font-size: 11px; color: #92400E; margin-top: 4px;",
+                    if document.model_found.len() > MODEL_VALUES_SHOWN {
+                        {
+                            let rest = document.model_found.len() - MODEL_VALUES_SHOWN;
+                            rsx! { "{rest} more, all of them in the document's entities panel. " }
+                        }
+                    }
                     "Names, organisations and places above are a model's reading of the \
                      prose. No rule validated them, so there is nothing to explain and \
                      they open nothing."
