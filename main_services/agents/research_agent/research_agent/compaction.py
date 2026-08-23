@@ -744,7 +744,14 @@ def summarise_messages(
     out: list[BaseMessage] = []
     for i, message in enumerate(messages):
         if i == droppable[0]:
-            out.append(SystemMessage(content=handoff))
+            # A user turn, not a system one, and this is not a style choice: the handoff
+            # lands in the middle of the list, and this provider rejects the whole request
+            # with `System message must be at the beginning.` -- a 400 the client retries,
+            # so the turn appears to hang rather than to fail. A user message is accepted
+            # anywhere, which is why Claude Code's own handoff arrives as one. The
+            # bracketed header says what it is, so the model does not read it as the
+            # user's words.
+            out.append(HumanMessage(content=handoff))
         if i in protected:
             out.append(message)
     chars_after = sum(_content_length(m) for m in out)

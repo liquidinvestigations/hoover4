@@ -360,7 +360,11 @@ def test_the_handoff_names_the_documents_without_asking_the_model_for_them():
         keep_messages=0,
         summariser=_summariser_that_does_its_worst,
     )
-    handoff = next(m for m in out if isinstance(m, SystemMessage) and "handoff" in m.content)
+    handoff = next(m for m in out if "Context handoff" in str(m.content))
+    # A user turn. A system message anywhere but the first position is a 400 from this
+    # provider -- `System message must be at the beginning.` -- and the client retries it,
+    # so the turn hangs instead of failing.
+    assert isinstance(handoff, HumanMessage)
     assert "[D1] testdata/aa11" in handoff.content
     assert "[D2] testdata/bb22" in handoff.content
     assert "## What was replaced" in handoff.content

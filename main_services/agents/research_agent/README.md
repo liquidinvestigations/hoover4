@@ -190,8 +190,20 @@ scaled by the fraction of the list's characters eviction removed.
 
 Layer two drops whole call-and-result groups and puts one structured handoff document in
 their place: what was replaced, the citations that stand, and three model-written sections
-quoting verbatim rather than paraphrasing. If the summariser answers with nothing, or the
-handoff would be no smaller than what it replaces, the list is sent as layer one left it.
+quoting verbatim rather than paraphrasing. If the summariser answers with nothing, if there
+is too little unprotected material to be worth a model call, or if the handoff would be no
+smaller than what it replaces, the list is sent as layer one left it.
+
+**The handoff is a user message, not a system message.** It lands in the middle of the
+list, and this provider answers a system message anywhere but the first position with
+`System message must be at the beginning.` — a 400 the client retries, so the symptom is a
+turn that hangs rather than one that fails. The bracketed header is what tells the model
+the message is not the user speaking.
+
+The summariser runs with thinking off and a hard completion ceiling. Summarising is not a
+reasoning task, and a thinking model handed a transcript starts answering the research
+question instead of compressing it — measured here as a call that did not return inside two
+minutes.
 
 **Some messages are never summarised, and that is enforced by selecting them in code, not
 by asking the summariser to spare them.** `protected_indexes` picks out the user's own
