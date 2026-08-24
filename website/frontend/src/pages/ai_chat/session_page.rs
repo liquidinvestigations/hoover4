@@ -1,21 +1,22 @@
 //! `/ai_chat/c/:session_id/...`, conversation transcript + document preview (60/40).
 
-use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions};
+use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions, ChatSessionDetail};
+use common::llm_types::ChatModelChoice;
 use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
 use crate::api::chat_api::{
-    chat_get_session, chat_poll, chat_send_message, chat_start_research, chat_stop,
-    chat_dismiss_interrupted,
+    chat_dismiss_interrupted, chat_get_session, chat_poll, chat_send_message,
+    chat_start_research, chat_stop,
 };
-use crate::components::session_gate::use_session_user;
 use crate::components::chat_components::{
     ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
+use crate::components::session_gate::use_session_user;
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
 use crate::data_definitions::url_param::UrlParam;
@@ -68,7 +69,13 @@ fn AiChatSessionRoot(
     // poll loop kept writing its stream into signals now rendering session B. Read the
     // signal at the point of use instead; `use_resource` also subscribes to it, which is
     // what makes the refetch happen at all.
-
+    //
+    // `ChatConversationPanel` below takes `session_id` as a `ReadSignal`, never a cloned
+    // `String`, for the same reason. Every read inside it names the conversation in force
+    // at the moment it runs. The parent's loading gate further down also protects it.
+    // It unmounts and remounts the panel on every switch. The comment beside that gate
+    // says why that matters.
+    //
     use_context_provider(move || DocViewerStateControl {
         doc_viewer_state: doc_viewer_state.into(),
         set_doc_viewer_state: Callback::new(move |state: DocViewerState| {
@@ -107,14 +114,122 @@ fn AiChatSessionRoot(
     });
 
     let detail_res = use_resource(move || chat_get_session(session_id.read().clone()));
+    // This signal lives in the parent. The document pane's `preview_query` reads it too.
+    // The two panes are siblings, so their shared state has to live where both can reach
+    // it.
+    let messages = use_signal(Vec::<ChatMessageItem>::new);
 
+    // The model list and whether an LLM is configured do not change when the user
+    // switches conversations. They live here rather than inside `ChatConversationPanel`,
+    // which is unmounted and remounted on every switch (see the comment beside the
+    // loading gate below). A resource declared inside the panel would re-run on every
+    // remount for no reason.
+    let models_res = use_resource(chat_list_models);
+    let configured_res = use_resource(chat_llm_configured);
+    let configured = use_memo(move || {
+        configured_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .copied()
+            .unwrap_or(true)
+    });
+    let choices = use_memo(move || {
+        models_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .cloned()
+            .unwrap_or_default()
+    });
+
+    let preview_query = use_memo(move || {
+        // Prefer the most recent search_collections query for in-document highlighting.
+        for m in messages.read().iter().rev() {
+            if m.tool_name == "search_collections" {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m.tool_input) {
+                    if let Some(q) = v.get("query").and_then(|x| x.as_str()) {
+                        return SearchQuery {
+                            query_string: q.to_string(),
+                            ..Default::default()
+                        };
+                    }
+                }
+            }
+        }
+        SearchQuery::default()
+    });
+
+    // Filtered on the session on screen: while the resource refetches it still holds the
+    // *previous* conversation's detail, and using that would re-seed the transcript the
+    // panel below just cleared and put the old conversation's title in the header.
+    let load_error = detail_res.read().as_ref().is_some_and(|r| r.is_err());
+    let detail = detail_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .filter(|d| d.session.session_id == *session_id.read())
+        .cloned();
+
+    // This early return does more than show a loading state. `use_resource` keeps its
+    // previous value while it refetches. The filter above rejects that stale value the
+    // moment `session_id` changes, so this branch drops `ChatConversationPanel` from the
+    // tree until the new session resolves. The panel is unmounted and remounted on every
+    // switch. Nothing inside it survives from the previous conversation, which is what
+    // keeps its 19 hooks safe to hold in one component. If this branch held the previous
+    // page while it refetches, the panel would stay mounted across a switch. That is the
+    // shape that caused the router-reuse defect at the top of this file.
+    let Some(detail) = detail else {
+        return rsx! {
+            div {
+                style: "padding: 24px; color: #64748B;",
+                if load_error { "This conversation could not be loaded." } else { "Loading\u{2026}" }
+            }
+        };
+    };
+
+    rsx! {
+        div {
+            style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
+                    background: #F5F6F8; overflow: hidden;",
+            ChatConversationPanel { session_id, detail, messages, configured, choices }
+            // Right, document pane (≈40%)
+            div {
+                style: "height: 100%; width: 40%; min-width: 300px;",
+                SuspendWrapper {
+                    DocumentPreviewForSearchRoot {
+                        query: preview_query,
+                        selected_result_hash,
+                        show_finder: true,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The left pane (≈60%): header, transcript and composer for one conversation.
+///
+/// Owns every signal that describes *a conversation* rather than *the page*: the draft,
+/// the send/poll state, the stream, the model choice and the transcript find bar. `detail`
+/// arrives already resolved. The parent gates the whole page on it loading, and the same
+/// gate unmounts and remounts this component on every conversation switch. A fresh mount
+/// is the only state this panel ever has to seed from `detail`. See the comment beside the
+/// parent's loading gate for why that matters.
+#[component]
+fn ChatConversationPanel(
+    session_id: ReadSignal<String>,
+    detail: ChatSessionDetail,
+    mut messages: Signal<Vec<ChatMessageItem>>,
+    configured: Memo<bool>,
+    choices: Memo<Vec<ChatModelChoice>>,
+) -> Element {
     let mut draft = use_signal(String::new);
     let mut options = use_signal(ChatOptions::default);
     let mut selected_model = use_signal(String::new);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
-    let mut messages = use_signal(Vec::<ChatMessageItem>::new);
     let mut stream_turn = use_signal(|| None::<common::chat_types::StreamTurn>);
     let mut interrupted = use_signal(|| false);
     let mut loaded_for = use_signal(String::new);
@@ -124,34 +239,15 @@ fn AiChatSessionRoot(
     // Incremented to retire a running poll loop (a second send, leaving the page).
     let mut poll_gen = use_signal(|| 0_u64);
 
-    let models_res = use_resource(chat_list_models);
-    let configured_res = use_resource(chat_llm_configured);
-    let configured = configured_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .copied()
-        .unwrap_or(true);
     // `None` while the session gate's `whoami` is in flight, not `false`: defaulting to
     // "not a guest" drew the model picker for a guest's first paint and then removed it.
     let is_guest = use_session_user().map(|u| u.is_guest);
-    let choices = models_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_default();
-    let show_models = is_guest == Some(false) && !choices.is_empty();
     // In an effect, not in the render body. A signal written during render schedules a
-    // render from inside one. It also has to re-run per conversation: the switch below
-    // clears `selected_model`, and this is what re-seeds it.
+    // render from inside one. `choices` is read through the `Memo` prop, never a value
+    // already unwrapped by the caller. That is what lets this effect re-run when the
+    // parent's model list resolves after this panel has already rendered once.
     use_effect(move || {
-        let choices = models_res
-            .read()
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .cloned()
-            .unwrap_or_default();
+        let choices = choices.read().clone();
         // Read, not peeked: this effect must re-run when the value is *cleared*, which
         // is how a conversation switch asks for a fresh default. The write below then
         // re-runs it once more and it returns immediately.
@@ -165,33 +261,25 @@ fn AiChatSessionRoot(
         }
     });
 
-    // Filtered on the session on screen: while the resource refetches it still holds the
-    // *previous* conversation's detail, and using that would re-seed the transcript the
-    // switch below just cleared and put the old conversation's title in the header.
-    let detail = detail_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .filter(|d| d.session.session_id == *session_id.read())
-        .cloned();
+    let configured = *configured.read();
+    let choices = choices.read().clone();
+    let show_models = is_guest == Some(false) && !choices.is_empty();
 
-    if let Some(ref d) = detail {
-        if *loaded_for.read() != d.session.session_id {
-            messages.set(d.messages.clone());
-            // Seed from the session, not from Default: on a conversation that has
-            // already frozen its switches these are the values in force, and showing
-            // the composer defaults instead is what made a chat started with internet
-            // tools quietly continue without them.
-            options.set(d.session.options);
-            interrupted.set(d.interrupted);
-            loaded_for.set(d.session.session_id.clone());
-            // A refresh mid-answer picks the turn up exactly where a poller left it.
-            if d.active && !d.interrupted {
-                stream_turn.set(d.stream.clone());
-                sending.set(true);
-            } else if d.interrupted {
-                stream_turn.set(keep_stream(d.stream.clone(), true));
-            }
+    if *loaded_for.read() != detail.session.session_id {
+        messages.set(detail.messages.clone());
+        // Seed from the session, not from Default: on a conversation that has
+        // already frozen its switches these are the values in force, and showing
+        // the composer defaults instead is what made a chat started with internet
+        // tools quietly continue without them.
+        options.set(detail.session.options);
+        interrupted.set(detail.interrupted);
+        loaded_for.set(detail.session.session_id.clone());
+        // A refresh mid-answer picks the turn up exactly where a poller left it.
+        if detail.active && !detail.interrupted {
+            stream_turn.set(detail.stream.clone());
+            sending.set(true);
+        } else if detail.interrupted {
+            stream_turn.set(keep_stream(detail.stream.clone(), true));
         }
     }
 
@@ -274,13 +362,20 @@ fn AiChatSessionRoot(
         start_polling.call(());
     }
 
-    // Switching conversations without remounting: retire the previous conversation's poll
-    // loop and drop every signal that describes *a* conversation rather than the page.
-    // Without this, session A's transcript, draft, error, banner and model choice all
-    // survived into session B, and its poll loop went on appending A's stream rows to B's
-    // message list. An effect rather than render-time work: it must run once per switch,
-    // after the render that observed it.
-    let mut wired_for = use_signal(String::new);
+    // A guard against a conversation switch reaching this component while it stays
+    // mounted. That does not happen today. The parent's loading gate unmounts and
+    // remounts this panel on every switch instead, and unmounting cancels the panel's
+    // spawned poll task outright. That is stronger than the `poll_gen` write below. The
+    // poll loop above checks `poll_gen` only at the top of each iteration. An in-flight
+    // response can still land after that check would have retired it.
+    //
+    // `wired_for` is seeded from `session_id` at mount, so this effect does nothing on the
+    // render that mounts the panel. It never undoes the seed performed earlier in that
+    // same render. It stays as the fallback for the day the loading gate stops remounting
+    // the panel. Without it, session A's transcript, draft, error, banner and model choice
+    // would survive into session B. Its poll loop would go on appending A's stream rows
+    // to B's message list.
+    let mut wired_for = use_signal(move || session_id.read().clone());
     use_effect(move || {
         let id = session_id.read().clone();
         if *wired_for.peek() == id {
@@ -303,23 +398,6 @@ fn AiChatSessionRoot(
         find_query.set(String::new());
         match_index.set(0);
         match_count.set(0);
-    });
-
-    let preview_query = use_memo(move || {
-        // Prefer the most recent search_collections query for in-document highlighting.
-        for m in messages.read().iter().rev() {
-            if m.tool_name == "search_collections" {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m.tool_input) {
-                    if let Some(q) = v.get("query").and_then(|x| x.as_str()) {
-                        return SearchQuery {
-                            query_string: q.to_string(),
-                            ..Default::default()
-                        };
-                    }
-                }
-            }
-        }
-        SearchQuery::default()
     });
 
     let on_submit = move |_| {
@@ -412,140 +490,114 @@ fn AiChatSessionRoot(
         });
     };
 
-    let load_error = detail_res.read().as_ref().is_some_and(|r| r.is_err());
-    let Some(detail) = detail else {
-        return rsx! {
-            div {
-                style: "padding: 24px; color: #64748B;",
-                if load_error { "This conversation could not be loaded." } else { "Loading\u{2026}" }
-            }
-        };
-    };
-
     rsx! {
         div {
-            style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
-                    background: #F5F6F8; overflow: hidden;",
-            // Left, transcript (≈60%)
+            style: "height: 100%; width: 60%; min-width: 360px; display: flex; \
+                    flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
             div {
-                style: "height: 100%; width: 60%; min-width: 360px; display: flex; \
-                        flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
+                style: "padding: 10px 14px; display: flex; align-items: center; gap: 12px; \
+                        background: white; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;",
+                Link {
+                    to: Route::AiChatPage {},
+                    style: "color: #4F46E5; text-decoration: none; font-size: 13px; \
+                            white-space: nowrap;",
+                    "\u{2190} Chats"
+                }
+                Link {
+                    to: Route::AiChatHistoryPage {},
+                    style: "color: #64748B; text-decoration: none; font-size: 13px; \
+                            white-space: nowrap;",
+                    "History"
+                }
+                // The conversation's own name, so a chat opened from the history
+                // list still says which one it is once you have scrolled away from
+                // the first message.
                 div {
-                    style: "padding: 10px 14px; display: flex; align-items: center; gap: 12px; \
-                            background: white; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;",
-                    Link {
-                        to: Route::AiChatPage {},
-                        style: "color: #4F46E5; text-decoration: none; font-size: 13px; \
-                                white-space: nowrap;",
-                        "\u{2190} Chats"
+                    style: "flex: 1; min-width: 0; font-size: 14px; font-weight: 600; \
+                            color: #0F172A; overflow: hidden; text-overflow: ellipsis; \
+                            white-space: nowrap;",
+                    title: "{detail.session.title}",
+                    "{detail.session.title}"
+                }
+            }
+            // The frozen switches live here once the conversation has started.
+            // Out of the composer, where they would look editable.
+            if options.read().locked {
+                LockedOptionsBar { options: *options.read() }
+            }
+            ConversationFindBar {
+                query: find_query,
+                match_index,
+                match_count,
+            }
+            ChatTranscript {
+                messages: messages.read().clone(),
+                find_query,
+                match_index,
+                match_count,
+                stream: stream_turn.read().clone(),
+                stream_live: !*interrupted.read(),
+            }
+            if *interrupted.read() {
+                div {
+                    style: "margin: 0 18px 8px; padding: 8px 12px; background: #FEF3C7; \
+                            border: 1px solid #FDE68A; border-radius: 8px; font-size: 13px; \
+                            color: #92400E; display: flex; align-items: center; gap: 10px;",
+                    span { style: "flex: 1;",
+                        "This answer was interrupted before it finished, because the page or \
+                         the server stopped mid-turn. Ask again to retry."
                     }
-                    Link {
-                        to: Route::AiChatHistoryPage {},
-                        style: "color: #64748B; text-decoration: none; font-size: 13px; \
-                                white-space: nowrap;",
-                        "History"
-                    }
-                    // The conversation's own name, so a chat opened from the history
-                    // list still says which one it is once you have scrolled away from
-                    // the first message.
-                    div {
-                        style: "flex: 1; min-width: 0; font-size: 14px; font-weight: 600; \
-                                color: #0F172A; overflow: hidden; text-overflow: ellipsis; \
-                                white-space: nowrap;",
-                        title: "{detail.session.title}",
-                        "{detail.session.title}"
-                    }
-                }
-                // The frozen switches live here once the conversation has started.
-                // Out of the composer, where they would look editable.
-                if options.read().locked {
-                    LockedOptionsBar { options: *options.read() }
-                }
-                ConversationFindBar {
-                    query: find_query,
-                    match_index,
-                    match_count,
-                }
-                ChatTranscript {
-                    messages: messages.read().clone(),
-                    find_query,
-                    match_index,
-                    match_count,
-                    stream: stream_turn.read().clone(),
-                    stream_live: !*interrupted.read(),
-                }
-                if *interrupted.read() {
-                    div {
-                        style: "margin: 0 18px 8px; padding: 8px 12px; background: #FEF3C7; \
-                                border: 1px solid #FDE68A; border-radius: 8px; font-size: 13px; \
-                                color: #92400E; display: flex; align-items: center; gap: 10px;",
-                        span { style: "flex: 1;",
-                            "This answer was interrupted before it finished, because the page or \
-                             the server stopped mid-turn. Ask again to retry."
-                        }
-                        button {
-                            style: "background: none; border: 1px solid #D97706; border-radius: 6px; \
-                                    color: #92400E; cursor: pointer; font-size: 12px; padding: 2px 8px;",
-                            onclick: on_dismiss_interrupted,
-                            "Dismiss"
-                        }
-                    }
-                }
-                if *sending.read() && stream_turn.read().is_none() {
-                    div {
-                        style: "padding: 0 18px 8px; color: #64748B; font-size: 13px; font-style: italic;",
-                        "The assistant is searching your collections\u{2026}"
-                    }
-                }
-                if let Some(e) = error.read().clone() {
-                    div {
-                        class: "x-error-display",
-                        style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;",
-                        "{e}"
-                    }
-                }
-                div { style: "padding: 12px 14px; flex-shrink: 0;",
-                    if !configured {
-                        div {
-                            style: "background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; \
-                                    padding: 14px 16px; color: #92400E; font-size: 14px; line-height: 1.5;",
-                            "No LLM provider is configured. An administrator can add one under "
-                            Link {
-                                to: Route::AdminLlmPage {},
-                                style: "color: #92400E; font-weight: 600;",
-                                "/admin/llm"
-                            }
-                            "."
-                        }
-                    } else {
-                        if show_models {
-                            div { style: "margin-bottom: 8px;",
-                                ModelSelector {
-                                    choices: choices.clone(),
-                                    selected: selected_model,
-                                    disabled: *sending.read(),
-                                }
-                            }
-                        }
-                        ChatComposer {
-                            draft,
-                            options,
-                            sending,
-                            retry_after_seconds: retry_after,
-                            on_submit,
-                            on_stop,
-                        }
+                    button {
+                        style: "background: none; border: 1px solid #D97706; border-radius: 6px; \
+                                color: #92400E; cursor: pointer; font-size: 12px; padding: 2px 8px;",
+                        onclick: on_dismiss_interrupted,
+                        "Dismiss"
                     }
                 }
             }
-            // Right, document pane (≈40%)
-            div {
-                style: "height: 100%; width: 40%; min-width: 300px;",
-                SuspendWrapper {
-                    DocumentPreviewForSearchRoot {
-                        query: preview_query,
-                        selected_result_hash,
-                        show_finder: true,
+            if *sending.read() && stream_turn.read().is_none() {
+                div {
+                    style: "padding: 0 18px 8px; color: #64748B; font-size: 13px; font-style: italic;",
+                    "The assistant is searching your collections\u{2026}"
+                }
+            }
+            if let Some(e) = error.read().clone() {
+                div {
+                    class: "x-error-display",
+                    style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;",
+                    "{e}"
+                }
+            }
+            div { style: "padding: 12px 14px; flex-shrink: 0;",
+                if !configured {
+                    div {
+                        style: "background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; \
+                                padding: 14px 16px; color: #92400E; font-size: 14px; line-height: 1.5;",
+                        "No LLM provider is configured. An administrator can add one under "
+                        Link {
+                            to: Route::AdminLlmPage {},
+                            style: "color: #92400E; font-weight: 600;",
+                            "/admin/llm"
+                        }
+                        "."
+                    }
+                } else {
+                    if show_models {
+                        div { style: "margin-bottom: 8px;",
+                            ModelSelector {
+                                choices: choices.clone(),
+                                selected: selected_model,
+                                disabled: *sending.read(),
+                            }
+                        }
+                    }
+                    ChatComposer {
+                        draft,
+                        options,
+                        sending,
+                        retry_after_seconds: retry_after,
+                        on_submit,
+                        on_stop,
                     }
                 }
             }
