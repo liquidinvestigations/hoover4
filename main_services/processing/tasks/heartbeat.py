@@ -3,7 +3,7 @@
 Why this module exists
 ----------------------
 ``start_to_close_timeout`` answers "how long may this activity legitimately
-run?" -- for ``ffmpeg`` over a 2 GB video, honestly hours. ``heartbeat_timeout``
+run?" -- for ``ffmpeg`` over a 2 GB video, actually hours. ``heartbeat_timeout``
 answers a different question: "how long may this activity go without proving it
 is alive?" That one has the same answer, ~2 minutes, for every activity in the
 tree regardless of how long its real work takes.

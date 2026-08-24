@@ -37,7 +37,7 @@ with `res:` marking a property FollowTheMoney does not define and we are adding 
 
 `CONFIDENCE_NOTE` is one sentence about what a confidence number means. It is appended to every card
 that carries a confidence and served once at the top of `GET /rules`. It does not vary by rule,
-because a single threshold across every rule is only honest if the number means one thing across
+because a single threshold across every rule is only accurate if the number means one thing across
 every rule.
 
 ## Adding a rule

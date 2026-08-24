@@ -9,7 +9,7 @@ per-engine switch stays where it already is, in the OCR tier's own endpoints.
 
 `pdf_ocr_provider` (`tesseract | easyocr | both | none`) is read here, and this is the
 only place that reads it. A switch rendered into the worker's environment and consumed
-nowhere is a lie; keep this the consumer.
+nowhere is false; keep this the consumer.
 """
 
 import logging

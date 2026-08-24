@@ -202,7 +202,7 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
     Prefers `tool_call_id` when the end event carries one, and falls back to FIFO
     order when it does not -- the same rule as the Rust implementation. A start with
     no matching end is dropped: the call did not complete, and a row claiming a result
-    that never arrived would be a lie.
+    that never arrived would be false.
     """
     pending: list[_Pending] = []
     paired: list[PairedToolCall] = []

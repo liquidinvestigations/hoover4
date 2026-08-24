@@ -15,7 +15,7 @@ use crate::db_auth::settings;
 /// not exist, because everything about it reads as working.
 ///
 /// The default shown must be the one the reader actually falls back to. Where these
-/// disagree the page is lying about the current behaviour, so keep them together:
+/// disagree the page misrepresents the current behaviour, so keep them together:
 /// * `chat_artifact_ttl_days`: `tasks/P_admin/artifact_sweeper.py::DEFAULT_TTL_DAYS`
 /// * `session_expiration_seconds`, `auth::session` (one week)
 /// * `guest_permissions_mode`, `auth::guard`

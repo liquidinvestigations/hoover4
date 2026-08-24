@@ -31,7 +31,7 @@ agrees without doing anything. The website applies the same rules again when it 
 entities (`website/common/src/entity_stoplist.rs`) because rows written before a rule
 existed keep their junk until the stage is re-run; the duplication is deliberate and is
 the same arrangement as `text_sources.py` / `document_sources.rs`. The two lists are kept
-honest by the canonical cases in `tests/unit/test_entity_stoplist.py`, which the Rust
+accurate by the canonical cases in `tests/unit/test_entity_stoplist.py`, which the Rust
 module's own tests mirror value for value.
 """
 

@@ -173,11 +173,13 @@ else
 fi
 rm -rf "$pdir"
 
-# 9. Identifier-safe matching (`Q4`). `_` is a word character, so `\b` finds no boundary
-#    between a banned word and an underscore. `easy` is another pass's word to arm, so its
-#    five spellings are pinned against the same `\bword\b` construction the hook uses rather
-#    than through the hook itself. `underscore` (verb only) and `novel` (adjective only) are
-#    this pass's own narrowed patterns, and are pinned through the real hook.
+# 9. Identifier-safe matching. `_` is a word character, so `\b` finds no boundary between
+#    a banned word and an underscore. The five `easy` spellings are pinned against the same
+#    `\bword\b` construction the hook uses, rather than through the hook, so the pin holds
+#    whether or not that word is on the list. `underscore` and `novel` are narrowed
+#    patterns and are pinned through the real hook. `underscore` denies the past and
+#    present participle only, so the plural noun and the third-person verb ("underscores
+#    the point") are both legal, and only `underscored` and `underscoring` deny.
 idtest=$(python3 - <<'PY'
 import re
 easy = re.compile(r"\beasy\b", re.I)
@@ -188,15 +190,16 @@ print("ok" if all(not easy.search(s) for s in safe) and easy.search("the easy pa
 PY
 )
 u1=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "the easy_ocr container")
-u2=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "underscores the point")
+u2=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "this underscored the point")
+u2b=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "underscores the point")
 u3=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "an underscore in the name")
 u4=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "a novel approach to parsing")
 u5=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "read the novel.")
 if [ "$idtest" = "ok" ] && [ "$u1" = "allow" ] && [[ "$u2" == DENY* ]] \
-   && [ "$u3" = "allow" ] && [[ "$u4" == DENY* ]] && [ "$u5" = "allow" ]; then
-    ok "identifier-safe matching: easy_ocr family, underscore verb-only, novel adjective-only"
+   && [ "$u2b" = "allow" ] && [ "$u3" = "allow" ] && [[ "$u4" == DENY* ]] && [ "$u5" = "allow" ]; then
+    ok "identifier-safe matching: easy_ocr family, underscore participle-only, novel adjective-only"
 else
-    no "identifier-safe matching failed: easy=$idtest u1=$u1 u2=$u2 u3=$u3 u4=$u4 u5=$u5"
+    no "identifier-safe matching failed: easy=$idtest u1=$u1 u2=$u2 u2b=$u2b u3=$u3 u4=$u4 u5=$u5"
 fi
 
 echo "---- $pass passed, $fail failed, $skip skipped"

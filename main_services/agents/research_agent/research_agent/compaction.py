@@ -789,7 +789,7 @@ def compact_messages(
     two is what answers the two cases eviction cannot: nothing left to evict, and
     everything evictable evicted while the list is still projected to be over.
 
-    "Still projected to be over" is an estimate and is labelled one. The only honest token
+    "Still projected to be over" is an estimate and is labelled one. The only measured token
     count available here is what the provider billed for the *previous* call, so the
     saving is projected by the fraction of the list's characters eviction removed. The
     alternative is a second model call made only to measure, or a tokeniser that is not

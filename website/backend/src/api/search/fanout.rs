@@ -22,14 +22,14 @@
 //! as warnings and dropped, callers mark the response as partial, and an error is
 //! propagated only when *every* target failed. A shard that ran out of its time budget
 //! is NOT covered by that rule and fails the whole request ([`is_search_timeout`]): a
-//! connection error is visible and honest, while a truncated count looks exactly like a
+//! connection error is visible and truthful, while a truncated count looks exactly like a
 //! correct one.
 //!
 //! **Known ranking limitation:** BM25 statistics are per-table, so `_score` values
 //! from different shards/collections are not strictly comparable and cross-shard
 //! ranking is approximate. This is inherent to sharded full-text search without a
 //! global IDF, and is accepted. Do not "fix" it with a
-//! normalisation hack. An unprincipled rescale is worse than this honest note.
+//! normalisation hack. An unprincipled rescale is worse than this accurate note.
 
 use std::collections::BTreeMap;
 use std::fmt::Debug;

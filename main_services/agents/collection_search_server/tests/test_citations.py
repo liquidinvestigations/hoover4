@@ -20,7 +20,7 @@ class TestQuoteVerification:
     def test_a_line_break_inside_the_quoted_sentence_still_verifies(self):
         """A PDF wraps mid-sentence and a mail parser keeps `\\r\\n`. A model quoting what
         it read reproduces the words, not the extractor's line breaks, so an exact
-        substring test rejects nearly every honest quote."""
+        substring test rejects nearly every accurate quote."""
         text = "The board approved\nthe transfer\r\non 3 March."
         assert quote_occurs_in("approved the transfer on 3 March", text)
 

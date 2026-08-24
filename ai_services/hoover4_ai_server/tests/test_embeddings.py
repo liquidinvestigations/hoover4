@@ -241,7 +241,7 @@ def test_a_model_this_server_does_not_serve_is_refused():
     )
     assert "not" in response.text.lower()
 
-    # And the honest path: no `model`, or the served one, still works and names itself.
+    # And the accurate path: no `model`, or the served one, still works and names itself.
     for payload in ({"input": "dimension probe"},
                     {"input": "dimension probe", "model": DEFAULT_MODEL}):
         ok = requests.post(DEFAULT_BASE_URL + "/v1/embeddings", json=payload)

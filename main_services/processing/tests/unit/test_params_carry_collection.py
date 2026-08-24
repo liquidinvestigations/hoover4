@@ -43,7 +43,7 @@ def _params_dataclasses():
     `collection_dataset` without `collectionname` -- it mirrors a table in a per-collection
     database, where naming the collection in every row would be the redundancy, and it is
     never an activity argument. `test_every_params_dataclass_uses_the_suffix` below keeps
-    the convention honest so this filter cannot quietly exclude a real one.
+    the convention accurate so this filter cannot quietly exclude a real one.
     """
     for name in _task_module_names():
         module = importlib.import_module(name)

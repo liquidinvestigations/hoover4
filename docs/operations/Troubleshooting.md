@@ -158,7 +158,7 @@ ever ingested produced zero rows from that path and it read as a property of the
 a parser produces suspiciously little, check that the binary exists in the image *before*
 reading any of its code.
 
-**Configuration that is rendered but never read is a lie.** Several knobs have reached a
+**Configuration that is rendered but never read is false.** Several knobs have reached a
 worker's environment with no consumer. When adding a key, grep for its consumer in the same
 change, or write it down as not-yet-implemented.
 

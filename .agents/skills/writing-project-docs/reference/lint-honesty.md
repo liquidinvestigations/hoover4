@@ -1,4 +1,4 @@
-# Satisfying a documentation lint honestly
+# Meeting a documentation lint without gaming it
 
 A missing-documentation lint (`missing_docs` for the Rust workspace, the pydocstyle family
 for Python) measures **presence**, not content. That is the whole problem with it.
@@ -26,7 +26,7 @@ If there is nothing to add, leave the item undocumented.
 
 ## What to do instead of filling
 
-Report that the lint cannot be satisfied honestly for those items, and name them. That is a
+Report that the lint cannot be satisfied without filler for those items, and name them. That is a
 real answer. Turning a lint on and generating filler to make it pass is a way of hiding the
 question, and the hiding survives long after anyone remembers doing it.
 

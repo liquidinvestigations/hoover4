@@ -295,7 +295,7 @@ class TestHealth:
 
 class TestTabCap:
     """`BROWSER_MAX_TABS_PER_CHAT` was rendered into the environment and read by nothing.
-    Exactly the config-that-is-a-lie trap AGENTS.md names. These pin the enforcement."""
+    Exactly the config-that-is-false trap AGENTS.md names. These pin the enforcement."""
 
     class _Tab:
         def __init__(self, name, kind="page"):

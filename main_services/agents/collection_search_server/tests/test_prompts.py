@@ -25,7 +25,7 @@ BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 
 
 def test_the_declared_tools_are_the_tools_the_server_registers():
-    """`SERVER_TOOLS` is a pin, and this is what keeps it honest.
+    """`SERVER_TOOLS` is a pin, and this is what keeps it accurate.
 
     The instructions string is handed to the FastMCP constructor before a single tool has
     been decorated, so the list cannot be read off the server at render time. It can be

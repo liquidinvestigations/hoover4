@@ -42,7 +42,7 @@ like it worked until then.
 - **Ports are configuration keys, not literals.** Read the key; never hard-code the number.
 - **Secrets are files outside the repository**, bind-mounted read-only. No key value ever
   goes into a tracked file, a script, or a log line.
-- **A key that is rendered and read by nothing is a lie.** When you add one, grep for its
+- **A key that is rendered and read by nothing is false.** When you add one, grep for its
   consumer in the same change, or write it down as not-yet-implemented.
 
 ## Four things that behave differently from how they read

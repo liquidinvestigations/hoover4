@@ -32,7 +32,7 @@ fingerprint between them: it will drift.
 
 ## The standing rule about keys
 
-**A key that is rendered and read by nothing is a lie.** Several have reached a worker's
+**A key that is rendered and read by nothing is false.** Several have reached a worker's
 environment with no consumer, and the feature they named silently did not exist.
 
 When adding a key, grep for its consumer **in the same change**, or record it here as

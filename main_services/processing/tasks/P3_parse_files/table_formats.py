@@ -82,7 +82,7 @@ READER_VERSION = 1
 
 #: The cap set. Above any of these the document is stored up to the cap and the cap is
 #: recorded in `TruncationRecord`, a cap that is invisible in the UI reads as "this file
-#: has 300 columns", which is a lie about the corpus.
+#: has 300 columns", which is false about the corpus.
 #:
 #: The numbers are sized for a real open-data export rather than for a mail attachment:
 #: an 8-million-row x 22-column crime dataset published as CSV fits inside all four.

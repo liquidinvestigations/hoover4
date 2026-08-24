@@ -78,7 +78,7 @@ worked. **A call across a wire is verified by making the call**, never by the bu
 **A gate that cannot fail.** A verification function was called in a `|| true` list, which
 discarded its return, so the run printed *all checks passed* over a check that had aborted at
 its first step. Note that `if ! f` does **not** fix this. Inverting a return value suppresses
-`set -e` inside the body exactly as a `||` list does. The honesty has to live in the function:
+`set -e` inside the body exactly as a `||` list does. The accuracy has to live in the function:
 every failure path records a failure before returning.
 
 **An aggregate field that claims more than it knows.** A "which queries found this hit" list
@@ -156,7 +156,7 @@ Three rules make it worth the second reading.
 
 - **The specification moved with the code.** A change that adds, removes or re-scopes a
   capability edits its row in `docs/technical-specification/` in the same patch. A capability
-  with no row was never agreed; a row with no code is a lie.
+  with no row was never agreed; a row with no code is false.
 - **The `Readme.md` beside the code is true again**, and the patch to it is as small as the
   code patch that prompted it.
 - **No private infrastructure detail** anywhere in the diff, no hostname, address, port
@@ -166,7 +166,7 @@ Three rules make it worth the second reading.
   includes a bare tag coined in a plan folder (`D22`, `S13`) in a comment or a `Readme.md`;
   `.agents/check-doc-ids.py` names them, and the fix is to state the fact instead.
 - **A new configuration key has a consumer in the same change**, or is written down as
-  not-yet-implemented. A key that is rendered and read by nothing is a lie.
+  not-yet-implemented. A key that is rendered and read by nothing is false.
 - **The commit message is one lowercase line** under about fifty characters, and nothing
   else.
 

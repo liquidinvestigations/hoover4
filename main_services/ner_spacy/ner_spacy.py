@@ -199,7 +199,7 @@ def _extract(texts: List[str], entity_types: Optional[List[str]]) -> List[Entity
                 start=ent.start_char,
                 end=ent.end_char,
                 # spaCy's small models expose no per-entity probability. Reporting None
-                # is honest; inventing a 1.0 would make a weaker provider look certain.
+                # is correct; inventing a 1.0 would make a weaker provider look certain.
                 confidence=None,
                 text_index=index,
             ))

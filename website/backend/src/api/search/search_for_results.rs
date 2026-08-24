@@ -125,7 +125,7 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
 /// highlight cannot come from `HIGHLIGHT()`, and the alternative (a second `HIGHLIGHT`
 /// scoped to the `filename_index` pages row) needs a per-result subquery for a
 /// decoration. Matching the query's whitespace-separated terms
-/// against the title is simpler, has no extra round trip, and is honest about what it is:
+/// against the title is simpler, has no extra round trip, and states what it is:
 /// a visual aid, not the thing that decided the document matched.
 ///
 /// Case-insensitive substring matching, longest term first so `report` does not consume

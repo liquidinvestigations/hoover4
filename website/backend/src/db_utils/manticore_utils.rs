@@ -44,7 +44,7 @@ pub fn search_timeout_ms() -> u64 {
 /// A distinct type because the two failure modes must be handled differently and the
 /// difference is not visible in a message: a shard the fan-out could not REACH is
 /// dropped with the amber partial-results notice, because a missing collection is
-/// visible and honest. A shard that TIMED OUT answered with truncated counts, and
+/// visible and truthful. A shard that TIMED OUT answered with truncated counts, and
 /// Manticore says so only in a flag nobody sees. Displaying or caching that is serving
 /// a wrong number as if it were right. So this fails the whole request instead.
 #[derive(Debug, Clone, PartialEq, Eq)]

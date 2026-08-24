@@ -75,7 +75,7 @@ pub struct Reference {
 /// What the confidence number means, said the same way everywhere it appears.
 ///
 /// One string, one place, no per-rule variation: a client that offers a single threshold control
-/// across every rule is only honest if the number means one thing across every rule, and a reader
+/// across every rule is only accurate if the number means one thing across every rule, and a reader
 /// can only believe that if the explanation beside it does not change either. It is appended to
 /// every card that carries a confidence and served once at the top of `GET /rules`.
 pub const CONFIDENCE_NOTE: &str = "Confidence says how likely this span is to be the thing the \

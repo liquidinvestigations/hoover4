@@ -7,7 +7,7 @@
 -- expensive way to render nothing.
 --
 -- `cluster_size` is the TRUE size of the component, not the render budget. The reader
--- caps how many nodes it draws. The storage never lies about how many there are, so the
+-- caps how many nodes it draws. The storage always reports the true count of how many there are, so the
 -- interface can say "there is more here" rather than implying the cluster ends.
 CREATE TABLE IF NOT EXISTS email_clusters
 (

@@ -24,7 +24,7 @@ pub struct StageProgress {
     pub unit: String,
     pub done: u64,
     /// `None` for stages with no knowable denominator. P0 discovers work as it runs,
-    /// so "42 of ?" is the honest display, not "42 of 42, complete".
+    /// so "42 of ?" is the truthful display, not "42 of 42, complete".
     pub total: Option<u64>,
     /// Items completed per minute, measured over [`RATE_WINDOW_MINUTES`]. `None` when
     /// the stage has no completion timestamp to measure against.

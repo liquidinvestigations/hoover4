@@ -143,7 +143,7 @@ fn day_and_hour(bucket: &str) -> String {
 /// Even, and never zero: the axis draws a tick at half height, and a half that rounds is
 /// a rule drawn in one place and labelled with the value of another, at `max_count = 3`
 /// the rule sits at 1.5 and says `2`. Rounding the top up instead moves the rule, which
-/// is free, rather than the label, which lies. It also keeps the three tick values
+/// is free, rather than the label, which is wrong. It also keeps the three tick values
 /// distinct, so they can never collide into one repeated label.
 fn count_axis_max(max_count: u64) -> u64 {
     let at_least_one = max_count.max(1);

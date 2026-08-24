@@ -7,7 +7,7 @@ and never produces an `emails` row.
 
 The sniff reads the header block at the top of the file and decides. It is strict on
 purpose -- an eager version costs precision across every plain-text corpus, and the
-measurement below is what keeps it honest.
+measurement below is what keeps it accurate.
 
 Measured over the two corpora on this box:
 

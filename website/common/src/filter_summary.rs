@@ -37,14 +37,14 @@ pub fn summarize_values(values: &[String], budget: usize) -> String {
             return text;
         }
     }
-    // Even one value overflows: ellipsise it and keep the counter honest.
+    // Even one value overflows: ellipsise it and keep the counter accurate.
     let suffix = if total > 1 { format!(" +{}", total - 1) } else { String::new() };
     let room = budget.saturating_sub(suffix.chars().count() + 1);
     let clipped: String = values[0].chars().take(room).collect();
     format!("{clipped}…{suffix}")
 }
 
-/// Bytes as the shortest human string that stays honest: `2.5 MB`, `900 KB`, `1 GB`.
+/// Bytes as the shortest human string that stays accurate: `2.5 MB`, `900 KB`, `1 GB`.
 ///
 /// Rounded to one decimal and trailing `.0` dropped, because `2.0 MB` in a chip reads as
 /// a precision the number does not have.

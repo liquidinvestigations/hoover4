@@ -67,8 +67,10 @@ own output or an upstream error. A value a test compares against, until the test
   meticulous, pivotal, realm, landscape, showcase, leverage, utilize, foster, streamline,
   empower, testament, tapestry, embark, journey, deep dive, dive into. Never basically,
   essentially, arguably, interestingly, stuff, gotcha, tons of, bunch of, loads of, nuke,
-  blow away, at the end of the day, let's. `underscore` bans the verb only, and `novel` bans
-  the adjective only, so the character and the book stay legal.
+  blow away, at the end of the day, let's. `underscore` bans the past and present participle
+  only, and `novel` bans the adjective only, so the plural noun, the third-person verb, the
+  character and the book stay legal. Never honest, honesty, honestly, lie, lies, lied, lying:
+  a component has no intent to misrepresent. Say accurate, correct, verifiable or complete.
 - **No antithesis.** Never "X, not Y" as a closer, "this is not X, it is Y", "isn't just X,
   it's Y", or "X rather than Y" used for emphasis. Write what is true. If the false reading
   matters, correct it in its own sentence.

@@ -82,7 +82,7 @@ def test_an_end_event_with_no_matching_id_still_pairs_by_order():
 
 
 def test_a_start_without_an_end_is_dropped():
-    # The call never completed; a row claiming a result would be a lie.
+    # The call never completed; a row claiming a result would be false.
     assert pair_tool_calls([_start(query="orphan")]) == []
 
 

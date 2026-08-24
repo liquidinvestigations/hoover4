@@ -287,7 +287,7 @@ Before a stage is called finished:
   `docs/technical-specification/` edited **in the same patch** as the code.
 - Documentation beside the changed code is true again: `writing-project-docs`.
 - The report says plainly what was not done and why. A check that failed and was shipped
-  anyway is stated as such; an honest gap is worth more than a clean-looking summary.
+  anyway is stated as such; a named gap is worth more than a clean-looking summary.
 - **Everything the report needs from a person is written out where it is raised**, with a
   recommended answer, and repeated in full in whatever message hands the report over. Naming
   a count ("three open questions"), and leaving the content in the document means the

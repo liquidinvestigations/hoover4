@@ -82,10 +82,9 @@ GPU_FALLBACK = _env_bool("GPU_FALLBACK", True)
 class RemoteUnavailable(RuntimeError):
     """Every configured endpoint for a capability refused or was unreachable.
 
-    Raised fast and with the URLs named. Fast and honest beats slow and
-    mysterious: a plan that fails in two seconds with "GPU NER unreachable at
-    <url> and no CPU twin is enabled" is debuggable, one that stalls for fifty
-    minutes is not.
+    Raised fast and with the URLs named: a plan that fails in two seconds with "GPU NER
+    unreachable at <url> and no CPU twin is enabled" names what broke, and one that stalls
+    for fifty minutes does not.
     """
 
 

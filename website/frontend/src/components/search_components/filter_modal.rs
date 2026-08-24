@@ -1766,7 +1766,7 @@ fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
 fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
     match sub {
         // `All` lights when any of the ten does, because it is the view that shows all
-        // ten and a rail with no dot anywhere over a filtered corpus is a lie.
+        // ten and a rail with no dot anywhere over a filtered corpus is false.
         EntitySub::All => EntitySub::VALUE_FIELDS.iter().any(|field| {
             query.facet_filters.get(*field).is_some_and(|values| !values.is_empty())
         }),

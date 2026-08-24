@@ -1386,7 +1386,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
     disposable, RAM-resident query copy. Returns the file_hashes actually written
     (committed), for ``index_state`` (see ``index_text_pages``).
 
-    Loud refusals (non-retryable, because retrying cannot fix a config lie):
+    Loud refusals (non-retryable, because retrying cannot fix a false configuration):
 
     * vectors exist but the probe never ran, or the shard's ``_vectors`` table is
       missing (a stale deploy: the planner creates it from the probed dimension);

@@ -201,7 +201,7 @@ even at 4. Pick 3 and move on.
 at all, and makes stars work only for prefixes longer than the minimum, which is worse than
 either alternative.
 
-### Storage cost: honestly, unmeasurable at this size
+### Storage cost: unmeasured at this size
 
 `SHOW TABLE ... STATUS` `disk_bytes` on an RT table depends on chunk-merge state. The same
 no-infix configuration measured 16.6 MB, 33.6 MB and 65.4 MB at different points in one

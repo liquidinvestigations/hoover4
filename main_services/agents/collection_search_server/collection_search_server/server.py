@@ -87,7 +87,7 @@ SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
 #:
 #: 24 000 is the same figure the website truncates a stored `tool_output` at
 #: (`common/src/chat_types.rs`), which is the point: a result that fits the budget is
-#: stored whole, so `chat_messages.tool_output` is an honest copy of what the model saw
+#: stored whole, so `chat_messages.tool_output` is an accurate copy of what the model saw
 #: instead of a truncated one that cannot be used to check the size.
 PAYLOAD_BUDGET_CHARS = int(os.getenv("SEARCH_PAYLOAD_BUDGET_CHARS", "24000"))
 

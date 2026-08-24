@@ -73,13 +73,13 @@ with a bare `SystemError` naming nothing in this repository, and the operations 
 has no business loading the pipeline's dependencies anyway, since it schedules that work
 rather than running it.
 
-A kind the workflow cannot drive fails honestly: the row errors naming the kind. The table
+A kind the workflow cannot drive fails with the kind named in the row. The table
 accepts more kinds than the workflow drives, on purpose, so a row can exist for work another
 surface performs.
 
 ## Progress and estimates
 
-Progress is whatever that kind can honestly count, and the unit differs by kind: an ingest,
+Progress is whatever that kind can actually count, and the unit differs by kind: an ingest,
 an OCR-language change and a plan execution count **plans**, a retry counts the plans it
 re-runs, and a purge or a delete counts **rows still in the stores**, so its bar moves with
 the deletion rather than with the number of activities that have returned. A purge excludes
@@ -88,7 +88,7 @@ telemetry as work left to do could never reach its total.
 
 **Three kinds have no progress fraction at all, deliberately.** `compute_plans` writes
 every plan in one statement, and `ensure_collection` and `drop_collection_database` are one
-activity each, so none of them has a unit that finishes repeatedly and none has an honest
+activity each, so none of them has a unit that finishes repeatedly and none has an accurate
 denominator. Their counters stay at zero and their result string says what happened. A bar
 invented for them would sit empty and then be full, which reports less than no bar.
 

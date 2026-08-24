@@ -340,7 +340,7 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
             # those with no nlp_processed row at all. A partially-processed document
             # (NER succeeded on page 0, failed on pages 1..n) has a watermark that
             # covers only some of its pages, so neither sum alone is safe; the
-            # larger one is the honest upper estimate for shard budgeting.
+            # larger one is the accurate upper estimate for shard budgeting.
             text_sums = {
                 row[0]: int(row[1])
                 for row in client.query(

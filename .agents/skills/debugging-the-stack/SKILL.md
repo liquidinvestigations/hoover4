@@ -54,7 +54,7 @@ text", so every PDF ever ingested produced zero rows from that path and it looke
 property of the corpus. When a parser produces suspiciously little, run
 `docker exec <c> which <binary>` before reading any of its code.
 
-**Config that is rendered but never read is a lie.** Several knobs reached a worker's
+**Config that is rendered but never read is false.** Several knobs reached a worker's
 environment with no consumer. When adding a setting to `hoover4.ini`, grep for its consumer in
 the same change, or write it down as not-yet-implemented.
 

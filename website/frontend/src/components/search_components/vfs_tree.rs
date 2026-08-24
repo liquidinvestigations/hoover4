@@ -380,7 +380,7 @@ fn VfsTreeLevelBody(
     depth: usize,
     /// See [`VfsTreeLevel`]'s `rung`.
     rung: usize,
-    /// The child of this level that lies on the path to the focused node, if any. The
+    /// The child of this level that sits on the path to the focused node, if any. The
     /// sibling window is centred on it.
     focus_child: Option<String>,
     /// The user clicked one of this level's "more" rows, so nothing is windowed.
@@ -512,7 +512,7 @@ fn VfsTreeLevelBody(
     };
 
     // The fetch row and the window rows both mean "more siblings", so only one of them is
-    // ever on screen. While the window is capping, the window's own row is the honest
+    // ever on screen. While the window is capping, the window's own row is the accurate
     // one: raising the fetch limit would not reveal anything the window is hiding.
     let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(fetched) };
     let more_indent = indent_style(rung);

@@ -241,7 +241,7 @@ Two consequences, both deliberate:
 - **Bare `YYYYMMDD` is not matched.** Eight adjacent digits with a valid calendar reading is the
   noisiest date shape there is, and in an identifier-heavy corpus most of them are not dates. It
   determines the whole day, so it does not fail the rule above. It fails on precision, which is a
-  different and equally sufficient reason. An honest version of it needs a cue word or a
+  different and equally sufficient reason. A correct version of it needs a cue word or a
   document-level format prior.
 
 The same policy is what keeps `2021-W09` out of `date.iso_week`: it names a week, not a day.

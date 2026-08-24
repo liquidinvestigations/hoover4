@@ -316,7 +316,7 @@ def _read_resident(zf: zipfile.ZipFile, name: str) -> Optional[bytes]:
         return None
     if b"<!ENTITY" in data:
         # ElementTree expands internal entities in-process. No spreadsheet format
-        # declares any, so refusing is cheaper and more honest than bounding it.
+        # declares any, so refusing is cheaper and more correct than bounding it.
         return None
     return data
 

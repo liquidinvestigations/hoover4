@@ -49,7 +49,7 @@ def normalise_for_match(text: str) -> str:
     Extracted text is not the document: a PDF wraps lines mid-sentence, a mail parser
     keeps `\\r\\n`, and every extractor has its own opinion about non-breaking spaces and
     typographic quotes. A model quoting a sentence it read will reproduce the words and
-    not the whitespace, so an exact-substring test rejects nearly every honest quote.
+    not the whitespace, so an exact-substring test rejects nearly every accurate quote.
 
     Case is folded too. A quote is evidence about content, and a reader shown `Board`
     where the document says `BOARD` has not been misled.

@@ -44,8 +44,11 @@ agent reads it at every session start.
   delve, intricate, meticulous, pivotal, realm, landscape, showcase, leverage, utilize,
   foster, streamline, empower, testament, tapestry, embark, journey, deep dive and dive into;
   and basically, essentially, arguably, interestingly, stuff, gotcha, tons of, bunch of, loads
-  of, nuke, blow away, at the end of the day and let's. `underscore` bans the verb only, and
-  `novel` bans the adjective only, so the character and the book stay legal.
+  of, nuke, blow away, at the end of the day and let's. `underscore` bans the past and
+  present participle only, and `novel` bans the adjective only, so the plural noun, the
+  third-person verb, the character and the book stay legal. The banned words also include
+  honest, honesty, honestly, lie, lies, lied and lying: a component has no intent to
+  misrepresent. Write accurate, correct, verifiable or complete instead.
 - **No antithesis used for emphasis.** If a false reading matters, correct it in its own
   sentence.
 - **No emphasis particles and no preambles.** Delete "full stop", "worth noting", "to be

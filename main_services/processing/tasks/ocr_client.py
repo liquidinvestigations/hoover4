@@ -12,7 +12,7 @@ be *compared*, and this would quietly make two of them identical.
 
 So: an engine that is not configured produces no variant at all, and an engine that is
 configured but unreachable raises, is retried by Temporal, and eventually lands in
-`processing_errors` where it is visible and re-runnable. Both are honest; substituting is
+`processing_errors` where it is visible and re-runnable. Both are correct; substituting is
 not.
 
 Within one engine, `tasks.remote` still applies in full, connect timeout, circuit

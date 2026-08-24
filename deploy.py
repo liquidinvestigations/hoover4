@@ -128,7 +128,7 @@ DEFAULTS = {
         # How long a shutting-down worker may keep its in-flight activities before they
         # are cancelled. The container's stop grace period is DERIVED from this (see
         # render_main_env) rather than configured beside it, because an SDK grace period
-        # longer than the container's is a lie: the runtime kills the process first.
+        # longer than the container's is false: the runtime kills the process first.
         "worker_graceful_shutdown_seconds": "60",
         # The operations container. Its own budget, separate from the worker's, because
         # that is what makes "operations cannot starve ingestion" a property of the

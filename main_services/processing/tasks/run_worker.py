@@ -30,7 +30,7 @@ def graceful_shutdown_timeout() -> timedelta:
 
     The container's own stop grace period is derived from the same ini key, with a
     margin on top. Do not raise this by editing a literal here: a graceful period longer
-    than the container's grace period is a lie, because the runtime sends SIGKILL first.
+    than the container's grace period is false, because the runtime sends SIGKILL first.
     """
     raw = os.environ.get("HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS", "").strip()
     seconds = DEFAULT_GRACEFUL_SHUTDOWN_SECONDS

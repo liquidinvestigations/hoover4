@@ -69,7 +69,7 @@ ROW_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(seconds=
 
 @workflow.defn
 class Operation:
-    """Run one operation of one kind, keeping its row honest from end to end."""
+    """Run one operation of one kind, keeping its row accurate from end to end."""
 
     @workflow.run
     async def run(self, params: OperationParams) -> str:
@@ -214,7 +214,7 @@ class Operation:
 
         **This kind has no progress fraction, and that is deliberate.** Planning is one
         activity that writes every plan in a single statement, behind one that counts
-        the new blobs, so nothing finishes repeatedly and there is no honest
+        the new blobs, so nothing finishes repeatedly and there is no accurate
         denominator. The row's counters stay at zero and the result says how many items
         were planned. A bar invented here would sit empty and then be full, which
         reports less than no bar at all.
@@ -236,7 +236,7 @@ class Operation:
         Progress means something here, and it is the counter the ingest driver already
         uses. The denominator can grow while the operation runs (a plan that opens an
         archive computes plans for what was inside it), and that is the corpus being
-        discovered, not the counter lying: the number moves in both parts.
+        discovered, not the counter reporting a wrong number: the number moves in both parts.
         """
         child = asyncio.ensure_future(workflow.execute_child_workflow(
             "ExecutePlans",

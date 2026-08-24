@@ -3,7 +3,7 @@
 Takes a PDF, renders every page, sends each render to the **existing** OCR tier, and
 writes back a PDF that looks identical and selects, copies and searches like text. It
 owns no OCR engine and no language data: `main_services/ocr_tesseract` does, and adding a
-language here would be a lie about what the stack can read.
+language here would be false about what the stack can read.
 
 ## Contract
 

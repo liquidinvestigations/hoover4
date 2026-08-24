@@ -135,7 +135,7 @@ an RFC 822 header block is a rectangular two-column table to any sniff that acce
 as a delimiter, so `:` is excluded from the candidate set permanently and a message the
 email sniff accepted is never offered to the table sniff at all.
 `tests/integration/test_table_sniff_corpus.py` is the measurement that keeps both rules
-honest. Zero acceptances across the 21 291 messages of `enron-kaminski-v`.
+accurate. Zero acceptances across the 21 291 messages of `enron-kaminski-v`.
 
 `sniff_email.py`
 recognises an RFC 822 message from its header block, which is the only way to classify an
@@ -193,7 +193,7 @@ evidence, no `table` canonical type, no glyph and no grid.
 Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
 manifest row (the limit's stable name, its maximum and the sheet it fired on), so the
 grid can say what was dropped. A cap that is invisible in the UI reads as "this file has
-300 columns", which is a lie about the corpus.
+300 columns", which is false about the corpus.
 
 `python_calamine` is a Rust extension and fails by **panicking** rather than raising: a
 `PanicException` derives from `BaseException` and an ordinary `except Exception` does not

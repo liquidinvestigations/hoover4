@@ -361,7 +361,7 @@ mod tests {
         let sql = snapshot(true);
         assert!(sql.contains("AND kind != 1"), "{sql}");
         // The predicate belongs to the WHERE clause, so `total` is counted over it too.
-        // That is what makes the "N more…" row's arithmetic honest.
+        // That is what makes the "N more…" row's arithmetic accurate.
         let where_clause = sql.split("ORDER BY").next().unwrap();
         assert!(where_clause.contains("AND kind != 1"), "{sql}");
         assert!(sql.contains("ORDER BY kind ASC, path ASC"), "{sql}");

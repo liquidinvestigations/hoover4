@@ -56,7 +56,7 @@ OFFICE_XML_SOURCE = "office_xml"
 
 
 #: Largest single XML part read out of the zip, and the total across all parts. Both are
-#: enforced on the *read*, not on the zip's declared sizes, so a lying local header buys
+#: enforced on the *read*, not on the zip's declared sizes, so a false local header buys
 #: nothing. The neighbouring extractors bound themselves the same way (a subprocess
 #: timeout for qpdf/pdftotext/Extractous); an in-process reader has to bound bytes
 #: instead, because a zip bomb costs memory rather than wall clock.
@@ -230,7 +230,7 @@ def _read_part(zf: zipfile.ZipFile, name: str, budget: List[int],
     if b"<!ENTITY" in data:
         # ElementTree expands internal entities, so a billion-laughs part would be
         # expanded in this process. No office format declares entities; refusing is
-        # cheaper and more honest than trying to bound the expansion.
+        # cheaper and more correct than trying to bound the expansion.
         dropped.append(f"{name}: declares XML entities, refused")
         return None
     budget[0] -= len(data)

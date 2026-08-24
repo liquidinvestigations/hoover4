@@ -279,7 +279,7 @@ return {ok: true, value: el.value};
 
 async def press_enter(tab) -> None:
     """A real key event. The home box submits on `onkeypress`, which a synthetic
-    `KeyboardEvent` from JS does not trigger in the same way. CDP is the honest route."""
+    `KeyboardEvent` from JS does not trigger in the same way. CDP is the correct route."""
     import nodriver.cdp.input_ as input_cdp
 
     for kind in ("keyDown", "char", "keyUp"):

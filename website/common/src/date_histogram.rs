@@ -20,8 +20,8 @@ pub struct DateHistogramBucket {
 impl DateHistogramBucket {
     /// Whether a low-pass/high-pass/band-pass `[min, max]` covers this bin.
     ///
-    /// The bin is covered when it lies wholly inside the filter. A bin only partly
-    /// covered reads as unselected, which is honest: the filter's cutoffs are bin edges
+    /// The bin is covered when it falls wholly inside the filter. A bin only partly
+    /// covered reads as unselected, which is accurate: the filter's cutoffs are bin edges
     /// by construction, so a partly covered bin means the cutoff came from somewhere
     /// else, such as a typed date, or a histogram computed before the last edit.
     pub fn is_covered(&self, min: Option<i64>, max: Option<i64>) -> bool {

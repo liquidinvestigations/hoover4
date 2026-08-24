@@ -165,7 +165,7 @@ async def _capture(
 
     # 2. Snapshot. Always taken, with no change-detection reuse (see the module
     #    docstring): an explicit snapshot of a page already captured is a deliberate act,
-    #    and quietly handing back the earlier bytes would make the second capture a lie
+    #    and quietly handing back the earlier bytes would make the second capture false
     #    about when it was taken.
     body: tuple[str, bytes, str] | None = None
     status, detail = artifacts.STATUS_OK, ""

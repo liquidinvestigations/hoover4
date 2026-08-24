@@ -255,7 +255,7 @@ Three properties decide whether a citation still resolves:
 Eviction runs first, always, because it makes no model call and cannot lose a fact: every
 result it takes away is still in the transcript and can be re-read. Summarisation runs
 only on what eviction leaves, and only when the list is still projected to be over the
-threshold. That projection is an estimate and is labelled one. The only honest token
+threshold. That projection is an estimate and is labelled one. The only measured token
 count available is what the provider billed for the *previous* call, so the saving is
 scaled by the fraction of the list's characters eviction removed.
 

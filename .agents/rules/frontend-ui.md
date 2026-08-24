@@ -50,5 +50,5 @@ rest, including the two input traps that make typing into this frontend silently
 ## If you add, remove or re-scope a control
 
 Edit its row in `docs/technical-specification/interface/` in the **same patch**. A control
-with no row was never agreed; a row with no control is a lie. Layout, wording, colour and
+with no row was never agreed; a row with no control is false. Layout, wording, colour and
 ordering are not specified there, only what a user can ask for.

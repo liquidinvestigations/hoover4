@@ -83,7 +83,7 @@ pub async fn get_document_entities(
     let _ents = _get_document_entities(document_identifier.clone()).await?;
     // A scanner that has never run leaves no rows, and this returns an empty list rather
     // than failing: the panel then shows its NER half and no rule half, which is the
-    // honest picture of a stack whose scanner is down.
+    // accurate picture of a stack whose scanner is down.
     let regex_items = get_document_regex_entities(&document_identifier).await?;
 
     // The stored hit count is per entity_hit row, which does not have to agree with what

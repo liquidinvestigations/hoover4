@@ -157,7 +157,7 @@ def _parse_brave(html: str) -> list[SearchResult]:
         out.append(
             SearchResult(
                 # The anchor wraps the favicon, the site name and a breadcrumb as well as
-                # the title, so `div.title` is the only honest source here.
+                # the title, so `div.title` is the only accurate source here.
                 title=_title_of(row, link, "div.title", ".snippet-title"),
                 url=unwrap_tracking_url(href),
                 # `.generic-snippet .content` is where the description lives now;

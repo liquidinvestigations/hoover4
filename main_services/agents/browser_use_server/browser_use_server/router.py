@@ -155,7 +155,7 @@ class Router:
             else:
                 pending = asyncio.get_running_loop().create_future()
                 # An exception nobody awaits is an "exception was never retrieved"
-                # warning at GC time; retrieving it in a callback keeps the log honest.
+                # warning at GC time; retrieving it in a callback keeps the log accurate.
                 pending.add_done_callback(lambda f: f.cancelled() or f.exception())
                 self._spawning[key] = pending
                 owner = True

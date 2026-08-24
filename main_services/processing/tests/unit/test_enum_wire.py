@@ -1,4 +1,4 @@
-"""Reading a ClickHouse ``Enum8`` back: names, ordinals, and the comparison that lies.
+"""Reading a ClickHouse ``Enum8`` back: names, ordinals, and the comparison that returns the wrong answer.
 
 Pure, no stack. The failure this pins does not raise and does not log. An arrow read of
 an ``Enum8`` column yields the ORDINAL, so ``row['role'] == 'from'`` is ``1 == 'from'``,

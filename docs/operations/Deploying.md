@@ -57,7 +57,7 @@ change looks like it worked.
 
 - **Ports are configuration keys, not literals.** Read the key; never hard-code the number.
   The website's port is the one exception, because a person types it.
-- **A key that is rendered and read by nothing is a lie.** When adding one, grep for its
+- **A key that is rendered and read by nothing is false.** When adding one, grep for its
   consumer in the same change, or record it as not-yet-implemented.
   [Configuration reference](Configuration_Reference.md) is the list, with the consumer of
   each.

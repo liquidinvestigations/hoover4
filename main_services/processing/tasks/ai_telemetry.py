@@ -46,7 +46,7 @@ def record(
             service,
             provider or "",
             # The pipeline has no user: its work is not on anyone's behalf, and
-            # the literal `guest` would be a lie rather than a default.
+            # the literal `guest` would be false rather than a default.
             username or "pipeline",
             session_id or "",
             max(0, int(latency_ms)),

@@ -11,7 +11,7 @@ database name is per collection, so list it first rather than constructing it.
 - [Progress and timing](#progress-and-timing)
 - [Search engine](#search-engine)
 - [Object store](#object-store)
-- [Reading a result honestly](#reading-a-result-honestly)
+- [Reading a result accurately](#reading-a-result-accurately)
 
 ## Finding the database
 
@@ -91,7 +91,7 @@ A bucket per collection plus a system bucket. Derived output (searchable PDFs, c
 artefacts) lives under a prefix that the disk-scan stage must never walk, and the
 end-to-end verification asserts that no blob row references it.
 
-## Reading a result honestly
+## Reading a result accurately
 
 - A row binds **by column name**. A renamed or aliased column silently binds nothing.
 - An alias **shadows** the column it derives from: after `AS ts`, `ts` is the alias.

@@ -112,7 +112,7 @@ def validate_server_connection(base_url: str = DEFAULT_BASE_URL) -> bool:
 def served_embedding_model(base_url=None):
     """The embedding model this server actually has loaded, from `/v1/models`.
 
-    Hardcoding a name here was a lie waiting to happen, and it happened: the constant said
+    Hardcoding a name here was a mismatch waiting to happen, and it happened: the constant said
     `multilingual-e5-large-instruct` while every deployment served
     `multilingual-e5-small`. It went unnoticed because `/v1/embeddings` used to echo the
     requested name back over vectors the real model produced, which is the same echo the

@@ -9,7 +9,7 @@ Runs on ``processing-embed-queue``. The stage writes two collection-DB tables:
 
 Failure policy matches P4: errors are NOT swallowed. An exception fails the activity
 so Temporal retries it, and only after retries are exhausted does the workflow record
-the failure in ``processing_errors``. The two non-retryable cases are config lies
+the failure in ``processing_errors``. The two non-retryable cases are configuration mismatches
 (a missing probe, or a server serving a different model/dimension than the probe
 recorded): retrying those cannot help, and proceeding would write vectors under a
 convention or dimension the search side does not share.

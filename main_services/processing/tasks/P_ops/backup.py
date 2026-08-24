@@ -379,7 +379,7 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     surviving row for a duplicate key is decided by which part was inserted last. A
     `SELECT`-based dump loses part identity and can restore a *different* row than the
     source had, silently. Progress is ClickHouse's own byte counter, polled: the only
-    honest fraction any of the three stores publishes about work in flight.
+    accurate fraction any of the three stores publishes about work in flight.
     """
     from database.clickhouse import collection_db_name, get_collection_client
 

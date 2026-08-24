@@ -1,6 +1,6 @@
 """The corpus-wide precision of the delimited-text sniff.
 
-The sniff decides from a heuristic, so the only thing that can hold it honest is a
+The sniff decides from a heuristic, so the only thing that can hold it accurate is a
 measurement over real corpora, kept as a test rather than as a script. The failure it
 guards against is a future edit that widens the match and turns a strict sniff into an
 eager one.

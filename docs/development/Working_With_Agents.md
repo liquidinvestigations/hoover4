@@ -84,7 +84,7 @@ A skill is a procedure the agent loads on demand. Thirteen exist, in three group
 | `planning-work` | how work is planned, staged and archived in this repo |
 | `running-consecutive-subagents` | one sub-agent at a time, waited on, self-timeboxed, with a written work package |
 | `verifying-before-claiming` | which evidence backs which claim, and how to wait on a long job without disturbing it |
-| `writing-project-docs` | present-tense truth, small patches, honest doc comments |
+| `writing-project-docs` | present-tense truth, small patches, accurate doc comments |
 | `reviewing-changes` | what a review of *this* repo checks |
 | `finding-code` | locate before reading: symbol overview, references, implementations |
 | `editing-code` | the edit tools and symbol operations instead of stream editors |

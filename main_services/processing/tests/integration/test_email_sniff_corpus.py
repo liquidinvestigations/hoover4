@@ -1,7 +1,7 @@
 """The corpus-wide precision and recall of the email content sniff.
 
 The sniff is the one detector in the fan-out with no ground truth in the bytes it reads:
-it decides from a heuristic, so the only thing that can hold it honest is a measurement
+it decides from a heuristic, so the only thing that can hold it accurate is a measurement
 over real corpora. This is that measurement, kept as a test rather than as a script,
 because the failure it guards against is a future edit that widens the match, quietly turns
 a strict sniff into an eager one, and reclassifies a corpus of plain text as mail.

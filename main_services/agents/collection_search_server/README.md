@@ -52,7 +52,7 @@ prose; the reader sees the handle as a chip and the document beneath the answer.
 **The quote is checked** against the document's extracted text before a handle is issued,
 after folding whitespace, case and typographic punctuation. A model quoting a sentence it
 read reproduces the words, not the extractor's line breaks, and an exact-substring test
-rejects nearly every honest quote. A quote that does not check out is returned **flagged,
+rejects nearly every accurate quote. A quote that does not check out is returned **flagged,
 never refused**: a model that stops citing is a worse outcome than a citation the reader
 sees marked as unverified. A quote too short to prove anything is unverified for the same
 reason a check that always passes is not a check.
@@ -154,7 +154,7 @@ why they are measured per hit rather than assumed.
 
 The budget matches the website's cap on a stored `tool_output`
 (`common/src/chat_types.rs`), and that is the point: a result that fits is stored whole,
-so `chat_messages.tool_output` is an honest copy of what the model saw rather than a
+so `chat_messages.tool_output` is an accurate copy of what the model saw rather than a
 truncated one that cannot answer the question. Every call also logs
 `search_collections payload: N chars, K of M hit(s) returned`, which is the only place
 the size the model actually received is observable.

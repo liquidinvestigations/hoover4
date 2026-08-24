@@ -430,7 +430,7 @@ def create_embeddings(request: EmbeddingRequest):
         # A `model` the server does not serve is REFUSED, never honoured by echo.
         #
         # This endpoint serves exactly one loaded model. Echoing the caller's name back
-        # over vectors this model produced makes the response lie about its own contents,
+        # over vectors this model produced makes the response misrepresent its own contents,
         # and the whole pipeline is built on that field being the truth: the worker
         # compares `data.model` against the probed serving model and refuses a mismatch
         # (P5), because vectors written under the wrong name are re-embedded forever and

@@ -264,7 +264,7 @@ pub fn ResolveMissingItems(
                     } else {
                         // The id resolved to no text: the term row is gone (a
                         // purged dataset) or the collection is unreadable. Showing the
-                        // raw id is honest and still lets the user un-set the filter:
+                        // raw id is accurate and still lets the user un-set the filter:
                         // `Missing2: Int(123)` was a debug print that shipped.
                         format!("#{i}")
                     }

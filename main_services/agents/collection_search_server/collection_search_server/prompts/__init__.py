@@ -33,7 +33,7 @@ TEMPLATE_DIR = Path(__file__).parent
 #: The tools this server registers, by name. Pinned here rather than read off the FastMCP
 #: instance because the instructions string is handed to the constructor before a single
 #: `@mcp.tool` has run. The test that compares this list to the registered one is what
-#: keeps the pin honest.
+#: keeps the pin accurate.
 SERVER_TOOLS: Tuple[str, ...] = (
     "list_collections",
     "search_collections",

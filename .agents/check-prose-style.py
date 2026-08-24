@@ -124,7 +124,7 @@ _PHRASES = [
     r"are ?n[o']t just\b",
     r"it'?s not (?:a |an |the )?\w+, it'?s\b",
     r"this is not (?:a |an |the )?\w+, it is\b",
-    # five pre-emptive classes, absent or near-absent in the tree today (`Q6`)
+    # five pre-emptive classes, absent or near-absent in the tree today
     r"\bunfortunately\b", r"\bfortunately\b", r"\bluckily\b", r"\bthankfully\b",
     r"\bsadly\b", r"\bhappily\b", r"\btragically\b", r"\bhopefully\b",
     r"\bpainful\b", r"\bpainless\b", r"\bbeautiful\b", r"\belegant\b",
@@ -144,17 +144,24 @@ _PHRASES = [
     r"\bbasically\b", r"\bessentially\b", r"\barguably\b", r"\binterestingly\b",
     r"\bstuff\b", r"\bgotcha\b", r"tons of\b", r"bunch of\b", r"loads of\b",
     r"\bnuke\b", r"blow away", r"at the end of the day", r"let(?:'|’)s\b",
-    r"\bcrazy\b", r"\binsane\b", r"\bmad\b", r"\blunatic\b", r"\bbonkers\b",
+    # `mad` is scoped case-sensitive: `MAD`, the ISO 4217 code for the Moroccan dirham,
+    # stays legal. Every other word on this line matches case-insensitively.
+    r"\bcrazy\b", r"\binsane\b", r"(?-i:\bmad\b)", r"\blunatic\b", r"\bbonkers\b",
     r"\bloony\b",
-    # narrower than the plain word: `underscore` bans the verb only, so `underscores`
-    # and `underscored` match and `an underscore` naming the `_` character does not.
+    # narrower than the plain word: `underscore` bans the past and present participle
+    # only, so `underscored` and `underscoring` match. The bare noun and its plural
+    # ("alphanumerics and underscores") stay legal, because that spelling is identical to
+    # the third-person verb ("this underscores the point"), which the tree does not use.
     # `novel` bans the adjective only, so it does not catch the noun for a book.
-    r"\bunderscore(?:s|d)\b",
+    r"\bunderscor(?:ed|ing)\b",
     r"\bnovel\b(?!\s*[.,;:!?]|\s+(?:by|about|titled|called|is|was))",
+    # The `honest` family and the `lie` family, banned outright.
+    r"\bhonest(y|ly)?\b",
+    r"\b(lie|lies|lied|lying)\b",
 ]
 PHRASE_RE = [(p, re.compile(p, re.I)) for p in _PHRASES]
 
-# The third tier (`Q3`, `Q5`, `Q7`, `Q14`): hedges and vague quantifiers that carry a
+# The third tier: hedges and vague quantifiers that carry a
 # legitimate sense too often to refuse. Reported at `warning` level, never at `error`, and
 # never added to the hook, which only ever refuses. `--terms` reports this list alone.
 SOFT_PHRASES = [
@@ -457,6 +464,13 @@ def check_markdown(path, rel, exempt, want_warnings):
 # can see. Whole paths are exempted instead. This hides real copy that only appears in a
 # fixture, which is the trade the AGENTS.md carve-out asks for.
 TEST_PATH_MARKS = ("/tests/", "/test/", "/testdata/", "/fixtures/", "/conformance/")
+
+# `nice` is banned in prose, but this file holds it as the Unix command, in the prefix set
+# beside `ionice` and `nohup`. It does not define the rule, so it is exempt from
+# copy-mode only, and still checked for a banned word in its own comments.
+COPY_EXEMPT = (
+    ".agents/hooks/deny-unscoped-search.py",
+)
 TEST_FILE_RE = re.compile(
     r"(^test_.*\.py$|_test\.(py|rs)$|\.(test|spec)\.(ts|tsx|js)$|^conftest\.py$)")
 
@@ -631,7 +645,7 @@ def sql_comment_strings(lines):
 
 def copy_findings(path, rel, ext, lines):
     """Banned phrases and em dashes inside string literals, as `copy` findings."""
-    if rel in RULE_DOCS or is_test_path(rel):
+    if rel in RULE_DOCS or rel in COPY_EXEMPT or is_test_path(rel):
         return []
     if ext in STRING_EXTS:
         source = "\n".join(lines)

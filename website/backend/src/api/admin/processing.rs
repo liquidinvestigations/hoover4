@@ -686,7 +686,7 @@ fn window_rows_to_pairs(rows: Vec<LiveWindowRow>) -> Vec<(String, f64, u64)> {
 /// Split out of the query path so it can be tested: the case that matters is a task
 /// that appears in ONE of the two halves only, either a long activity still running (in
 /// flight, no completed time) or one that just finished (time, nothing in flight).
-/// Dropping either would make the live view lie about what is happening.
+/// Dropping either would make the live view misrepresent what is happening.
 fn merge_live(
     window: u32,
     window_rows: Vec<(String, f64, u64)>,
