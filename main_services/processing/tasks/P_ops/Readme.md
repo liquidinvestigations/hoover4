@@ -202,9 +202,11 @@ rewrite and not a restore.
 
 **Every object volume is read, and there can be many.** A volume rolls at a fixed size, so a
 corpus larger than that is several tars whose members continue from one into the next. The
-key manifest's offsets are for pulling one blob out of a backup without reading it all; a
-whole-collection restore streams the volumes instead, which also checks each one's recorded
-sha256 against the bytes actually read.
+threshold is `OBJECT_VOLUME_BYTES` in `backup.py`, 8 GiB by default. It reads
+`HOOVER4_BACKUP_OBJECT_VOLUME_BYTES`, so a small corpus can prove the roll without changing
+what a real deployment writes. The key manifest's offsets are for pulling one blob out of a
+backup without reading it all; a whole-collection restore streams the volumes instead, which
+also checks each one's recorded sha256 against the bytes actually read.
 
 **ClickHouse is restored from the archive and then migrated.** `RESTORE DATABASE` puts the
 parts back as they were written, which is the same reason `BACKUP` is the mechanism on the

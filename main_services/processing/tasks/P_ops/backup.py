@@ -71,8 +71,11 @@ MANTICORE_DAEMON_DATA_ROOT = "/var/lib/manticore"
 
 #: How large one object volume grows before the next one is opened. Large enough that a
 #: corpus does not become a directory of thousands of tars, small enough that a single
-#: unreadable volume does not cost the whole object store.
-OBJECT_VOLUME_BYTES = 8 * 1024 * 1024 * 1024
+#: unreadable volume does not cost the whole object store. Reads
+#: `HOOVER4_BACKUP_OBJECT_VOLUME_BYTES`, so a real export can prove the roll across
+#: several volumes without changing the deployed default.
+OBJECT_VOLUME_BYTES = int(os.environ.get("HOOVER4_BACKUP_OBJECT_VOLUME_BYTES", "")
+                          or 8 * 1024 * 1024 * 1024)
 
 #: How often a running ClickHouse backup is asked how far it has got.
 CLICKHOUSE_POLL_SECONDS = 5

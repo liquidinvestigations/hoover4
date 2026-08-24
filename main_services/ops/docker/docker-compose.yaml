@@ -540,6 +540,7 @@ services:
       # root, so its archive lands in the backup directory without being copied.
       - "HOOVER4_BACKUP_ROOT=/backups"
       - "HOOVER4_BACKUP_BANDWIDTH_BYTES=${HOOVER4_BACKUP_BANDWIDTH_BYTES:-0}"
+      - "HOOVER4_BACKUP_OBJECT_VOLUME_BYTES=${HOOVER4_BACKUP_OBJECT_VOLUME_BYTES:-}"
 
   hoover4-website:
     # image: hoover4-website

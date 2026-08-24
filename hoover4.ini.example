@@ -187,6 +187,11 @@ ops_backup_dir =
 ; only throttle that does anything: `backup_threads` is an obsolete setting that is
 ; accepted and ignored.
 ops_backup_bandwidth_bytes = 0
+; Bytes written to one object volume before the next one opens. Empty uses the code's
+; own default (8 GiB). Set only to prove the roll across several volumes on a corpus
+; too small to reach 8 GiB. Must be empty or at least 1048576 (1 MiB); deploy.py refuses
+; anything smaller, including 0, at render time.
+ops_backup_object_volume_bytes =
 ; Base URL of the admin UI, used only to tell a detached CLI where to watch its
 ; operation. Empty prints the operation id and the command that shows it, with no URL.
 admin_base_url =

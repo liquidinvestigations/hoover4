@@ -185,7 +185,7 @@ is the map back to the group above that explains it.
 - `internal_search_agent_port`
 - `full_research_agent_port`, `cassandra_version`, `elasticsearch_version`, `temporal_version`
 - `temporal_ui_version`, `temporal_history_shards`, `garage_version`, `garage_image_digest`
-- `garage_capacity`
+- `garage_capacity`, `ops_backup_object_volume_bytes`
 
 ### `[llm_provider.selfhosted]`
 

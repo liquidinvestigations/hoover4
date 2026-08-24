@@ -141,6 +141,11 @@ DEFAULTS = {
         # How much read bandwidth a ClickHouse backup may take. 0 is unthrottled, and is
         # right until a backup has to run beside ingestion on the same box.
         "ops_backup_bandwidth_bytes": "0",
+        # Bytes written to one object volume before the next one opens. Empty uses the
+        # code's own default (8 GiB, backup.py OBJECT_VOLUME_BYTES). Set only to prove
+        # the roll across several volumes on a corpus too small to reach 8 GiB. Must be
+        # empty or at least 1048576 (1 MiB). render_main_env refuses anything smaller.
+        "ops_backup_object_volume_bytes": "",
         # Base URL of the admin UI, used only to tell a detached CLI where to look.
         # Empty prints the operation id and the command that shows it, with no URL --
         # which is correct for a deployment whose address this file does not know.
@@ -424,6 +429,37 @@ def worker_graceful_shutdown_seconds(cfg):
     return value
 
 
+#: The smallest object-volume threshold this file accepts. `0`, the convention
+#: `ops_backup_bandwidth_bytes` uses four lines above for "unthrottled", means the
+#: opposite here. The roll test `writer.bytes_written >= OBJECT_VOLUME_BYTES` is then true
+#: for every object. The export then writes one volume, one manifest entry and one sha256
+#: per blob. A negative value does the same.
+OBJECT_VOLUME_BYTES_MIN = 1024 * 1024
+
+
+def backup_object_volume_bytes(cfg):
+    """The object-volume roll threshold from the ini, validated. `""` means the code's
+    own default. Checked here, at render time, rather than left to `backup.py`'s read at
+    import. That import runs inside `run_operations_worker`. A bad value there aborts the
+    worker before any activity registers. `hoover4-ops` carries
+    `restart: unless-stopped`, so a typo in this one tuning key becomes a restart loop
+    whose traceback names `backup.py` rather than the key an operator edited.
+    """
+    raw = cfg.get("main_services", "ops_backup_object_volume_bytes")
+    if not raw:
+        return ""
+    try:
+        value = int(raw)
+    except ValueError:
+        fail("[main_services] ops_backup_object_volume_bytes is not a whole number of "
+             "bytes: %r. Leave it empty for the code's own default." % raw)
+    if value < OBJECT_VOLUME_BYTES_MIN:
+        fail("[main_services] ops_backup_object_volume_bytes is %r, below the minimum "
+             "of %d bytes (1 MiB). Leave it empty for the code's own default." %
+             (raw, OBJECT_VOLUME_BYTES_MIN))
+    return str(value)
+
+
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini; no port
     literal appears here except the website's 12345 (which is not rendered at all. It
@@ -628,6 +664,14 @@ def render_main_env(cfg):
     # container comes up on a box where no backup directory has been created yet.
     env["HOOVER4_OPS_BACKUP_DIR"] = cfg.get(m, "ops_backup_dir") or "ops_backups"
     env["HOOVER4_BACKUP_BANDWIDTH_BYTES"] = cfg.get(m, "ops_backup_bandwidth_bytes")
+    # Validated by backup_object_volume_bytes, which refuses a bad value here rather than
+    # at import inside the worker. Written only when non-empty, but that is not what makes
+    # an empty value reach backup.py as empty. `docker-compose.yaml` defines the variable
+    # in the container either way, as `""` when `.env` leaves it unset. The `or` inside
+    # backup.py is what turns that empty string into the 8 GiB default.
+    volume_bytes = backup_object_volume_bytes(cfg)
+    if volume_bytes:
+        env["HOOVER4_BACKUP_OBJECT_VOLUME_BYTES"] = volume_bytes
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
