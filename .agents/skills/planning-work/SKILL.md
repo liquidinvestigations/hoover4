@@ -136,6 +136,11 @@ asked**, which is whether the ten items were the same shape.
 - **Write the questions out where you raise them.** Never name a count and leave the content
   elsewhere.
 - **Record what was asked and what came back**, so the next round does not re-ask it.
+- **An answer that creates a new decision goes into the round that is still open.** A choice
+  the answer did not name, such as a rename's target word, is the next question rather than a
+  judgement call.
+- **The round is empty when the next document holds no value a person could have chosen.**
+  Read the draft before you say so.
 - **Stop when the frontier is empty**, and say so.
 
 **A scope change re-opens the round.** An item added to the plan, an item dropped, or an item

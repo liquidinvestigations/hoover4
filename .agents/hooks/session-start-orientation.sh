@@ -35,6 +35,13 @@ Standing invariants for this repo. The full versions are skills, so load them by
   of phrase. AGENTS.md carries the full rule and the legal vocabulary.
 - Verify before claiming. If the check did not run this turn, the claim is not
   available to you. Say whether you fixed a cause or applied a workaround.
+- Anything you need from a person is asked, in full, where you say you need it.
+  Never name a count and leave the content somewhere else. This applies hardest at
+  the end of a long reply, where a summary compresses the questions away.
+- An assumption written into a deliverable is a question that was not asked. Before
+  you close a round, read what you are about to write and ask about every value you
+  chose that a person could have chosen. Ask with the asking tool, and never in the
+  closing prose of a reply.
 - A tracked file carries no private infrastructure detail: no hostname, no address,
   no port identifying a real host, no credential, and no auth boundary. Those live
   only in the gitignored INFRASTRUCTURE_INVENTORY.md at the repo root.

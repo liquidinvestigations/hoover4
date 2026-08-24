@@ -110,6 +110,14 @@ edit that adds one.
   written has not been made. The reader now knows they owe an answer, and does not know what
   it is. Either write the questions out, or link to the exact section that holds them. This
   applies hardest at the end of a long reply, where a summary tends to compress them away.
+- **An assumption written into a deliverable is a question that was not asked.** A person's
+  answer often creates the next decision, and that decision belongs in the round that is
+  still open. Naming the assumption in a report does not settle it, because the report is
+  read after the work it governs was written. Before you close a round, read what you are
+  about to write and ask about every value you chose that a person could have chosen. Say
+  the frontier is empty only after that read. Ask with the asking tool, and never in the
+  closing prose of a reply. A question at the end of a message defers its answer by a whole
+  turn, and by then the work it governs is written.
 - **A fact about the environment is checked before it is written into a mechanism.**
   Repository visibility, a host's owner, a path's tracked status, and a remote's name are all
   one command away. A default stated in someone's documentation is what a system assumes, and
