@@ -138,5 +138,66 @@ else
 fi
 rm -rf "$tagdir"
 
+# 8. The hook's PHRASES and the checker's _PHRASES stay the same list. A term added to one
+#    and not the other produces a hook that refuses text the checker accepts. Proved both
+#    ways: the real files match, and a deliberately mismatched copy does not.
+parity_check() {
+    python3 - "$1" "$2" <<'PY'
+import importlib.util, sys
+
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+hook = load(sys.argv[1], "hook_probe")
+checker = load(sys.argv[2], "checker_probe")
+sys.exit(0 if hook.PHRASES == checker._PHRASES else 1)
+PY
+}
+if parity_check "$REPO_ROOT/.agents/hooks/deny-claudisms.py" "$REPO_ROOT/.agents/check-prose-style.py"; then
+    ok "hook PHRASES and checker _PHRASES are the same list"
+else
+    no "hook PHRASES and checker _PHRASES differ"
+fi
+
+pdir=$(mktemp -d)
+cp "$REPO_ROOT/.agents/hooks/deny-claudisms.py" "$pdir/hook_bad.py"
+cp "$REPO_ROOT/.agents/check-prose-style.py" "$pdir/checker_bad.py"
+printf '\nPHRASES.append(r"zzz_mismatch_probe_only")\n' >> "$pdir/hook_bad.py"
+if parity_check "$pdir/hook_bad.py" "$pdir/checker_bad.py"; then
+    no "parity check does not fail on a deliberately mismatched copy"
+else
+    ok "parity check fails on a deliberately mismatched copy"
+fi
+rm -rf "$pdir"
+
+# 9. Identifier-safe matching (`Q4`). `_` is a word character, so `\b` finds no boundary
+#    between a banned word and an underscore. `easy` is another pass's word to arm, so its
+#    five spellings are pinned against the same `\bword\b` construction the hook uses rather
+#    than through the hook itself. `underscore` (verb only) and `novel` (adjective only) are
+#    this pass's own narrowed patterns, and are pinned through the real hook.
+idtest=$(python3 - <<'PY'
+import re
+easy = re.compile(r"\beasy\b", re.I)
+safe = ["easy_ocr", "easyocr_server", "EasyOCR", "EASY_OCR",
+        "ai_services/easyocr_server/easyocr_server.py"]
+print("ok" if all(not easy.search(s) for s in safe) and easy.search("the easy path")
+      else "fail")
+PY
+)
+u1=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "the easy_ocr container")
+u2=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "underscores the point")
+u3=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "an underscore in the name")
+u4=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "a novel approach to parsing")
+u5=$(python3 "$REPO_ROOT/.agents/hooks/deny-claudisms.py" --test "read the novel.")
+if [ "$idtest" = "ok" ] && [ "$u1" = "allow" ] && [[ "$u2" == DENY* ]] \
+   && [ "$u3" = "allow" ] && [[ "$u4" == DENY* ]] && [ "$u5" = "allow" ]; then
+    ok "identifier-safe matching: easy_ocr family, underscore verb-only, novel adjective-only"
+else
+    no "identifier-safe matching failed: easy=$idtest u1=$u1 u2=$u2 u3=$u3 u4=$u4 u5=$u5"
+fi
+
 echo "---- $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ]

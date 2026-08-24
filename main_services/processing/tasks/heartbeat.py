@@ -213,7 +213,7 @@ def heartbeat_pump(*details, interval_seconds: float = HEARTBEAT_INTERVAL_SECOND
         yield
         return
 
-    # THE GOTCHA: activity.heartbeat() resolves a contextvars.ContextVar
+    # THE TRAP: activity.heartbeat() resolves a contextvars.ContextVar
     # (temporalio/activity.py, _Context.current().heartbeat). A plain
     # threading.Thread starts with an EMPTY context, so calling it from the pump
     # raises "not in activity context". Copy the context here, in the activity's

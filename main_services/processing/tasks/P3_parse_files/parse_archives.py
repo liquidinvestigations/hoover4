@@ -38,7 +38,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     # timeout: belt-and-braces so a wedged extractor fails instead of hanging.
     # KEEP THIS TIMEOUT. The heartbeat pump below proves the pump THREAD is
     # alive, which is not the same as proving 7z is making progress -- on a
-    # corrupt archive the pump would heartbeat happily forever. Removing a
+    # corrupt archive the pump would keep heartbeating forever. Removing a
     # subprocess timeout because "we heartbeat now" is the one way this change
     # makes reliability worse.
     try:

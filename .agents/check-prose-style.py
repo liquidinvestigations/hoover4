@@ -30,6 +30,7 @@ Usage:
     .agents/check-prose-style.py --errors-only   # hide the heuristic warnings
     .agents/check-prose-style.py --no-strings    # comments and markdown only
     .agents/check-prose-style.py --copy-only     # only the string-literal findings
+    .agents/check-prose-style.py --terms         # only the soft, warning-tier terms
 
 Only an error sets the exit status. A copy finding is reported and does not gate, because
 rewriting what the product says is a change a person has to read in place.
@@ -123,8 +124,71 @@ _PHRASES = [
     r"are ?n[o']t just\b",
     r"it'?s not (?:a |an |the )?\w+, it'?s\b",
     r"this is not (?:a |an |the )?\w+, it is\b",
+    # five pre-emptive classes, absent or near-absent in the tree today (`Q6`)
+    r"\bunfortunately\b", r"\bfortunately\b", r"\bluckily\b", r"\bthankfully\b",
+    r"\bsadly\b", r"\bhappily\b", r"\btragically\b", r"\bhopefully\b",
+    r"\bpainful\b", r"\bpainless\b", r"\bbeautiful\b", r"\belegant\b",
+    r"\blovely\b", r"\bawesome\b", r"\bnice\b", r"\bneat\b", r"\bslick\b",
+    r"\bannoying\b", r"\bfrustrating\b", r"\btedious\b", r"\bbrutal\b",
+    r"\bsavage\b", r"\bafraid\b", r"\bworried\b", r"\bscary\b", r"\bterrifying\b",
+    r"\bseamless\b", r"\bpowerful\b", r"best practices?\b",
+    r"state[- ]of[- ]the[- ]art", r"cutting[- ]edge", r"world[- ]class",
+    r"best[- ]in[- ]class", r"industry[- ]leading", r"\bunprecedented\b",
+    r"\bgroundbreaking\b", r"\brevolutionary\b", r"game[- ]changers?\b",
+    r"paradigm shifts?\b", r"\brobust\b", r"\bcomprehensive\b",
+    r"\bdelve\b", r"\bintricate\b", r"\bmeticulous\b", r"\bpivotal\b",
+    r"\brealm\b", r"\blandscape\b", r"\bshowcase\b", r"\bleverage\b",
+    r"\butilize\b", r"\bfoster\b", r"\bstreamline\b", r"\bempower\b",
+    r"\btestament\b", r"\btapestry\b", r"\bembark\b", r"\bjourney\b",
+    r"deep dive", r"dive into",
+    r"\bbasically\b", r"\bessentially\b", r"\barguably\b", r"\binterestingly\b",
+    r"\bstuff\b", r"\bgotcha\b", r"tons of\b", r"bunch of\b", r"loads of\b",
+    r"\bnuke\b", r"blow away", r"at the end of the day", r"let(?:'|’)s\b",
+    r"\bcrazy\b", r"\binsane\b", r"\bmad\b", r"\blunatic\b", r"\bbonkers\b",
+    r"\bloony\b",
+    # narrower than the plain word: `underscore` bans the verb only, so `underscores`
+    # and `underscored` match and `an underscore` naming the `_` character does not.
+    # `novel` bans the adjective only, so it does not catch the noun for a book.
+    r"\bunderscore(?:s|d)\b",
+    r"\bnovel\b(?!\s*[.,;:!?]|\s+(?:by|about|titled|called|is|was))",
 ]
 PHRASE_RE = [(p, re.compile(p, re.I)) for p in _PHRASES]
+
+# The third tier (`Q3`, `Q5`, `Q7`, `Q14`): hedges and vague quantifiers that carry a
+# legitimate sense too often to refuse. Reported at `warning` level, never at `error`, and
+# never added to the hook, which only ever refuses. `--terms` reports this list alone.
+SOFT_PHRASES = [
+    r"\bjust\b",
+    r"\bseveral\b",
+    r"\broughly\b",
+    r"\bhuge\b",
+    r"\btiny\b",
+    r"\benormous\b",
+    r"\bsignificant\b",
+    r"\bsignificantly\b",
+    r"\betc\b\.?",
+    r"\bprobably\b",
+    r"\bmight\b",
+    r"should work\b",
+    r"\bwants?\b",
+    r"\bknows?\b",
+]
+SOFT_PHRASE_RE = [(p, re.compile(p, re.I)) for p in SOFT_PHRASES]
+
+# The reason text `--terms` filters on, so a soft-phrase warning is told apart from a
+# structural one without a second level.
+SOFT_WHY = "soft register term, see AGENTS.md \"How to write\""
+
+
+def soft_phrase_warnings(rel, lineno, text):
+    """The third tier, one warning per term found on the line."""
+    out = []
+    for _pat, rx in SOFT_PHRASE_RE:
+        m = rx.search(text)
+        if m:
+            out.append((rel, lineno, "warning", m.group(0).strip(), SOFT_WHY))
+    return out
+
 
 # `full stop` is only a Claudism when it closes a sentence on its own. Naming the
 # punctuation mark ("use a comma, a full stop, or brackets") is the correct usage.
@@ -372,6 +436,8 @@ def check_markdown(path, rel, exempt, want_warnings):
     out, prose = [], []
     for lineno, text, is_row in strip_markdown_noise(lines):
         out.extend(phrase_errors(rel, lineno, text, exempt))
+        if want_warnings:
+            out.extend(soft_phrase_warnings(rel, lineno, text))
         if not is_row:
             prose.append((lineno, text))
     if want_warnings:
@@ -536,6 +602,33 @@ def shell_strings(lines):
                 yield i, body, line[:m.start()], body
 
 
+# `COMMENT '...'` on a column or table is written into the ClickHouse schema itself, so
+# anyone reading the table sees it. It is single-line in every migration this scans; SQL
+# escapes an embedded quote by doubling it, and that doubling is undone in the body returned.
+SQL_COMMENT_RE = re.compile(r"COMMENT\s+'", re.I)
+
+
+def sql_comment_strings(lines):
+    """(lineno, body, context, raw) for the text inside every SQL `COMMENT '...'` clause."""
+    for i, line in enumerate(lines, 1):
+        pos, n = 0, len(line)
+        while True:
+            m = SQL_COMMENT_RE.search(line, pos)
+            if not m:
+                break
+            j = m.end()
+            while j < n:
+                if line[j] == "'" and j + 1 < n and line[j + 1] == "'":
+                    j += 2
+                    continue
+                if line[j] == "'":
+                    break
+                j += 1
+            body = line[m.end():j].replace("''", "'")
+            yield i, body, line[:m.start()], body
+            pos = j + 1
+
+
 def copy_findings(path, rel, ext, lines):
     """Banned phrases and em dashes inside string literals, as `copy` findings."""
     if rel in RULE_DOCS or is_test_path(rel):
@@ -546,6 +639,8 @@ def copy_findings(path, rel, ext, lines):
                  else braced_strings(source, ext))
     elif ext in (".sh", ".bash"):
         items = shell_strings(lines)
+    elif ext == ".sql":
+        items = sql_comment_strings(lines)
     else:
         return []
     out = []
@@ -566,6 +661,8 @@ def check_source(path, rel, exempt, want_warnings, want_copy=True):
     out = []
     for lineno, text in items:
         out.extend(phrase_errors(rel, lineno, text, exempt))
+        if want_warnings:
+            out.extend(soft_phrase_warnings(rel, lineno, text))
     if want_warnings:
         out.extend(structural_warnings(rel, paragraphs_from(items)))
     if want_copy:
@@ -622,8 +719,11 @@ def main():
     want_warnings = "--errors-only" not in sys.argv
     want_copy = "--no-strings" not in sys.argv
     copy_only = "--copy-only" in sys.argv
+    terms_only = "--terms" in sys.argv
     if copy_only:
         want_copy, want_warnings = True, False
+    if terms_only:
+        want_warnings = True
     try:
         repo = subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"], text=True).strip()
@@ -650,6 +750,12 @@ def main():
     findings = sorted(errors + warnings + copy)
     if copy_only:
         findings = copy
+    if terms_only:
+        findings = sorted(f for f in warnings if f[4] == SOFT_WHY)
+        for rel, lineno, level, what, why in findings:
+            print(f"{rel}:{lineno}: {level}: {what}: {why}")
+        print(f"\n{len(findings)} soft-register finding(s).")
+        return 0
 
     if stats:
         files = len({f[0] for f in errors})

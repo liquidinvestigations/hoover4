@@ -1,4 +1,4 @@
-"""Robust image decoding for OCR: OpenCV first, Pillow fallback.
+"""Image decoding for OCR: OpenCV first, Pillow fallback.
 
 A third decoder is not wired up. Observed in testdata_testfiles, decodable by
 neither OpenCV nor Pillow and therefore skipped:

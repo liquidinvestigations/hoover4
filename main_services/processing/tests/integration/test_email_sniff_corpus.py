@@ -3,9 +3,8 @@
 The sniff is the one detector in the fan-out with no ground truth in the bytes it reads:
 it decides from a heuristic, so the only thing that can hold it honest is a measurement
 over real corpora. This is that measurement, kept as a test rather than as a script,
-because the failure it guards against is a future "let us make it more robust" edit that
-quietly turns a strict sniff into an eager one and reclassifies a corpus of plain text as
-mail.
+because the failure it guards against is a future edit that widens the match, quietly turns
+a strict sniff into an eager one, and reclassifies a corpus of plain text as mail.
 
 Both corpora are gitignored and are bind-mounted into the worker at `/testdata`. The test
 skips when they are absent, so a checkout that has not fetched them still has a green

@@ -54,7 +54,7 @@ async def call_tool(session: ClientSession, tool_name: str, arguments: Dict[str,
 
 
 async def run_automated_tests(session: ClientSession) -> None:
-    """Run a comprehensive set of automated tests."""
+    """Run every automated test."""
     print("\n" + "="*60)
     print("RUNNING AUTOMATED TESTS")
     print("="*60)

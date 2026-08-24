@@ -90,6 +90,33 @@ PHRASES = [
     r"are ?n[o']t just\b",
     r"it'?s not (?:a |an |the )?\w+, it'?s\b",
     r"this is not (?:a |an |the )?\w+, it is\b",
+    # five pre-emptive classes, absent or near-absent in the tree today (`Q6`)
+    r"\bunfortunately\b", r"\bfortunately\b", r"\bluckily\b", r"\bthankfully\b",
+    r"\bsadly\b", r"\bhappily\b", r"\btragically\b", r"\bhopefully\b",
+    r"\bpainful\b", r"\bpainless\b", r"\bbeautiful\b", r"\belegant\b",
+    r"\blovely\b", r"\bawesome\b", r"\bnice\b", r"\bneat\b", r"\bslick\b",
+    r"\bannoying\b", r"\bfrustrating\b", r"\btedious\b", r"\bbrutal\b",
+    r"\bsavage\b", r"\bafraid\b", r"\bworried\b", r"\bscary\b", r"\bterrifying\b",
+    r"\bseamless\b", r"\bpowerful\b", r"best practices?\b",
+    r"state[- ]of[- ]the[- ]art", r"cutting[- ]edge", r"world[- ]class",
+    r"best[- ]in[- ]class", r"industry[- ]leading", r"\bunprecedented\b",
+    r"\bgroundbreaking\b", r"\brevolutionary\b", r"game[- ]changers?\b",
+    r"paradigm shifts?\b", r"\brobust\b", r"\bcomprehensive\b",
+    r"\bdelve\b", r"\bintricate\b", r"\bmeticulous\b", r"\bpivotal\b",
+    r"\brealm\b", r"\blandscape\b", r"\bshowcase\b", r"\bleverage\b",
+    r"\butilize\b", r"\bfoster\b", r"\bstreamline\b", r"\bempower\b",
+    r"\btestament\b", r"\btapestry\b", r"\bembark\b", r"\bjourney\b",
+    r"deep dive", r"dive into",
+    r"\bbasically\b", r"\bessentially\b", r"\barguably\b", r"\binterestingly\b",
+    r"\bstuff\b", r"\bgotcha\b", r"tons of\b", r"bunch of\b", r"loads of\b",
+    r"\bnuke\b", r"blow away", r"at the end of the day", r"let(?:'|’)s\b",
+    r"\bcrazy\b", r"\binsane\b", r"\bmad\b", r"\blunatic\b", r"\bbonkers\b",
+    r"\bloony\b",
+    # narrower than the plain word: `underscore` bans the verb only, so `underscores`
+    # and `underscored` match and `an underscore` naming the `_` character does not.
+    # `novel` bans the adjective only, so it does not catch the noun for a book.
+    r"\bunderscore(?:s|d)\b",
+    r"\bnovel\b(?!\s*[.,;:!?]|\s+(?:by|about|titled|called|is|was))",
 ]
 COMPILED = [re.compile(p, re.I) for p in PHRASES]
 

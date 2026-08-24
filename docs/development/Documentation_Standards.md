@@ -26,7 +26,7 @@ approved word per meaning, keeps an instruction to 20 words and a description to
 instruction in a sentence, uses the active voice and simple tenses, and admits no figures of
 speech. ISO 24495-1 asks that a reader can find what they need, understand it, and act on it.
 
-Nine rules follow from those two standards. `AGENTS.md` carries the same list, because an
+Ten rules follow from those two standards. `AGENTS.md` carries the same list, because an
 agent reads it at every session start.
 
 - **State the claim.** If a sentence is arranged so its last few words land, rewrite it.
@@ -34,6 +34,18 @@ agent reads it at every session start.
   blast radius, surface area, guardrail, tripwire, footgun, escape hatch, north star, moving
   parts, plumbing, glue code, happy path, sharp edge, quality gate, long pole, table stakes,
   paper cut and Chesterton's fence. Say what depends on what, and what breaks without it.
+- **No borrowed feeling, and no borrowed enthusiasm.** A machine has no feelings. The banned
+  words also include unfortunately, fortunately, luckily, thankfully, sadly, happily,
+  tragically, hopefully, painful, painless, beautiful, elegant, lovely, awesome, nice, neat,
+  slick, annoying, frustrating, tedious, brutal, savage, afraid, worried, scary, terrifying,
+  crazy, insane, mad, lunatic, bonkers and loony; seamless, powerful, best practice, state of
+  the art, cutting edge, world-class, best-in-class, industry-leading, unprecedented,
+  groundbreaking, revolutionary, game-changer, paradigm shift, robust and comprehensive;
+  delve, intricate, meticulous, pivotal, realm, landscape, showcase, leverage, utilize,
+  foster, streamline, empower, testament, tapestry, embark, journey, deep dive and dive into;
+  and basically, essentially, arguably, interestingly, stuff, gotcha, tons of, bunch of, loads
+  of, nuke, blow away, at the end of the day and let's. `underscore` bans the verb only, and
+  `novel` bans the adjective only, so the character and the book stay legal.
 - **No antithesis used for emphasis.** If a false reading matters, correct it in its own
   sentence.
 - **No emphasis particles and no preambles.** Delete "full stop", "worth noting", "to be

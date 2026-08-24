@@ -456,7 +456,7 @@ fn compose_collection_dataset(collectionname: &str, dataset_name: &str) -> Strin
 }
 
 /// The pipeline's dataset-name rule, duplicated here so the form can refuse before the
-/// CLI-side check does. Lowercase alphanumerics and underscores.
+/// CLI-side check does. Lowercase alphanumerics and the underscore character.
 fn is_valid_dataset_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64

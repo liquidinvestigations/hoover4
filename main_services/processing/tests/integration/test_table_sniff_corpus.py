@@ -2,8 +2,8 @@
 
 The sniff decides from a heuristic, so the only thing that can hold it honest is a
 measurement over real corpora, kept as a test rather than as a script. The failure it
-guards against is a future "let us make it more robust" edit that turns a strict sniff
-into an eager one.
+guards against is a future edit that widens the match and turns a strict sniff into an
+eager one.
 
 The consequence of that edit is specific and expensive. An RFC 822 message is hundreds of
 consistent `Name: value` lines, which any sniff that accepts `:` as a delimiter reads as a

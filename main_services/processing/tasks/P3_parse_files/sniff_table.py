@@ -22,8 +22,8 @@ Measured over the corpora on this box with the rules below:
 * `hoover-testdata/data` minus the known table fixtures -- 0 accepted.
 
 `tests/integration/test_table_sniff_corpus.py` reruns exactly that and fails if either
-number moves, which is what stops a future "more robust" rewrite from becoming an eager
-one.
+number moves, which is what stops a future rewrite that widens the match from becoming an
+eager one.
 
 The rules, and what each one is for
 -----------------------------------

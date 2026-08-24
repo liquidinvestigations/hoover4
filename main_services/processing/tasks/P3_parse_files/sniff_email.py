@@ -17,8 +17,8 @@ Measured over the two corpora on this box:
   `no-extension/file_eml` fixtures. Zero false positives.
 
 `tests/integration/test_email_sniff_corpus.py` reruns exactly that and fails if either
-number moves, which is what stops a future "more robust" rewrite from becoming an eager
-one. Three real files forced the corrections a naive port does not have, and each is
+number moves, which is what stops a future rewrite that widens the match from becoming an
+eager one. Three real files forced the corrections a naive port does not have, and each is
 named on the constant it justifies.
 """
 

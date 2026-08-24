@@ -1,4 +1,4 @@
-"""Tests for tasks.heartbeat: the pump's contextvars gotcha and the loop clock.
+"""Tests for tasks.heartbeat: the pump's contextvars trap and the loop clock.
 
 The pump exists because class C activities block in a subprocess and cannot
 heartbeat themselves. Its one non-obvious failure mode -- a plain
