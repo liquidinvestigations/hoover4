@@ -42,7 +42,7 @@ compile.
 
 `replace_in_files` takes a pattern and a replacement across a scoped set of paths and reports
 what it touched. Prefer it over a loop of `sed -i` for exactly that reason: the report is the
-evidence that the change landed where you thought.
+evidence that the change landed where you expected.
 
 Scope it. An unscoped run over the repository walks build output.
 

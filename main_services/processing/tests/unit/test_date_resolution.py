@@ -15,7 +15,7 @@ from tasks.P3_parse_files.document_dates import (
     EMAIL_DATE_SOURCE,
     EXCLUDED_TIKA_DATE_KEYS,
     TIKA_DATE_KEYS,
-    in_sanity_window,
+    in_plausibility_window,
     parse_metadata_datetime,
     resolve_dates,
 )
@@ -66,13 +66,13 @@ def test_garbage_is_dropped_not_raised(raw):
     assert parse_metadata_datetime(raw) is None
 
 
-# --- the sanity window -------------------------------------------------------------
+# --- the plausibility window --------------------------------------------------------
 
-def test_sanity_window_bounds():
-    assert in_sanity_window(datetime(1800, 1, 1, tzinfo=UTC), NOW)
-    assert not in_sanity_window(datetime(1799, 12, 31, tzinfo=UTC), NOW)
-    assert in_sanity_window(NOW + timedelta(days=364), NOW)
-    assert not in_sanity_window(NOW + timedelta(days=366), NOW)
+def test_plausibility_window_bounds():
+    assert in_plausibility_window(datetime(1800, 1, 1, tzinfo=UTC), NOW)
+    assert not in_plausibility_window(datetime(1799, 12, 31, tzinfo=UTC), NOW)
+    assert in_plausibility_window(NOW + timedelta(days=364), NOW)
+    assert not in_plausibility_window(NOW + timedelta(days=366), NOW)
 
 
 def test_out_of_window_dates_are_dropped_never_clamped():

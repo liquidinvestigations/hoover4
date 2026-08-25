@@ -884,7 +884,7 @@ fn FileSizePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
     let current = use_memo(move || {
         pending.read().range_filters.get("file_size_bytes").cloned().unwrap_or_default()
     });
-    // The custom inputs are in MB because that is the unit a person thinks in; bytes go
+    // The custom inputs are in MB because that is the unit a person works in; bytes go
     // on the wire.
     let mut min_mb = use_signal(String::new);
     let mut max_mb = use_signal(String::new);

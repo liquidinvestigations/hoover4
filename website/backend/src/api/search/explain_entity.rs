@@ -30,7 +30,7 @@ const CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 /// Cards held in memory. Small and bounded: the cache is cleared wholesale when it grows
 /// past this, rather than evicted one entry at a time, because a card is cheap to refetch
-/// and an LRU here would be more machinery than the problem deserves.
+/// and an LRU here would be more machinery than the problem needs.
 const CACHE_CAPACITY: usize = 4096;
 
 /// The scanner is a sidecar on the same network. A card that takes longer than this is

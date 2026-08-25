@@ -4,7 +4,7 @@
 If `chat_artifacts` simply expired its rows, the bytes would stay in the bucket with
 nothing left pointing at them and no way to find them again except a full prefix walk.
 
-So the order is fixed and is the opposite of what feels natural:
+So the order is fixed and is the opposite of the intuitive order:
 
 1. find rows that are soft-deleted (the chat was deleted) or older than the TTL;
 2. delete their objects;

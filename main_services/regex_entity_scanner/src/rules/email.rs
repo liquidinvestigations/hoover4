@@ -13,7 +13,7 @@ pub struct EmailRule;
 /// Local part characters we accept unquoted, then a domain of dot-separated LDH labels.
 const PATTERN: &str = r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)+";
 
-/// RFC 5321 §4.5.3.1 limits, which double as sanity limits against runaway matches.
+/// RFC 5321 §4.5.3.1 limits, which double as length limits against runaway matches.
 const MAX_LOCAL: usize = 64;
 const MAX_DOMAIN: usize = 255;
 

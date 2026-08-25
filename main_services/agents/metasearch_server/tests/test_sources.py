@@ -167,7 +167,7 @@ class TestWikipediaSnippets:
         assert sources_mod._strip_tags(raw) == "The Danube is a river & a border"
 
     def test_stripping_is_safe_on_unbalanced_markup(self):
-        """A stray `<` swallows up to the next `>` and nothing more. Not clever, but it
+        """A stray `<` swallows up to the next `>` and nothing more. A blunt fix, but it
         cannot raise and cannot leak markup, which is all a snippet needs."""
         assert sources_mod._strip_tags("a < b > c") == "a c"
         assert sources_mod._strip_tags("unterminated <span") == "unterminated"

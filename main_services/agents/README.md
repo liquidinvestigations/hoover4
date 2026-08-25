@@ -298,7 +298,7 @@ it for anything new. Its build context is the agents directory all the same, bec
 `ddg_search_server/` and `wikipedia_search_server/` are **gone**, not disabled. Their
 sources live in `metasearch_server` as `ddg_api`, `ddg_news` and `wikipedia`; the
 directories sat unbuilt and unreferenced for two phases, which is long enough for someone
-to read one and believe it describes something that runs.
+to read one and conclude it describes something that runs.
 
 ## Running and testing
 

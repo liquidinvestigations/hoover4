@@ -132,7 +132,7 @@ UNREAD_ZONE = (
 WEEKDAY_MISMATCH = (
     "a date-time whose day of the week contradicts its calendar date. The date.rfc2822 card checks "
     "the two against each other by name, because a mangled or fabricated header rarely agrees with "
-    "itself, and the rule reports nothing rather than choosing which half to believe"
+    "itself, and the rule reports nothing rather than choosing which half to trust"
 )
 
 

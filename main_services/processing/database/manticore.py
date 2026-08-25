@@ -288,7 +288,7 @@ def pages_table_ddl(table_name: str) -> str:
       ``INTERVAL()``; pre-baking them would make adding a bucket a schema change.
       :data:`SIZE_UNKNOWN` when the document has no ``vfs_files`` row.
     * ``struct_flags`` bigint, a bitfield (see ``STRUCT_FLAG_*``) for the cheap
-      booleans that do not each deserve a column.
+      booleans that do not each need a column.
     * ``primary_filename`` string, a string ATTRIBUTE, not a text field: Manticore can
       ORDER BY the former and not the latter, and this is the result-card title and the
       "sort by name" key. Filename MATCHING goes through the ``filename_index`` row

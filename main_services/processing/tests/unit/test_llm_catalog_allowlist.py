@@ -139,7 +139,7 @@ def test_an_unknown_window_stays_zero_rather_than_being_guessed(fake):
     """0 is the representation of "the provider did not say".
 
     Every reader must render that as unknown. A plausible default here is worse than an
-    absent number, because the compaction trigger downstream would believe it.
+    absent number, because the compaction trigger downstream would trust it.
     """
     client = fake([])
     store_models(

@@ -179,7 +179,7 @@ container's filesystem and a restart does not clear it, and pids are handed out 
 small range at boot. So "a process exists at this number" is never evidence that it is the
 sidecar, and the supervisor reads `/proc/<pid>/cmdline` before signalling anything. Killing
 on liveness alone SIGKILLs a stranger: it has killed *this server's own binary* seconds
-after start, after which `dx serve` believes the app is running, every route answers 500
+after start, after which `dx serve` treats the app as running, every route answers 500
 with nothing else in the log, and each restart reproduces it because the same pid is
 issued again.
 

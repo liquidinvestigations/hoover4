@@ -49,4 +49,4 @@ Report these plainly when you find them, because no check catches them:
 ## Your budget
 
 **58 tool calls**, with a warning at 80%. Reading is cheap and re-reading is not: open what you
-need to settle a finding, and do not re-read the tree to feel thorough.
+need to settle a finding, and do not re-read the tree for reassurance.

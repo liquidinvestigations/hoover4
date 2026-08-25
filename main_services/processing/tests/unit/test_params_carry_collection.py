@@ -96,7 +96,7 @@ def test_params_with_collection_dataset_carry_collectionname():
     )
 
 
-def test_sanity_some_params_dataclasses_found():
+def test_params_dataclasses_found():
     """The test above is vacuous if the walk finds nothing."""
     found = [
         cls

@@ -473,7 +473,7 @@ fn ProgressCell(row: OperationRow) -> Element {
 /// A `finished` operation over failed documents is the case this whole page exists for,
 /// so the failure count is rendered here beside the state rather than left in a detail
 /// view nobody opens. A count the operation never recorded reads as unknown, never as
-/// zero: an invented clean result is worse than an absent one, because it is believed.
+/// zero: an invented clean result is worse than an absent one, because it is trusted.
 #[component]
 fn OutcomeCell(row: OperationRow) -> Element {
     rsx! {

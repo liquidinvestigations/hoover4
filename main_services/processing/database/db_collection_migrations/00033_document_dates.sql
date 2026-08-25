@@ -7,7 +7,7 @@
 -- date_min/date_max from it, and the document viewer's Dates section renders these rows
 -- verbatim so a user can see WHY a date filter did or did not match.
 --
--- `date` is epoch SECONDS, signed: documents predating 1970 are real and the sanity
+-- `date` is epoch SECONDS, signed: documents predating 1970 are real and the plausibility
 -- window the resolver applies starts at 1800-01-01. Dates outside that window are
 -- dropped and logged by the resolver and never reach this table.
 --

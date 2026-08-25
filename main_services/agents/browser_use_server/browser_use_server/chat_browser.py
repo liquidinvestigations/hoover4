@@ -12,7 +12,8 @@ module needs for capture.
 
 So the isolation boundary sits one level lower: **one Chromium process per chat**, each
 with its own `--user-data-dir` and its own sidecar bound to it. That costs a few hundred
-MB per live chat, which is why `BROWSER_MAX_CONTEXTS` is 8 and the reaper is aggressive.
+MB per live chat, which is why `BROWSER_MAX_CONTEXTS` is 8 and the reaper closes idle
+contexts quickly.
 
 ## The three handles
 

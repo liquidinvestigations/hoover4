@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS table_documents
     row_count UInt64 COMMENT 'Rows across all sheets',
     column_count UInt32 COMMENT 'Widest column ordinal across all sheets',
     cell_count UInt64 COMMENT 'Cells stored, which is the non-empty count',
-    stored_bytes UInt64 COMMENT 'Sum of cell_text lengths, the honest size of the browsable data',
+    stored_bytes UInt64 COMMENT 'Sum of cell_text lengths, the true size of the browsable data',
     truncated UInt8 COMMENT '1 when any cap fired',
     truncated_limits Array(String) COMMENT 'Stable identifier of each cap that fired: cells_per_document | rows_per_sheet | columns_per_sheet | sheets | cell_bytes',
     truncated_maximums Array(UInt64) COMMENT 'The maximum that cap allows, parallel to truncated_limits, so the banner can name the ceiling',

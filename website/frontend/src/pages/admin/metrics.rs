@@ -191,7 +191,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
     // enough that it would sit on top of one of the ends. Whenever the two ends fall in
     // the same hour of two different days (the 25-bucket window does this) every tick
     // carries its date, because labelling one end differently from the other is what
-    // makes a reader think the axis is broken rather than long.
+    // makes a reader conclude the axis is broken rather than long.
     let ends_share_a_clock_time = match (series.first(), series.last()) {
         (Some(first), Some(last)) => {
             series.len() > 1 && hour_of_day(&first.bucket) == hour_of_day(&last.bucket)

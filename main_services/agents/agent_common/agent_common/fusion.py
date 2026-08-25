@@ -226,7 +226,7 @@ def per_kind_floor(
     2. **Fill.** Everything else in rank order, up to `max_per_kind` per kind and
        `max_results` overall, but never evicting a reserved slot.
 
-    `is_reservable` bounds pass 1 to results that deserve the guarantee. A floor promises
+    `is_reservable` bounds pass 1 to results that get the guarantee. A floor promises
     *representation*, and representation of nothing is padding: with no gate, a query whose
     reference source has one good answer and fourteen unrelated ones reserved slots for the
     unrelated ones too, and the model cannot tell a reserved slot from an earned one. A

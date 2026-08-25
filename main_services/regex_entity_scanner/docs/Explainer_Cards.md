@@ -64,7 +64,7 @@ does not cover, who defines it, where to read more.
 
 ## `not_checked` is not optional
 
-Every catalogue entry states what acceptance does not prove, and it deserves as much care as the
+Every catalogue entry states what acceptance does not prove, and it needs as much care as the
 list of checks. A validated address has never been delivered to. A correct check digit says a number
 is well-formed and nothing whatever about whether it was ever issued, or to whom. A country-code
 domain says where a domain is registered, not where its holder sits. A reader deciding how much
@@ -108,13 +108,13 @@ The full table, rule by rule, and what each `res:` extension exists for, is in
 ## The confidence note
 
 `confidence` is a number, and a number without a stated meaning is read as whatever the reader
-already believes. One static string in `src/explain/catalog.rs` says what it means, and it is the
+already assumes. One static string in `src/explain/catalog.rs` says what it means, and it is the
 same string everywhere: appended to the body of every card that carries a confidence, as its own
 block, and served once at the top level of `GET /rules` so a client can show it beside a threshold
 control.
 
 One string, one place, no per-rule variation. A single threshold across the whole rule set only
-works if the number means one thing across the whole rule set, and a reader can only believe that if
+works if the number means one thing across the whole rule set, and a reader can only trust that if
 the explanation beside it does not change from card to card either. What it says is that the number
 is about whether the text was read correctly, not whether the identifier was ever issued, whether
 the address receives mail, or whether the value is true.

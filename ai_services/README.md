@@ -158,10 +158,10 @@ That matches the published bf16 figure for this model on this hardware.
 
 ### Reasoning must be parsed out
 
-Qwen3.5 thinks by default, so `--reasoning-parser qwen3` is not optional here: without it
-vLLM leaves the `<think>…</think>` block inside `content` and every answer arrives with
-the model's working prepended, visible to the user, counted against the payload budget,
-and parsed by nothing. See
+Qwen3.5 runs with its thinking mode on by default, so `--reasoning-parser qwen3` is not
+optional here: without it vLLM leaves the `<think>…</think>` block inside `content` and
+every answer arrives with the model's working prepended, visible to the user, counted
+against the payload budget, and parsed by nothing. See
 [`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
 for the measured cost of thinking (~4x completion tokens).
 

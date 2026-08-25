@@ -26,7 +26,7 @@ pub const SIZE_UNKNOWN: i64 = -1;
 /// `i64` has no injection surface at all. A string range would have needed quoting
 /// rules, and quoting rules are where injection bugs live.
 ///
-/// `include_unknown` is a separate flag rather than a magic bound because "documents
+/// `include_unknown` is a separate flag rather than an implicit bound because "documents
 /// with no date" is a different question from "documents dated before X". The sentinel
 /// sorts below every real date, so a naive open-ended `max` would silently sweep every
 /// undated document into "before 1900".

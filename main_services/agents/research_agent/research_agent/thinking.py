@@ -12,7 +12,7 @@ Qwen3.5's chat template decides thinking in the *prompt*, not in the sampler:
 
 So the default, with `enable_thinking` unset, gives **no thinking at all** rather than a
 small thinking budget: the block is closed before the model emits its first token.
-Measured on this host with Qwen3.5-2B, "what is 17*23, think it through":
+Measured on this host with Qwen3.5-2B, "what is 17*23, reason it out":
 
     thinking off (default)   441 completion tokens
     thinking on            1,735 completion tokens, closes </think> after ~1,300
@@ -48,8 +48,9 @@ Three modes:
 * `budgeted`-- reasoning on, capped at `AGENT_THINKING_BUDGET_TOKENS`.
 
 Tool-calling turns always run with thinking off regardless of mode. A tool call is a
-routing decision, not a reasoning problem, and Qwen3.5-2B already over-thinks its way
-into repeated calls (see `agent.py`'s `_repeated_call` guard). The budget applies to
+routing decision, not a reasoning problem, and Qwen3.5-2B already reasons past the point
+of usefulness into repeated calls (see `agent.py`'s `_repeated_call` guard). The budget
+applies to
 the turn that writes prose, which is where thinking changes the answer.
 """
 

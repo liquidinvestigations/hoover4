@@ -28,7 +28,7 @@ def test_a_genuine_1970_email_produces_a_date_row():
     assert result == [(EPOCH, EMAIL_DATE_SOURCE)]
 
 
-def test_a_genuine_1970_email_is_inside_the_sanity_window():
+def test_a_genuine_1970_email_is_inside_the_plausibility_window():
     result = resolve_dates(None, email_date_sent=datetime(1970, 1, 1, 0, 0, 1), now=NOW)
     assert len(result) == 1
 

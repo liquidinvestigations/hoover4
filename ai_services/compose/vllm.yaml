@@ -18,9 +18,9 @@ services:
   # there is more than one conversation, so the floor is well above one.
   #
   # The reasoning parser is what moves a thinking block out of `content` and into
-  # `reasoning_content`. Qwen3.5 thinks by default, so without it every answer arrives
-  # with the model's working prepended to it, visible to the user, counted against the
-  # payload budget, and parsed by nothing.
+  # `reasoning_content`. Qwen3.5 runs with its thinking mode on by default, so without it
+  # every answer arrives with the model's working prepended to it, visible to the user,
+  # counted against the payload budget, and parsed by nothing.
   #
   # vLLM 0.17 is the first release with native Qwen3.5 (qwen3_5) support.
   #

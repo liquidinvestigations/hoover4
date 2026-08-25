@@ -424,7 +424,7 @@ mod tests {
         // A path that is not a known function collapses to a constant bucket;
         // the URL never leaks into a function name.
         assert_eq!(
-            api_function_name("/api/evil?query=secret"),
+            api_function_name("/api/unknown?query=secret"),
             Some("other_server_fn")
         );
         // A known name followed by non-digits is not the function.

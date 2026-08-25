@@ -10,7 +10,7 @@ Three things are decided here and nowhere else:
 * **which scanner types become facets**, and under which Manticore column and term field;
 * **the money magnitude ladder**, because thousands of distinct amounts are not a facet
   and ten buckets per currency are;
-* **the day snap and the sanity window** for mentioned dates, because a term per second
+* **the day snap and the plausibility window** for mentioned dates, because a term per second
   is unbounded and a term per day is bounded by the corpus's span.
 """
 
@@ -31,8 +31,8 @@ DAY_SECONDS = 86_400
 #: while this one knows what a corpus looks like. A single OCR'd ``01/01/0001`` that
 #: survives to the index makes the histogram's domain two thousand years wide and
 #: collapses every real bar to nothing.
-DATE_SANITY_MIN = datetime(1800, 1, 1, tzinfo=timezone.utc)
-DATE_SANITY_MAX_LOOKAHEAD = timedelta(days=365)
+DATE_PLAUSIBLE_MIN = datetime(1800, 1, 1, tzinfo=timezone.utc)
+DATE_PLAUSIBLE_MAX_LOOKAHEAD = timedelta(days=365)
 
 
 class FacetField(NamedTuple):
@@ -164,10 +164,10 @@ def parse_rfc3339(raw: str) -> datetime | None:
     return moment
 
 
-def date_within_sanity_window(moment: datetime, now: datetime | None = None) -> bool:
+def date_within_plausibility_window(moment: datetime, now: datetime | None = None) -> bool:
     """Whether a mentioned date is plausible enough to index."""
     now = now or datetime.now(timezone.utc)
-    return DATE_SANITY_MIN <= moment <= now + DATE_SANITY_MAX_LOOKAHEAD
+    return DATE_PLAUSIBLE_MIN <= moment <= now + DATE_PLAUSIBLE_MAX_LOOKAHEAD
 
 
 def snap_to_day(epoch_seconds: int) -> int:
@@ -180,7 +180,7 @@ def snap_to_day(epoch_seconds: int) -> int:
 
 
 def mentioned_days(values: Iterable[str], now: datetime | None = None) -> list[int]:
-    """Distinct day timestamps a segment mentions, sorted, sanity-checked and snapped.
+    """Distinct day timestamps a segment mentions, sorted, range-checked and snapped.
 
     Signed epoch seconds, because Manticore's own `timestamp` type is 32-bit unsigned and
     cannot hold 1936 at all.
@@ -188,7 +188,7 @@ def mentioned_days(values: Iterable[str], now: datetime | None = None) -> list[i
     days: set[int] = set()
     for raw in values:
         moment = parse_rfc3339(raw)
-        if moment is None or not date_within_sanity_window(moment, now):
+        if moment is None or not date_within_plausibility_window(moment, now):
             continue
         days.add(snap_to_day(int(moment.timestamp())))
     return sorted(days)

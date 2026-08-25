@@ -146,7 +146,7 @@ windowed caller can overlap its windows and deduplicate on `(type, start, end)`;
 stage does not window. The loss is real, bounded, and written down here so it is not
 rediscovered later as a mystery about one missing value.
 
-The derived facets (the money magnitude ladder, the day snap, the date sanity window)
+The derived facets (the money magnitude ladder, the day snap, the date plausibility window)
 are **not** here. They live in `tasks/regex_entities.py`, which the indexing stage imports
 too: changing any of them means a rescan and a reindex together, and a rule that lives in
 one stage is a rule the other can drift away from.

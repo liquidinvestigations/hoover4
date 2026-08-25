@@ -12,7 +12,7 @@ page:
 
 Grep-based, and deliberately so. The readers are in two languages across two crates, and
 the alternative (trusting each author to remember) is exactly what this row makes
-dangerous. It is ugly and it is effective.
+dangerous. It is blunt and it is effective.
 """
 
 import pathlib

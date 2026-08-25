@@ -84,7 +84,7 @@ def as_objects(value: Any) -> list[dict]:
 
     Anything that is not an object once unwrapped is left in place rather than dropped,
     because the caller validates the items and a silently discarded row is a record the
-    model believes it wrote. `None` and unparseable text give an empty list.
+    model treats as written. `None` and unparseable text give an empty list.
     """
     if value is None:
         return []

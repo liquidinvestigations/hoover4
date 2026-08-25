@@ -89,7 +89,7 @@ def nag_message(todo: dict, nag_number: int) -> str:
 
     The streak, not the turn, is what `nag_number` counts: an agent that made real
     progress and then stopped again is in the same position as one being nagged for the
-    first time, and deserves the same offer.
+    first time, and gets the same offer.
     """
     still_open = open_items(todo)
     summary = chat_todos.summarise(todo)

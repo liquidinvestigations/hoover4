@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn an_unknown_column_is_rejected_before_it_reaches_sql() {
-        assert!(term_field_for_column("evil; DROP TABLE x").is_err());
+        assert!(term_field_for_column("unknown; DROP TABLE x").is_err());
         assert!(term_field_for_column("no_such_column").is_err());
     }
 

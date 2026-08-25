@@ -233,8 +233,8 @@ nothing is the correct failure.
 
 Naming a conversation is not a reasoning problem, and a reasoning model given one spends
 its whole token budget on the thought and returns nothing usable. The request therefore
-carries a hint asking the model not to think. Sent as a hint and dropped on a refusal,
-because a provider that has never heard of it rejects the whole request and a summariser
+carries a hint asking the model to leave its thinking mode off. Sent as a hint and dropped
+on a refusal, because a provider that has never heard of it rejects the whole request and a summariser
 that fails on every call is exactly what the telemetry row exists to make visible. Every
 outcome, including a discarded answer, writes a row into `llm_call_events` with `ok = 0`:
 a model that hits its token limit every time must not look like one that never ran.

@@ -8,7 +8,7 @@
 //! Every rule gets an entry. A rule with an entry and no shaper in [`super::cards`] still produces
 //! a usable card from this alone, so the catalogue is the requirement and the shaper is the polish.
 //!
-//! `not_checked` deserves as much care as `checks`. A reader deciding whether to trust a match
+//! `not_checked` needs as much care as `checks`. A reader deciding whether to trust a match
 //! needs to know that a validated address has never been delivered to, and that a valid check digit
 //! says a number is well-formed and nothing whatever about whether it was ever issued.
 
@@ -76,7 +76,7 @@ pub struct Reference {
 ///
 /// One string, one place, no per-rule variation: a client that offers a single threshold control
 /// across every rule is only accurate if the number means one thing across every rule, and a reader
-/// can only believe that if the explanation beside it does not change either. It is appended to
+/// can only trust that if the explanation beside it does not change either. It is appended to
 /// every card that carries a confidence and served once at the top of `GET /rules`.
 pub const CONFIDENCE_NOTE: &str = "Confidence says how likely this span is to be the thing the \
                                    rule claims, given what the validator was able to check. It is \

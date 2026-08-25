@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 #: still two lines; the thinking in front of it is what needs the room.
 MAX_TOKENS = 512
 
-#: Ask the model not to think about it. Naming a conversation is not a reasoning problem,
+#: Ask the model to leave its thinking mode off. Naming a conversation is not a reasoning problem,
 #: and a reasoning model given one spends its whole token budget on the thought and hits
 #: `length` with nothing usable in `content`, measured at 512 and again at 1 536 tokens
 #: against the model this deployment runs on. With thinking off the same call answers in

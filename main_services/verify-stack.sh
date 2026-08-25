@@ -1030,7 +1030,7 @@ if [ -n "$js_href" ]; then
     if [ -n "$wasm_href" ]; then
         wasm_tmp=$(mktemp)
         WEB -o "$wasm_tmp" "$WEBSITE_URL$(resolve_url "$wasm_href")"
-        # `\0asm` is the WebAssembly magic number. Without this the SPA fallback page
+        # `\0asm` is the WebAssembly file signature. Without this the SPA fallback page
         # passes for the bundle and the grep below just finds nothing, which reads as
         # "no such server function" rather than "wrong URL".
         if [ "$(head -c 4 "$wasm_tmp" | tr -d '\0')" = "asm" ]; then

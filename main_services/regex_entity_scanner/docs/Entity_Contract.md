@@ -77,7 +77,7 @@ extension because the schema has no property for either. `company_id` holds four
 `text` is what was written. `value` is what it means, and it is what belongs in a typed index field
  (a date field, a scaled integer plus a currency, a double plus a unit), so that range queries
 work. Keeping `text` alongside it is not redundancy: highlighting needs it, and so does a user
-asking why the system thinks this is a date.
+asking why the system treats this as a date.
 
 Values are canonical, so two spellings of one thing collapse. `2021-03-04T09:12:00+0200` and
 `2021-03-04T09:12:00+02:00` produce the same value; an address's domain is lowercased and its local

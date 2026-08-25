@@ -11,7 +11,7 @@ from a sidecar sharing the pod and PID namespace:
 
     scripts/pyspy-sidecar.sh <container> [pid]
 
-A thread dump ends the guessing immediately. Reach for it earlier than feels justified.
+A thread dump ends the guessing immediately. Reach for it earlier than seems necessary.
 
 A synchronous call on the event-loop thread stalls an activity indefinitely while
 heartbeats keep flowing, so it is never retried and never fails. The dump is the only

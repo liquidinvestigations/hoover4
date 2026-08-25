@@ -19,7 +19,7 @@ import click
 
 log = logging.getLogger(__name__)
 
-#: How often the tail re-reads the row. Fast enough to feel live, slow enough that ten
+#: How often the tail re-reads the row. Fast enough to read as live, slow enough that ten
 #: watchers of the same operation are not a load problem.
 TAIL_INTERVAL_SECONDS = 3
 

@@ -12,7 +12,7 @@ import pytest
 from tasks.regex_entities import (
     DAY_SECONDS,
     assert_parallel_value_arrays,
-    date_within_sanity_window,
+    date_within_plausibility_window,
     mentioned_days,
     money_bucket,
     money_bucket_from_value_json,
@@ -101,21 +101,21 @@ class TestDaySnap:
         )
 
 
-class TestDateSanityWindow:
+class TestDatePlausibilityWindow:
     def test_the_lower_bound_is_inclusive(self):
-        assert date_within_sanity_window(datetime(1800, 1, 1, tzinfo=timezone.utc))
+        assert date_within_plausibility_window(datetime(1800, 1, 1, tzinfo=timezone.utc))
 
     def test_an_ocr_artefact_is_outside_it(self):
         """A single `01/01/0001` surviving to the index makes the histogram's domain two
         thousand years wide and collapses every real bar to nothing."""
-        assert not date_within_sanity_window(datetime(1, 1, 1, tzinfo=timezone.utc))
+        assert not date_within_plausibility_window(datetime(1, 1, 1, tzinfo=timezone.utc))
 
     def test_a_far_future_date_is_outside_it(self):
-        assert not date_within_sanity_window(datetime(2999, 1, 1, tzinfo=timezone.utc))
+        assert not date_within_plausibility_window(datetime(2999, 1, 1, tzinfo=timezone.utc))
 
     def test_next_month_is_inside_it(self):
         now = datetime(2020, 6, 1, tzinfo=timezone.utc)
-        assert date_within_sanity_window(datetime(2020, 7, 1, tzinfo=timezone.utc), now)
+        assert date_within_plausibility_window(datetime(2020, 7, 1, tzinfo=timezone.utc), now)
 
 
 class TestParseRfc3339:

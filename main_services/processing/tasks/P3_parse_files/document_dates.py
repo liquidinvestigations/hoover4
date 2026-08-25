@@ -27,8 +27,8 @@ What is NOT a date, and why it is easy to get wrong:
   save time of the corpus, not of the document.
 * **Upload/index time** does not exist in this schema at all, by decision.
 
-The sanity window
------------------
+The plausibility window
+------------------------
 Garbage dates in document metadata are the norm. One PDF claiming 4004 BC ruins every
 histogram and every "sort by date" page, so anything outside
 ``[1800-01-01, now + 1 year]`` is dropped and counted -- never clamped, because a
@@ -82,8 +82,8 @@ assert not (set(TIKA_DATE_KEYS) & EXCLUDED_TIKA_DATE_KEYS), (
 EMAIL_DATE_SOURCE = "email:date"
 ARCHIVE_MTIME_SOURCE = "archive:mtime"
 
-SANITY_MIN = datetime(1800, 1, 1, tzinfo=timezone.utc)
-SANITY_MAX_LOOKAHEAD = timedelta(days=365)
+PLAUSIBLE_MIN = datetime(1800, 1, 1, tzinfo=timezone.utc)
+PLAUSIBLE_MAX_LOOKAHEAD = timedelta(days=365)
 
 #: PDF's own date syntax, which Tika sometimes passes through untouched:
 #: ``D:20070101224400+03'00'``.
@@ -142,12 +142,12 @@ def parse_metadata_datetime(raw: object) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def in_sanity_window(when: datetime, now: datetime | None = None) -> bool:
+def in_plausibility_window(when: datetime, now: datetime | None = None) -> bool:
     """Whether a date is plausible enough to index. See the module docstring."""
     now = now or datetime.now(timezone.utc)
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return SANITY_MIN <= when <= (now + SANITY_MAX_LOOKAHEAD)
+    return PLAUSIBLE_MIN <= when <= (now + PLAUSIBLE_MAX_LOOKAHEAD)
 
 
 def _tika_values(metadata: dict, key: str) -> list[str]:
@@ -171,9 +171,9 @@ def resolve_dates(
     Deduplicated on ``(second, source)`` and sorted. The caller passes
     ``email_date_sent`` only when ``date_sent_known`` is 1 and ``archive_mtimes`` only
     for ``vfs_files`` rows whose ``mtime_source`` is ``'archive'`` -- this function does
-    not re-litigate trust, it applies the sanity window and the key allowlist.
+    not re-litigate trust, it applies the plausibility window and the key allowlist.
 
-    Pure, so the interesting cases (ISO variants, the sanity window, the excluded key)
+    Pure, so the interesting cases (ISO variants, the plausibility window, the excluded key)
     are unit-testable without a stack.
     """
     now = now or datetime.now(timezone.utc)
@@ -194,8 +194,8 @@ def resolve_dates(
         if when is None:
             rejected.append((raw, f"{source}: unparseable"))
             return
-        if not in_sanity_window(when, now):
-            rejected.append((raw, f"{source}: outside the sanity window"))
+        if not in_plausibility_window(when, now):
+            rejected.append((raw, f"{source}: outside the plausibility window"))
             return
         found.add((int(when.timestamp()), source))
 

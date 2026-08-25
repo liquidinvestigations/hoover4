@@ -143,7 +143,7 @@ pub fn WebSearchCard(
                     }
                 }
                 // Only meaningful about a search that ran: "not reranked" beside a failure
-                // pip invites the reader to think ranking was the problem.
+                // pip invites the reader to assume ranking was the problem.
                 if !rerank_applied && failure.is_none() {
                     span {
                         title: "The cross-encoder did not run, so these are in fusion order",

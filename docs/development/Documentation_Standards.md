@@ -48,7 +48,13 @@ agent reads it at every session start.
   present participle only, and `novel` bans the adjective only, so the plural noun, the
   third-person verb, the character and the book stay legal. The banned words also include
   honest, honesty, honestly, lie, lies, lied and lying: a component has no intent to
-  misrepresent. Write accurate, correct, verifiable or complete instead.
+  misrepresent. Write accurate, correct, verifiable or complete instead. The banned words also
+  include magic, evil, smart, clever, aggressive, nasty, ugly, deserve and deserves: no
+  component earns a judgement. `polite` is banned the same way, except Crossref's own term
+  `polite pool`, which keeps its exact wording. A machine has no mind: the banned words also
+  include think, thinks, believe, believes, believed, feel, feels and felt. `thinking` and
+  `thought` stay legal as the name of a model's own reasoning feature, the way `trust`,
+  `graceful` and `lazy` stay legal as established technical terms.
 - **No antithesis used for emphasis.** If a false reading matters, correct it in its own
   sentence.
 - **No emphasis particles and no preambles.** Delete "full stop", "worth noting", "to be

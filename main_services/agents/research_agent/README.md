@@ -136,7 +136,7 @@ Qwen3.5's chat template decides thinking in the **prompt**, not the sampler. Wit
 `enable_thinking` unset or false it emits `<think>\n\n</think>` *before* generation, so
 the default is not a small thinking budget. It is **no thinking at all**.
 
-Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, think it through"):
+Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, reason it out"):
 
 | setting | completion tokens | notes |
 |---|---|---|
@@ -174,7 +174,7 @@ completion.
 `AGENT_THINKING_BUDGET_TOKENS` defaults to **750**, half a measured unbudgeted thought,
 which is the "half the thinking" setting.
 
-**Tool-calling turns never think, whatever the mode.** Choosing a tool is routing, not
+**Tool-calling turns keep thinking off, whatever the mode.** Choosing a tool is routing, not
 reasoning, and letting this model reason about it is what produces the repeated-call loop
 the `agent` node has a guard for. The budget applies to the `finalize` node, which writes
 prose and cannot call a tool, which is the turn where thinking changes the answer.

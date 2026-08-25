@@ -44,7 +44,7 @@ TOTAL_CHARS = int(os.getenv("READ_PAGE_TOTAL_CHARS", "30000"))
 MAX_URLS = int(os.getenv("READ_PAGE_MAX_URLS", "6"))
 
 #: How long one page gets to load before it is abandoned and reported as a failure. A page
-#: that has not settled in this long is not going to, and the remaining URLs deserve the
+#: that has not settled in this long is not going to, and the remaining URLs get the
 #: rest of the call's time.
 NAVIGATE_TIMEOUT_MS = int(os.getenv("READ_PAGE_NAVIGATE_TIMEOUT_MS", "25000"))
 

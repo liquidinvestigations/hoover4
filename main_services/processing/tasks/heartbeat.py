@@ -78,7 +78,7 @@ def worker_is_stopping() -> bool:
     """Whether this activity has been asked to stop.
 
     Two different requests, and a batch loop wants to obey both. The worker sets its
-    shutdown event as soon as it is told to drain, which is the polite early warning;
+    shutdown event as soon as it is told to drain, which is the early warning;
     cancellation arrives later, through the heartbeat, when the graceful period runs out.
     Outside an activity -- in a unit test, or in the CLI -- neither exists and the answer
     is no.

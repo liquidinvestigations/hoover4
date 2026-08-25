@@ -206,7 +206,7 @@ async def web_search(
 
     limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS))
     if timelimit and timelimit not in ("d", "w", "m", "y"):
-        # Refused rather than silently ignored: a model that thinks it filtered to the
+        # Refused rather than silently ignored: a model that assumes it filtered to the
         # last day and did not will present stale results as fresh.
         return WebSearchResponse(
             success=False,

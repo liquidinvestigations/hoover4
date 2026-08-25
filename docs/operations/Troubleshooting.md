@@ -106,7 +106,7 @@ running anything. Low CPU means blocked on I/O or a lock, not slow work.
 
 To see Python stacks, the profiler needs a capability these containers drop; attach from a
 sidecar sharing the target's pod and process namespace with that capability added. **A thread
-dump ends the guessing immediately. Reach for it earlier than feels justified.**
+dump ends the guessing immediately. Reach for it earlier than seems necessary.**
 
 A synchronous call on the event-loop thread stalls an activity indefinitely **while
 heartbeats keep flowing**, so it is never retried and never fails. The dump is the only thing

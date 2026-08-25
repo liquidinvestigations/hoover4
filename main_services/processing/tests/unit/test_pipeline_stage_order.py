@@ -93,7 +93,7 @@ def test_entities_and_chunk_embed_are_gathered():
         "ExtractEntitiesForPlan and ChunkEmbedForPlan are no longer started together")
 
 
-def test_sanity_order_is_nonempty():
+def test_order_is_nonempty():
     assert _child_workflow_order()
 
 

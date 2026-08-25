@@ -101,7 +101,7 @@ fn body(doc: &'static RuleDoc, request: &ExplainRequest, specifics: Option<Strin
         ));
     }
     // The same sentence on every card that carries a number, because a single threshold across
-    // thirty-one rules only works if the number means one thing, and the reader can only believe
+    // thirty-one rules only works if the number means one thing, and the reader can only trust
     // that if the explanation does not vary either.
     if request.confidence.is_some() {
         blocks.push(format!(

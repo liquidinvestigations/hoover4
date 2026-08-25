@@ -127,6 +127,19 @@ PHRASES = [
     # The `honest` family and the `lie` family, banned outright.
     r"\bhonest(y|ly)?\b",
     r"\b(lie|lies|lied|lying)\b",
+    # The rest of the moral register: a component has no human or moral quality.
+    # `polite` carries a negative lookahead so Crossref's own term `polite pool`
+    # (`metasearch_server/sources.py`) keeps its exact wording.
+    r"\bmagic\b", r"\bevil\b", r"\bsmart\b", r"\bclever\b", r"\baggressive\b",
+    r"\bnasty\b", r"\bugly\b", r"\bdeserves?\b",
+    r"\bpolite\b(?!\s+pool\b)",
+    # Anthropomorphism: a component has no mind. `thinks?` carries a negative
+    # lookahead so the literal `<think>`/`</think>` tag some models emit is not
+    # caught; the gerund `thinking` and the noun `thought` are unaffected by the
+    # word boundary and stay legal as the name of that same model feature.
+    r"\bthinks?\b(?!>)",
+    r"\bbeliev(?:e|es|ed)\b",
+    r"\bfeels?\b", r"\bfelt\b",
 ]
 COMPILED = [re.compile(p, re.I) for p in PHRASES]
 

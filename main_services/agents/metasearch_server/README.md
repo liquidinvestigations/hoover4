@@ -21,7 +21,7 @@ URL, and merge with RRF so agreement between sources beats any one source's conf
 
 `timelimit` is `d`/`w`/`m`/`y` and only affects `ddg_news`, `ddg_api` and `gdelt`. The HTML
 endpoints take no time filter and the reference sources have no publication date. A bad
-value is **refused**, not ignored: a model that thinks it filtered to the last day and did
+value is **refused**, not ignored: a model that assumes it filtered to the last day and did
 not will present stale results as fresh.
 
 ### One call, several angles

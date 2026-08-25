@@ -67,7 +67,7 @@ next.
 **P3 (`parse_files`)** owns `document_dates.py`: a pure `resolve_dates` plus the
 `resolve_document_dates` activity that runs between parsing and indexing. It COLLECTS
 every confirmed date rather than picking a best one, applies a `[1800-01-01, now + 1y]`
-sanity window (outside → dropped and logged, never clamped), and records the metadata key
+plausibility window (outside → dropped and logged, never clamped), and records the metadata key
 each date came from. `parse_email` writes structured `email_addresses` rows and sets
 `date_sent_known` so the epoch stops meaning two things.
 

@@ -81,7 +81,7 @@ def normalise_item(raw: dict, index: int) -> dict:
     """One item, checked and reduced to exactly the four fields the table holds.
 
     Raises [`TodoError`] rather than dropping a bad field, because a silently discarded
-    item is a plan the model believes it wrote and the user cannot see.
+    item is a plan the model treats as written and the user cannot see.
     """
     if not isinstance(raw, dict):
         raise TodoError(f"item {index} is not an object")
@@ -298,7 +298,7 @@ def mark_todo(username: str, session_id: str, marks) -> dict:
     """Batched status changes, by item id. Everything else on the item is untouched.
 
     A mark naming an id that is not in the list is refused rather than ignored: the
-    model believes it recorded progress, and silently dropping it makes the plan and the
+    model treats it as recorded progress, and silently dropping it makes the plan and the
     transcript disagree.
     """
     if not isinstance(marks, (list, tuple)) or not marks:

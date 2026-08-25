@@ -21,7 +21,7 @@ use crate::components::admin_components::{
 };
 
 /// How often the strip re-reads the operation row while one is running. Fast enough that
-/// Apply feels answered, slow enough that an admin leaving the page open is not a load
+/// Apply reads as answered, slow enough that an admin leaving the page open is not a load
 /// source.
 const POLL_SECONDS: u64 = 3;
 

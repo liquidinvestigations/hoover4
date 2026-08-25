@@ -97,7 +97,7 @@ def unwrap_tracking_url(url: str) -> str:
     """The real destination behind an engine's click-tracking wrapper.
 
     Every engine here can hand back its own redirector instead of the page, and a wrapped
-    URL is worse than ugly: it does not normalise to the same key as the direct URL, so
+    URL is a correctness defect: it does not normalise to the same key as the direct URL, so
     :func:`dedupe_within_source` cannot merge the two and the fused list carries the same
     page twice, once cited to `r.search.yahoo.com/_ylt=…`, which is what the model then
     quotes at the user.

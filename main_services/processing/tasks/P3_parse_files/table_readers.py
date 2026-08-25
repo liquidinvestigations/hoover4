@@ -233,7 +233,7 @@ def _typed_from_number(value: float) -> tuple[str, Optional[int], Optional[float
 # ------------------------------------------------------------------------------- csv
 
 
-#: Codecs we refuse to believe from `file --mime-encoding`, because they name the absence
+#: Codecs we refuse to accept from `file --mime-encoding`, because they name the absence
 #: of an answer rather than an encoding.
 _UNUSABLE_ENCODINGS = frozenset({"unknown-8bit", "binary", "", "us-ascii/binary"})
 

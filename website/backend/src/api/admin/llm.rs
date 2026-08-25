@@ -617,7 +617,7 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
                 display_name: display,
                 // What the provider just said, else what was stored, else 0 for
                 // unknown. Never a default: a percentage of an invented window reads
-                // as a measurement, and the compaction trigger believes it.
+                // as a measurement, and the compaction trigger trusts it.
                 context_window: windows
                     .get(model_id.as_str())
                     .copied()
@@ -949,7 +949,7 @@ mod tests {
     }
 
     /// The catalog is the only denominator anything has for "% of context used", so a
-    /// listing that states a window must be believed and one that states nothing must
+    /// listing that states a window must be trusted and one that states nothing must
     /// stay absent. A guess here is worse than a gap: the compaction trigger downstream
     /// fires on a percentage, and a plausible wrong window makes it fire wrongly.
     #[test]

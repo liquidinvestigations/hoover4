@@ -112,7 +112,7 @@ the extensions and the CDP handle capture needs.
 
 So the boundary sits one level lower: one Chromium **process** per chat, each with its own
 profile directory and its own sidecar bound to it. That costs a few hundred MB per live
-chat, which is why the cap is 8 and the reaper is aggressive.
+chat, which is why the cap is 8 and the reaper closes idle contexts quickly.
 
 Verified live: chat A sets `document.cookie` on `example.com`, chat B on the same origin
 reads nothing.

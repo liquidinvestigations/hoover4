@@ -235,7 +235,7 @@ def test_candidate_exactly_at_budget_fits_and_stays_open():
 
 def test_hash_in_both_candidates_and_existing_keeps_existing_shard():
     # plan_shards filters candidates down to unassigned hashes, but the packer
-    # itself must stay sane if a hash slips into both: the existing assignment
+    # itself must stay correct if a hash slips into both: the existing assignment
     # wins and the bytes are not double-counted.
     ledger = [_shard(1, text_bytes=500, doc_count=1)]
     assignments, new_ledger = pack_into_shards(

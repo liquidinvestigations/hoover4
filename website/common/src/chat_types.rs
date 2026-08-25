@@ -952,7 +952,7 @@ mod tests {
 
     /// A model whose provider never stated a window renders as unknown, not as zero and
     /// not as a guess. The compaction trigger downstream divides by this number, and a
-    /// plausible wrong one is believed exactly as a right one is.
+    /// plausible wrong one is trusted exactly as a right one is.
     #[test]
     fn an_unknown_window_says_unknown_rather_than_showing_a_percentage() {
         let footer = counted(1_200, 23_000, 0).context_footer().unwrap();

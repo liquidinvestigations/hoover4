@@ -94,7 +94,7 @@ def context_window_for(model_id: str) -> int:
 
     **0 is the representation of "the provider never said."** It is not a fallback and
     nothing may substitute a plausible number for it -- a compaction trigger downstream
-    divides by this, and a wrong denominator is believed exactly as a right one is.
+    divides by this, and a wrong denominator is trusted exactly as a right one is.
 
     The catalog is keyed by (provider, model), and which provider served this turn is
     not on the row. Two providers listing the same model id with different windows is
@@ -320,8 +320,8 @@ class ResearchStreamWriter:
         """Stream the agent run; return the `/chat`-shaped payload."""
         # Take over the placeholder row the website wrote when it accepted the task,
         # before the first event arrives. Two reasons, and neither can be dropped: the keepalive
-        # only refreshes rows it knows are open, and a model that thinks for longer than
-        # CHAT_STREAM_STALL_SECONDS before saying anything would otherwise let that
+        # only refreshes rows it knows are open, and a model that spends more time reasoning
+        # than CHAT_STREAM_STALL_SECONDS before saying anything would otherwise let that
         # placeholder go stale and the page would call a healthy run interrupted.
         self._write_assistant(force=True)
         self._keepalive_thread = threading.Thread(
