@@ -25,6 +25,9 @@ hoover4.ini
 # box. Deliberately at the top level so a scratch wipe cannot take it, and deliberately
 # never tracked: docs/ and the skills are public.
 INFRASTRUCTURE_INVENTORY.md
+# Clones of the Liquid upstream repositories, worked on locally. They carry their own git
+# history and their own remotes, so nothing under here is ever tracked by this repository.
+external/
 .serena/*
 !.serena/project.yml
 

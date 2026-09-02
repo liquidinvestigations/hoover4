@@ -205,7 +205,7 @@ pub fn FilterChips(
     ///
     /// Removing a chip used to edit the pending query and stop, which left the result
     /// list and its heading describing a filter the chip row no longer showed, until the
-    /// user noticed Apply Filters had lit up. A control that removes a filter has to
+    /// user noticed Search had lit up. A control that removes a filter has to
     /// remove it from the results too.
     on_commit: Callback<()>,
 ) -> Element {

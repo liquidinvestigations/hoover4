@@ -239,7 +239,7 @@ over every key in both directions for page disjointness.
 
 **The Sort control edits the PENDING query, like everything else in the search toolbar.**
 It therefore names the order the results on screen are actually in, and draws an
-unapplied choice after it as `applied → pending` in the accent colour; `Apply Filters` is
+unapplied choice after it as `applied → pending` in the accent colour; `Search` is
 the one control that says whether anything is waiting, and it is disabled when nothing
 is. Applying the sort on selection instead is not the small change it looks like: the
 apply path pushes the whole pending query, so a sort click would commit filter edits the

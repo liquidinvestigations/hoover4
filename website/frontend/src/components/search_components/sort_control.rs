@@ -10,7 +10,7 @@
 //!
 //! This is safe only because every other non-text control in the toolbar does the same.
 //! The filter chips commit on removal too. The apply path pushes the WHOLE pending query,
-//! so while filters still batched behind `Apply Filters` a sort click would have silently
+//! so while filters still batched behind `Search` a sort click would have silently
 //! committed filter edits the user had not confirmed. If filter editing is ever put back
 //! behind an explicit apply, this must go back with it.
 //!
@@ -116,7 +116,7 @@ pub fn SortControl(
     let button_tooltip = use_memo(move || {
         if is_pending() {
             format!(
-                "Results are ordered by {}. Press Apply Filters to switch to {}.",
+                "Results are ordered by {}. Press Search to switch to {}.",
                 applied().key.label(),
                 effective().key.label()
             )
@@ -132,7 +132,7 @@ pub fn SortControl(
             "Ascending. Click for descending."
         };
         if direction_pending() {
-            format!("{base}. Not applied yet. Press Apply Filters.")
+            format!("{base}. Not applied yet. Press Search.")
         } else {
             base.to_string()
         }

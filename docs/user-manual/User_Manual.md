@@ -206,7 +206,7 @@ between ascending and descending.
 
 ![The sort menu](img/sort-menu.png)
 
-> Choosing a sort marks your choice; press **Apply Filters** to put it into effect.
+> Choosing a sort marks your choice; press **Search** to put it into effect.
 
 *Relevance* needs something to be relevant to: with an empty query it falls back to newest
 first.

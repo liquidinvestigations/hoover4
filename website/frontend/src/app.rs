@@ -11,15 +11,22 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
 
+/// The vendored Roboto and Inter font files and their stylesheet, declared so `dx`
+/// ships the whole folder.
+///
+/// `#[used]` because nothing reads the binding: the stylesheet link below names the
+/// served path by a literal string, and without the attribute the constant is dropped
+/// and the folder never reaches the bundle. `with_hash_suffix(false)` is what keeps
+/// the served path `/assets/fonts/…`, which the literal string below and
+/// `dx-components-theme.css` both depend on, so all three change together.
+#[used]
+static FONTS_FOLDER: Asset = asset!("/assets/fonts/", AssetOptions::folder().with_hash_suffix(false));
+
 #[component]
 pub fn App() -> Element {
     rsx! {
         document::Meta { name: "color-scheme", content: "light" }
-        // TODO: replace google fonts with local fonts
-        document::Link { rel: "preconnect", href: "https://fonts.googleapis.com" }
-        document::Link { rel: "preconnect", href: "https://fonts.gstatic.com" }
-        document::Link { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" }
-
+        document::Link { rel: "stylesheet", href: "/assets/fonts/fonts.css" }
 
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }

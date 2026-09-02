@@ -48,7 +48,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
             modified_search_query.read().clone(),
         ));
     };
-    let apply_filter_button_background = use_memo(move || {
+    let search_button_background = use_memo(move || {
         if query_has_changed() {
             "rgba(0,0,255,1.0)"
         } else {
@@ -56,15 +56,15 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
         }
     });
     // `disabled` is not a cursor keyword, so the old value fell back to `auto` and the
-    // button pointed at a live control with nothing to apply.
-    let apply_filter_button_cursor = use_memo(move || {
+    // button pointed at a live control with nothing to search for.
+    let search_button_cursor = use_memo(move || {
         if query_has_changed() {
             "pointer"
         } else {
             "default"
         }
     });
-    let apply_filter_button_opacity = use_memo(move || if query_has_changed() { "1" } else { "0.6" });
+    let search_button_opacity = use_memo(move || if query_has_changed() { "1" } else { "0.6" });
     let search_oninput = move |event: Event<FormData>| {
         let new_q = event.value();
         modified_search_query.write().query_string = new_q;
@@ -138,20 +138,20 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 button {
                     style: "
                         font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
-                        background-color: {apply_filter_button_background()};
+                        background-color: {search_button_background()};
                         color:white; border: none;
                         border-radius:100px; height: 42px; padding: 0 16px;
-                        cursor: {apply_filter_button_cursor()};
-                        opacity: {apply_filter_button_opacity()};
+                        cursor: {search_button_cursor()};
+                        opacity: {search_button_opacity()};
                     ",
                     disabled: !query_has_changed(),
-                    title: if query_has_changed() { "Apply the pending changes" } else { "Nothing to apply" },
+                    title: if query_has_changed() { "Search with the pending changes" } else { "Nothing new to search for" },
                     onclick: move |event: Event<MouseData>| {
                         event.prevent_default();
                         event.stop_propagation();
                         trigger_search(());
                     },
-                    "Apply Filters"
+                    "Search"
                 }
 
                 button {

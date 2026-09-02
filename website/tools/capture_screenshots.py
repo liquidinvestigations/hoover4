@@ -501,11 +501,15 @@ def api_function_name(url: str) -> str | None:
     return segment.rstrip("0123456789") or segment
 
 
-async def watch_network(tab) -> NetworkLog:
+async def watch_network(tab, site_host: str) -> NetworkLog:
     """Record response statuses through CDP for the life of the tab.
 
     Resource-timing entries would be simpler, but they do not exist for a request that
     never got a response, and "the server fn connection died" is a failure worth naming.
+
+    `site_host` is the hostname of the page under test. A request whose host differs
+    reaches a server outside this deployment, which the offline UI must never do, so it
+    fails the page rather than passing unseen.
     """
     import nodriver.cdp.network as network_cdp
 
@@ -515,10 +519,14 @@ async def watch_network(tab) -> NetworkLog:
     sent: dict[str, str] = {}
 
     def on_request(event, _connection=None):
-        sent[str(event.request_id)] = f"{event.request.method} {event.request.url}"
-        name = api_function_name(event.request.url)
+        url = event.request.url
+        sent[str(event.request_id)] = f"{event.request.method} {url}"
+        name = api_function_name(url)
         if name is not None:
             log.api_calls[name] = log.api_calls.get(name, 0) + 1
+        host = urlsplit(url).hostname
+        if host is not None and host != site_host:
+            log.bad.append(f"outbound request to {url}")
 
     def on_response(event, _connection=None):
         if event.type_ is network_cdp.ResourceType.DOCUMENT and log.document is None:
@@ -685,7 +693,7 @@ async def capture_all(
     ]
     try:
         tab = await browser.get(base_url + "/")
-        network = await watch_network(tab)
+        network = await watch_network(tab, urlsplit(base_url).hostname)
         await tab.send(page_cdp.add_script_to_evaluate_on_new_document(CONSOLE_HOOK_JS))
         await wait_for_dev_rebuild(tab)
 
