@@ -1,0 +1,58 @@
+# The published website image. It carries the compiled release binary, built here at
+# image build time, and no host mount. The compose service in docker-compose.yaml keeps
+# `website/Dockerfile`, the full Rust and dioxus toolchain, and `dx serve` against a host
+# mount, so the local development loop is unchanged. This file is the only place that
+# runs `dx build --release`.
+
+FROM rust:1.91.0-trixie AS builder
+
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
+# MUST match the `dioxus` version in Cargo.lock. A mismatch is not cosmetic: dx prints
+# `ERROR dx and dioxus versions are incompatible!` at every boot, and the two halves
+# disagree about the manifest format the built app is described by.
+RUN cargo binstall dioxus-cli@0.7.9
+RUN apt update -yq && apt install -yq libwebkit2gtk-4.1-dev \
+  build-essential \
+  curl \
+  wget \
+  file \
+  libxdo-dev \
+  libssl-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev lld nodejs
+
+WORKDIR /app
+ADD frontend frontend
+ADD common common
+ADD backend backend
+ADD Cargo.toml Cargo.toml
+ADD Cargo.lock Cargo.lock
+
+RUN dx build --fullstack --package frontend --renderer web --release
+
+# `dx` decides the release binary's own name and its exact path, and has changed both
+# before (`target/dx/<package>/release/web/server` today, `.../web/<package>` before).
+# The predicate is structural: the one executable file directly under `release/web/`
+# that is not a copied asset. The whole directory is copied so `public/` travels with
+# it, and the binary is also copied under the fixed name `server`, so the final stage
+# does not have to repeat the search.
+RUN bin="$(find /app/target/dx -type f -path '*/release/web/*' -not -path '*/release/web/public/*' -perm -u+x | head -1)" \
+  && test -n "$bin" \
+  && mkdir -p /release \
+  && cp -r "$(dirname "$bin")" /release/app \
+  && cp "$bin" /release/app/server
+
+FROM debian:trixie-slim
+
+RUN apt-get update -yq && apt-get install -yq --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /release/app /app
+
+# How the dioxus fullstack server picks its socket, matching compose/website-release.yaml.
+ENV IP=0.0.0.0
+ENV PORT=8080
+EXPOSE 8080
+ENTRYPOINT ["/app/server"]

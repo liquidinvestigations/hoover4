@@ -13,5 +13,11 @@ RUN pip install uv
 # variant is attributed to the engine and languages that produced it.
 RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential
 WORKDIR /app
+# The dependency layer stays separate from the source layer, so a source-only change
+# rebuilds nothing above this line: `uv.lock` and `pyproject.toml` change far less often
+# than the code, and `--no-install-project` installs every dependency without needing
+# the source tree that names the project itself.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project
 ADD . .
 RUN uv run main.py version

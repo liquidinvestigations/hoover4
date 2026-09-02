@@ -9,3 +9,10 @@ RUN apk update \
   && ( apk search font-adobe | rev | cut -d- -f3- | rev | xargs apk add ) \
   && ( apk search font-noto | rev | cut -d- -f3- | rev | xargs apk add ) \
   && (  apk search font- | grep '^font-' | rev | cut -d- -f3- | rev | xargs apk add )
+
+# The compose service mounts this directory over /app and overrides the entrypoint
+# below, so the published image needs its own copy of the code and its own entrypoint,
+# baked in rather than arriving from the host at container start.
+WORKDIR /app
+COPY pdf2html_server.py /app/pdf2html_server.py
+ENTRYPOINT ["/usr/bin/python", "/app/pdf2html_server.py"]

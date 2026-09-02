@@ -25,6 +25,43 @@ The stack includes:
   reverse proxy (`hoover4-proxy`), and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
+## Publishing images
+
+`publish-images.sh` builds every image this tree owns and pushes it to the local Nomad
+cluster's own image registry, for Nomad to pull later. Run it by hand:
+
+```
+main_services/ops/publish-images.sh <version>
+```
+
+The version becomes the tag on every image, the same tag across the whole set. There is
+no default. The script refuses to run without one. The registry's address comes from
+`hoover4.ini` (`[cluster] registry_address`) and never appears in this script or in any
+other tracked file. A second run at the same version overwrites that version's tag.
+
+The compose stack and the published set differ on purpose, for four services.
+
+- **`hoover4-website`** builds from `website/Dockerfile.release`. Compose keeps building
+  from `website/Dockerfile`, mounting the source and running `dx serve` for hot reload.
+  The published image runs `dx build --release` at image build time. It ships the
+  compiled binary, with no Rust toolchain and no source.
+- **`hoover4-worker` and `hoover4-ops`** compose mounts `main_services/processing` over
+  `/app`. The published image copies that source in at build time. The dependency layer
+  (`pyproject.toml`, `uv.lock`) is copied and synced ahead of the source, so a
+  source-only change does not reinstall dependencies. Both services publish from this
+  one build, tagged twice: `main_services/processing/Dockerfile` carries no default
+  command of its own, the same way compose supplies a different `command:` for each. A
+  deploy supplies the command the same way.
+- **`hoover4-processing-pdf-to-html`** compose mounts its own directory over `/app` and
+  overrides the entrypoint. The Dockerfile now copies `pdf2html_server.py` in and
+  carries that same entrypoint, so the published image needs neither.
+
+Every other image already copies its code in at build time and needs no host mount, in
+compose or in the published set.
+
+`serena` is built here and is not published. It is a development tool, read and mutated
+only from inside a running compose stack. It is not ported to Nomad.
+
 ### Temporal's throughput knobs
 
 Two settings decide how fast the cluster will hand work to the pipeline, and both ship
