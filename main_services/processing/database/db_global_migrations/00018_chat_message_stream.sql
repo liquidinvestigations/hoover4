@@ -6,7 +6,7 @@
 -- Every poll writes and reads this table, so the row is rewritten many times per turn --
 -- which is exactly what chat_messages must not do.
 --
--- Two rules the read path must follow. Both are commonly got wrong:
+-- Two rules the read path must follow, both easy to get wrong:
 --
 --   1. Read with argMax(content, updated_at), never a bare SELECT. A ReplacingMergeTree
 --      read without FINAL or argMax can return an older part, and the visible text would
