@@ -119,13 +119,12 @@ reason P4 skips a page it has seen) and re-runs P4 + P6 for their plans, so the 
 touches the failed documents and nothing else; index failures re-run P6; embedding
 failures re-run P5 + P6; parse failures still need the whole plan, because they have no
 per-file entry point that does not start by downloading the plan's blobs. Deletion order
-is watermarks, then rows. A crash between the two leaves a page that is simply
-re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
+is watermarks, then rows. A crash between the two leaves a page that is re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
 for the documents it can show are fixed.
 
 **One `processing_errors` row per (document, task), however many retries it takes.** The
 table is append-only and both `/file_browser/c/<name>` and the admin processing page count
-its *rows*, so a retry that fails the same way and simply appends shows a visitor twice the
+its *rows*, so a retry that fails the same way and appends shows a visitor twice the
 failures, and one more multiple on every further attempt. After the re-run each
 retried hash is in exactly one of three states: recovered (its rows go), failed again with
 a fresh row (the rows that row replaces go, the new one stays), or failed again with

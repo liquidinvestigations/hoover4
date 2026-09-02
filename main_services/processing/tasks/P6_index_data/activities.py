@@ -1066,7 +1066,7 @@ def build_email_graph(params: BuildEmailGraphParams) -> str:
     # RFC threading headers are read only for the dataset just rebuilt plus whatever is
     # already known: `raw_headers_json` for the whole collection is the largest column in
     # this stage and 0.06% of these corpora carry `In-Reply-To` at all. The map is keyed
-    # by node so a missing entry simply produces no RFC edge.
+    # by node so a missing entry produces no RFC edge.
     header_pairs_by_key = {
         (collection_dataset, row['email_hash']): header_pairs_from_json(row['raw_headers_json'])
         for row in header_rows
@@ -1424,7 +1424,7 @@ def index_vectors(params: IndexShardParams) -> list[str]:
 
     if not rows:
         # Embeddings disabled, or P5 found nothing to chunk: both are normal, and
-        # search simply has no vector half for these documents.
+        # search has no vector half for these documents.
         return []
 
     serving_model = get_server_setting("embeddings_serving_model")

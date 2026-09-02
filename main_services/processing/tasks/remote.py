@@ -6,7 +6,7 @@ An activity that calls out over HTTP can stall with no load on the system at
 all. Two defects stack to produce it:
 
 1. a routing defect: a rootless podman container cannot route to its host's own
-   LAN address, so the GPU endpoint is simply unreachable and hangs rather than
+   LAN address, so the GPU endpoint is unreachable and hangs rather than
    refusing;
 2. a timeout defect (this module): ``extract_ner_from_text.py`` passed
    a bare ``timeout=3000`` to ``requests.post``. **requests measures timeouts
@@ -303,7 +303,7 @@ def record_embeddings_probe() -> tuple[str, int] | None:
     **This must never raise.** Its callers are a worker's startup path and a CLI, and a
     worker that refuses to boot because the GPU tier is down is worse than one that boots
     and refuses the embed activity with a clear message. The same stack still has five
-    other stages to run. A failed probe simply leaves ``server_settings`` as it was.
+    other stages to run. A failed probe leaves ``server_settings`` as it was.
     """
     import os
 

@@ -18,7 +18,7 @@ was ever scored. Rerank the whole candidate pool, then take the best per kind.
 
 The per-kind floor exists because RRF is a popularity measure. Four web scrapers agreeing
 on a page beats one encyclopaedia entry every time, so without a floor a query with an
-obvious Wikipedia answer returns twenty blogs about it. Minimum
+well-known Wikipedia answer returns twenty blogs about it. Minimum
 :data:`MIN_PER_KIND` and maximum :data:`MAX_PER_KIND` results per kind.
 
 **A floor is a guarantee of representation, not of relevance.** A floor of ten reference
@@ -26,7 +26,7 @@ results on a query with one encyclopaedia answer padded the reply with whatever 
 ranked next ("Yanam district" and "Aasta Hansteen spar" for a query about the Eiffel
 Tower), and the model has no way to tell a reserved slot from an earned one. So the
 reservation pass only fires for results the cross-encoder scored at or above
-:data:`RESERVE_MIN_SCORE`; below that a kind simply goes unrepresented, which is the correct
+:data:`RESERVE_MIN_SCORE`; below that a kind goes unrepresented, which is the correct
 answer when it has nothing to say. Results with no rerank score at all (the GPU is down)
 are always reservable, no score is not a low score.
 

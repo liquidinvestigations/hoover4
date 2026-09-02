@@ -118,7 +118,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str:
     started_all = time.time()
 
     if not engine_configured(params.engine):
-        # Not an error: a box with no GPU tier simply produces no EasyOCR variants.
+        # Not an error: a box with no GPU tier produces no EasyOCR variants.
         log.info("[P3] OCR engine %s not configured, no variant for %s",
                  params.engine, params.file_path)
         _record_skip(params, 0,

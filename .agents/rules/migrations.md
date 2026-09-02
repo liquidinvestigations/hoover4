@@ -34,7 +34,7 @@ by line count on purpose. But it states **what is true now**:
 - **No history.** Not "this used to be", not "until this table existed", not "moved here
   when". The migration number already records the order; `git log` records the rest.
 - **Keep the lesson.** Write the standing property and the failure it prevents. The reason a
-  column is not the obvious type, the invariant a sort order depends on, the sentinel that
+  column is not the expected type, the invariant a sort order depends on, the sentinel that
   must not be confused with zero. Those are exactly what belongs here.
 
 ## Column comments

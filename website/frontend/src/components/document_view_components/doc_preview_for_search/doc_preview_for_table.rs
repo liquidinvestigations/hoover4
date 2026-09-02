@@ -76,7 +76,7 @@ pub fn DocumentPreviewForTable(
     let overview_value = overview.read().clone().flatten();
 
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
-    // that produced no cells is simply absent, so a state naming a sheet this document
+    // that produced no cells is absent, so a state naming a sheet this document
     // does not have falls back to the first one the manifest lists rather than to an
     // empty grid that reads as "this sheet is empty".
     let sheet_id = match (&overview_value, table_state.sheet_id) {

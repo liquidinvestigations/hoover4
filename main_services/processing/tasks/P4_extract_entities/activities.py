@@ -43,7 +43,7 @@ NLP_BATCH_TEXTS = 32
 # Budgeting by characters makes the peak a property of this constant instead of a
 # property of the corpus. The budget is well below one megabyte so a single request
 # cannot occupy a GPU slot for seconds; a document already too large to batch with
-# anything simply travels alone.
+# anything travels alone.
 NLP_BATCH_CHARS = 250_000
 
 
@@ -214,7 +214,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
                 # nlp_model in its ORDER BY, so two providers' hits for the same
                 # (file, variant, page, type) coexist. Leaving it empty would collapse
                 # them onto one key and make whichever provider ran last the only one
-                # with entities -- silently, with no error and simply fewer facets.
+                # with entities -- silently, with no error and fewer facets.
                 "nlp_model": served_model,
                 "entity_type": entity_type,
                 "entity_values": entity_values,

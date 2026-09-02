@@ -16,7 +16,7 @@
 //! * `column_id` is 1-based as the file gives it, so gaps survive, and only non-empty
 //!   cells exist: an absent `(column_id, row_id)` is empty by construction.
 //! * `sheet_id` values are the workbook's own sheet ordinals and are **not contiguous**,
-//!   a sheet that produced no cells is simply absent. Sheet pickers are built from
+//!   a sheet that produced no cells is absent. Sheet pickers are built from
 //!   [`TableOverview::sheets`], never from a range.
 
 use serde::{Deserialize, Serialize};

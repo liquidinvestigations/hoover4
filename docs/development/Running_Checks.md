@@ -19,7 +19,7 @@ evidence for something it never examined.
 The scripts that wrap each of these live beside the verifying skill, in
 `.agents/skills/verifying-before-claiming/scripts/`. Run those rather than retyping the
 commands: each already carries the container name, the working directory, and the flags that
-are easy to get wrong.
+are commonly got wrong.
 
 ## The claim-to-evidence table
 

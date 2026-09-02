@@ -701,7 +701,7 @@ def purge_unattributed_entities(collectionname: str, apply: bool):
     would skip a page it has already seen.
 
     Order matters: watermarks first, then the rows, then the re-run. A crash between the
-    two deletes leaves pages that will simply be re-extracted, which is the harmless
+    two deletes leaves pages that will be re-extracted, which is the harmless
     direction.
     """
     from database.clickhouse import get_collection_client, validate_collectionname

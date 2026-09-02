@@ -47,7 +47,7 @@ for d in .agents/skills .agents/rules .agents/hooks; do
     if [ -d "$REPO_ROOT/$d" ]; then note "ok      $d"; else note "MISSING $d"; fi
 done
 # Restoring a checkout on a filesystem that loses the mode bit is the one moment this is
-# easy to lose, and a hook that is not executable fails silently as "no hook configured".
+# commonly lost, and a hook that is not executable fails silently as "no hook configured".
 for h in "$REPO_ROOT"/.agents/hooks/*; do
     [ -e "$h" ] || continue
     [ -x "$h" ] || { note "not executable: ${h#$REPO_ROOT/}"; act chmod +x "$h"; }

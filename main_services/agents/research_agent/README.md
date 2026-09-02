@@ -143,7 +143,7 @@ Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, reason it ou
 | thinking off (**default**) | 441 | `<think></think>` prefilled by the template |
 | thinking on | 1,735 | closes `</think>` after ~1,300 tokens, then answers |
 
-Roughly **4x** on an easy question. On a *hard* one (a two-trains-and-a-bird puzzle) the
+Roughly **4x** on a simple question. On a *hard* one (a two-trains-and-a-bird puzzle) the
 picture is much worse. Unbounded thinking does not converge at all:
 
 | mode | wall time | completion tokens | finish reason |

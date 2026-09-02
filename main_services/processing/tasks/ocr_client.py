@@ -59,7 +59,7 @@ def _endpoints_for(engine: str) -> List[Tuple[str, str]]:
 def engine_configured(engine: str) -> bool:
     """Whether any endpoint exists for this engine.
 
-    A disabled engine is not an error and must not consume retries: it simply produces
+    A disabled engine is not an error and must not consume retries: it produces
     no variant. `easyocr_enabled = false` in hoover4.ini is the normal state on a box
     with no GPU tier.
     """

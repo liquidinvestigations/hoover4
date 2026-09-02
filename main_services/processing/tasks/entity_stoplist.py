@@ -134,7 +134,7 @@ _BLOB_MIN_CASE_SWITCHES = 4
 #: Letter-spaced PDF headings (`F O N T Y S`) arrive as one entity per heading. Real
 #: entities do not carry four bare initials with no punctuation.
 #:
-#: The threshold cannot simply be lowered: `J F Kennedy` carries two and is a name. What
+#: Lowering the threshold breaks on `J F Kennedy`, which carries two and is a name. What
 #: separates the two is that letter-spacing leaves NOTHING but single characters, so a
 #: value whose every token is one character long is stopped whatever the count -- which
 #: takes `U I` and `∆ Y` without touching a value that has a real word in it.

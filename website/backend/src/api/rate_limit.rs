@@ -28,7 +28,7 @@
 //! in every window, so its per-minute number is a flat ceiling. The decay
 //! exists to distinguish a burst of human activity from an hour of it; a
 //! streaming turn polls at the 500 ms floor for as long as the model generates,
-//! so for that limiter "sustained" is simply "working". See `load_config`.
+//! so for that limiter "sustained" is "working". See `load_config`.
 //!
 //! **Why in-process and not Redis.** The counters follow the
 //! `PERM_CACHE`/`SYNC_CACHE` idiom from `session_middleware.rs`: a

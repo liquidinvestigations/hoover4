@@ -2,7 +2,7 @@
 
 The engine asymmetry from `tasks/ocr_client.py` applies unchanged. A variant is
 `tesseract+eng` or `easyocr+en`, so there is no cross-engine fallback and an engine with
-no endpoint simply produces no variant. What is different here is *which* endpoint is
+no endpoint produces no variant. What is different here is *which* endpoint is
 missing: `hoover4-ocr-pdf` is one service that speaks to both engines, so the switch that
 turns OCR'd PDFs off entirely is `ocr_pdf_enabled` (rendered as `OCR_PDF_URL`), while the
 per-engine switch stays where it already is, in the OCR tier's own endpoints.
@@ -54,7 +54,7 @@ def service_configured() -> bool:
     """Whether the assembler has an endpoint at all.
 
     Disabled is not an error and must not consume retries: `ocr_pdf_enabled = false`
-    simply means the corpus gets no searchable PDFs.
+    means the corpus gets no searchable PDFs.
     """
     return any(url for _, url in _endpoints())
 

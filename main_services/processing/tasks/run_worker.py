@@ -162,7 +162,7 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
 
     The probe used to run only when a human or `verify-stack.sh` invoked
     `main.py probe-embeddings`. That made a model change a two-step operation where the
-    second step was undocumented and easy to forget: every consumer correctly refuses
+    second step was undocumented and commonly forgotten: every consumer correctly refuses
     while `embeddings_serving_model` is stale or missing (P5, P6's vector indexer,
     collection search), so the stack sat there refusing until someone remembered. The
     refusal being *correct* is exactly what made it hard to diagnose.

@@ -26,7 +26,7 @@ One test, applied while writing:
 Three consequences worth stating, because each is a trap:
 
 - **A control gets one row.** Its identifier, what it does, and (only if there is one) the
-  constraint that is not obvious from the name. A control needing a paragraph is a control
+  constraint that is not apparent from the name. A control needing a paragraph is a control
   whose *behaviour* belongs in `../architecture/`, with a link from its row.
 - **Sentinel values, invariants and refusals are the valuable part.** "Sort defaults to
   Relevance" is worth less than "Relevance is not a valid order with an empty query and

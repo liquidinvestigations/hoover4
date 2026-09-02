@@ -124,8 +124,8 @@ pub fn ChatComposer(
                         // No `on_stop` means there is nothing to stop yet. The homepage
                         // is still creating the conversation. It used to render the same
                         // red stop button anyway, wired to a handler that did nothing:
-                        // a control that looks live, is the obvious thing to press, and
-                        // silently ignores the press.
+                        // a control that looks live, invites a press, and
+                        // silently ignores it.
                         span {
                             title: "Starting the conversation\u{2026}",
                             style: "width: 40px; height: 40px; border-radius: 999px; \

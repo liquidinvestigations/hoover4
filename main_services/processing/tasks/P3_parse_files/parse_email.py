@@ -38,7 +38,7 @@ def header_pairs_from_json(raw: str) -> list[tuple[str, str]]:
 
     The column held ``{"Name": "value"}`` before it held ``[["Name", "value"], ...]``, and
     a document only gets the new shape when it is re-parsed. Both shapes are read here so
-    a caller never has to know how old a row is; the dict shape simply has the repeated
+    a caller never has to know how old a row is; the dict shape has the repeated
     headers already thrown away.
     """
     if not raw:

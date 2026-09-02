@@ -1006,7 +1006,7 @@ async fn vfs_tree_path_to_walks_the_whole_chain() {
 
 /// The chain CROSSES a container boundary. This is the case `PathDescriptor` cannot
 /// represent. It carries one `container_hash`, so the archive the container sits in is
-/// simply absent from it, and the whole reason the breadcrumb was rewritten.
+/// absent from it, and the whole reason the breadcrumb was rewritten.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn vfs_tree_path_to_crosses_a_container() {

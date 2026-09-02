@@ -24,7 +24,7 @@ What actually re-runs is the stage that failed, for the plans those hashes belon
   every document of the affected plans.
 
 Deletion order everywhere: **watermarks first, then rows**. A crash between the two
-leaves pages that are simply re-extracted, which is the harmless direction; the
+leaves pages that are re-extracted, which is the harmless direction; the
 reverse leaves a page watermarked with no entities and it is never looked at again.
 
 ``processing_errors`` is append-only and both the file browser and the admin processing

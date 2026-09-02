@@ -39,7 +39,7 @@ longest matchable entity) passes each window's own offset as `base_offset`, and 
 ## A missing table is a startup failure, not a quiet one
 
 Every vendored table is read once at startup, and each one has a minimum number of entries it has
-to hold to be the file it was transformed from. This is easy to underestimate: a validator whose
+to hold to be the file it was transformed from. This is commonly underestimated: a validator whose
 table is empty compiles, runs and answers no, so the process starts, the requests succeed, and one
 entity type is silently absent for as long as it runs. `VendoredData::load` refuses to build in that
 state, and `/health` answers 503 with the offending tables named for the case where one was built

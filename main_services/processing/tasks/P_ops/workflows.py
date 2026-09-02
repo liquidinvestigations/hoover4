@@ -410,7 +410,7 @@ class Operation:
         Each store runs on its own queue, so a slow object copy cannot hold the single
         ClickHouse slot, and the store activities do not retry. A backup that failed part
         way through leaves a staging directory naming the operation that wrote it, and
-        re-running it from a clean directory is both cheaper and easier to trust than
+        re-running it from a clean directory is both cheaper and safer than
         resuming into a tree whose half-written artifacts nothing has checked.
         """
         destination = str(params.detail.get("destination", "")) or params.op_id

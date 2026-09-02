@@ -180,7 +180,7 @@ async fn _get_document_entities(
 /// implementations of "which identifiers does this document contain" would give the
 /// model and the reader different answers about the same file.
 ///
-/// Three things the query has to get right, none of them obvious from the schema:
+/// Three things the query has to get right, none of them apparent from the schema:
 ///
 /// * **Only the newest rule set.** `regex_entity_hit` keeps every rule set's results side
 ///   by side, so that bumping the version makes a rescan possible without destroying what

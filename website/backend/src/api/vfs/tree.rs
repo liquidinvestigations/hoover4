@@ -86,7 +86,7 @@ async fn structure_table(user: &CurrentUser, collection_dataset: &str) -> anyhow
 
 /// The SQL one page of children resolves to.
 ///
-/// Split out of [`vfs_tree_children`] so the two things that are easy to get wrong here
+/// Split out of [`vfs_tree_children`] so the two things that are commonly got wrong here
 /// (which rows `folders_only` excludes, and that `total` is counted over the same
 /// predicate the page is drawn from) are assertable without a live Manticore.
 ///
@@ -260,7 +260,7 @@ pub async fn vfs_search_in_folder(
 ///
 /// The id is `blake2b(key)` truncated to 63 bits, minted by the Python indexer into
 /// `string_term_text_to_id`. Reimplementing that hash here would give two definitions of
-/// document identity that can drift silently. The ids would simply stop matching and
+/// document identity that can drift silently. The ids would stop matching and
 /// every folder filter would return nothing, with no error anywhere. One round trip
 /// against the authoritative table is the cheaper kind of correct.
 ///
@@ -290,7 +290,7 @@ pub async fn node_term_id(
 /// collection row selects every dataset under it, one round trip per key made that a
 /// burst of N requests for a single click. One `IN` per dataset instead.
 ///
-/// Keys the dictionary does not know are simply absent from the map, exactly as
+/// Keys the dictionary does not know are absent from the map, exactly as
 /// [`node_term_id`] returns `None`: an empty folder is an ancestor of nothing.
 pub async fn node_term_ids(
     collection_dataset: &str,

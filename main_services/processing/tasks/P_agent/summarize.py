@@ -7,7 +7,7 @@ a bad name for what the conversation turned into.
 **Nothing here may raise into a turn.** By the time it runs the answer is already written
 and read; a failed summarisation must cost the conversation a good title, never an answer.
 Every entry point returns a result object instead of throwing, and the caller writes the
-provisional title's fallback by simply doing nothing.
+provisional title's fallback by doing nothing.
 
 Deliberately not through the agent: that would drag the whole MCP tool surface into a
 call that summarises two paragraphs.

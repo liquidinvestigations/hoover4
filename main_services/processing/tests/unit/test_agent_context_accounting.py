@@ -98,7 +98,7 @@ def test_the_title_writer_carries_the_peak_forward(fake):
 
 
 def test_both_session_writers_name_the_same_columns():
-    """Read as source, because the failure is a column one writer simply does not
+    """Read as source, because the failure is a column one writer does not
     mention -- which no amount of exercising the other writer can reveal."""
     for fn in (activities._set_session_title, activities._raise_session_peak):
         source = inspect.getsource(fn)

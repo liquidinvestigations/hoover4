@@ -43,7 +43,7 @@ error message routinely names the wrong half of the problem.
 
 **Connect-loop budgets are short and browser start-up is not.** A browser with extensions
 takes several seconds to be ready; a client that allows less than that reports a connection
-failure for a browser that is simply still starting.
+failure for a browser that is still starting.
 
 ## Timeouts
 

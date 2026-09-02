@@ -51,7 +51,7 @@ it is the shape the next one takes.
 Three sections, always in this order:
 
 - **Controls**, one row per control: its identifier, what it does, and, only where there is
-  one, the constraint that is not obvious from the name.
+  one, the constraint that is not apparent from the name.
 - **States**. What the page shows in each state it can be in, including the failure states.
   Two empty results that need different reactions from the user are two states, not one.
 - **Constraints**. What holds across the whole page.

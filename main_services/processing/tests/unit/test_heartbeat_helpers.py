@@ -1,7 +1,7 @@
 """Tests for tasks.heartbeat: the pump's contextvars trap and the loop clock.
 
 The pump exists because class C activities block in a subprocess and cannot
-heartbeat themselves. Its one non-obvious failure mode -- a plain
+heartbeat themselves. Its one unexpected failure mode -- a plain
 threading.Thread starts with an EMPTY contextvars context, so calling
 activity.heartbeat() from it raises "not in activity context" -- is what
 test_pump_fires_from_a_blocked_thread covers.
@@ -35,7 +35,7 @@ class _FakeActivityContext:
 def test_the_two_constants_hold_the_agreed_relationship():
     # 15 s beat inside a 30 s deadline. The interval must divide into the timeout at
     # least twice or a single missed beat times the activity out; the UPPER bound is the
-    # one that is easy to get wrong, because the deadline is also how long a wedged slot
+    # one that is commonly got wrong, because the deadline is also how long a wedged slot
     # is held before the fleet can reuse it. Widening it measurably multiplies retries
     # rather than preventing them -- see the comment on HEARTBEAT_TIMEOUT.
     assert hb.HEARTBEAT_INTERVAL.total_seconds() == 15

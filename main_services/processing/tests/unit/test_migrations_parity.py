@@ -2,7 +2,7 @@
 
 The single most likely mistake in the database split is a table landing in the wrong
 directory, which no test elsewhere would catch: the migration would apply cleanly and
-the table would simply never be found by the code that reads it.
+the table would never be found by the code that reads it.
 """
 
 import re

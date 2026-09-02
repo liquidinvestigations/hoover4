@@ -94,7 +94,7 @@ pub async fn get_email_envelope(
     // also the only table that holds ONE type per document. The per-detector
     // `file_types` rows disagree with each other by design, and picking one of them here
     // would give an attachment a different glyph from the one it has everywhere else.
-    // A document with no row yet simply gets the generic glyph.
+    // A document with no row yet gets the generic glyph.
     let member_hashes: Vec<String> = attachments.iter().map(|(_, _, h)| h.clone()).collect();
     let coarse_types: Vec<(String, String)> = if member_hashes.is_empty() {
         Vec::new()
@@ -154,7 +154,7 @@ pub async fn get_email_envelope(
         .await?;
     if let Some((src_dataset, src_hash, kind, confidence)) = parents.into_iter().next() {
         // The parent can be in another dataset (that is what an identity edge is), so
-        // the permission check is redone for it and a refusal simply hides the banner.
+        // the permission check is redone for it and a refusal hides the banner.
         let parent_readable = permissions::assert_can_read(user, &src_dataset).await.is_ok();
         let parent_client = get_client_for_dataset(&src_dataset).await?;
         let rows: Vec<(String, i64, u8, String)> = if parent_readable {

@@ -10,7 +10,7 @@
 /// rendering of the app shell, which the browser re-runs with a session moments later.
 ///
 /// The message is written for a reader, and the code is `401` rather than the default
-/// `500`: nothing broke, the request simply proved nothing.
+/// `500`: nothing broke, the request proved nothing.
 #[cfg(feature = "server")]
 pub async fn extract_user() -> Result<common::current_user::CurrentUser, dioxus::prelude::ServerFnError> {
     use axum::Extension;

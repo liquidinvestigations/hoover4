@@ -13,7 +13,7 @@
 #
 # The consumer half is a word search, not a call graph: a key whose name is also an ordinary
 # word will find a "consumer" that merely mentions it. Read a clean result as "nothing is
-# obviously orphaned", never as "every key is wired".
+# unreferenced", never as "every key is wired".
 set -uo pipefail
 cd "$(dirname "$0")/../.." 2>/dev/null || true
 ROOT="${SPEC_ROOT:-$(git rev-parse --show-toplevel)}"

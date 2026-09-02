@@ -20,7 +20,7 @@ A doc comment must add something the identifier and its type do not already say:
 - the **invariant** (`never 0`, `sorted ascending`, `the caller holds the lock`);
 - the **failure it guards** (`a second call for the same variant deletes the first call's
   rows`);
-- the **reason the value is not the obvious one**.
+- the **reason the value is not the expected one**.
 
 If there is nothing to add, leave the item undocumented.
 

@@ -20,7 +20,7 @@ Nothing else in the tracked tree names a model. When a name changes, this file i
 Only the Claude Code row runs work here. The rest are recorded so a person setting one up starts
 from a shortlist.
 
-## Four things the table is not obvious about
+## Four things the table does not make clear
 
 **Composer 2.5 is a large quality drop for an extreme price drop.** It sits about fourteen points
 below Grok 4.6 on Cursor's own benchmark, at roughly a tenth to a sixtieth of the cost. It has no

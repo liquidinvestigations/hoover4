@@ -846,7 +846,7 @@ pub fn tri_state(node_key: &str, selected: &BTreeSet<String>) -> TriState {
 
 /// The expansion set the tree holds once it has refocused on the end of `chain`.
 ///
-/// Two rules, and the second is the one that is easy to miss. Every ancestor of the
+/// Two rules, and the second is the one that is commonly missed. Every ancestor of the
 /// focused node is expanded, including the ones elision will hide, so unfolding the gap
 /// reveals an already-open path rather than a column of collapsed rows. And every strict
 /// DESCENDANT of the focused node is collapsed, because the chain you walked down is not

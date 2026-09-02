@@ -36,8 +36,7 @@ The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
 `argMax(col, updated_at)`. Two consequences, each of which has already cost a bug:
 
 1. **A refresh must carry forward everything the provider does not tell it.** `/v1/models`
-   returns ids and nothing else, and `is_allowed` defaults to `1`, so a refresh that simply
-   wrote its rows produced a *fresher* "allowed" version than the admin's disallow, and
+   returns ids and nothing else, and `is_allowed` defaults to `1`, so a refresh that    wrote its rows produced a *fresher* "allowed" version than the admin's disallow, and
    the allowlist is enforced server-side against forged model ids, not a dropdown
    filter. `refresh_catalog_now` reads the current state first (`prior_catalog`) and
    preserves `is_allowed` plus the price and capability columns; a model never seen before
@@ -173,7 +172,7 @@ The poll limiter's ladder is **flat** (1.00 in every window) and its refusal is 
 (`rate_limited:<secs>`) rather than a 429, because it is consumed by a server function.
 Polling is machine-paced (a tab watching a streaming answer polls at the 500 ms floor for
 as long as the model generates), so the decay that separates a human burst from an hour of
-one is simply wrong here: it put a single streaming tab on the 1 h window's ceiling. See
+one is wrong here: it put a single streaming tab on the 1 h window's ceiling. See
 `docs/architecture/Chat_And_Agents.md`.
 
 The chat API enforces the chat limiter and records the LLM events through:

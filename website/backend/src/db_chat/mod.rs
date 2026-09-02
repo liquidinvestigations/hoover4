@@ -616,7 +616,7 @@ static TURN_LOCKS: std::sync::LazyLock<
 /// long-lived process accumulated one `Arc<Mutex>` per conversation it had ever served.
 /// Small, but unbounded and proportional to traffic, which is the definition of a leak. An
 /// entry nobody else holds an `Arc` to has no waiter and no holder, so dropping it is
-/// invisible: the next caller for that session simply gets a fresh lock.
+/// invisible: the next caller for that session gets a fresh lock.
 pub fn turn_lock(username: &str, session_id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     let key = format!("{username}:{session_id}");
     let mut locks = TURN_LOCKS.lock().unwrap_or_else(|e| e.into_inner());

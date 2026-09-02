@@ -17,7 +17,7 @@ Measured on this host with Qwen3.5-2B, "what is 17*23, reason it out":
     thinking off (default)   441 completion tokens
     thinking on            1,735 completion tokens, closes </think> after ~1,300
 
-That is the time/quality lever, and it is roughly 4x on an easy question. On a hard one
+That is the time/quality lever, and it is roughly 4x on a simple question. On a hard one
 (a two-trains-and-a-bird puzzle) unbounded thinking does not converge at all:
 
     off (default)          19.0 s      594 tokens   finish=stop

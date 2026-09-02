@@ -16,7 +16,7 @@ Only metadata written by whoever produced the document, or by an archive that st
 * the mtime of an archive member (``vfs_files.mtime_source == 'archive'`` -- 7z restores
   the timestamps the archive stored).
 
-What is NOT a date, and why it is easy to get wrong:
+What is NOT a date, and why it is commonly got wrong:
 
 * **Tika's ``File Modified Date``** is the mtime of the temp file the worker handed
   Tika. It is always "a few seconds ago" and it is in the metadata of nearly every

@@ -698,7 +698,7 @@ def extract_entities(request: NERRequest):
 async def health_check():
     """Health check endpoint"""
     global model, reranker, ner_model
-    # An enabled-but-unloaded capability is unhealthy; a disabled one is simply off.
+    # An enabled-but-unloaded capability is unhealthy; a disabled one is off.
     core_models_loaded = (
         (model is not None or not ENABLE_EMBEDDINGS)
         and (reranker is not None or not ENABLE_RERANKER)

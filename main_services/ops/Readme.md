@@ -234,7 +234,7 @@ until someone needs to override them.
 `HOOVER4_RATE_CHAT_POLL_*` exists too, and its ladder is **flat**, every window factor
 defaults to `1.00` rather than decaying. Polling is machine-paced: a tab watching a
 streaming answer polls at the 500 ms floor for as long as the model generates, so for
-that limiter "sustained" is simply "working". Under the decaying ladder one tab sat
+that limiter "sustained" is "working". Under the decaying ladder one tab sat
 exactly on the 1 h window's ceiling and two tripped it, at which point the page declared
 the chat lost mid-turn. The per-minute default is 600 (~5 streaming tabs); the expensive
 half of a poll, the held request, has its own separate cap.

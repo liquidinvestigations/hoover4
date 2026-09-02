@@ -27,7 +27,7 @@ def _ranked(kind: str, index: int, rerank_score: float | None = None) -> Ranked:
 class TestPerKindFloor:
     def test_a_minority_kind_keeps_its_floor_against_a_dominant_one(self):
         """The reason the floor exists: four web scrapers agreeing always outscores one
-        encyclopaedia entry, so without a reservation pass a query with an obvious
+        encyclopaedia entry, so without a reservation pass a query with a well-known
         Wikipedia answer returns nothing but blogs about it."""
         ranked = [_ranked("web", i) for i in range(1, 41)]
         ranked += [_ranked("reference", i) for i in range(41, 46)]

@@ -126,7 +126,7 @@ fn eip55_agrees(body: &str) -> bool {
 
 pub struct BitcoinRule;
 
-/// The legacy base58 forms, whose alphabet drops the four characters that are easy to confuse, and
+/// The legacy base58 forms, whose alphabet drops the four characters that are commonly confused, and
 /// the native segwit form, whose human-readable part is a literal marker.
 const BITCOIN_PATTERN: &str = r"[13][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{25,34}|bc1[023456789acdefghjklmnpqrstuvwxyz]{8,87}";
 

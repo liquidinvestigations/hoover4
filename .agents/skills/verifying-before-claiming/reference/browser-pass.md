@@ -2,7 +2,7 @@
 
 A claim about the interface needs the interface. `cargo check` passing says nothing about
 whether a page renders, and a Dioxus build that fails leaves the site returning 500 rather
-than an obviously broken page.
+than a visibly broken page.
 
 Minimum for "the UI change works":
 

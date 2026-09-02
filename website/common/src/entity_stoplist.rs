@@ -119,8 +119,8 @@ const ORIGINAL_MESSAGE_MARKER: &str = "-----original message-----";
 
 const BLOB_MIN_CHARS: usize = 24;
 const BLOB_MIN_CASE_SWITCHES: usize = 4;
-/// Letter-spaced headings arrive as one entity per heading. The threshold cannot simply
-/// be lowered: `J F Kennedy` carries two single-character tokens and is a name. What
+/// Letter-spaced headings arrive as one entity per heading. Lowering the threshold breaks
+/// on `J F Kennedy`, which carries two single-character tokens and is a name. What
 /// separates them is that letter-spacing leaves nothing but single characters. See
 /// `is_entirely_single_characters`.
 const MAX_SINGLE_CHAR_TOKENS: usize = 3;

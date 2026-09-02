@@ -143,7 +143,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
         tracing::debug!("search cache INSERTED: {query_hash} (searched in {dt_ms}ms)");
     } else {
         // Not an error path for the caller: the answer is already in hand and the next
-        // identical query simply costs the same again.
+        // identical query costs the same again.
         tracing::debug!("search cache insert failed: {query_hash}");
     }
     Ok(response)

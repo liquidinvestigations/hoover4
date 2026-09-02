@@ -1422,7 +1422,7 @@ def _as_citation_list(value: Any) -> list[Citation] | None:
         except ValueError:
             return None
     if isinstance(value, dict):
-        # A single citation sent unwrapped is an obvious intention, not an error.
+        # A single citation sent unwrapped is deliberate, not an error.
         value = [value]
     if not isinstance(value, list):
         return None

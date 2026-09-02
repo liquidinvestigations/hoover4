@@ -155,7 +155,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
     started_all = time.time()
 
     if not service_configured():
-        # Not an error: `ocr_pdf_enabled = false` simply means no searchable PDFs.
+        # Not an error: `ocr_pdf_enabled = false` means no searchable PDFs.
         log.info("[P3] ocr-pdf service not configured, no OCR'd PDF for %s", params.file_path)
         _record_skip(params, 0, "ocr_pdf_not_configured: no OCR_PDF_URL")
         return "ocr_pdf_skipped_not_configured"

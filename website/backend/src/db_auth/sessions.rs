@@ -63,7 +63,7 @@ pub async fn create_session(
 /// Used to (re-)anchor a guest session to the id the browser already holds in
 /// its cookie, so a refresh keeps the same session instead of rotating to a new
 /// one. `web_sessions` is a ReplacingMergeTree keyed on `session_id`, so writing
-/// the same id again simply refreshes the row.
+/// the same id again refreshes the row.
 pub async fn upsert_session(
     session_id: &str,
     username: &str,

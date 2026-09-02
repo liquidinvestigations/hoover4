@@ -391,7 +391,7 @@ const POLL_STEP: Duration = Duration::from_millis(500);
 
 /// Concurrently-held polls per user. A held request is a cheap way to exhaust a
 /// server, so past this cap a poll answers immediately with the current state instead
-/// of holding. The client simply polls again sooner.
+/// of holding. The client polls again sooner.
 const MAX_HELD_POLLS_PER_USER: usize = 2;
 
 static HELD_POLLS: std::sync::LazyLock<

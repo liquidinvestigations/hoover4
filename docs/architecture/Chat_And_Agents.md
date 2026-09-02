@@ -138,12 +138,12 @@ name is declared in the workflow module and mirrored in `api::chat`: a workflow 
 to a queue nothing polls waits for ever with no error anywhere, and presents as chat
 hanging. **Deploy the worker before the website**, for the same reason.
 
-Three rules that are easy to break and hard to notice:
+Three rules that are commonly broken and hard to notice:
 
 - **`read_stream_rows` aggregates in a subquery.** `max(updated_at) AS updated_at`
   shadows the column, so sibling `argMax(…, updated_at)` calls become aggregates inside
   aggregates (`Code: 184`); but `clickhouse::Row` also matches columns **by name**, so
-  the aliases cannot simply be renamed. Aggregate as `last_*` inside, rename outside.
+  renaming the alias alone breaks this. Aggregate as `last_*` inside, rename outside.
 - **Liveness comes from the transcript and the stream table, and from nothing in the
   website.** `ChatPollResult` carries `active`, computed from `db_chat::turn_boundaries`
   (a turn is open while the last user row has no assistant/error row after it), and from
@@ -163,7 +163,7 @@ per user (`MAX_HELD_POLLS_PER_USER`).
 a *flat* window ladder (factor 1.0 everywhere), unlike chat messages and API calls, whose
 budget decays the longer a burst lasts. That decay distinguishes a burst of human activity
 from an hour of it; a streaming turn polls at the 500 ms floor for as long as the model
-generates, so for this limiter "sustained" is simply "working". Under a decaying ladder
+generates, so for this limiter "sustained" is "working". Under a decaying ladder
 one tab sits exactly on the one-hour window's ceiling and two or three trip it, at which
 point the page declares the chat lost mid-turn. The refusal is
 also typed (`rate_limited:<secs>`, parsed with `chat_types::rate_limited_seconds`), so the
@@ -174,7 +174,7 @@ marker rather than stripping a prefix: `ServerFnError` may wrap the message.
 Stop and interruption: the composer's stop button is a **Temporal cancellation**, addressed
 to the workflow id the turn's reserved seq gives it. `ChatTurn` catches the cancellation
 and writes an ending into the transcript inside `asyncio.shield`. A cancelled workflow
-that simply vanished would leave a user row with nothing after it, and the page would
+that vanished would leave a user row with nothing after it, and the page would
 follow a turn that will never speak again. A turn whose rows stop advancing for
 `CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button,
 never a spinner, and never promoted into `chat_messages`. A stopped turn's partial answer

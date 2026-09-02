@@ -1,7 +1,7 @@
 """Retention for chat artifacts: delete the Garage objects, then the ClickHouse rows.
 
 **A ClickHouse TTL does not delete Garage objects.** That is the whole reason this exists.
-If `chat_artifacts` simply expired its rows, the bytes would stay in the bucket with
+If `chat_artifacts` expired its rows, the bytes would stay in the bucket with
 nothing left pointing at them and no way to find them again except a full prefix walk.
 
 So the order is fixed and is the opposite of the intuitive order:

@@ -56,7 +56,7 @@ Each page becomes a JPEG at `dpi` (default 200) placed at the page's original si
 points, with the OCR words drawn over it in **text render mode 3**, laid out, measured,
 selectable, and painting nothing.
 
-Two details that are easy to get subtly wrong and impossible to see afterwards:
+Two details that commonly go wrong in a way that is impossible to see afterwards:
 
 * **The origin flips.** The raster's boxes are top-left, the PDF's are bottom-left, so
   the baseline is `page_height - top - height`, scaled.

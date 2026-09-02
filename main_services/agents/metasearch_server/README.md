@@ -116,7 +116,7 @@ There are two dedupes and both are needed:
 
 The **per-kind floor** exists because RRF is a popularity measure. Four web scrapers
 agreeing on a page beats one encyclopaedia entry every time, so without a floor a query with
-an obvious Wikipedia answer returns twenty blogs about it. Each kind keeps its own best
+a well-known Wikipedia answer returns twenty blogs about it. Each kind keeps its own best
 `METASEARCH_MIN_PER_KIND` results whatever the overall cap says, then the rest fills by
 score up to `METASEARCH_MAX_PER_KIND` per kind. A page both Wikipedia and a scraper returned
 keeps the *more specific* kind, or the floor could not see it.

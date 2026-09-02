@@ -34,7 +34,7 @@ import sys
 #: no matter what it is called.
 PIPELINE_ROOT = "main_services/processing/tasks/"
 
-#: Modules whose top-level symbols are replayed. `workflows.py` is the obvious one; the
+#: Modules whose top-level symbols are replayed. `workflows.py` is the expected one; the
 #: others are files under the same root that define a `@workflow.defn` class, which is why
 #: the filename test below is a fallback and the content test is the real one.
 WORKFLOW_FILENAMES = ("workflows.py",)

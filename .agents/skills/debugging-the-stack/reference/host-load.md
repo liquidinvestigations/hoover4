@@ -2,7 +2,7 @@
 
 `uptime` plus `ps -eo user,ni,pcpu,args --sort=-pcpu | head` names the cause in one step.
 
-Three things that are easy to get wrong:
+Three things that are commonly got wrong:
 
 - **Check the owner column.** More than one account runs its own rootless podman here, so
   the process at the top of the list is not necessarily yours, and killing your own work

@@ -39,7 +39,7 @@ list of names that are too weak goes stale in the direction that blocks a good m
 The first three are read off a specification sheet. **Only the fourth can exclude a model that
 looks capable and is not**, and it needs a measurement rather than a reputation.
 
-Gate one is worth an example, because it excludes a model that otherwise looks like the obvious
+Gate one is worth an example, because it excludes a model that otherwise looks like the likely
 executor. A model whose entire context window equals the pass cap has no room above its budget,
 so a pass that runs long has nowhere to go. That is an exclusion by arithmetic against a
 published window size, and a reader can check it without an opinion.

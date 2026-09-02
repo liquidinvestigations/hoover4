@@ -220,7 +220,7 @@ def per_kind_floor(
 
     1. **Reserve.** Each kind keeps its own best `min_per_kind` results (or all of them,
        if it has fewer) whatever the overall cap says. Without this a query with an
-       obvious encyclopaedia answer returns twenty blogs about it, because four web
+       well-known encyclopaedia answer returns twenty blogs about it, because four web
        scrapers agreeing always outscores one reference source, and a keyword-heavy
        query would return no vector hits at all.
     2. **Fill.** Everything else in rank order, up to `max_per_kind` per kind and

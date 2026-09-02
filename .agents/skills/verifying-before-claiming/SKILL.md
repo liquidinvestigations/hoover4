@@ -45,7 +45,7 @@ session pays for.
 | a sub-agent did the work | the diff, read by you | its report is a claim, not evidence |
 
 Run the scripts, do not retype the commands they wrap. Each one already carries the parts
-that are easy to get wrong. The container name, the `PATH` that Rust lives on, the working
+that are commonly got wrong. The container name, the `PATH` that Rust lives on, the working
 directory, the `--offline` flag, the output filter.
 
 ```

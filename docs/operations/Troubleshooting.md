@@ -248,7 +248,7 @@ just for references to the page.
 ## The host itself is unresponsive
 
 The load average plus a process list sorted by CPU names the cause in one step. Three things
-that are easy to get wrong:
+that are commonly got wrong:
 
 - **Check the owner column.** More than one account may run its own container runtime on a
   shared machine, so the process at the top of the list is not necessarily yours, and killing

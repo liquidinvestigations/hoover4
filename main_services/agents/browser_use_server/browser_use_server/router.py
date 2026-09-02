@@ -11,7 +11,7 @@ The lifetime rules, and why each number is what it is:
 * ``BROWSER_MAX_TABS_PER_CHAT`` (6), a model that opens a tab per search result would
   otherwise exhaust the container through a single chat.
 
-**The warm template session** is the part that is easy to leave out and expensive to
+**The warm template session** is the part that is commonly left out and expensive to
 miss. `list_tools` runs during graph construction, for every chat, including ones that
 will never browse. Answering it from a template browser started at boot means tool
 discovery costs nothing; answering it by spawning the caller's browser would start a

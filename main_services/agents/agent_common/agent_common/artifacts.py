@@ -121,7 +121,7 @@ def enabled() -> bool:
     """Whether this container is configured to write artifacts at all.
 
     A server with no ClickHouse reachable (a developer running it bare, the unit tests)
-    still has to serve its tools; it simply produces no artifacts.
+    still has to serve its tools; it produces no artifacts.
     """
     return os.getenv("CHAT_ARTIFACTS_ENABLED", "true").lower() in ("1", "true", "yes")
 

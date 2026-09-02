@@ -275,7 +275,7 @@ the pass reconstructs it badly from context it does not have:
 3. **What is true now**, where the tree has moved since the research was written.
 4. **The deliverable**, the exact output path and its required sections.
 5. **The checks to run before finishing**, named as commands.
-6. **The prohibitions**, including the standing ones that are easy to violate under pressure.
+6. **The prohibitions**, including the standing ones that are commonly violated under pressure.
 
 ## Closing a stage
 

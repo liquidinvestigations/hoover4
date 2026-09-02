@@ -145,7 +145,7 @@ const DOUBLE_PRESS_SLOP_PX: f64 = 4.0;
 /// drag, the release lands on that overlay, and the overlay unmounts in the same handler,
 /// so the browser has no live common ancestor of the press and the release and drops the
 /// whole activation sequence, `click` included. The `ondoubleclick` handler below is
-/// correct and was simply unreachable from a real mouse; this is what reaches it.
+/// correct and was unreachable from a real mouse; this is what reaches it.
 ///
 /// `previous` is `(timestamp_ms, client_x)` of the last press on the handle, and the
 /// caller only records one when it actually starts a drag.
@@ -158,7 +158,7 @@ fn is_double_press(previous: Option<(f64, f64)>, now_ms: f64, client_x: f64) -> 
 }
 
 /// A monotonic-enough clock for [`is_double_press`]. Anything unmeasurable reads as 0,
-/// which makes the elapsed time negative on the next press and the gesture simply not
+/// which makes the elapsed time negative on the next press and the gesture not
 /// fire, a reset that does not happen is far better than one that happens mid-drag.
 fn now_ms() -> f64 {
     web_sys::window()

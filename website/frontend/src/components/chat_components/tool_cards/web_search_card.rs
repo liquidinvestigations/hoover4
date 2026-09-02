@@ -103,7 +103,7 @@ pub fn WebSearchCard(
     let rerank_error = json_str(&content, "rerank_error");
     let artifact_id = json_str(&content, "artifact_id");
     // A dead search used to read "0 results · 0 sources". A count, phrased as if the web
-    // simply had nothing to say. The failure is the headline, so it goes in the header.
+    // had nothing to say. The failure is the headline, so it goes in the header.
     let failure = tool_failure(&content);
     let error = failure.as_ref().map(|f| f.message.clone()).unwrap_or_default();
     let total_ms = json_f64(&content, "total_ms").unwrap_or(0.0);

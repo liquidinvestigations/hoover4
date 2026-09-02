@@ -50,7 +50,7 @@ pub fn ToolCallDisclosure(
 
     // Older rows (and any writer that has not been taught the payload columns) have
     // empty input/output. Fall back to the summary so the expansion is never blank.
-    // An empty disclosure looks like a bug even when the data simply predates it.
+    // An empty disclosure looks like a bug even when the data predates it.
     let input_view = readable_fields(&tool_input);
     let output_view = readable_fields(&tool_output);
     let has_payload = !tool_input.is_empty() || !tool_output.is_empty();

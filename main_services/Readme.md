@@ -40,7 +40,7 @@ The fallback is not symmetric across capabilities. NER degrades GPU → CPU and 
 which provider served each row. OCR does **not** fall back between engines, because the
 engine is part of the storage key (`ocr_easyocr_en` vs `ocr_tesseract_eng`): serving one
 engine's request from the other would file its text under a name that did not produce
-it. An unconfigured OCR engine simply produces no variant.
+it. An unconfigured OCR engine produces no variant.
 
 ## Navigation
 

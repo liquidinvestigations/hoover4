@@ -4,7 +4,7 @@
 //! ----------------------
 //! A facet pane holds the buckets one query returned, twenty-one of them by the
 //! over-fetch limit. Narrowing that list client-side answers "nothing matches" for a
-//! value that is present in the corpus and simply did not make the top twenty-one, which
+//! value that is present in the corpus and did not make the top twenty-one, which
 //! on any real corpus is almost every value. The needle has to be asked of the corpus.
 //!
 //! It cannot be asked of the search shards. Their facet columns hold

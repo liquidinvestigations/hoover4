@@ -512,7 +512,7 @@ def render_main_env(cfg):
     # (`ocr_easyocr_en` vs `ocr_tesseract_eng`), so serving an EasyOCR request from
     # Tesseract would file Tesseract's text under EasyOCR's name -- and Tesseract has
     # already run as its own variant, so the two would be identical rows under different
-    # labels. An engine with no endpoint simply produces no variant.
+    # labels. An engine with no endpoint produces no variant.
     env["OCR_TESSERACT_URL"] = (
         # Same network, so the container name and its internal port -- never the
         # published one. The published port exists for humans and verify-stack.
@@ -1363,7 +1363,7 @@ def reprobe_embeddings(rt):
     diagnose, because nothing is broken and nothing says so.
 
     Best effort, and never fatal to the deploy: the worker lives on the main stack, which
-    may be on another host or simply not running. A model still loading is the normal
+    may be on another host or not running. A model still loading is the normal
     case here, and the workers probe again at their own startup.
     """
     ps = rt.run(["ps", "--filter", "name=hoover4-worker", "--format", "{{.Names}}"],

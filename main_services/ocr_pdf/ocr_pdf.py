@@ -64,7 +64,7 @@ log = logging.getLogger("ocr_pdf")
 DERIVED_PREFIX = "derived/"
 
 #: Render resolution. 200 dpi is the usual floor for reliable OCR of body text and keeps
-#: an A4 page at ~1650x2340 px, which the OCR tier's 64 MB image cap swallows easily.
+#: an A4 page at ~1650x2340 px, which the OCR tier's 64 MB image cap accepts.
 DEFAULT_DPI = int(os.getenv("OCR_PDF_DPI", "200"))
 MAX_DPI = int(os.getenv("OCR_PDF_MAX_DPI", "400"))
 

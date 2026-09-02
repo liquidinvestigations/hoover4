@@ -419,7 +419,7 @@ services:
       # Delegation caps. Every one of them is enforced in code, not asked for in the
       # prompt. See research_agent/subagents.py, which also explains why the per-turn
       # total is a separate cap from the per-call one. Unset means the shipped default.
-      # There is no setting for the depth: a worker simply does not have the tool.
+      # There is no setting for the depth: a worker does not have the tool.
       - AGENT_SUBAGENT_MAX_TASKS=${AGENT_SUBAGENT_MAX_TASKS:-}
       - AGENT_SUBAGENT_CONCURRENCY=${AGENT_SUBAGENT_CONCURRENCY:-}
       - AGENT_SUBAGENT_TOOL_TURNS=${AGENT_SUBAGENT_TOOL_TURNS:-}

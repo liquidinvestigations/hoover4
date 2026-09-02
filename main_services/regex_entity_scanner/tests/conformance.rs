@@ -75,7 +75,7 @@ const MIN_PRECISION_PERCENT: f64 = 99.5;
 /// origin a decision about the number it is expected to hold rather than a free pass.
 ///
 /// An origin with no upstream-invalid cases has no precision to measure; its precision floor is
-/// still written down, and is simply not asserted until such a case exists.
+/// still written down, and is not asserted until such a case exists.
 const ORIGIN_FLOORS: &[(&str, f64, f64)] = &[
     ("advisory-database", 99.5, 99.5),
     ("crossref", 99.5, 99.5),

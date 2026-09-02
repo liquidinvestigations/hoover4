@@ -921,7 +921,7 @@ class MCPGatewayAgent:
         # listing them..."), and those chunks arrive on the same `response` channel as
         # the real answer. Concatenating everything shipped the model's scratchpad into
         # the transcript ahead of the answer, and it does not happen in every chat
-        # configuration, so it is easy to miss.
+        # configuration, so it is commonly missed.
         #
         # So every `start_tool` moves what has accumulated so far into the preamble,
         # which is returned as `reasoning` and rendered behind the existing tool

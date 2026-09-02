@@ -217,7 +217,7 @@ def _prior_state(client, provider: str) -> Dict[str, tuple]:
     """`{model_id: (is_allowed, context_window)}` as the table stands now, for one provider.
 
     `llm_models` is a ReplacingMergeTree read through `argMax(..., updated_at)`, and
-    `is_allowed` defaults to 1. So an insert that simply omits the column writes a fresher
+    `is_allowed` defaults to 1. So an insert that omits the column writes a fresher
     "allowed" version and **undoes an admin's disallow**, silently and on a schedule. The
     allowlist is enforced server-side against forged model ids, so that is a security
     control being reset by a background task, not a cosmetic dropdown.

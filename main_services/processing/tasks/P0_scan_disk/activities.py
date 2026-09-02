@@ -197,7 +197,7 @@ def resolve_mtime_source(container_hash: str, is_archive: bool, is_email: bool) 
 
     Pure so the trust decision is testable: getting it backwards would index the
     worker's own clock as a document date for every email attachment in the corpus,
-    which is invisible in the data and obvious only as "every attachment is dated today".
+    which is invisible in the data and visible only as "every attachment is dated today".
     """
     if not container_hash:
         return MTIME_SOURCE_FILESYSTEM
