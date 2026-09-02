@@ -139,7 +139,9 @@ The one shape this tree produces is the working branch moving under a live pass.
 touching a hunk, read the intent of both sides, because intent is the input the model
 otherwise lacks.
 
-**Resolve what the intent settles. Stop and ask on what it does not.** The best models
+**Resolve what the intent settles. Stop and ask on what it does not**, unless otherwise stated,
+for example an unattended pass, where the reading that keeps the plan's checks runnable is taken
+and both readings are recorded in `OPEN_QUESTIONS.md`. The best models
 measured on 7,938 real conflict hunks resolve under 60% correctly, and a preserved conflict is
 worth more than a confident wrong merge.
 

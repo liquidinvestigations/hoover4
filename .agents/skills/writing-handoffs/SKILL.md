@@ -65,3 +65,6 @@ the plan folder is what the next pass reads.
 `running-consecutive-subagents` covers a sub-agent that reaches its tool-call budget and stops.
 That handover carries the rule the pass derived, scoped to one pass. This skill covers the
 whole-session case, where a main session, not a sub-agent, is the one running out of room.
+
+On an unattended run a handoff is not the end of the work. The run continues from the handoff it
+just wrote, and only the items end the run. `running-unattended` carries that mode.

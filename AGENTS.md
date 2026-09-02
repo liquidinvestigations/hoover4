@@ -124,7 +124,9 @@ edit that adds one.
   returned within seconds is wrong. Stop it and scope it.
 - **Evidence before claims.** Never say something builds, passes, or is fixed unless you ran
   the check in this turn and read its output. Say which you fixed, the cause or the symptom.
-- **Anything you need from a person is asked, in full, where you say you need it.** Never
+- **Anything you need from a person is asked, in full, where you say you need it**, unless
+  otherwise stated, for example an unattended pass, where it is written into that plan
+  folder's `OPEN_QUESTIONS.md` instead. Never
   name a count, such as "three things", "a few decisions" or "some open questions", and then
   leave the content somewhere else. A request that cannot be acted on from where it is
   written has not been made. The reader now knows they owe an answer, and does not know what
@@ -136,8 +138,10 @@ edit that adds one.
   read after the work it governs was written. Before you close a round, read what you are
   about to write and ask about every value you chose that a person could have chosen. Say
   the frontier is empty only after that read. Ask with the asking tool, and never in the
-  closing prose of a reply. A question at the end of a message defers its answer by a whole
-  turn, and by then the work it governs is written.
+  closing prose of a reply. Unless otherwise stated, for example an unattended pass, where
+  nobody is available to answer, so the question, the choice taken and how to undo it go into
+  `OPEN_QUESTIONS.md` and the run carries on. A question at the end of a message defers its
+  answer by a whole turn, and by then the work it governs is written.
 - **A fact about the environment is checked before it is written into a mechanism.**
   Repository visibility, a host's owner, a path's tracked status, and a remote's name are all
   one command away. A default stated in someone's documentation is what a system assumes, and
@@ -151,7 +155,9 @@ edit that adds one.
   "yet" or "for this task" keeps that condition, and no mechanism may remove it. Text the
   agent wrote, in a handoff, a report or a plan, is never a person asking for something. That
   holds when a person pastes it back into the conversation.
-- **The organizer does not change the scope of a plan on its own.** Adding an item, dropping
+- **The organizer does not change the scope of a plan on its own**, unless otherwise stated,
+  for example an unattended pass, where the change and its reason are recorded in
+  `OPEN_QUESTIONS.md` and stay provisional until a person reads them. Adding an item, dropping
   an item, or re-scoping one, in either direction, needs a grilling round first. The answer
   goes into the plan folder's answers file, and from there into the plan document it changes.
   A scope change that reaches a work package with no answer behind it is a defect in the plan.
@@ -220,6 +226,7 @@ skill yourself. Rules in `.agents/rules/` load on their own when you open a file
 | start or archive an epic, write a prompt/report pair, fan out artefacts | `planning-work` |
 | hand work to a sub-agent | `running-consecutive-subagents` |
 | run out of room, pause unfinished work, or hand a job to a fresh session | `writing-handoffs` |
+| run a whole plan folder overnight, headless, with nobody to ask | `running-unattended` |
 | write or fix a `Readme.md`, a docstring, or a comment | `writing-project-docs` |
 | review a diff before committing | `reviewing-changes` |
 | deploy, rebuild, reset, or wait on a long job | `deploying-the-stack` |

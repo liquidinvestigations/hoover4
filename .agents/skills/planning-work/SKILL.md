@@ -132,7 +132,10 @@ asked**, which is whether the ten items were the same shape.
 - **Every question carries a recommended answer**, so the reader can agree in one word. A
   question with no recommendation is asking someone else to do the planning.
 - **The round goes into `2-questions.md` and through `AskUserQuestion` as well.** A question
-  written in a file nobody has been asked is not a question.
+  written in a file nobody has been asked is not a question. Unless otherwise stated, for
+  example an unattended pass, where nobody is available to answer and the question goes into
+  `OPEN_QUESTIONS.md` beside the plan's `TODO.md`, with the choice taken and how to undo it.
+  `running-unattended` carries that mode.
 - **Write the questions out where you raise them.** Never name a count and leave the content
   elsewhere.
 - **Record what was asked and what came back**, so the next round does not re-ask it.
@@ -143,7 +146,9 @@ asked**, which is whether the ten items were the same shape.
   Read the draft before you say so.
 - **Stop when the frontier is empty**, and say so.
 
-**A scope change re-opens the round.** An item added to the plan, an item dropped, or an item
+**A scope change re-opens the round**, unless otherwise stated, for example an unattended pass,
+where the change is recorded in `OPEN_QUESTIONS.md` and stays provisional until a person reads
+it. An item added to the plan, an item dropped, or an item
 re-scoped, needs its own question before it reaches a work package. This holds in both
 directions, so removing work is asked about in the same way as adding it. The answer goes into
 the answers file, and from there into the plan document it changes. An item that the plan
@@ -289,7 +294,9 @@ Before a stage is called finished:
 - The report says plainly what was not done and why. A check that failed and was shipped
   anyway is stated as such; a named gap is worth more than a clean-looking summary.
 - **Everything the report needs from a person is written out where it is raised**, with a
-  recommended answer, and repeated in full in whatever message hands the report over. Naming
+  recommended answer, and repeated in full in whatever message hands the report over. On an
+  unattended run there is no such message, so the same content goes into `OPEN_QUESTIONS.md`
+  as the work lands rather than at the end. Naming
   a count ("three open questions"), and leaving the content in the document means the
   question was never actually asked. The reader has to go looking to find out what they owe,
   and at that point the report is blocking on an answer nobody knows is wanted.
