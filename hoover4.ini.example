@@ -358,3 +358,10 @@ enabled      = false
 base_url     = https://api.moonshot.ai/v1
 model        =
 api_key_file =
+
+# ---- the local Nomad cluster's image registry ------------------------------------
+# Pass 6 pushes hoover4's built images here, and a Nomad docker job pulls from
+# here. Empty on a checkout with no local cluster. Set it to the cluster's own
+# real address. Never commit that address. Commit only this placeholder.
+[cluster]
+registry_address =           ; e.g. 192.0.2.10:5050
