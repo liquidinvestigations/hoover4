@@ -21,7 +21,8 @@ The stack includes:
 
 - Workflow orchestration: Temporal with Cassandra and Elasticsearch backends, plus the Temporal UI.
 - Primary data stores: ClickHouse for structured processing tables, Manticore for text search, Garage for object storage, and Redis for auxiliary caching.
-- Application services: the processing worker, the website, and the PDF-to-HTML renderer.
+- Application services: the processing worker, the website behind its header-setting
+  reverse proxy (`hoover4-proxy`), and the PDF-to-HTML renderer.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
 ### Temporal's throughput knobs
@@ -100,11 +101,13 @@ usage.
 ## Endpoints (local defaults)
 
 Ports are ini keys in `hoover4.ini`, rendered by `deploy.py`; the values below are the
-defaults. The website stays on `12345`, which is the one port a human types.
+defaults. `12345` stays hardcoded, which is the one port a human types. It answers on
+`hoover4-proxy` now, a header-setting reverse proxy in front of the website: the website
+itself takes no published port and answers only inside the compose network, on `8080`.
 
 | service | endpoint | what it is |
 |---|---|---|
-| Website | `http://localhost:12345` | the Hoover4 web UI |
+| Website (behind the proxy) | `http://localhost:12345` | the Hoover4 web UI |
 | Temporal UI | `http://localhost:21909` | workflow dashboard |
 | Temporal gRPC / HTTP | `localhost:21907` / `http://localhost:21908` | the workflow service itself |
 | Temporal Cassandra | `localhost:21912` | Temporal's history store |

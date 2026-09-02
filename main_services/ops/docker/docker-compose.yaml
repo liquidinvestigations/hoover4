@@ -571,8 +571,8 @@ services:
       # ingest arbitrary host paths.
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
-    ports:
-      - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
+    # No published port: hoover4-proxy is the only way in, on 12345. This container
+    # answers on 8080 inside the "hoover4" network only.
     environment:
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
@@ -674,6 +674,40 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+
+  hoover4-proxy:
+    # The header-setting reverse proxy in front of the website. It asserts one
+    # identity, from hoover4.ini's proxy_username and proxy_groups, on every
+    # request. A production deployment replaces this container with oauth2-proxy,
+    # which asserts a real identity the same way -- the four header names are what
+    # makes that swap a configuration change and not a code change (parse_headers
+    # in website/backend/src/auth/session_middleware.rs).
+    image: nginx:alpine
+    container_name: hoover4-proxy
+    restart: unless-stopped
+    ports:
+      - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      # dx serve inside hoover4-website answers 500 on every route until its first
+      # compile finishes, which takes minutes cold. The generous retry budget below
+      # rides that out instead of marking the proxy unhealthy for it.
+      #
+      # -O /dev/null, not the bare form: busybox wget saves the response to a file
+      # named after the URL, "index.html" for "/", in its working directory. The
+      # first probe writes it and every probe after that refuses because the file is
+      # already there -- reporting "unhealthy" on a server that answers 200 every
+      # time, which is what this container actually did until this line was fixed.
+      test: wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1:8080/ || exit 1
+      interval: 15s
+      timeout: 15s
+      retries: 20
+      start_period: 30s
+    networks:
+      - hoover4
+    depends_on:
+      - hoover4-website
 
   hoover4-processing-pdf-to-html:
     container_name: hoover4-processing-pdf-to-html

@@ -163,6 +163,13 @@ DEFAULTS = {
         "serena_port": "21940",
         # demo / data
         "demo_mode": "false",
+        # Identity the header-setting proxy in front of the website asserts on every
+        # request. A production deployment removes this proxy and puts oauth2-proxy in
+        # its place, which asserts a real identity the same way.
+        "proxy_username": "admin",
+        # Comma-separated, no space, matching what oauth2-proxy sends. A group named
+        # admin or superuser makes the asserted user an administrator.
+        "proxy_groups": "admin",
         "testdata_dir": "",
         # Where the dataset-creation form looks for subfolders. An IN-CONTAINER path:
         # `testdata_dir` already decides what the host mounts there, and the form walks
@@ -292,7 +299,7 @@ MAIN_PUBLISHED = [
     ("temporal-cassandra", "main_services", "cassandra_port"),
     ("temporal-elasticsearch", "main_services", "elasticsearch_port"),
     ("hoover4-processing-pdf-to-html", "main_services", "pdf_to_html_port"),
-    ("hoover4-website", None, "12345"),  # the one hardcoded port humans type
+    ("hoover4-proxy", None, "12345"),  # the one hardcoded port humans type
     ("hoover4-mcp-collections", "main_services", "mcp_collections_port"),
     ("hoover4-mcp-metasearch", "main_services", "mcp_metasearch_port"),
     ("hoover4-mcp-browser", "main_services", "mcp_browser_port"),
@@ -462,7 +469,7 @@ def backup_object_volume_bytes(cfg):
 
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini; no port
-    literal appears here except the website's 12345 (which is not rendered at all. It
+    literal appears here except the proxy's 12345 (which is not rendered at all. It
     stays in the compose file where humans read it)."""
     m = "main_services"
     env = {}
@@ -575,9 +582,16 @@ def render_main_env(cfg):
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
     env["HOOVER4_DEMO_MODE"] = cfg.get(m, "demo_mode")
-    # The address half of every published port mapping. The website's own port stays
-    # hardcoded at 12345 in the compose file (see MAIN_PUBLISHED) -- only the interface
-    # it answers on is configurable, which is the half that decides who can reach it.
+    # The identity the proxy asserts on every request it forwards. Consumed here so
+    # every rendered ini key is exported (see AGENTS.md); render_nginx_proxy_conf
+    # reads the same two keys straight from cfg to bake them into the proxy's own
+    # configuration file, which is where the website actually reads them from.
+    env["PROXY_USERNAME"] = cfg.get(m, "proxy_username")
+    env["PROXY_GROUPS"] = cfg.get(m, "proxy_groups")
+    # The address half of every published port mapping. Port 12345 stays hardcoded in
+    # the compose file (see MAIN_PUBLISHED), on the proxy now rather than the website
+    # -- only the interface it answers on is configurable, which is the half that
+    # decides who can reach it.
     env["WEBSITE_BIND_IP"] = cfg.get(m, "website_bind_ip")
     env["INFRA_BIND_IP"] = cfg.get(m, "infra_bind_ip")
     # Read by the website (the creation form lists its subfolders) and by the worker
@@ -720,15 +734,79 @@ def render_ai_env(cfg):
     return env
 
 
+def _write_if_changed(path, content):
+    if path.exists() and path.read_text(encoding="utf-8") == content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
 def write_env_file(path, env):
     lines = [ENV_HEADER]
     for key in sorted(env):
         lines.append("%s=%s" % (key, env[key]))
     content = "\n".join(lines) + "\n"
-    if path.exists() and path.read_text(encoding="utf-8") == content:
-        return False
-    path.write_text(content, encoding="utf-8")
-    return True
+    return _write_if_changed(path, content)
+
+
+NGINX_PROXY_HEADER_NAMES = (
+    "X-Forwarded-User",
+    "X-Forwarded-Preferred-Username",
+    "X-Forwarded-Email",
+    "X-Forwarded-Groups",
+)
+
+
+def render_nginx_proxy_conf(cfg):
+    """The header-setting reverse proxy's nginx configuration.
+
+    Every request gets one asserted identity, read from `hoover4.ini`'s `proxy_username`
+    and `proxy_groups`. A production deployment removes this file and this container and
+    puts `oauth2-proxy` in front of the site instead; the four header names are what
+    makes that swap a configuration change and not a code change (`parse_headers` in
+    `website/backend/src/auth/session_middleware.rs` reads the same four names either
+    way).
+
+    A `proxy_set_header` directive for a header name replaces whatever the client sent
+    under that name -- it does not add a second copy of it -- so this is also where an
+    inbound copy of any of the four is stripped, with no separate clearing step needed.
+    """
+    m = "main_services"
+    username = cfg.get(m, "proxy_username").strip()
+    if not username:
+        fail("[main_services] proxy_username is empty; the proxy has no identity to "
+             "assert")
+    groups = ",".join(g.strip() for g in cfg.get(m, "proxy_groups").split(",") if g.strip())
+    for value, key in ((username, "proxy_username"), (groups, "proxy_groups")):
+        if '"' in value or "\n" in value:
+            fail("[main_services] %s may not contain a quote or a newline" % key)
+    email = "%s@localhost" % username
+    values = {
+        "X-Forwarded-User": username,
+        "X-Forwarded-Preferred-Username": username,
+        "X-Forwarded-Email": email,
+        "X-Forwarded-Groups": groups,
+    }
+    header_lines = "\n".join(
+        '        proxy_set_header %s "%s";' % (name, values[name])
+        for name in NGINX_PROXY_HEADER_NAMES
+    )
+    return ENV_HEADER + """
+server {
+    listen 8080;
+
+    location / {
+        proxy_pass http://hoover4-website:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+%s
+    }
+}
+""" % header_lines
 
 
 # --------------------------------------------------------------------------------------
@@ -1611,6 +1689,13 @@ def main(argv=None):
         changed = write_env_file(MAIN_COMPOSE_DIR / ".env", render_main_env(cfg))
         env_path = MAIN_COMPOSE_DIR / ".env"
     print("rendered %s%s" % (env_path, " (changed)" if changed else " (unchanged)"))
+
+    if side == "main":
+        # The proxy's own configuration, rendered beside the .env file for the same
+        # reason: hoover4.ini is read once, here, and nowhere downstream re-reads it.
+        nginx_conf_path = MAIN_COMPOSE_DIR / "nginx-proxy.conf"
+        nginx_changed = _write_if_changed(nginx_conf_path, render_nginx_proxy_conf(cfg))
+        print("rendered %s%s" % (nginx_conf_path, " (changed)" if nginx_changed else " (unchanged)"))
 
     if args.down:
         compose_down(cfg, side, rt)

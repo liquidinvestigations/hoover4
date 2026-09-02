@@ -35,7 +35,7 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}" )" &> /dev/null && p
 cd "$SCRIPT_DIR"
 
 BROWSER_CONTAINER="${BROWSER_CONTAINER:-hoover4-mcp-browser}"
-SITE_URL="${HOOVER4_SITE_URL:-http://hoover4-website:8080}"
+SITE_URL="${HOOVER4_SITE_URL:-http://hoover4-proxy:8080}"
 OUT_DIR="$SCRIPT_DIR/test_reports/screenshots"
 REMOTE_DIR="/tmp/h4shots"
 

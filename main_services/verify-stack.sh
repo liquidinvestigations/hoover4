@@ -64,8 +64,8 @@ set -euo pipefail
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
 cd "$SCRIPT_DIR"
 
-# The website's published address follows `website_bind_ip`, so a default of `localhost`
-# is only right when that key is unset or 0.0.0.0. On a host that binds the website to one
+# The proxy's published address follows `website_bind_ip`, so a default of `localhost`
+# is only right when that key is unset or 0.0.0.0. On a host that binds the proxy to one
 # private address, localhost:12345 has nothing listening -- and because every check below
 # runs under `set -e`, a curl that cannot connect used to kill the whole run silently,
 # mid-way through, with the last line of output being an unrelated passing check.

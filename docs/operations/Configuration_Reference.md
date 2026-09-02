@@ -89,6 +89,13 @@ bound the pattern scanner's runtime and its admission control.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults.
 
+`proxy_username` and `proxy_groups` are the identity `hoover4-proxy` asserts on every
+request, as `X-Forwarded-User` and the other three headers `parse_headers` in
+`website/backend/src/auth/session_middleware.rs` reads. A production deployment removes
+that proxy and puts `oauth2-proxy` in its place, which asserts a real identity the same
+way. `proxy_groups` is comma-separated with no space; a group named `admin` or
+`superuser` makes the asserted user an administrator.
+
 ### Worker fleet and concurrency
 
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys
@@ -174,7 +181,8 @@ is the map back to the group above that explains it.
 - `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
-- `serena_port`, `demo_mode`, `testdata_dir`, `datasets_mount_path`
+- `serena_port`, `demo_mode`, `proxy_username`, `proxy_groups`
+- `testdata_dir`, `datasets_mount_path`
 - `mcp_shared_secret_file`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `garage_s3_port`
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`

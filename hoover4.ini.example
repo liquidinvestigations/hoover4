@@ -250,6 +250,15 @@ serena_port        = 21940
 ; /api/whoami refuses, the site renders "Sign-in required" and every endpoint answers 401,
 ; so the only way in is a reverse proxy setting X-Forwarded-User.
 demo_mode          = false
+; Identity the header-setting proxy in front of the website asserts on every
+; request, as X-Forwarded-User and X-Forwarded-Preferred-Username. A production
+; deployment removes this proxy and puts oauth2-proxy in its place, which
+; asserts a real identity the same way.
+proxy_username     = admin
+; Groups the proxy asserts, as X-Forwarded-Groups. Comma-separated, no space,
+; matching what oauth2-proxy sends. A group named admin or superuser makes the
+; asserted user an administrator.
+proxy_groups       = admin
 ; host dir mounted at /testdata in the worker (must exist). Empty = in-repo testdata.
 testdata_dir       =
 ; Root the dataset-creation form lists subfolders of. An IN-CONTAINER path — the host
@@ -266,9 +275,9 @@ mcp_shared_secret_file =
 factcheck_api_key_file =
 
 # ---- which interfaces the published ports answer on ------------------------------
-; Address the website's 12345 is published on. 0.0.0.0 = every interface. Set this to a
-; single private address on a host with a public IP: the website's only own way in is a
-; proxy-set X-Forwarded-User, and demo_mode makes anonymous guests admins.
+; Address the proxy's 12345 is published on. 0.0.0.0 = every interface. Set this to a
+; single private address on a host with a public IP: the website's only way in is that
+; proxy, and it sets X-Forwarded-User on every request it forwards.
 website_bind_ip    = 0.0.0.0
 ; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default

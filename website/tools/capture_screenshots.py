@@ -8,7 +8,7 @@ Why not the browser MCP endpoint
 --------------------------------
 That container's MCP router refuses internal hosts at two independent layers -- an
 explicit deny-list in `urlcheck.py` and a PAC script handed to Chromium in `netfilter.py`
--- so `hoover4-website` is unreachable through it *by design*. This script launches its
+-- so `hoover4-proxy` is unreachable through it *by design*. This script launches its
 own Chromium with neither, which is the same route a screenshot taken by hand would use.
 It does not touch, relax or import the MCP server's filtering.
 
@@ -66,7 +66,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-DEFAULT_BASE_URL = os.environ.get("HOOVER4_SITE_URL", "http://hoover4-website:8080")
+DEFAULT_BASE_URL = os.environ.get("HOOVER4_SITE_URL", "http://hoover4-proxy:8080")
 DEFAULT_VIEWPORT = (1280, 900)
 # Chromium in this image takes 5-6s to come up cold; nodriver's own budget is ~2.7s, so
 # the first navigation is given room rather than the browser start.
