@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::components::error_boundary::GlobalErrorBoundary;
 use crate::components::pdf_viewer::PdfViewerJsScriptTag;
-use crate::components::session_gate::SessionGate;
+use crate::components::session_context::SessionProvider;
 use crate::components::toast::ToastProvider;
 use crate::routes::Route;
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -39,9 +39,9 @@ pub fn App() -> Element {
 
             ToastProvider {
                 children: rsx! {
-                    // Outside the router and inside the boundaries: every route is behind
-                    // it, and a refusal is a page rather than a caught error.
-                    SessionGate {
+                    // Outside the router and inside the boundaries: every route is
+                    // behind it, so the identity below is always resolved.
+                    SessionProvider {
                         children: rsx! {
                             Router::<Route> {}
                         }

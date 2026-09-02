@@ -26,11 +26,9 @@ a host reachable from the internet must not have.
 
 **Neither of these is hardening in the abstract.** The website authenticates by trusting an
 identity header set in front of it, so it has to be unreachable except through whatever sets
-that header. In demo mode it additionally provisions every anonymous visitor a guest session
-and treats it as an administrator; with demo mode off nothing anonymous is provisioned at
-all, the identity route refuses, the site renders *Sign-in required*, and every endpoint
-answers 401, so a deployment fronted by something that sets no identity header serves
-nobody, which is the intended failure rather than a fault.
+that header. Every route except `/favicon.ico` requires that identity, so a deployment
+fronted by something that sets no identity header serves nobody, which is the intended
+failure rather than a fault.
 
 The infrastructure ports are worse and simpler: the search engine has no authentication at
 all, and the column store, the object store and the two admin consoles ship with the compose
@@ -73,7 +71,6 @@ gpu_fallback          = false       ; nothing to fall back from
 website_release_mode  = true        ; a visitor must not get `dx serve`
 serena_enabled        = false       ; dev tooling, not a deployed service
 
-demo_mode             = true
 testdata_dir          = /opt/hoover4-testdata
 datasets_mount_path   = /testdata
 
@@ -220,9 +217,8 @@ cd main_services
 `create-collection` registers the collection and provisions its ClickHouse database in
 one idempotent command, which is the scripted equivalent of the admin UI's create action.
 `--public` is worth stating: a collection is restricted by default and is then visible
-only through a group grant. A demo that displays its collections anyway is relying on
-`demo_mode` and the `guest_permissions_mode` server setting both being open, which is two
-independent defaults holding rather than one intent recorded.
+only through a group grant. A demo that displays its collections anyway needs this flag
+recorded, rather than relying on every user already being in the right group.
 
 Paths are **in-container** paths under `datasets_mount_path`, so a corpus at
 `/opt/hoover4-testdata/consulate` on the host is `/testdata/consulate` here.
@@ -314,7 +310,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
-| **Demo mode means anonymous administrators** | Every guest session is an administrator, and demo mode is what provisions guests at all. Acceptable only behind an authenticating front end, which is what `website_bind_ip` is enforcing. |
+| **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |
 | **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
 
 ## Navigation

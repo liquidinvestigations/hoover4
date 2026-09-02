@@ -29,18 +29,12 @@ local and gitignored.
 
 ## 1. Getting in
 
-There are two modes, and which one a deployment runs decides what you see first.
-
-**Demo mode.** You arrive as a **guest**, an anonymous account created for your browser
-session, named like `guest-376072d767a1` in the screenshots below. A deployment may put a
-credential prompt in front of the whole site; where it does, the credentials are held
-locally in `INFRASTRUCTURE_INVENTORY.md` rather than on this page. In demo mode a guest is
-also an administrator, which is why [Administration](#10-administration) is reachable in
-these screenshots.
-
-**Production mode.** Every user is authenticated and no page is anonymous. Your identity
-comes from the sign-in the deployment uses, and what you can see is decided by the groups
-you belong to and the collections those groups may read.
+Every page requires an identity. A reverse proxy in front of the site asserts who you are
+on every request; the credentials it checks, where it checks any, are held locally in
+`INFRASTRUCTURE_INVENTORY.md` rather than on this page. What you can see is decided by the
+groups you belong to and the collections those groups may read. A screenshot deployment's
+proxy asserts an administrator by default, which is why [Administration](#10-administration)
+is reachable in the screenshots below.
 
 ---
 
@@ -398,7 +392,7 @@ transcript.
 
 ## 10. Administration
 
-Reachable at `/admin`. On this deployment every guest is an administrator.
+Reachable at `/admin`. On this deployment the proxy asserts an administrator by default.
 
 ### Dashboard
 
@@ -437,7 +431,8 @@ statistics: blobs, VFS files, plans total and finished, errors, and the OCR lang
 
 ### Users and groups
 
-Users are listed with their origin; on a demo they are all `guest-…` sessions.
+Users are listed with their origin: the identity the proxy asserted the first time each
+one reached the site.
 
 ![Admin, users](img/admin-users.png)
 
@@ -455,9 +450,9 @@ Groups work the same way, and a group's page is where **collection access** is g
 ### Settings
 
 This page holds the server settings you can change without a redeploy: chat artifact
-retention, guest access mode, the default chat and summarisation models, and the session
-lifetime. Below them sits the deployment
-configuration that is read-only because it comes from `hoover4.ini`.
+retention, the default chat and summarisation models, and the session lifetime. Below
+them sits the deployment configuration that is read-only because it comes from
+`hoover4.ini`.
 
 ![Admin, settings](img/admin-settings.png)
 

@@ -15,15 +15,6 @@ the one-way configuration flow in
 [`../operations/Configuration_Reference.md`](../operations/Configuration_Reference.md). This page
 holds what those pages have no room for.
 
-## In demo mode an anonymous guest is an administrator
-
-A visitor with no account reaches the administrative surface in demo mode, and can write as well
-as read. That is deliberate for the minimum viable product and its small, known audience.
-
-The alternative costs an account system that the demo does not otherwise need, and it would hide
-the part of the product the demo exists to show. Narrowing it is a decision for the repository
-owner, and reporting it as a defect is not useful.
-
 ## An applied migration is never edited
 
 The migration runner records an md5 of the whole file, comments included. Correcting a stale word

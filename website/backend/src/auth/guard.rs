@@ -23,8 +23,8 @@ pub const NOT_FOUND: &str = "not found";
 /// Is this the absence of a resource rather than a failure?
 ///
 /// It matters twice. The status: an anyhow error became a 500, so a bot walking chat URLs
-/// with fresh guest cookies made the site look like it was throwing, one crawler put 11
-/// errors and 22 % on the admin metrics page overnight. And the telemetry: `is_error` is
+/// that hold no rows for it made the site look like it was throwing, and one crawler put
+/// 11 errors and 22 % on the admin metrics page overnight. And the telemetry: `is_error` is
 /// derived from the status, so those 500s were counted as breakage. A 404 is a correct,
 /// complete answer to a question about something that is not there.
 pub fn is_not_found(err: &anyhow::Error) -> bool {
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn a_missing_resource_is_not_a_server_error() {
-        // The live case: a crawler with fresh guest cookies walked chat URLs, every one
+        // The live case: a crawler walked chat URLs that held no rows for it, every one
         // of them 500'd, and the admin metrics page reported 22 % errors overnight.
         assert!(is_not_found(&anyhow::anyhow!("chat session not found")));
         assert!(is_not_found(&anyhow::anyhow!("artifact not found")));

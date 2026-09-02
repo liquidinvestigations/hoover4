@@ -85,8 +85,8 @@ impl Asset {
 /// Owner or admin. A **403** rather than a 404, see the module docstring.
 ///
 /// A pure function so the rule itself is testable. It cannot be exercised end to end on a
-/// deployment with `HOOVER4_DEMO_MODE=true`, where every anonymous guest is an
-/// administrator and therefore every request is legitimately allowed.
+/// deployment whose proxy asserts an administrator group for every caller, where every
+/// request is legitimately allowed.
 pub fn may_read(caller: &str, caller_is_admin: bool, owner: &str) -> bool {
     if caller_is_admin {
         return true;

@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::admin_components::{C_DANGER, C_HEADER, C_YELLOW, FONT};
-use crate::components::session_gate::use_session_user;
+use crate::components::session_context::use_session_user;
 use crate::components::suspend_boundary::LoadingIndicator;
 
 #[component]

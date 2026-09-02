@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use common::{current_user::CurrentUser, search_query::SearchQuery, search_result::FacetOriginalValue};
 
-use crate::db_auth::{collections, settings};
+use crate::db_auth::collections;
 
 #[derive(Debug, Clone)]
 pub enum PermissionSet {
@@ -82,27 +82,39 @@ async fn public_only_perms() -> anyhow::Result<CachedPerms> {
     })
 }
 
+/// Add every publicly flagged collection and its datasets to a group-derived set.
+///
+/// A user in no group must still see a public collection, so this runs for every
+/// authenticated user, on top of whatever their groups already grant.
+fn add_public(perms: CachedPerms, public: CachedPerms) -> CachedPerms {
+    match (perms, public) {
+        (CachedPerms { datasets: PermissionSet::All, .. }, _) => CachedPerms {
+            datasets: PermissionSet::All,
+            collections: PermissionSet::All,
+        },
+        (
+            CachedPerms { datasets: PermissionSet::Some(mut datasets), collections: PermissionSet::Some(mut collections) },
+            CachedPerms { datasets: PermissionSet::Some(public_datasets), collections: PermissionSet::Some(public_collections) },
+        ) => {
+            datasets.extend(public_datasets);
+            collections.extend(public_collections);
+            CachedPerms {
+                datasets: PermissionSet::Some(datasets),
+                collections: PermissionSet::Some(collections),
+            }
+        }
+        // `public_only_perms` always returns `Some`, so the two `Some` arms above cover
+        // every case except the group set already being `All`, handled first.
+        (perms, _) => perms,
+    }
+}
+
 async fn resolve_cached_perms(user: &CurrentUser) -> anyhow::Result<CachedPerms> {
     if user.is_admin {
         return Ok(CachedPerms {
             datasets: PermissionSet::All,
             collections: PermissionSet::All,
         });
-    }
-    if user.is_guest {
-        let mode = settings::get_setting("guest_permissions_mode")
-            .await?
-            .unwrap_or_else(|| "all".to_string());
-        if mode == "all" {
-            return Ok(CachedPerms {
-                datasets: PermissionSet::All,
-                collections: PermissionSet::All,
-            });
-        }
-        // Outside `all` mode a guest is not a member of any group, so the only thing
-        // left to grant is what is public. Guests are not cached: they have no stable
-        // username to key the cache on, and the two queries are cheap.
-        return Ok(public_only_perms().await?);
     }
 
     {
@@ -116,10 +128,11 @@ async fn resolve_cached_perms(user: &CurrentUser) -> anyhow::Result<CachedPerms>
 
     let datasets = collections::permitted_collection_datasets(&user.username).await?;
     let collection_names = collections::permitted_collections(&user.username).await?;
-    let perms = CachedPerms {
+    let group_perms = CachedPerms {
         datasets: PermissionSet::Some(datasets.into_iter().collect()),
         collections: PermissionSet::Some(collection_names.into_iter().collect()),
     };
+    let perms = add_public(group_perms, public_only_perms().await?);
 
     {
         let mut cache = PERM_CACHE.lock().unwrap();
@@ -142,8 +155,8 @@ pub async fn resolve_permissions(user: &CurrentUser) -> anyhow::Result<Permissio
 
 /// The set of collectionnames the user may read.
 ///
-/// `PermissionSet::All` (admins, and guests in `all` mode) means "all collections".
-/// Callers that fan out per collection must resolve it to the concrete list with
+/// `PermissionSet::All` (admins) means "all collections". Callers that fan out per
+/// collection must resolve it to the concrete list with
 /// `clickhouse_utils::list_collections()` at the point of use (see
 /// `list_permitted_collections`), not leave it unbounded.
 pub async fn resolve_permitted_collections(user: &CurrentUser) -> anyhow::Result<PermissionSet> {

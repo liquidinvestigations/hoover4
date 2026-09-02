@@ -6,6 +6,5 @@ pub struct CurrentUser {
     pub fullname: String,
     pub email: String,
     pub is_admin: bool,
-    pub is_guest: bool,
     pub groups: Vec<String>,
 }

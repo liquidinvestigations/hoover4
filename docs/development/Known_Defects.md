@@ -195,10 +195,6 @@ grep -n "nag_number\|five nags" main_services/processing/tasks/P_agent/nagging.p
 
 No code is involved. Recorded here so the fact is not rediscovered.
 
-### In demo mode an anonymous guest is an administrator, writes included
-
-Deliberate for the current stage and its small, known audience.
-
 ### The search result ceiling of 1,000 is intended
 
 The ceiling itself is a decision. The missing offset under it, which stops a caller from

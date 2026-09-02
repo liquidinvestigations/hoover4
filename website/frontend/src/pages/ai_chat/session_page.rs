@@ -16,7 +16,6 @@ use crate::components::chat_components::{
 };
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
-use crate::components::session_gate::use_session_user;
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
 use crate::data_definitions::url_param::UrlParam;
@@ -239,9 +238,6 @@ fn ChatConversationPanel(
     // Incremented to retire a running poll loop (a second send, leaving the page).
     let mut poll_gen = use_signal(|| 0_u64);
 
-    // `None` while the session gate's `whoami` is in flight, not `false`: defaulting to
-    // "not a guest" drew the model picker for a guest's first paint and then removed it.
-    let is_guest = use_session_user().map(|u| u.is_guest);
     // In an effect, not in the render body. A signal written during render schedules a
     // render from inside one. `choices` is read through the `Memo` prop, never a value
     // already unwrapped by the caller. That is what lets this effect re-run when the
@@ -263,7 +259,7 @@ fn ChatConversationPanel(
 
     let configured = *configured.read();
     let choices = choices.read().clone();
-    let show_models = is_guest == Some(false) && !choices.is_empty();
+    let show_models = !choices.is_empty();
 
     if *loaded_for.read() != detail.session.session_id {
         messages.set(detail.messages.clone());

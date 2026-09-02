@@ -8,7 +8,6 @@ use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
     chat_start_research,
 };
-use crate::components::session_gate::use_session_user;
 use crate::components::chat_components::{ChatComposer, ChatSessionCard, ModelSelector};
 use crate::routes::Route;
 
@@ -33,17 +32,13 @@ pub fn AiChatPage() -> Element {
         .and_then(|r| r.as_ref().ok())
         .copied()
         .unwrap_or(true);
-    // `None` while the session gate's `whoami` is in flight, not `false`. Defaulting to
-    // "not a guest" drew the model picker for a moment on every guest's first paint, then
-    // took it away, a control that appears and vanishes reads as a bug.
-    let is_guest = use_session_user().map(|u| u.is_guest);
     let choices = models_res
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    let show_models = is_guest == Some(false) && !choices.is_empty();
+    let show_models = !choices.is_empty();
     // In an effect, not in the render body: a signal written during render schedules
     // another render from inside one, which Dioxus tolerates and nobody should rely on.
     use_effect(move || {

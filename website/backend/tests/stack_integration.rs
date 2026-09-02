@@ -61,7 +61,6 @@ fn admin_user() -> CurrentUser {
         fullname: String::new(),
         email: String::new(),
         is_admin: true,
-        is_guest: false,
         groups: vec![],
     }
 }
@@ -484,9 +483,9 @@ async fn slow_missing_shard_degrades_to_partial_results() {
     );
 }
 
-/// Permission isolation. A non-admin, non-guest user whose group has access
-/// to exactly one collection must get zero hits from the other, and the fan-out
-/// must not even target the other collection's shards.
+/// Permission isolation. A non-admin user whose group has access to exactly one
+/// collection must get zero hits from the other, and the fan-out must not even target
+/// the other collection's shards.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn permissions_restrict_search_to_granted_collections() {
@@ -530,7 +529,6 @@ async fn permissions_restrict_search_to_granted_collections() {
         fullname: String::new(),
         email: String::new(),
         is_admin: false,
-        is_guest: false,
         groups: vec![groupname.clone()],
     };
     let query = SearchQuery {
@@ -882,7 +880,6 @@ async fn vfs_endpoints_respect_permissions() {
         fullname: String::new(),
         email: String::new(),
         is_admin: false,
-        is_guest: false,
         groups: vec![groupname.clone()],
     };
 
@@ -1819,13 +1816,13 @@ async fn the_collections_facet_offers_exactly_the_registered_datasets() {
 // for a query and the wrong shape entirely for an auth rule: the refusal these assert
 // lives in the axum middleware, so only a request that actually crosses it can see it.
 //
-// The rule under test: **exactly one route may create a session**. A fresh `set-cookie` on
-// every response lets a client that stores none (a crawler, a `curl` loop) mint a
-// `guest-<hex>` user and a `user_login` row per request.
+// The rule under test: every path requires an already-resolved identity except
+// `/favicon.ico`. An identity comes from a cookie already in `web_sessions`, or from an
+// `X-Forwarded-User` header, which in a real deployment the reverse proxy in front of the
+// website asserts on every request it forwards.
 //
-// These run inside the website container (`run-stack-tests.sh`), where the site is on
-// loopback. They read `HOOVER4_DEMO_MODE` the same way the server does, so the same
-// assertions describe both deployment modes rather than one of them being untested.
+// These run inside the website container (`run-stack-tests.sh`), on the loopback address
+// the proxy sits in front of, so they set that header themselves to stand in for it.
 
 /// The site, as seen from inside its own container.
 fn site_url() -> String {
@@ -1951,24 +1948,23 @@ async fn request_without_session(method: &str, path: &str) -> reqwest::Response 
     }
 }
 
-/// The defect itself: a request with no cookie must not be given a user.
+/// No caller who proves no identity is ever given a session.
 ///
-/// Before this, `/`, `/_download_document/…` and every server function each answered a
-/// fresh `set-cookie`, so 106 `guest-<hex>` users and 106 `user_login` events accumulated
-/// on the demo in a day and both the user list and the metrics page became unreadable.
+/// A route that answers a fresh `set-cookie` lets any client that does not store cookies,
+/// a crawler or a `curl` loop, create one user row and one `user_login` event per request.
+/// A hundred of each in a day makes both the user list and the metrics page unreadable, so
+/// this holds for every path, the open one included.
 #[tokio::test]
 #[ignore = "needs live stack"]
-async fn only_the_sign_in_route_hands_out_a_session() {
+async fn no_route_mints_a_session_for_a_caller_with_no_identity() {
     let paths = server_fn_paths().await;
-    let _budget = Budget::start("only_the_sign_in_route_hands_out_a_session");
+    let _budget = Budget::start("no_route_mints_a_session_for_a_caller_with_no_identity");
 
-    // The app shell is public (the browser has to load the code that signs in), but it
-    // is not an identity.
-    for path in ["/", "/search/x/0/9g==/9g==", "/admin"] {
+    for path in ["/", "/search/x/0/9g==/9g==", "/admin", "/favicon.ico"] {
         let response = request_without_session("GET", path).await;
         assert!(
             set_cookies(&response).is_empty(),
-            "{path} handed out {:?}; only the sign-in route may",
+            "{path} handed out {:?} to a caller with no identity",
             set_cookies(&response)
         );
     }
@@ -1977,34 +1973,35 @@ async fn only_the_sign_in_route_hands_out_a_session() {
         let response = request_without_session(method, &path).await;
         assert!(
             set_cookies(&response).is_empty(),
-            "{path} handed out {:?}; only the sign-in route may",
+            "{path} handed out {:?} to a caller with no identity",
             set_cookies(&response)
         );
     }
 
-    // And the one route that does. With guests disabled it refuses instead, the same
-    // rule, the other deployment mode.
     let response = request_without_session("POST", &paths.whoami).await;
-    if backend::auth::session_middleware::guest_sessions_allowed() {
-        assert_eq!(response.status(), 200);
-        assert!(
-            session_cookie(&response).is_some(),
-            "the sign-in route issued no session in demo mode"
-        );
-    } else {
-        assert!(
-            session_cookie(&response).is_none(),
-            "guests are disabled, so nothing may be minted for an anonymous visitor"
-        );
-    }
+    assert!(
+        session_cookie(&response).is_none(),
+        "nothing may be minted for a caller who proved no identity"
+    );
 }
 
-/// Every endpoint refuses a request that carries no session, and says so as a 401.
+/// Every endpoint refuses a request that carries no identity, and says so as a 401,
+/// the app shell included.
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn every_endpoint_refuses_a_request_with_no_session() {
     let paths = server_fn_paths().await;
     let _budget = Budget::start("every_endpoint_refuses_a_request_with_no_session");
+
+    for path in ["/", "/search/x/0/9g==/9g==", "/admin"] {
+        let response = request_without_session("GET", path).await;
+        assert_eq!(
+            response.status(),
+            401,
+            "{path} answered {} without a session",
+            response.status()
+        );
+    }
 
     for (method, path) in protected_endpoints(paths) {
         let response = request_without_session(method, &path).await;
@@ -2022,47 +2019,45 @@ async fn every_endpoint_refuses_a_request_with_no_session() {
     }
 }
 
-/// The other half: with a session, the same endpoints work. A refusal that refuses
+/// The other half: with an identity, the same endpoints work. A refusal that refuses
 /// everybody is an outage rather than an access control.
+///
+/// No cookie anywhere in this test: the header is what the proxy asserts on every
+/// request, not only the first, so every call below carries it directly instead of
+/// relying on a session a route no longer mints.
 #[tokio::test]
 #[ignore = "needs live stack"]
-async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
+async fn a_proxy_identity_opens_the_endpoints() {
     let paths = server_fn_paths().await;
-    let _budget = Budget::start("a_session_from_the_sign_in_route_opens_the_endpoints");
-    if !backend::auth::session_middleware::guest_sessions_allowed() {
-        eprintln!("[stack] guests are disabled here; nothing anonymous can sign in");
-        return;
-    }
-
-    let signin = request_without_session("POST", &paths.whoami).await;
-    let cookie = session_cookie(&signin).expect("the sign-in route issues a session");
+    let _budget = Budget::start("a_proxy_identity_opens_the_endpoints");
     let client = reqwest::Client::new();
 
-    // Signing in again with the session already held mints nothing: the cookie is the
-    // anchor, so a reload is not a new user.
-    let again = client
+    let identified = client
         .post(format!("{}{}", site_url(), paths.whoami))
-        .header("Cookie", &cookie)
+        .header("X-Forwarded-User", "stack-test-user")
+        .header("X-Forwarded-Groups", "admin")
         .header("Content-Type", "application/json")
         .body("[]")
         .send()
         .await
         .unwrap();
+    assert_eq!(identified.status(), 200, "a proxied identity must open the identity route");
     assert!(
-        set_cookies(&again).is_empty(),
-        "signing in with a session already held minted another one: {:?}",
-        set_cookies(&again)
+        set_cookies(&identified).is_empty(),
+        "the identity route must not mint a session: {:?}",
+        set_cookies(&identified)
     );
 
     let search = client
         .post(format!("{}{}", site_url(), paths.search_hit_count))
-        .header("Cookie", &cookie)
+        .header("X-Forwarded-User", "stack-test-user")
+        .header("X-Forwarded-Groups", "admin")
         .header("Content-Type", "application/json")
         .body(r#"[{"collection_datasets":[],"query_string":"the","facet_filters":{}}]"#)
         .send()
         .await
         .unwrap();
-    assert_eq!(search.status(), 200, "a signed-in search must work");
+    assert_eq!(search.status(), 200, "a proxied search must work");
 
     // A dataset that is in no registry row is a complete answer about something that is
     // not there, exactly like an unknown hash, not a 500.
@@ -2071,7 +2066,8 @@ async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
             "{}/_download_document/no_such_dataset/deadbeef",
             site_url()
         ))
-        .header("Cookie", &cookie)
+        .header("X-Forwarded-User", "stack-test-user")
+        .header("X-Forwarded-Groups", "admin")
         .send()
         .await
         .unwrap();
@@ -2090,7 +2086,8 @@ async fn a_session_from_the_sign_in_route_opens_the_endpoints() {
     ] {
         let response = client
             .get(format!("{}{}", site_url(), path))
-            .header("Cookie", &cookie)
+            .header("X-Forwarded-User", "stack-test-user")
+            .header("X-Forwarded-Groups", "admin")
             .send()
             .await
             .unwrap();

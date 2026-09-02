@@ -65,9 +65,10 @@ lookup key, never a capability**. The website resolves it to `session_id`/`usern
 enforces owner-or-admin before serving a byte (`/_chat_artifact/{id}/{asset}`), and the
 card refuses any id that is not a UUID before it builds that URL.
 
-That rule is **not currently demonstrable**: this stack runs `guest_permissions_mode = all`,
-which makes every visitor an admin, so any guest cookie gets 200 on any artifact. The code
-is right and was reviewed; the *test* is deferred until someone runs it with two real users.
+That rule is **not currently demonstrable**: this stack's proxy asserts an administrator
+identity by default, so any caller gets 200 on any artifact. The code is right and was
+reviewed; the *test* is deferred until someone runs it with two identities whose groups
+grant neither `admin` nor `superuser`.
 Written down in
 [`website/backend/src/api/admin/Readme.md`](../../website/backend/src/api/admin/Readme.md)
 so it is a known gap rather than an assumption.

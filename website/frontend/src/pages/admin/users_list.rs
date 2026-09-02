@@ -5,9 +5,8 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::admin_list_users;
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, HELP_TEXT, INPUT, LINK, TABLE, TD, TH,
+    AdminGuard, AdminShell, ErrorBar, INPUT, LINK, TABLE, TD, TH,
 };
-use crate::components::session_gate::use_session_user;
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
 
@@ -31,24 +30,7 @@ fn UsersListContent() -> Element {
     let users_res = use_resource(admin_list_users);
     let mut search = use_signal(String::new);
 
-    // The SUPERUSER column is the stored account flag, and on a demo deployment that is
-    // not the whole answer: an anonymous `guest-*` session is treated as an administrator
-    // for as long as it lasts, while its row keeps `is_admin = false`. The two are
-    // supposed to disagree (the grant belongs to the deployment, not to the account)
-    // but a reader comparing this table against what `whoami` says about them has no way
-    // to know that from the table alone. The current session is the evidence: being a
-    // guest and an admin at once is only possible under that grant.
-    let session = use_session_user();
-    let guest_admin_grant = session
-        .as_ref()
-        .is_some_and(|user| user.is_guest && user.is_admin);
-
     rsx! {
-        if guest_admin_grant {
-            p { style: "{HELP_TEXT} margin: 0 0 16px;",
-                "Demo mode is on: any visitor without a proxy identity gets an anonymous guest session with administrator access, for the length of that session. The Superuser column below is the stored account flag and does not include that grant, so guest accounts correctly read as not superusers while still reaching every page in this section."
-            }
-        }
         div { style: "display: flex; gap: 8px; margin-bottom: 16px; align-items: center;",
             span { style: "color: #999; font-size: 16px;", "\u{1F50D}" }
             input {

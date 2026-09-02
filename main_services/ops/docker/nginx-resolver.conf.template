@@ -1,0 +1,13 @@
+# The container network's own DNS server, so nginx can look a name up again while it
+# runs. The image's entrypoint fills NGINX_LOCAL_RESOLVERS from /etc/resolv.conf and
+# renders this file into conf.d, ahead of default.conf.
+#
+# Without this, nginx resolves the upstream name once at startup and keeps that address
+# for the life of the process. Restarting hoover4-website gives it a new address on the
+# container network, and every request through the proxy then answers 502 until the proxy
+# is restarted too. A backend change already requires restarting the website, so that is
+# the ordinary case rather than a rare one.
+#
+# `valid=10s` is how long a looked-up address is kept. It bounds how long a 502 can last
+# after the website moves.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;

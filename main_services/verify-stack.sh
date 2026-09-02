@@ -1041,8 +1041,8 @@ if [ -n "$js_href" ]; then
             # regex requires a digit straight after `results`, which is what keeps it
             # from matching `search_for_results_hit_count`.
             results_path=$(grep_first '/api/search_for_results[0-9]+' < "$wasm_tmp")
-            # The sign-in route, discovered the same way and for the same reason: its URL
-            # carries a build hash too.
+            # The identity route, discovered the same way and for the same reason: its
+            # URL carries a build hash too.
             whoami_path=$(grep_first '/api/whoami[0-9]+' < "$wasm_tmp")
         else
             fail "$(resolve_url "$wasm_href") did not serve a WASM module (got $(wc -c < "$wasm_tmp") bytes of something else)"
@@ -1053,25 +1053,22 @@ fi
 if [ -z "$api_path" ]; then
     fail "could not discover the search server-function URL from the WASM bundle"
 else
-    # Every endpoint but the sign-in route refuses a request with no session cookie, so
-    # this probe has to hold one. `whoami` is that route and the only one that answers a
-    # `set-cookie`; a deployment with HOOVER4_DEMO_MODE off issues no anonymous session at
-    # all, and the search check below then reports the refusal rather than a search bug.
-    cookie_jar=$(mktemp)
+    # Every WEB check goes through the proxy in front of the site, which asserts an
+    # identity with X-Forwarded-User on every request it forwards, so no check here
+    # needs a session cookie of its own.
     if [ -z "$whoami_path" ]; then
         fail "could not discover the /api/whoami URL from the WASM bundle"
     else
-        identity=$(WEB -c "$cookie_jar" -X POST "$WEBSITE_URL$whoami_path" \
-            -H 'Content-Type: application/json' -d '[]')
-        if grep -q hoover4_session "$cookie_jar" 2>/dev/null; then
-            ok "the site issued a session at $whoami_path ($(printf '%s' "$identity" | head -c 60))"
+        identity=$(WEB -X POST "$WEBSITE_URL$whoami_path" -H 'Content-Type: application/json' -d '[]')
+        if printf '%s' "$identity" | grep -q '"username"'; then
+            ok "the site answered $whoami_path with an identity ($(printf '%s' "$identity" | head -c 60))"
         else
-            fail "no session issued at $whoami_path. With HOOVER4_DEMO_MODE off that is expected, and every API check below is refused: $identity"
+            fail "$whoami_path answered with no identity: $identity"
         fi
     fi
 
     body='[{"collection_datasets":[],"query_string":"'"$SEARCH_WORD"'","facet_filters":{}}]'
-    response=$(WEB -b "$cookie_jar" -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
+    response=$(WEB -X POST "$WEBSITE_URL$api_path" -H 'Content-Type: application/json' -d "$body")
     # SearchResultHitCount serialises as {"total":N,"partial":bool}.
     hits=$(printf '%s' "$response" | grep -oE '"total":[0-9]+' | grep -oE '[0-9]+' | head -1)
     if [ -n "$hits" ] && [ "$hits" -gt 0 ]; then
@@ -1088,7 +1085,7 @@ else
         # `search_for_results(input, current_search_result_page)` takes two arguments, so
         # the body is a two-element array.
         body='[{"collection_datasets":[],"query_string":"'"$FILENAME_HIT_TOKEN"'","facet_filters":{}},0]'
-        response=$(WEB -b "$cookie_jar" -X POST "$WEBSITE_URL$results_path" -H 'Content-Type: application/json' -d "$body")
+        response=$(WEB -X POST "$WEBSITE_URL$results_path" -H 'Content-Type: application/json' -d "$body")
         if printf '%s' "$response" | grep -q '"matched_by_filename":true'; then
             ok "'$FILENAME_HIT_TOKEN' matched by filename only"
         else
@@ -1099,8 +1096,8 @@ else
     # 7i. One document, all the way out through the website. This is the ONLY check that
     #     pulls bytes through the Rust S3 client and the streaming route, and it compares
     #     what came back against the hash the blob is filed under -- so a client that
-    #     silently truncates, or serves the wrong object, cannot pass it. Needs a session:
-    #     every route but sign-in refuses without one.
+    #     silently truncates, or serves the wrong object, cannot pass it. Needs the
+    #     identity the proxy asserts on every request, same as every other route here.
     #     `blobs` is per-collection, so the row has to be looked for one database at a
     #     time -- there is no default database holding it.
     dl_row=""
@@ -1114,7 +1111,7 @@ else
         set -- $dl_row
         dl_ds="$1"; dl_hash="$2"; dl_size="$3"
         dl_body=$(mktemp)
-        dl_code=$(WEB -b "$cookie_jar" -o "$dl_body" -w '%{http_code}' \
+        dl_code=$(WEB -o "$dl_body" -w '%{http_code}' \
             "$WEBSITE_URL/_download_document/$dl_ds/$dl_hash")
         dl_got=$(wc -c < "$dl_body")
         # `python3 -c`, not a heredoc: an indented heredoc body is an IndentationError,
@@ -1132,7 +1129,6 @@ else
             ok "downloaded $dl_got bytes through the website and the sha3-256 matches the blob hash"
         fi
     fi
-    rm -f "$cookie_jar"
 fi
 
 echo

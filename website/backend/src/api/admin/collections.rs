@@ -221,7 +221,7 @@ pub async fn admin_delete_collection(
 }
 
 /// Flip a collection between `restricted` (group grants only) and `public` (readable
-/// by every authenticated user, and by guests when guest mode is not `all`).
+/// by every authenticated user, in addition to their group grants).
 ///
 /// Existing group grants are left untouched: making a collection public is additive,
 /// so making it restricted again restores exactly the previous access.

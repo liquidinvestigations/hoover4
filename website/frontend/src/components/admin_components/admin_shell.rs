@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::admin_components::{C_ACCENT, C_HEADER, C_LINK, C_YELLOW, FONT, PAGE_TITLE};
-use crate::components::session_gate::use_session_user;
+use crate::components::session_context::use_session_user;
 use crate::routes::Route;
 
 /// `active` selects the highlighted sidebar row: one of

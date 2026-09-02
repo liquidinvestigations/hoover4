@@ -5,14 +5,13 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{admin_list_deployment_config, admin_list_settings, admin_set_setting};
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, INPUT, SELECT, TABLE, TD, TH,
+    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, INPUT, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 
 fn setting_description(key: &str) -> &'static str {
     match key {
         "session_expiration_seconds" => "Web session lifetime in seconds (default: 604800 = 1 week)",
-        "guest_permissions_mode" => "Guest access: 'all' (dev) or 'none'",
         "chat_artifact_ttl_days" => {
             "How long a chat's captured pages and search details are kept, in days \
              (default: 30). The nightly sweeper deletes the blob-store objects first, then the \
@@ -100,30 +99,15 @@ fn SettingsContent() -> Element {
                         tr { key: "{s.key}",
                             td { style: "{TD} font-weight: 600;", "{s.key}" }
                             td { style: TD,
-                                if s.key == "guest_permissions_mode" {
-                                    select {
-                                        style: SELECT,
-                                        value: edit_values.read().get(&s.key).cloned().unwrap_or_else(|| s.value.clone()),
-                                        onchange: {
-                                            let k = s.key.clone();
-                                            move |e: Event<FormData>| {
-                                                edit_values.write().insert(k.clone(), e.value());
-                                            }
-                                        },
-                                        option { value: "all", "all" }
-                                        option { value: "none", "none" }
-                                    }
-                                } else {
-                                    input {
-                                        style: INPUT,
-                                        value: edit_values.read().get(&s.key).cloned().unwrap_or_else(|| s.value.clone()),
-                                        oninput: {
-                                            let k = s.key.clone();
-                                            move |e: Event<FormData>| {
-                                                edit_values.write().insert(k.clone(), e.value());
-                                            }
-                                        },
-                                    }
+                                input {
+                                    style: INPUT,
+                                    value: edit_values.read().get(&s.key).cloned().unwrap_or_else(|| s.value.clone()),
+                                    oninput: {
+                                        let k = s.key.clone();
+                                        move |e: Event<FormData>| {
+                                            edit_values.write().insert(k.clone(), e.value());
+                                        }
+                                    },
                                 }
                             }
                             td { style: "{TD} color: #999; font-size: 12px;", "{setting_description(&s.key)}" }

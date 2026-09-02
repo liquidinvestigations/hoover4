@@ -132,11 +132,10 @@ pub async fn model_for_profile(profile: ChatProfile) -> String {
 
 /// Resolve a client-supplied model id against the allowlist.
 ///
-/// Guests always get the default. An empty request uses the default. A forged id that
-/// is not `is_allowed=1` (and not the configured default) is refused.
+/// An empty request uses the default. A forged id that is not `is_allowed=1` (and not
+/// the configured default) is refused.
 pub async fn resolve_chat_model(
     requested: Option<&str>,
-    is_guest: bool,
     profile: ChatProfile,
 ) -> anyhow::Result<String> {
     // The profile's model IS the default for this turn. A user who picked a model in the
@@ -145,9 +144,6 @@ pub async fn resolve_chat_model(
     let default = model_for_profile(profile).await;
     if default.trim().is_empty() {
         anyhow::bail!("no LLM provider is configured; an administrator can add one under /admin/llm");
-    }
-    if is_guest {
-        return Ok(default);
     }
     let requested = requested.map(str::trim).filter(|s| !s.is_empty());
     let Some(requested) = requested else {
@@ -923,13 +919,6 @@ pub async fn list_chat_model_choices(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn guest_literal_helper_is_documented_in_resolve() {
-        // resolve_chat_model is async and needs ClickHouse; the guest short-circuit is
-        // the property this module owns. Covered live.
-        assert!(true);
-    }
 
     /// An endpoint reached by IP must not be named after one of its octets, and the
     /// placeholder row for an empty catalog must spell the provider the same way the

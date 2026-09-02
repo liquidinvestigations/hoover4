@@ -212,7 +212,7 @@ until someone needs to override them.
       # research turn; a degenerate 4.4 s list_collections turn was ignored as
       # not a real question). Production hardware should re-measure.
       HOOVER4_RATE_CHAT_PER_MINUTE: "40"
-      # API (server-function) calls per minute per user, guests included.
+      # API (server-function) calls per minute per user.
       # Default 1000. Measured baseline on this host: a scripted 5-minute
       # flood of representative calls (search + admin + document fetches)
       # recorded 1380 api_events = 276 calls/min sustained; a realistic

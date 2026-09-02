@@ -115,7 +115,7 @@ must never be able to fail a request, so writes drop on overflow and log at debu
 
 **PRIVACY RULE, do not "improve" this away.** Record only:
 
-- who (`username`, guests included),
+- who (`username`),
 - which broad route class (`usage_events.event_type`: `user_login`, `user_search`,
   `user_get_document`, `user_other_request`, `llm_chat_message`, `llm_mcp_tool_call`),
 - when (`event_ts`),
@@ -129,10 +129,8 @@ metrics table that accumulates search queries is a surveillance log.
 The TTL is applied by background merges, so rows can outlive 24 h briefly; every read
 query filters `event_ts >= now() - INTERVAL 24 HOUR` itself.
 
-`user_login` counts **sign-ins, not requests**: only `/api/whoami` creates a session, so
-only it records one. A fresh `set-cookie` on every response instead makes this page count
-one login per cookie-less request, which a single crawler can run into the hundreds in a
-24 h window.
+No route mints a session, so `user_login` no longer accumulates on a current deployment;
+rows under that event type, where they exist, are historical.
 
 A request that identified nobody is recorded under the constant username `anonymous`, and
 **not** as an error. A 401 is a correct, complete answer to a request that proved nothing,
@@ -147,9 +145,9 @@ duration and byte counts), and the LLM events in the chat API via
 
 **A 404 is not an error.** `is_error` is derived from the response status, and a bare
 `anyhow` error out of a server function becomes a 500, including "this chat session is
-not yours", which is the normal answer to a stranger asking. One crawler with fresh guest
-cookies walking chat URLs is enough to put double-digit error counts and a 20 %+ error
-rate on this page overnight. `guard::is_not_found` maps those to 404, and the middleware
+not yours", which is the normal answer to a stranger asking. One crawler walking chat
+URLs with a fresh identity per request is enough to put double-digit error counts and a
+20 %+ error rate on this page overnight. `guard::is_not_found` maps those to 404, and the middleware
 excludes 404 from `is_error`: a not-found is a correct, complete answer about something
 that is not there.
 The message stays indistinguishable from "does not exist at all", an id that 404s only
@@ -209,34 +207,36 @@ documents lost their entities to an NER outage without a single bar changing col
 
 ## TODO: deferred, with the reason
 
-### Verify the artifact ACL with two real users, outside demo mode
+### Verify the artifact ACL with two real users, not both administrators
 
-**Deferred deliberately: this stack stays in demo mode for now.**
+**Deferred deliberately: this stack's proxy asserts an administrator identity by
+default.**
 
-`guest_permissions_mode = all` makes every visitor an admin, so a *signed-in* guest gets
-`200` on **any** chat artifact. (An unauthenticated request gets nowhere: the
-route requires a session and answers 401 without one. That closes the drive-by case and
-changes nothing about the case below, which is one signed-in user reading another's.) The
-code-level rule is
-correct and was reviewed: `/_chat_artifact/{id}/{asset}` resolves the id to its
-`session_id`/`username` and enforces owner-or-admin, returning **403 for someone else's
-artifact and 404 only for one that does not exist** (collapsing those two would hide a real
-permission failure behind an apparent missing row). What cannot be demonstrated in this
-configuration is the *outcome*: the acceptance check "a second user gets 403" passes
-vacuously because there is no second user. Everyone is the admin.
+`proxy_username`/`proxy_groups` in `hoover4.ini` name the identity every request carries,
+and the default group is `admin`, so a caller reaches `200` on **any** chat artifact. (An
+unauthenticated request still gets nowhere: the route requires an identity and answers 401
+without one. That closes the drive-by case and changes nothing about the case below, which
+is one user reading another's.) The code-level rule is correct and was reviewed:
+`/_chat_artifact/{id}/{asset}` resolves the id to its `session_id`/`username` and enforces
+owner-or-admin, returning **403 for someone else's artifact and 404 only for one that does
+not exist** (collapsing those two would hide a real permission failure behind an apparent
+missing row). What cannot be demonstrated in this configuration is the *outcome*: the
+acceptance check "a second user gets 403" passes vacuously because every caller is the
+admin.
 
-So the acceptance run must record it as **not verifiable in demo mode**, never as passing.
-To close it: set `guest_permissions_mode = none` on the settings page, create two real
-users, have each open a chat that produces an artifact, and fetch the other's artifact id.
-Expected: 403, and `api_events.is_error = 0` for it (a 403 is the system working).
+So the acceptance run must record it as **not verifiable with the default proxy
+identity**, never as passing. To close it: point the proxy at two identities whose groups
+grant neither `admin` nor `superuser`, have each open a chat that produces an artifact, and
+fetch the other's artifact id. Expected: 403, and `api_events.is_error = 0` for it (a 403
+is the system working).
 
 Until that is done, treat "the ACL is fine" as a code review result, not a test result.
 
 The same applies to the OCR'd-PDF route: `/_download_ocr_pdf/...` calls
 `permissions::assert_can_read` on the *source document's* dataset before it looks anything
-up, which is the same check `/_download_document/...` makes. In demo mode that check
-passes for everyone, so it is likewise a code result rather than a test result, and it is
-closed by the same two-real-users run.
+up, which is the same check `/_download_document/...` makes. With every caller an
+administrator that check passes for everyone, so it is likewise a code result rather than a
+test result, and it is closed by the same two-non-admin-identities run.
 
 ## Navigation
 

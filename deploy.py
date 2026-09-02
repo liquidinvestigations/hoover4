@@ -162,7 +162,6 @@ DEFAULTS = {
         "serena_enabled": "true",
         "serena_port": "21940",
         # demo / data
-        "demo_mode": "false",
         # Identity the header-setting proxy in front of the website asserts on every
         # request. A production deployment removes this proxy and puts oauth2-proxy in
         # its place, which asserts a real identity the same way.
@@ -581,7 +580,6 @@ def render_main_env(cfg):
 
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
-    env["HOOVER4_DEMO_MODE"] = cfg.get(m, "demo_mode")
     # The identity the proxy asserts on every request it forwards. Consumed here so
     # every rendered ini key is exported (see AGENTS.md); render_nginx_proxy_conf
     # reads the same two keys straight from cfg to bake them into the proxy's own
@@ -796,7 +794,13 @@ server {
     listen 8080;
 
     location / {
-        proxy_pass http://hoover4-website:8080;
+        # Through a variable on purpose. A literal name in proxy_pass is resolved once,
+        # when nginx starts, and kept for the life of the process, so restarting
+        # hoover4-website makes every request 502 until the proxy restarts too. A
+        # variable is resolved per request, against the resolver that
+        # nginx-resolver.conf.template supplies.
+        set $upstream "hoover4-website:8080";
+        proxy_pass http://$upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

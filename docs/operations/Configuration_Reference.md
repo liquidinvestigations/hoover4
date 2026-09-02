@@ -84,8 +84,6 @@ bound the pattern scanner's runtime and its admission control.
 ### The website
 
 `website_release_mode` picks between the development server and a release build.
-`demo_mode` decides whether anonymous visitors exist at all. See
-[Chat and agents](../architecture/Chat_And_Agents.md) for what it grants.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults.
 
@@ -181,7 +179,7 @@ is the map back to the group above that explains it.
 - `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
-- `serena_port`, `demo_mode`, `proxy_username`, `proxy_groups`
+- `serena_port`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`
 - `mcp_shared_secret_file`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `garage_s3_port`

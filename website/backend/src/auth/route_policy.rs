@@ -1,21 +1,10 @@
-//! Which HTTP paths require a session, and the single path allowed to create one.
+//! Which HTTP paths require a session.
 //!
-//! The rule this file exists to make checkable: **exactly one route may mint a session.**
-//! A fresh `set-cookie` on every response lets any client that does not store cookies (a
-//! crawler, a `curl` loop, a link checker) create a `guest-<hex>` user and a `user_login`
-//! event per request, so the user table and the metrics page grow without bound and stop
-//! being readable.
-//!
-//! The shape is:
-//!
-//! * `/api/<whoami…>` is the **mint route**. It is the only place a session is created, a
-//!   `guest-*` user is provisioned, or a `set-cookie` is written. The frontend blocks the
-//!   whole app on it (`components::session_gate`), so it always runs first.
-//! * every other server function and every custom byte-serving route **requires** an
-//!   already-resolved session and answers `401` without one.
-//! * the app shell (page routes, `/assets/…`, the wasm bundle) stays open, because the
-//!   browser has to be able to load the code that calls the mint route. The shell contains
-//!   no collection data; everything it renders arrives through a route that is checked.
+//! **Every path requires an already-resolved session, except `/favicon.ico`.** The
+//! reverse proxy in front of the website asserts an identity on every request it
+//! forwards, so there is nothing left to load before an identity exists: the app shell,
+//! the wasm bundle and `/assets/…` all require a session like every server function and
+//! every custom byte-serving route.
 //!
 //! Nothing here decides *what* a resolved user may read. That is
 //! [`crate::auth::permissions`]. This is only the question of whether anyone is asking.
@@ -33,46 +22,31 @@ pub const CUSTOM_ROUTE_PREFIXES: [&str; 3] = [
     "/_download_ocr_pdf/",
 ];
 
-/// Dioxus mounts every server function under this prefix.
-const SERVER_FN_PREFIX: &str = "/api/";
-
-/// Is this the one route that may create a session and write a `set-cookie`?
-///
-/// Matched through the telemetry allowlist rather than by string prefix, because Dioxus
-/// mounts a server function at `/api/<name><decimal hash>` and the hash changes with the
-/// function's signature. `whoami_evil` and `/x/api/whoami` are therefore not it.
-pub fn is_session_mint_route(path: &str) -> bool {
-    crate::api::telemetry::api_function_name(path) == Some("whoami")
-}
+/// The one path a caller with no identity may still reach.
+const OPEN_PATH: &str = "/favicon.ico";
 
 /// Must this request already carry a resolved identity?
 ///
-/// True for every server function except the mint route, and for every custom route.
+/// True for every path except [`OPEN_PATH`].
 pub fn requires_session(path: &str) -> bool {
-    if is_session_mint_route(path) {
-        return false;
-    }
-    path.starts_with(SERVER_FN_PREFIX)
-        || CUSTOM_ROUTE_PREFIXES.iter().any(|p| path.starts_with(p))
+    path != OPEN_PATH
 }
 
 /// The body of a refusal, written for whoever reads it in a network panel or a log.
 pub const NO_SESSION_MESSAGE: &str =
-    "no session: this endpoint requires a signed-in session. Load the site first, which \
-     establishes one through /api/whoami, or authenticate through the reverse proxy.";
+    "no session: this endpoint requires a signed-in session. Authenticate through the \
+     reverse proxy in front of this deployment.";
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn only_whoami_may_mint() {
-        assert!(is_session_mint_route("/api/whoami"));
-        assert!(is_session_mint_route("/api/whoami933738303362312952"));
-        assert!(!is_session_mint_route("/api/whoami_evil"));
-        assert!(!is_session_mint_route("/x/api/whoami"));
-        assert!(!is_session_mint_route("/api/search_for_results"));
-        assert!(!is_session_mint_route("/"));
+    fn only_the_favicon_stays_open() {
+        assert!(!requires_session("/favicon.ico"));
+        assert!(requires_session("/"));
+        assert!(requires_session("/assets/main.css"));
+        assert!(requires_session("/wasm/frontend_bg.wasm"));
     }
 
     #[test]
@@ -89,27 +63,26 @@ mod tests {
     }
 
     #[test]
-    fn every_server_function_except_the_mint_route_requires_a_session() {
+    fn every_server_function_requires_a_session() {
         assert!(requires_session("/api/search_for_results16667617515180422573"));
         assert!(requires_session("/api/chat_send_message"));
+        assert!(requires_session("/api/whoami933738303362312952"));
         // An unknown /api/ path is still an API path: the default is closed.
         assert!(requires_session("/api/something_new_nobody_listed"));
-        assert!(!requires_session("/api/whoami933738303362312952"));
     }
 
     #[test]
-    fn the_app_shell_stays_open() {
-        // The browser must be able to load the code that calls the mint route. None of
-        // these carry collection data.
+    fn the_app_shell_now_requires_a_session() {
+        // The browser has an identity before it ever loads the shell: the proxy in
+        // front asserts one on every request, this one included.
         for path in [
             "/",
             "/search/o3Njb2xsZWN0aW9u/0/9g==/9g==",
             "/admin/metrics",
             "/assets/main.css",
             "/wasm/frontend_bg.wasm",
-            "/favicon.ico",
         ] {
-            assert!(!requires_session(path), "{path} must stay open");
+            assert!(requires_session(path), "{path} must require a session");
         }
     }
 }

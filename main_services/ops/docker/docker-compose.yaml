@@ -594,8 +594,6 @@ services:
       # Unlike the API above this is followed by the admin's browser, so it has to be
       # an address reachable from the host, not from inside the container network.
       - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:21909}
-      # Demo switch: when true, anonymous guest-* sessions are treated as admins.
-      - HOOVER4_DEMO_MODE=${HOOVER4_DEMO_MODE:-false}
       # Root the dataset-creation form lists subfolders of. The form never accepts a
       # free-text path: an admin picks a name from this listing, and the backend joins it
       # here, so the ingest root cannot be pointed anywhere else from the browser.
@@ -689,6 +687,16 @@ services:
       - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
     volumes:
       - ./nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+      # Rendered into conf.d by the image's own entrypoint, which fills
+      # NGINX_LOCAL_RESOLVERS from the container's /etc/resolv.conf. It has to be a
+      # template rather than a plain file because that address belongs to the
+      # container network and is not known until the container starts.
+      - ./nginx-resolver.conf.template:/etc/nginx/templates/00-resolver.conf.template:ro
+    environment:
+      # Switches on /docker-entrypoint.d/15-local-resolvers.envsh, which is what
+      # exports NGINX_LOCAL_RESOLVERS for the template above. Without it the variable
+      # is empty and nginx refuses to start.
+      - NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
     healthcheck:
       # dx serve inside hoover4-website answers 500 on every route until its first
       # compile finishes, which takes minutes cold. The generous retry budget below

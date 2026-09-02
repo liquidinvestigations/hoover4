@@ -162,9 +162,8 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-auth-01` | Mint a session on exactly one route; every other route requires one | `website/backend/src/auth/route_policy.rs` |
+| `F-auth-01` | No route mints a session; every route requires an already-resolved identity except `/favicon.ico` | `website/backend/src/auth/route_policy.rs` |
 | `F-auth-02` | Accept an identity asserted by a reverse proxy, on every route | `website/backend/src/auth/session_middleware.rs` |
-| `F-auth-03` | Provision anonymous guests, and treat them as administrators, when demo mode is on | `website/backend/src/auth/session_middleware.rs` |
 | `F-auth-04` | Restrict a collection to the groups granted it, and resolve every per-collection read after the permission check | `db_auth/`, `website/backend/src/db_utils/clickhouse_utils.rs` |
 | `F-auth-05` | Rate-limit chat, polling and API calls per user, with a ladder that decays for human-paced traffic and is flat for machine-paced polling | `website/backend/src/api/rate_limit.rs` |
 | `F-auth-06` | Resolve an artefact id to its owner and refuse a foreign one with a permission failure, not a missing row | `website/backend/src/db_chat/artifacts.rs` |

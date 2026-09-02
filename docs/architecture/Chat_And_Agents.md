@@ -16,7 +16,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 - [Naming a conversation](#naming-a-conversation)
 - [Admin: live chats](#admin-live-chats)
 - [Admin: the inline SVG charts](#admin-the-inline-svg-charts)
-- [Guests and language-model access](#guests-and-language-model-access)
+- [Language-model access](#language-model-access)
 - [Allocating a message sequence](#allocating-a-message-sequence)
 - [Tool-event payload shapes](#tool-event-payload-shapes)
 
@@ -278,21 +278,16 @@ its top up to an even number, so the half-height rule is labelled with the value
 actually drawn at rather than a rounded one, and a remaining-time axis whose whole range is
 zero draws one baseline tick instead of three that all read `0s`.
 
-## Guests and language-model access
+## Language-model access
 
-Which users can chat is decided by the deployment's mode, and the same mechanism decides
-whether anonymous users exist at all.
+Nothing is provisioned anonymously. Every user is authenticated, no page is reachable
+without an identity, and chat access follows from that identity like every other
+capability.
 
-**In demo mode** an anonymous visitor is provisioned as a `guest-*` user and may chat, keyed
-by that username, with the same persistence as any other user. A visitor driving a local
-accelerator is a **resource** question rather than a permission one, and the chat rate
-limiter (`backend::api::rate_limit::check_and_record`) is the control for it: the chat
-limiter's budget decays the longer a burst lasts, which is what distinguishes a person
-working from a loop running.
-
-**Outside demo mode** nothing is provisioned anonymously. Every user is authenticated, no
-page is reachable without an identity, and chat access follows from that identity like every
-other capability.
+A user driving a local accelerator hard is a **resource** question rather than a
+permission one, and the chat rate limiter (`backend::api::rate_limit::check_and_record`) is
+the control for it: its budget decays the longer a burst lasts, which is what distinguishes
+a person working from a loop running.
 
 ## Allocating a message sequence
 

@@ -52,7 +52,7 @@ def ensure_collection(collectionname: str):
 @click.argument("collectionname", type=str)
 @click.option("--fullname", type=str, default="", help="Human-readable display name.")
 @click.option("--public/--no-public", "is_public", default=False,
-              help="Readable by every user (and by guests), rather than by group grant only.")
+              help="Readable by every user, rather than by group grant only.")
 def create_collection(collectionname: str, fullname: str, is_public: bool):
     """Register a collection and provision its storage.
 
@@ -62,9 +62,9 @@ def create_collection(collectionname: str, fullname: str, is_public: bool):
     script that re-runs is safe.
 
     `--public` is worth stating explicitly. A collection is restricted by default and is
-    then visible only through a group grant; a demo that shows its collections anyway is
-    relying on `demo_mode` and the `guest_permissions_mode` setting both being open,
-    which is two independent defaults holding rather than one intent recorded.
+    then visible only through a group grant; a demo that shows its collections anyway
+    needs this flag recorded, rather than relying on every user already being in the
+    right group.
     """
     from database.clickhouse import get_global_client, validate_collectionname
     from database.s3 import ensure_collection_storage

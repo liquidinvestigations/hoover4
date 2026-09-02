@@ -245,11 +245,6 @@ serena_enabled     = true
 serena_port        = 21940
 
 # ---- demo / data ----------------------------------------------------------------
-; demo mode provisions an anonymous guest-* session for any visitor and treats it as an
-; admin. true only for public demos. With it false nothing anonymous is provisioned:
-; /api/whoami refuses, the site renders "Sign-in required" and every endpoint answers 401,
-; so the only way in is a reverse proxy setting X-Forwarded-User.
-demo_mode          = false
 ; Identity the header-setting proxy in front of the website asserts on every
 ; request, as X-Forwarded-User and X-Forwarded-Preferred-Username. A production
 ; deployment removes this proxy and puts oauth2-proxy in its place, which

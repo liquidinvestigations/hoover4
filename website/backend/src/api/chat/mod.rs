@@ -41,27 +41,8 @@ use crate::db_utils::clickhouse_utils::list_permitted_collections;
 /// Cap on sessions returned to the history sidebar / homepage.
 const SESSION_LIST_LIMIT: u32 = 100;
 
-/// Reject anonymous use. Guests are allowed only when demo mode is on
-/// (`HOOVER4_DEMO_MODE`), keyed by their `guest-*` username like any other user.
-///
-/// Which users may chat follows from the deployment's mode. See
-/// `docs/architecture/Chat_And_Agents.md`.
-fn require_named_user(user: &CurrentUser) -> anyhow::Result<&str> {
-    require_named_user_inner(user, crate::auth::session_middleware::demo_mode())
-}
-
-fn require_named_user_inner(user: &CurrentUser, demo: bool) -> anyhow::Result<&str> {
-    if user.username.is_empty() {
-        anyhow::bail!("no user in session");
-    }
-    if user.is_guest && !demo {
-        anyhow::bail!("AI Chat requires a signed-in user; guest sessions have no chat history outside demo mode");
-    }
-    Ok(&user.username)
-}
-
 pub async fn list_chat_sessions(user: &CurrentUser) -> anyhow::Result<Vec<ChatSessionItem>> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     db_chat::list_sessions(username, SESSION_LIST_LIMIT).await
 }
 
@@ -73,7 +54,7 @@ pub async fn create_chat_session(
     user: &CurrentUser,
     collections: Vec<String>,
 ) -> anyhow::Result<String> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     let permitted = list_permitted_collections(user).await?;
     let selected = intersect_collections(&collections, &permitted);
     db_chat::create_session(username, "New chat", &selected).await
@@ -83,7 +64,7 @@ pub async fn get_chat_session(
     user: &CurrentUser,
     session_id: String,
 ) -> anyhow::Result<ChatSessionDetail> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     let row = db_chat::get_session(username, &session_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
@@ -112,7 +93,7 @@ pub async fn get_chat_session(
 }
 
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     db_chat::delete_session(username, &session_id).await
 }
 
@@ -129,7 +110,7 @@ pub async fn get_chat_artifact_detail(
     user: &CurrentUser,
     artifact_id: String,
 ) -> anyhow::Result<String> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     let Some(row) = db_chat::artifacts::get_artifact(&artifact_id).await? else {
         // Phrased to match `guard::is_not_found`, so this answers 404 rather than 500.
         anyhow::bail!("artifact not found");
@@ -154,7 +135,7 @@ pub async fn set_chat_collections(
     session_id: String,
     collections: Vec<String>,
 ) -> anyhow::Result<()> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     let permitted = list_permitted_collections(user).await?;
     let selected = intersect_collections(&collections, &permitted);
     db_chat::touch_session(username, &session_id, None, Some(&selected)).await
@@ -209,7 +190,7 @@ pub async fn send_message(
     requested_options: ChatOptions,
     requested_model: Option<String>,
 ) -> anyhow::Result<ChatSendResult> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
         return Ok(ChatSendResult {
@@ -242,7 +223,6 @@ pub async fn send_message(
     // absent from the dropdown.
     let llm_model = crate::api::admin::llm::resolve_chat_model(
         requested_model.as_deref(),
-        user.is_guest,
         crate::api::admin::llm::ChatProfile::of(turn_options),
     )
     .await?;
@@ -582,7 +562,7 @@ pub async fn poll_chat(
     after_seq: Option<u32>,
     sig: String,
 ) -> anyhow::Result<ChatPollResult> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     // Typed, not prose. The client counts consecutive poll failures and declares "lost
     // contact with the chat" at three, and a rate limit is the opposite of lost contact:
     // the server is answering, the turn is still running, and the only correct response is
@@ -648,7 +628,7 @@ pub async fn poll_chat(
 /// `false` means nothing was in flight, which is the ordinary outcome of a stop that
 /// arrives just after the turn finished.
 pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<bool> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     // Ownership: stopping another user's turn is not allowed even though the id is theirs.
     db_chat::get_session(username, &session_id)
         .await?
@@ -680,7 +660,7 @@ pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::R
 /// asks, so the button is enabled exactly when the page is showing the interrupted
 /// marker.
 pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is still running in this session");
     }
@@ -732,7 +712,7 @@ pub async fn start_research_task(
     message: String,
     requested_options: ChatOptions,
 ) -> anyhow::Result<Result<String, u64>> {
-    let username = require_named_user(user)?;
+    let username = user.username.as_str();
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
         // Nothing written, consistent with send_message's rate-limit path.
@@ -1188,17 +1168,6 @@ mod tests {
         assert_eq!(intersect_collections(&v(&["a", "a"]), &v(&["a"])), v(&["a"]));
     }
 
-    fn user(username: &str, is_guest: bool) -> CurrentUser {
-        CurrentUser {
-            username: username.to_string(),
-            fullname: String::new(),
-            email: String::new(),
-            is_admin: false,
-            is_guest,
-            groups: Vec::new(),
-        }
-    }
-
     #[test]
     fn a_workflow_id_round_trips_through_its_split() {
         // The id is the only thing Temporal's visibility index carries about a turn, so
@@ -1231,19 +1200,5 @@ mod tests {
         assert_eq!(preview("  a\n b  "), "a b");
         let long = "x".repeat(PREVIEW_CHARS + 50);
         assert_eq!(preview(&long).chars().count(), PREVIEW_CHARS + 1);
-    }
-
-    #[test]
-    fn guests_and_anonymous_users_are_refused() {
-        // Outside demo mode guests are refused; inside demo mode they are keyed by
-        // guest-* username like any other user. Anonymous always refuses.
-        assert!(require_named_user_inner(&user("guest-1", true), false).is_err());
-        assert_eq!(
-            require_named_user_inner(&user("guest-1", true), true).unwrap(),
-            "guest-1"
-        );
-        assert!(require_named_user_inner(&user("", false), false).is_err());
-        assert!(require_named_user_inner(&user("", true), true).is_err());
-        assert_eq!(require_named_user_inner(&user("ann", false), false).unwrap(), "ann");
     }
 }

@@ -11,7 +11,7 @@ pub mod pdf_viewer;
 pub mod popover;
 pub mod resizable_sidebar;
 pub mod search_components;
-pub mod session_gate;
+pub mod session_context;
 pub mod suspend_boundary;
 pub mod svg_title;
 pub mod toast;

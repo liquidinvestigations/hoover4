@@ -18,55 +18,31 @@ The search fan-out and everything downstream of it is
 - [Browsing a tabular document](#browsing-a-tabular-document)
 - [The file-type glyph](#the-file-type-glyph)
 
-## Sessions: one route mints, every other endpoint requires
+## Sessions: no route mints, every route requires
 
-`/api/whoami` is the only route that creates a session: a `web_sessions` row, a `guest-*`
-user, a `user_login` event and the `hoover4_session` cookie. Every other server function
-and every custom route (`/_download_document/…`, `/_download_ocr_pdf/…`,
-`/_chat_artifact/…`) answers **401** when nothing resolved an identity. The policy is one
-file, `website/backend/src/auth/route_policy.rs`, and its tests enumerate the custom routes
-literally so a route added to `main.rs` and forgotten there fails a test rather than
-shipping open.
+Every route requires an already-resolved identity except `/favicon.ico`, including the app
+shell, `/assets/…` and the wasm bundle. The policy is one file,
+`website/backend/src/auth/route_policy.rs`, and its tests enumerate the custom routes
+(`/_download_document/…`, `/_download_ocr_pdf/…`, `/_chat_artifact/…`) literally, so a
+route added to `main.rs` and forgotten there fails a test rather than shipping open.
 
-The app shell (page routes, `/assets/…`, the wasm bundle) stays open, because the browser
-has to load the code that signs in. It carries no collection data; everything it renders
-arrives through a checked route.
+An identity comes from one of two places. An `X-Forwarded-User` header, which the reverse
+proxy in front of this deployment asserts on every request it forwards, is honoured
+directly, on every route, with no session written for it: the header is proof on its own,
+and it arrives on every request, not only the first, so a session buys nothing. A cookie
+naming a row already in `web_sessions` resumes the identity it named, read-only, for a
+session created before a deployment stopped minting new ones. A caller with neither gets
+`401` with `route_policy::NO_SESSION_MESSAGE`.
 
-**The frontend blocks on it.** `website/frontend/src/components/session_gate.rs` wraps the router: no page
-renders until `whoami` resolves. Rendering pages first and letting each page's resources
-race the sign-in would hand every one of them a 401 to display on first paint.
-
-**And it calls it once.** The gate publishes what it resolved as a context; anything under
-it that needs the identity (the admin shell, the admin guard, both chat pages) reads it
-with `use_session_user()` instead of running its own `use_resource(whoami)`. A component
-that fetches for itself puts another request on the single endpoint that *writes* sessions,
-once per page load. The count becomes "how many identity-aware components does this route
-mount" rather than one.
-`use_session_user()` answers `None` while the gate's call is in flight, which means "not
-known yet" and never "guest", a component that defaults an unknown identity to a concrete
-answer draws the wrong control on first paint and then takes it away.
-
-**Why it matters that only one route mints.** A response that attaches a fresh
-`set-cookie` on any route lets every client that stores no cookies (a crawler, a `curl`
-loop, a link checker) create a `guest-<hex>` user and a `user_login` row *per request*,
-so the user list and the metrics page grow without bound and stop being readable. A guest name is derived
-from the session id rather than randomised, so a browser holding a cookie whose session row
-has expired re-anchors to the identity it already had instead of becoming a second user.
-
-**`HOOVER4_DEMO_MODE` decides whether anonymous visitors exist at all.** With it on, the
-mint route provisions a guest and treats them as an administrator, which is what the
-public demo runs. With
-it off, nothing is provisioned: `whoami` refuses, the session gate renders *Sign-in
-required*, and the only way in is a reverse proxy setting `X-Forwarded-User`. A
-proxy-authenticated identity is honoured on every route, because the proxy is what
-authenticated it; what is confined to the mint route is writing a session for it.
-
-That elevation is applied to the request and never written to the account, so a guest's
-`users` row keeps `is_admin = false` while `whoami` reports true for the same session.
-The disagreement is the design (the grant belongs to the deployment and lasts exactly as
-long as the switch does, where a persisted flag would leave real administrators behind the
-day it is turned off), and `/admin/users` states it on the page, because that is the one
-screen where the stored flag and the live grant sit side by side.
+**The frontend reads the identity, it does not gate on it.**
+`website/frontend/src/components/session_context.rs` calls `/api/whoami` once and
+publishes the result as a context; anything under it that needs the identity (the admin
+shell, the admin guard, both chat pages) reads it with `use_session_user()` instead of
+running its own `use_resource(whoami)`. Pages render immediately rather than waiting for
+that call to resolve, because the backend has already refused the request if it carried no
+identity. `use_session_user()` answers `None` until the call resolves, which means "not
+known yet", never a stand-in identity: a component that defaults an unknown identity to a
+concrete answer draws the wrong control on first paint and then takes it away.
 
 A non-browser client must therefore hold a cookie jar and call `whoami` first. That is what
 `main_services/verify-stack.sh` does, discovering both URLs from the served WASM bundle

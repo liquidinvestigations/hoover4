@@ -18,10 +18,8 @@ use crate::db_auth::settings;
 /// disagree the page misrepresents the current behaviour, so keep them together:
 /// * `chat_artifact_ttl_days`: `tasks/P_admin/artifact_sweeper.py::DEFAULT_TTL_DAYS`
 /// * `session_expiration_seconds`, `auth::session` (one week)
-/// * `guest_permissions_mode`, `auth::guard`
 const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("session_expiration_seconds", "604800"),
-    ("guest_permissions_mode", "none"),
     ("chat_artifact_ttl_days", "30"),
 ];
 
@@ -82,9 +80,6 @@ pub async fn admin_set_setting(
             if v == 0 {
                 anyhow::bail!("session_expiration_seconds must be > 0");
             }
-        }
-        "guest_permissions_mode" if value != "all" && value != "none" => {
-            anyhow::bail!("guest_permissions_mode must be 'all' or 'none'");
         }
         "llm_default_chat_model" => {
             if value.trim().is_empty() {

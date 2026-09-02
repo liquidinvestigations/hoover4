@@ -333,9 +333,9 @@ pub async fn list_collections() -> anyhow::Result<Vec<String>> {
 
 /// The concrete collections a user may read.
 ///
-/// `PermissionSet::All` (admins, and guests in `all` mode) means "all collections" and
-/// is resolved to the concrete list here, at the point of use, rather than being left
-/// unbounded for fan-out purposes.
+/// `PermissionSet::All` (admins) means "all collections" and is resolved to the
+/// concrete list here, at the point of use, rather than being left unbounded for
+/// fan-out purposes.
 pub async fn list_permitted_collections(user: &CurrentUser) -> anyhow::Result<Vec<String>> {
     match permissions::resolve_permitted_collections(user).await? {
         PermissionSet::All => list_collections().await,
