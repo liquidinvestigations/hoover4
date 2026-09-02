@@ -595,11 +595,16 @@ def judge(
 # Driver
 # ---------------------------------------------------------------------------------
 
-# `dx serve` shows this while it is recompiling, and KEEPS SERVING THE PREVIOUS BUNDLE
-# until it finishes. A run started right after an edit therefore screenshots the old code
-# and looks like the change did nothing, which is exactly how an hour goes missing. It
-# also puts a dev overlay in the corner of every image.
-DEV_REBUILD_TIMEOUT_S = 600.0
+# `dx serve` KEEPS SERVING THE PREVIOUS BUNDLE while it recompiles. A run started right
+# after an edit therefore screenshots the old code and looks like the change did nothing,
+# which is exactly how an hour goes missing.
+#
+# The dev server used to announce a recompile in a toast, and this file used to read it.
+# `website/frontend/index.html` replaced the CLI's default page template, because that
+# template imported a font from a Google host on every page, and the toast went with it.
+# Nothing in the page now says a recompile is in flight, so the wait below is for the one
+# state that is observable: the application mounted. Do not edit source during a run.
+APP_MOUNT_TIMEOUT_S = 600.0
 
 # A page that never finishes loading has to be a failure, not a stalled run. Without this
 # the whole gate hangs on the first request the server does not answer -- and a server fn
@@ -607,31 +612,35 @@ DEV_REBUILD_TIMEOUT_S = 600.0
 PAGE_BUDGET_S = 180.0
 
 
-async def wait_for_dev_rebuild(tab) -> None:
-    deadline = time.monotonic() + DEV_REBUILD_TIMEOUT_S
+async def wait_for_app_mounted(tab) -> None:
+    """Wait until the wasm bundle has booted and taken over the server-rendered page.
+
+    `dx serve` answers 500 until its first compile finishes. After that the server renders
+    `#main` before the bundle exists, so a filled `#main` proves nothing on its own. The
+    page's own inline script queues hydration calls until the bundle installs
+    `window.hydration_callback`, so that function existing is what says the bundle is
+    running. A page that never gets there raises rather than being photographed dead.
+    """
+    deadline = time.monotonic() + APP_MOUNT_TIMEOUT_S
     announced = False
     while time.monotonic() < deadline:
-        # The toast keeps its text after the build finishes and is hidden by collapsing to
-        # zero height, so the text alone reads as "rebuilding forever", which is a ten
-        # minute wait per run, or a whole run refused, for a banner nobody can see.
         state = await js(tab, """
-const toast = document.querySelector('#__dx-toast');
-const text = toast ? (toast.innerText || '') : '';
-const showing = !!toast && toast.getBoundingClientRect().height > 0;
-return {rebuilding: showing && (text.includes('being rebuilt') || text.includes('rebuild'))};
+const main = document.querySelector('#main');
+const booted = typeof window.hydration_callback === 'function';
+return {mounted: !!main && main.childElementCount > 0 && booted};
 """)
-        if not state.get("rebuilding"):
+        if state.get("mounted"):
             if announced:
-                # Give the fresh bundle a moment to boot before the first action.
+                # Give the fresh bundle a moment to settle before the first action.
                 await asyncio.sleep(3.0)
             return
         if not announced:
-            print("    waiting for the dev server to finish rebuilding…", flush=True)
+            print("    waiting for the dev server to serve a mounted app…", flush=True)
             announced = True
         await asyncio.sleep(3.0)
         await tab.reload()
         await asyncio.sleep(1.0)
-    raise RuntimeError(f"dx serve was still rebuilding after {DEV_REBUILD_TIMEOUT_S:g}s")
+    raise RuntimeError(f"the application had not mounted after {APP_MOUNT_TIMEOUT_S:g}s")
 
 
 async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set[str]:
@@ -695,7 +704,7 @@ async def capture_all(
         tab = await browser.get(base_url + "/")
         network = await watch_network(tab, urlsplit(base_url).hostname)
         await tab.send(page_cdp.add_script_to_evaluate_on_new_document(CONSOLE_HOOK_JS))
-        await wait_for_dev_rebuild(tab)
+        await wait_for_app_mounted(tab)
 
         needed_datasets: set[str] = set(CORPUS_DATASETS)
         for page in pages:
