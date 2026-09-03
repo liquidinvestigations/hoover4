@@ -27,7 +27,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.resolve()
 INI_PATH = REPO_ROOT / "hoover4.ini"
-INI_EXAMPLE_PATH = REPO_ROOT / "hoover4.ini.example"
+# Two tracked samples, release and development (see hoover4.ini.release's own header
+# for what they differ in). Release is the fallback default: a render with no
+# hoover4.ini present must not imply the privilege-escalation container.
+INI_RELEASE_PATH = REPO_ROOT / "hoover4.ini.release"
+INI_DEVELOPMENT_PATH = REPO_ROOT / "hoover4.ini.development"
 
 MAIN_COMPOSE_DIR = REPO_ROOT / "main_services" / "ops" / "docker"
 AI_COMPOSE_DIR = REPO_ROOT / "ai_services"
@@ -45,9 +49,10 @@ PROTECTED_VOLUME_SUFFIXES = ("serena_state",)
 CDI_SPEC = "/etc/cdi/nvidia.yaml"
 
 # --------------------------------------------------------------------------------------
-# Defaults. Every value here is overridable in hoover4.ini; hoover4.ini.example is a
-# fully commented rendering of this table. Ports are ini keys, never code literals.
-# The single exception is the website's 12345, which humans type.
+# Defaults. Every value here is overridable in hoover4.ini; hoover4.ini.release and
+# hoover4.ini.development are fully commented renderings of this table. Ports are ini
+# keys, never code literals. The single exception is the website's 12345, which
+# humans type.
 # --------------------------------------------------------------------------------------
 
 DEFAULTS = {
@@ -161,10 +166,18 @@ DEFAULTS = {
         # dev tooling
         "serena_enabled": "true",
         "serena_port": "21940",
+        # Turns on hoover4-development-auth-backdoor, which asserts a FIXED identity on
+        # every request with no authentication of its own. DEFAULT FALSE (the release
+        # behaviour): a configuration that omits this key never runs it. Selects
+        # compose/development-auth-backdoor.yaml (see MAIN_OVERLAYS); that overlay is
+        # also what stops hoover4-website publishing 12345 itself, since the two
+        # containers cannot both bind it.
+        "development_auth_backdoor_enabled": "false",
         # demo / data
-        # Identity the header-setting proxy in front of the website asserts on every
-        # request. A production deployment removes this proxy and puts oauth2-proxy in
-        # its place, which asserts a real identity the same way.
+        # Identity a header-setting proxy in front of the website asserts on every
+        # request. Read by hoover4-development-auth-backdoor when the flag above turns
+        # it on. A real deployment puts its own identity-asserting proxy in front
+        # instead, such as oauth2-proxy, which asserts a real identity the same way.
         "proxy_username": "admin",
         # Comma-separated, no space, matching what oauth2-proxy sends. A group named
         # admin or superuser makes the asserted user an administrator.
@@ -267,6 +280,11 @@ MAIN_OVERLAYS = [
     ("ner_spacy_enabled", "compose/ner-spacy.yaml", "hoover4-ner-spacy"),
     # Overrides hoover4-website's command; adds no service of its own.
     ("website_release_mode", "compose/website-release.yaml", None),
+    # The renamed, opt-in privilege-escalation container. Off by default: see
+    # development_auth_backdoor_enabled in DEFAULTS. This overlay also removes
+    # hoover4-website's own port publish, because the two cannot both bind 12345.
+    ("development_auth_backdoor_enabled", "compose/development-auth-backdoor.yaml",
+     "hoover4-development-auth-backdoor"),
 ]
 
 # Serena is deployed as a SEPARATE compose project (hoover4-devtools), not an overlay
@@ -298,7 +316,10 @@ MAIN_PUBLISHED = [
     ("temporal-cassandra", "main_services", "cassandra_port"),
     ("temporal-elasticsearch", "main_services", "elasticsearch_port"),
     ("hoover4-processing-pdf-to-html", "main_services", "pdf_to_html_port"),
-    ("hoover4-proxy", None, "12345"),  # the one hardcoded port humans type
+    # The one hardcoded port humans type. Whichever container holds it depends on
+    # development_auth_backdoor_enabled; svc is None here and filled in by
+    # expected_ports(), which is the one place that flag is read for this table.
+    (None, None, "12345"),
     ("hoover4-mcp-collections", "main_services", "mcp_collections_port"),
     ("hoover4-mcp-metasearch", "main_services", "mcp_metasearch_port"),
     ("hoover4-mcp-browser", "main_services", "mcp_browser_port"),
@@ -1075,8 +1096,16 @@ def expected_ports(cfg, side):
                 entries.append((svc, "ai_services", flag.replace("_enabled", "_port")
                                 if flag != "llm_selfhosted" else "vllm_port"))
         return [(svc, int(cfg.get(sec, key))) for svc, sec, key in entries]
-    checks = [(svc, int(key) if sec is None else int(cfg.get(sec, key)))
-              for svc, sec, key in MAIN_PUBLISHED]
+    backdoor_on = cfg.get_bool("main_services", "development_auth_backdoor_enabled")
+    checks = []
+    for svc, sec, key in MAIN_PUBLISHED:
+        port = int(key) if sec is None else int(cfg.get(sec, key))
+        if svc is None:
+            # The website's published port: hoover4-development-auth-backdoor holds
+            # it when the flag is on, hoover4-website holds it otherwise.
+            svc = ("hoover4-development-auth-backdoor" if backdoor_on
+                   else "hoover4-website")
+        checks.append((svc, port))
     if cfg.get_bool("main_services", "serena_enabled"):
         checks.append(("hoover4-serena", int(cfg.get("main_services", "serena_port"))))
     return checks
@@ -1623,13 +1652,14 @@ def load_config(args):
     if INI_PATH.exists():
         return Config(INI_PATH)
     if args.print_env or args.print_command:
-        print("note: hoover4.ini not found, so this renders from hoover4.ini.example "
+        print("note: hoover4.ini not found, so this renders from hoover4.ini.release "
               "defaults", file=sys.stderr)
-        if not INI_EXAMPLE_PATH.exists():
-            fail("neither hoover4.ini nor hoover4.ini.example exists")
-        return Config(INI_EXAMPLE_PATH)
-    fail("hoover4.ini not found. Create it from the tracked template:\n"
-         "    cp hoover4.ini.example hoover4.ini && $EDITOR hoover4.ini")
+        if not INI_RELEASE_PATH.exists():
+            fail("neither hoover4.ini nor hoover4.ini.release exists")
+        return Config(INI_RELEASE_PATH)
+    fail("hoover4.ini not found. Create it from one of the tracked samples:\n"
+         "    cp hoover4.ini.release hoover4.ini && $EDITOR hoover4.ini\n"
+         "    cp hoover4.ini.development hoover4.ini && $EDITOR hoover4.ini")
 
 
 def main(argv=None):

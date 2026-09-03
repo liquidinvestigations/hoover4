@@ -1,9 +1,19 @@
 # =============================================================================
-# hoover4.ini — the single source of truth for BOTH stacks.
+# hoover4.ini.release — the single source of truth for BOTH stacks, release sample.
 #
-# Copy this file to `hoover4.ini` (gitignored) and edit. The SAME file is copied by
-# hand to both hosts (the GPU host and the main host); deploy.py renders it into the
-# generated .env files next to each compose file and shells out to `docker compose`.
+# This is the sample a public deployment starts from: no privilege-escalation
+# container, so a person who follows the basic instructions never runs one. A
+# second sample, `hoover4.ini.development`, turns that container on; the two files
+# differ in exactly one key, `development_auth_backdoor_enabled` under
+# `[main_services]`.
+#
+# Copy whichever sample matches this deployment to `hoover4.ini` (gitignored) and
+# edit. The SAME file is copied by hand to both hosts (the GPU host and the main
+# host); deploy.py renders it into the generated .env files next to each compose
+# file and shells out to `docker compose`.
+#
+#   cp hoover4.ini.release hoover4.ini        # a public or shared deployment
+#   cp hoover4.ini.development hoover4.ini    # a single-person development box
 #
 #   ./deploy                    main_services only
 #   ./deploy --ai-services      ai_services only
@@ -244,11 +254,23 @@ agent_compaction_model =
 serena_enabled     = true
 serena_port        = 21940
 
+# ---- development-only privilege escalation ---------------------------------------
+; Turns on hoover4-development-auth-backdoor, a container that asserts a FIXED
+; identity (proxy_username / proxy_groups below) on every request, with no
+; authentication of its own. Anyone who can reach the published port is that
+; identity. DEFAULT OFF: a deployment that copies hoover4.ini.release, or omits
+; this key, never runs it. hoover4.ini.development turns it on. When it is on,
+; this container publishes the website's port instead of the website itself,
+; because the two cannot both bind it.
+development_auth_backdoor_enabled = false
+
 # ---- demo / data ----------------------------------------------------------------
-; Identity the header-setting proxy in front of the website asserts on every
-; request, as X-Forwarded-User and X-Forwarded-Preferred-Username. A production
-; deployment removes this proxy and puts oauth2-proxy in its place, which
-; asserts a real identity the same way.
+; Identity a header-setting proxy in front of the website asserts on every
+; request, as X-Forwarded-User and X-Forwarded-Preferred-Username. Read by
+; hoover4-development-auth-backdoor when the flag above turns it on. A real
+; deployment puts its own identity-asserting proxy in front instead, such as
+; oauth2-proxy, which asserts a real identity the same way and ignores these
+; two keys.
 proxy_username     = admin
 ; Groups the proxy asserts, as X-Forwarded-Groups. Comma-separated, no space,
 ; matching what oauth2-proxy sends. A group named admin or superuser makes the

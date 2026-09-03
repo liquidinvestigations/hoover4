@@ -1,0 +1,389 @@
+# =============================================================================
+# hoover4.ini.development — the single source of truth for BOTH stacks, development
+# sample.
+#
+# This sample turns on `hoover4-development-auth-backdoor`, a container that
+# asserts a FIXED identity on every request, with no authentication of its own.
+# Anyone who can reach the published port is that identity. Safe only on a
+# machine nobody else can reach. The other sample, `hoover4.ini.release`, is the
+# one a public deployment starts from; the two files differ in exactly one key,
+# `development_auth_backdoor_enabled` under `[main_services]`.
+#
+# Copy whichever sample matches this deployment to `hoover4.ini` (gitignored) and
+# edit. The SAME file is copied by hand to both hosts (the GPU host and the main
+# host); deploy.py renders it into the generated .env files next to each compose
+# file and shells out to `docker compose`.
+#
+#   cp hoover4.ini.release hoover4.ini        # a public or shared deployment
+#   cp hoover4.ini.development hoover4.ini    # a single-person development box
+#
+#   ./deploy                    main_services only
+#   ./deploy --ai-services      ai_services only
+#   ./deploy --print-env        render and show the .env file, start nothing
+#   ./deploy --print-command    show the docker compose invocation, run nothing
+#   ./deploy --build            build images first
+#   ./deploy --down             compose down for the selected side
+#   ./deploy --reset            down + remove data volumes (model caches preserved)
+#   ./deploy --reset --reset-caches
+#                               also remove the model caches (tens of GB re-download)
+#   ./deploy --reset-temporal   drop Temporal's history/visibility stores only
+#
+# SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
+# NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
+# protection. An exposed hoover4-vllm is a free GPU for the internet; an exposed
+# EasyOCR endpoint is a free DoS surface. bind_ip below exists so you can bind to the
+# private interface only — use it.
+#
+# SECRETS: *_file keys hold host PATHS to key files, never values. deploy.py turns
+# each into a read-only bind mount (/run/secrets/<name>); a container learns the path,
+# never the value. The files must exist, must be chmod 600, and must live OUTSIDE the
+# repository checkout — deploy.py refuses otherwise (keys inside the checkout leak
+# into build contexts and commits).
+# =============================================================================
+
+[ai_services]
+# The whole GPU tier is optional. DEFAULT OFF: with enabled = false, ./deploy
+# --ai-services refuses with a clear message, and main_services runs alone.
+enabled            = false
+
+# How main_services reaches this box (ignored on the GPU host itself). Must be an
+# address the worker/website CONTAINERS can route to: on a two-host setup the GPU
+# box's private-network IP; on a single-box dev setup the machine's LAN IP — NOT
+# 127.0.0.1, which inside a container is the container itself.
+host               = 127.0.0.1
+
+# Interface the GPU services bind to. MUST be a private-network address in any real
+# two-host deployment (see SECURITY above). 0.0.0.0 is only tolerable on a single-box
+# trusted setup.
+bind_ip            = 0.0.0.0
+
+# ---- local LLM ------------------------------------------------------------------
+# The agent model, served OpenAI-compatible. Off by default; a cloud provider serves
+# the stack until this is turned on.
+llm_selfhosted     = false
+vllm_port          = 21960
+vllm_image         = vllm/vllm-openai:v0.17.1
+; bf16 weights. The FP8 checkpoint of the same model loads and then dies during warmup
+; inside a CUTLASS kernel on any device whose compute capability is outside the range
+; this vLLM image's PyTorch was compiled for — the error names the operator, never the
+; architecture. bf16 costs about twice the weight memory and is the path that runs.
+vllm_model         = Qwen/Qwen3.5-35B-A3B
+vllm_served_name   = qwen3.5-35b-a3b
+; A fraction of the WHOLE device, shared with every other model server on the box.
+; On unified-memory hardware it is taken against total system memory, so a value
+; tuned for a discrete card overcommits.
+vllm_gpu_fraction  = 0.50
+vllm_max_model_len = 262144
+; Concurrency bound. A one-slot server serialises every caller head-of-line, so a UI
+; turn queues behind a benchmark and the model reads as far slower than it is. One
+; research agent is already several concurrent streams.
+vllm_max_num_seqs  = 16
+vllm_tool_parser   = qwen3_xml
+; Splits a thinking block out of `content` into `reasoning_content`. The model thinks by
+; default, so without this every answer arrives with the model's working prepended.
+vllm_reasoning_parser = qwen3
+; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
+vllm_api_key_file  =
+
+# ---- GPU NER + embeddings -------------------------------------------------------
+ai_server_enabled  = true
+ai_server_port     = 21961
+ner_enabled        = true
+embeddings_enabled = true
+embeddings_model   = intfloat/multilingual-e5-small
+; knn_dims on a Manticore _vectors table is fixed at creation and cannot be altered:
+; changing this model means dropping and rebuilding every _vectors shard.
+embeddings_dim     = 384
+reranker_enabled   = true
+; Multilingual cross-encoder (the corpus is not English-only). Same calibre as the
+; English-only cross-encoder/ms-marco-MiniLM-L-6-v2.
+reranker_model     = cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+half_precision     = true
+; torch.compile costs minutes of startup for a modest gain and has been the most
+; common cause of "the AI server never becomes healthy" — keep false.
+torch_compile      = false
+; Concurrent in-flight inferences per capability. NER saturates at 4; embeddings
+; still scale at 8. The server sheds load with 503 + Retry-After past
+; concurrency + queue depth; /health does not wait for a model slot.
+ai_server_ner_concurrency    = 4
+ai_server_embed_concurrency  = 8
+ai_server_rerank_concurrency = 4
+; host path to a HuggingFace token file, only for gated models (usually empty)
+hf_token_file      =
+
+# ---- GPU OCR --------------------------------------------------------------------
+easyocr_enabled    = true
+easyocr_port       = 21962
+easyocr_languages  = en
+
+[main_services]
+# ---- which side of each capability the pipeline prefers -------------------------
+ner_provider          = gpu        ; gpu | spacy | both
+
+# spaCy is the CPU twin for NER. It is OFF by default and should stay off wherever a GPU
+# NER endpoint exists: its accuracy on this corpus is poor and its output is noisy enough
+# that the entity facets become unusable. Turning it on is a deliberate choice to prefer
+# noisy entities over none.
+ner_spacy_enabled     = false
+embeddings_provider   = gpu        ; gpu | cpu | none
+pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
+tesseract_cpu_enabled = true
+tesseract_languages   = eng
+ocr_pdf_enabled       = true
+
+# ---- regex entity scanning ------------------------------------------------------
+# Always running: there is no twin to fall back to and no provider to choose between,
+# so the only question is how much of the box it may use. Scanning measures at about
+# 0.85 MB/s per thread. The queue is what a burst waits in; past it the service answers
+# 503 with a Retry-After, which the pipeline already treats as retryable.
+regex_scanner_threads     = 10
+regex_scanner_queue_depth = 32
+
+# ---- how the website is served --------------------------------------------------
+# false: `dx serve` — hot rebuilds, and the development loop this repo is built around.
+# true:  `dx build --release` once at boot, then serve the binary. That is what a
+#        visitor should get: `dx serve` bakes "Your app is being rebuilt." into every
+#        page, adds `access-control-allow-origin: *` of its own, and 500s every route
+#        for the length of a rebuild after a container recreate.
+# The first boot after switching this on is a cold release build — watch it.
+website_release_mode  = false
+
+# ---- search limits (both optional; empty = the backend's own defaults) -----------
+; How many Manticore queries the website may have in flight AT ONCE, across the whole
+; process — not per request. Size it to the Manticore daemon (roughly its worker-thread
+; count, which follows the host's cores); more in flight than it has threads only
+; deepens its queue. Default 8. A box with many cores wants this raised.
+search_max_parallelism =
+; Seconds one SHARD query may take before it is a failure, applied twice: as Manticore's
+; own max_query_time and as the HTTP client's timeout. A timed-out shard fails the
+; request rather than returning short counts, so this is a correctness knob as much as a
+; latency one. Default 30.
+search_timeout_seconds =
+
+# ---- worker fleet ---------------------------------------------------------------
+; All empty by default, and that is the intended state: each tier's default is a
+; measurement of what that tier waits on, and the common tier -- where the parse
+; fan-out lands -- already sizes its process count from the host's cores. Set one
+; only to override a measurement on a particular host.
+; The two that decide the parse burst's load, and they multiply. More processes
+; with fewer slots each beats the reverse -- same admission width, less contention
+; inside any one interpreter. NOT derived from the core count: the fleet's cost is
+; memory, and a core-derived number busts worker_mem_limit on a large host.
+common_workers        =            ; common-worker processes (default 10)
+common_concurrency    =            ; activity slots per common worker (default 3)
+worker_mem_limit      =            ; hard ceiling for the worker container (default 29000M)
+tika_concurrency      =            ; default 8; one extractous helper per slot
+ocr_concurrency       =            ; default 4
+nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
+embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
+indexing_concurrency  =            ; default 1
+
+# How long a worker being shut down may keep its in-flight activities before they are
+# cancelled. ONE key, because the container's own stop grace period is derived from it:
+# a graceful period inside the SDK that outlives the container's grace period is a lie,
+# and two hand-kept numbers drift the first time anyone edits one of them. deploy.py
+# renders the container's grace period as this plus a fixed margin for the cancelled
+# activities to unwind.
+worker_graceful_shutdown_seconds = 60
+
+# ---- the operations container ---------------------------------------------------
+# Backups, restores, re-indexes and every other long operation a person can start run
+# here rather than in the pipeline fleet, with a budget of their own, so that a restore
+# cannot take capacity from ingestion. The split is enforced by the runtime rather than
+# by the queues being trusted to behave.
+ops_mem_limit  = 4000M
+ops_cpus       = 4
+; Host directory for backups, mounted read-write. Empty uses a managed volume.
+ops_backup_dir =
+; Read bytes per second a ClickHouse backup may spend. 0 leaves it unthrottled. The
+; only throttle that does anything: `backup_threads` is an obsolete setting that is
+; accepted and ignored.
+ops_backup_bandwidth_bytes = 0
+; Bytes written to one object volume before the next one opens. Empty uses the code's
+; own default (8 GiB). Set only to prove the roll across several volumes on a corpus
+; too small to reach 8 GiB. Must be empty or at least 1048576 (1 MiB); deploy.py refuses
+; anything smaller, including 0, at render time.
+ops_backup_object_volume_bytes =
+; Base URL of the admin UI, used only to tell a detached CLI where to watch its
+; operation. Empty prints the operation id and the command that shows it, with no URL.
+admin_base_url =
+
+# Failures are unavoidable on a real corpus, so the operations page does not treat every
+# error as an alarm: it calls out only the task types failing above this rate, which are
+# the candidates for a genuine tooling limitation rather than for a messy input. It is a
+# judgement that will be revised, which is why it is configuration and not a number
+# buried in the page.
+error_rate_alert_percent = 5
+
+# ---- runtime behaviour when the GPU host is unreachable -------------------------
+gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
+gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline
+gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
+
+# ---- chat context compaction ----------------------------------------------------
+; When a chat turn's context grows past a fraction of the model's stated context
+; window, the agent stops sending the older tool results to the model and sends a
+; placeholder instead. The calls that produced them stay, so the model still sees
+; what it searched for, and the transcript is never edited -- the user scrolling back
+; sees every result in full.
+;
+; The fraction is a fraction of what the provider says its window is. A model whose
+; window the provider never states is never compacted, because there is no
+; denominator and guessing one loses evidence silently.
+;
+; 0.6 is the specified figure and it does NOT fire on the traffic this stack produces
+; today: the widest measured turn used a tenth of the window. It is here so the
+; trigger is a setting rather than a constant, and because the window is a property
+; of the model in use, which changes.
+agent_compaction_fraction   = 0.6
+; How many of the most recent tool results survive intact. The model is usually still
+; working with what it just read.
+agent_compaction_keep_recent = 3
+; When eviction is not enough, the older messages are replaced by one structured handoff
+; document. The user's own messages, the todo and every message carrying a citation
+; handle are never summarised -- they are selected in code and copied through unchanged,
+; so no summariser can lose them. This is how many trailing messages are kept on top of
+; those.
+agent_compaction_keep_recent_messages = 6
+; Model that writes the handoff document. Summarising a transcript is not the task the
+; conversation model was chosen for, so it can be a cheaper or faster one. Blank means
+; the model that is answering.
+agent_compaction_model =
+
+# ---- dev tooling ----------------------------------------------------------------
+; Serena MCP server for the host-side coding agent. Dev tool only, never
+; part of the deployed stack; published on 127.0.0.1 only. Resets never touch it.
+serena_enabled     = true
+serena_port        = 21940
+
+# ---- development-only privilege escalation ---------------------------------------
+; Turns on hoover4-development-auth-backdoor, a container that asserts a FIXED
+; identity (proxy_username / proxy_groups below) on every request, with no
+; authentication of its own. Anyone who can reach the published port is that
+; identity. DEFAULT OFF: a deployment that copies hoover4.ini.release, or omits
+; this key, never runs it. hoover4.ini.development turns it on. When it is on,
+; this container publishes the website's port instead of the website itself,
+; because the two cannot both bind it.
+development_auth_backdoor_enabled = true
+
+# ---- demo / data ----------------------------------------------------------------
+; Identity hoover4-development-auth-backdoor asserts on every request, as
+; X-Forwarded-User and X-Forwarded-Preferred-Username. A real deployment puts
+; its own identity-asserting proxy in front instead, such as oauth2-proxy,
+; which asserts a real identity the same way and ignores these two keys.
+proxy_username     = admin
+; Groups the proxy asserts, as X-Forwarded-Groups. Comma-separated, no space,
+; matching what oauth2-proxy sends. A group named admin or superuser makes the
+; asserted user an administrator.
+proxy_groups       = admin
+; host dir mounted at /testdata in the worker (must exist). Empty = in-repo testdata.
+testdata_dir       =
+; Root the dataset-creation form lists subfolders of. An IN-CONTAINER path — the host
+; side is testdata_dir above, mounted here in both the worker and (read-only) the
+; website. The form offers the names it finds one level down and never takes a
+; free-text path, so this is the boundary of what the UI can ingest.
+datasets_mount_path = /testdata
+; shared bearer token between the research agents and the MCP servers (host path to
+; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
+mcp_shared_secret_file =
+; API key for metasearch's published-fact-check source (host path to a chmod-600 file
+; outside the repo). Empty = that source is not registered and the model is never told
+; about it, which is the intended state for a deployment without a key.
+factcheck_api_key_file =
+
+# ---- which interfaces the published ports answer on ------------------------------
+; Address the proxy's 12345 is published on. 0.0.0.0 = every interface. Set this to a
+; single private address on a host with a public IP: the website's only way in is that
+; proxy, and it sets X-Forwarded-User on every request it forwards.
+website_bind_ip    = 0.0.0.0
+; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
+; pdf-to-html) are published on. These services are unauthenticated or carry default
+; credentials, so 0.0.0.0 is for a trusted dev LAN only; 127.0.0.1 plus an ssh tunnel
+; is the right setting anywhere else. The services already bound to loopback in the
+; compose file (Temporal, Cassandra, Elasticsearch, Redis, the CPU twins, every MCP
+; server and agent) ignore this and stay on loopback.
+infra_bind_ip      = 0.0.0.0
+
+# ---- ports ----------------------------------------------------------------------
+; Every service port is an ini key. The one exception is the website, which stays
+; hardcoded on 12345 in the compose file — it is the one URL humans type.
+clickhouse_http_port      = 21900
+clickhouse_native_port    = 21901
+manticore_sql_port        = 21902
+manticore_http_port       = 21903
+garage_s3_port            = 21904   ; S3 API
+garage_admin_port         = 21905   ; admin API, bound to 127.0.0.1 only
+redis_port                = 21906
+temporal_grpc_port        = 21907
+temporal_http_port        = 21908
+temporal_ui_port          = 21909
+clickhouse_monitoring_port = 21910
+ch_ui_port                = 21911
+cassandra_port            = 21912
+elasticsearch_port        = 21913
+
+pdf_to_html_port          = 21920
+tesseract_cpu_port        = 21921   ; CPU OCR twin
+ocr_pdf_port              = 21922   ; searchable-PDF builder
+ner_spacy_port            = 21923   ; CPU NER twin
+embeddings_cpu_port       = 21924   ; CPU embeddings twin
+regex_entity_scanner_port = 21925   ; regex entity scanner
+
+mcp_collections_port      = 21930
+mcp_metasearch_port       = 21931
+mcp_browser_port          = 21932
+mcp_whois_port            = 21934
+mcp_todo_port             = 21935
+internal_search_agent_port = 21936
+full_research_agent_port  = 21937
+
+# ---- image pins -----------------------------------------------------------------
+cassandra_version      = 3.11.9
+elasticsearch_version  = 7.17.27
+temporal_version       = 1.23.1
+temporal_ui_version    = 2.26.2
+# Temporal history shards: a single-writer queue each, and their number caps
+# every workflow-history write in the deployment. The image default of 4 holds
+# the pipeline to about a dozen activity dispatches a second no matter how many
+# workers run. FIXED once the store is initialised -- changing it needs
+# `./deploy --reset-temporal`, which drops workflow history and nothing else.
+temporal_history_shards = 512
+# Garage, the S3 blob store. Pinned by tag AND manifest-LIST digest -- a
+# platform digest makes the image unresolvable on an aarch64 host.
+garage_version         = v2.3.0
+garage_image_digest    = sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
+# Declared, not measured: Garage sizes its partitions from this and reports the
+# store full past it. Getting it wrong surfaces as ingest errors hours in.
+garage_capacity        = 300G
+
+# ---- LLM providers --------------------------------------------------------------
+# Repeatable by name, several active at once. main_services talks to the selfhosted
+# one when llm_selfhosted = true, otherwise the first enabled cloud provider.
+# api_key_file: host path to a file containing ONLY the key (chmod 600, outside the
+# repo). model: empty keeps the provider's default (the model registry discovers it).
+
+[llm_provider.selfhosted]
+enabled      = false
+base_url     =           ; empty = http://<ai_services.host>:<vllm_port>/v1
+model        =           ; empty = vllm_served_name
+api_key_file =
+
+[llm_provider.nvidia]
+; The only LLM provider the live tests exercise — vLLM is parked.
+enabled      = true
+base_url     = https://integrate.api.nvidia.com/v1
+model        = nvidia/nemotron-3-super-120b-a12b
+api_key_file =           ; e.g. /root/secrets/nvidia-nim.txt
+
+[llm_provider.moonshot]
+enabled      = false
+base_url     = https://api.moonshot.ai/v1
+model        =
+api_key_file =
+
+# ---- the local Nomad cluster's image registry ------------------------------------
+# Pass 6 pushes hoover4's built images here, and a Nomad docker job pulls from
+# here. Empty on a checkout with no local cluster. Set it to the cluster's own
+# real address. Never commit that address. Commit only this placeholder.
+[cluster]
+registry_address =           ; e.g. 192.0.2.10:5050
