@@ -120,10 +120,12 @@ distinguishes the two cases.
 address a given deployment uses is not in this tree**. It is in
 `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
 
-`website_bind_ip` carries the whole access boundary in release mode. The website accepts
-`X-Forwarded-User` from whoever connects, so a caller that reaches port `12345` directly is
-the user it names. `hoover4.ini.release` sets `127.0.0.1` for that reason. Widen it only to
-the one private address the identity provider dials.
+**Neither key is ever set to `0.0.0.0`.** Both templates and `deploy.py`'s own defaults use
+`127.0.0.1`. `website_bind_ip` carries the whole access boundary in release mode, because the
+website accepts `X-Forwarded-User` from whoever connects, so a caller that reaches port
+`12345` directly is the user it names. The infrastructure ports carry no authentication at
+all. Widen `website_bind_ip` only to the single private address the identity provider dials,
+and reach the infrastructure ports through an ssh tunnel.
 
 Everything else in this group is a port key: the datastores, the workflow service and its
 stores, the admin consoles, the processing services, the MCP servers, the two agent services,

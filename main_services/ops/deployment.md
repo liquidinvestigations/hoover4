@@ -16,13 +16,14 @@ private one, no accelerator, and a hosted model endpoint.
 ## The two bind keys
 
 `website_bind_ip` and `infra_bind_ip` in `[main_services]` are the address half of every
-published port mapping. Both default to `0.0.0.0`, which is what a dev box wants and what
-a host reachable from the internet must not have.
+published port mapping. Both default to `127.0.0.1`, and neither is ever set to `0.0.0.0`.
+A deployment that needs another machine to reach one of them names the single private
+address that machine dials.
 
-| | publishes | default | on a public host |
+| | publishes | default | when another host must reach it |
 |---|---|---|---|
-| `website_bind_ip` | the website's `12345` | `0.0.0.0` | the private address a reverse proxy reaches it on |
-| `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, Garage S3 API, CH-UI, ClickHouse monitoring, pdf-to-html | `0.0.0.0` | `127.0.0.1` |
+| `website_bind_ip` | the website's `12345` | `127.0.0.1` | the private address the reverse proxy dials |
+| `infra_bind_ip` | ClickHouse HTTP + native, Manticore SQL + HTTP, Garage S3 API, CH-UI, ClickHouse monitoring, pdf-to-html | `127.0.0.1` | an ssh tunnel, never a published address |
 
 **Neither of these is hardening in the abstract.** The website authenticates by trusting an
 identity header set in front of it, so it has to be unreachable except through whatever sets

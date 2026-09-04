@@ -300,11 +300,11 @@ factcheck_api_key_file =
 website_bind_ip    = 127.0.0.1
 ; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default
-; credentials, so 0.0.0.0 is for a trusted dev LAN only; 127.0.0.1 plus an ssh tunnel
-; is the right setting anywhere else. The services already bound to loopback in the
+; credentials, so loopback plus an ssh tunnel is the only setting a deployment needs.
+; Never 0.0.0.0. The services already bound to loopback in the
 ; compose file (Temporal, Cassandra, Elasticsearch, Redis, the CPU twins, every MCP
 ; server and agent) ignore this and stay on loopback.
-infra_bind_ip      = 0.0.0.0
+infra_bind_ip      = 127.0.0.1
 
 # ---- ports ----------------------------------------------------------------------
 ; Every service port is an ini key. The one exception is the website, which stays

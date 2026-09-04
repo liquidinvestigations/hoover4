@@ -189,12 +189,13 @@ DEFAULTS = {
         "datasets_mount_path": "/testdata",
         # shared bearer token between the research agents and the MCP servers
         "mcp_shared_secret_file": "",
-        # Interfaces the published ports bind to. 0.0.0.0 keeps a dev box behaving the
-        # way it always has; a host with a public IP wants both narrowed, because the
-        # website carries no authentication of its own and the infrastructure ports
-        # carry none at all.
-        "website_bind_ip": "0.0.0.0",
-        "infra_bind_ip": "0.0.0.0",
+        # Interfaces the published ports bind to. Loopback by default, because the
+        # website accepts X-Forwarded-User from whoever connects and the infrastructure
+        # ports carry no authentication at all. A deployment that needs another machine
+        # to reach either names the one private address that machine dials. Never
+        # 0.0.0.0, which publishes both on every interface the host has.
+        "website_bind_ip": "127.0.0.1",
+        "infra_bind_ip": "127.0.0.1",
         # ports, main infrastructure
         "clickhouse_http_port": "21900",
         "clickhouse_native_port": "21901",
