@@ -140,7 +140,7 @@ rule instead of only hitting the wall.
 | long commit message | `PreToolUse(Bash)` | `git commit -m` with a multi-line or over-length message |
 | register | `PreToolUse(Edit\|Write\|MultiEdit)` | text that ADDS a phrase from the list in `AGENTS.md`, "How to write", or an em dash, to a `.md`, `.rs`, `.py`, `.sh`, `.sql`, `.toml` or `.yaml` file. The documents that define the rule are exempt by path, because they have to quote what they ban |
 | orientation | `SessionStart`, including `compact` | denies nothing; injects the invariants and the routing table, and re-injects them after a compaction |
-| tool-call budget | `PostToolUse(*)` | denies nothing; names the calls used and the calls left at 80% and 95% of the budget the counter was armed with |
+| tool-call budget | `PostToolUse(*)` | denies nothing; names the calls used and the calls left at 80% and 95% of a sub-agent's budget. A call whose payload carries no `agent_id` was made by the session that launched the pass, and is not counted |
 
 Three things are deliberately *not* hooked: reads of `website/target`, `node_modules` and
 generated output, because debugging regularly needs exactly that source; heredocs, because
@@ -228,12 +228,21 @@ when attention does not: `maxTurns` in the agent definition, which the harness e
 made 103, an undercount of 23%, so the hook's count is the evidence and the pass's own tally is
 not. Tell a pass to trust the hook.
 
-**Arm the counter before every launch**, with `.agents/arm-tool-budget.sh <budget>`, and make no
-tool call of your own while the pass is live. The harness gives a sub-agent the same session id,
-transcript path and environment as the session that launched it, so the hook cannot tell one
-from the other and counts them together. Arming resets the count and records the budget, which
-is what makes the warning measure one pass. Without it the organizer's calls are added to the
-pass's: one pass was stopped at 26 calls of 96 that way.
+**The hook counts a sub-agent and nothing else, and no step is needed before a launch.** The
+payload carries `agent_id` and `agent_type` on a sub-agent's tool call. It carries neither key
+on a call from the session that launched the pass. Every other field is the same for both,
+including the session id, the transcript path and the whole environment. The count is keyed on
+the agent id, so each pass starts at zero on its own.
+
+**The organizer has no tool-call budget.** It is bounded by its context and hands over when
+that ends. A count of a coordinator's calls does not measure the work it has left, because it
+reads diffs and launches passes. A budget on the organizer ends a run while items are still
+unstarted, and that is the failure this removes.
+
+**The hook warns at 96 for every sub-agent**, because the payload does not carry the number a
+work package chose. A package that sets a smaller budget, such as 58 for a read-only pass, is
+carried by the package's own instruction and by `maxTurns`. The hook speaks later than both.
+`HOOVER4_TOOL_BUDGET` changes the hook's number for a whole session.
 
 Which model fills which role, and how one qualifies, is in
 [`Choosing_A_Model.md`](Choosing_A_Model.md).

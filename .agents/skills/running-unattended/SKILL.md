@@ -72,7 +72,9 @@ night.
 - **A pass that fails its checks.** Record the failure with its output, mark the item unchecked,
   carry on. A failing check is a result.
 - **The organizer's own context filling.** Write the handoff into the plan folder and continue
-  from it. Running out of room is a handover, and a handover is not an ending.
+  from it. Running out of room is a handover, and a handover is not an ending. The organizer
+  has no tool-call budget. The budget hook counts a sub-agent only, so a count of the
+  organizer's own calls never ends a run.
 - **A sub-agent that stops, errors or returns nothing.** Read what it left on disk, and either
   run the extension pass or record the gap and carry on.
 - **A prohibition that would refuse the work.** The item is attempted up to the prohibition,
