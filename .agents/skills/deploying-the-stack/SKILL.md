@@ -34,8 +34,10 @@ uptime                      # someone else's build may already own the machine
 
 ## Configuration flows one way
 
-`hoover4.ini` (gitignored; the template beside it is `hoover4.ini.example`) is the single
-source. `deploy.py` renders it into the generated `.env` files next to the compose files.
+`hoover4.ini` (gitignored, and the two templates beside it are `hoover4.ini.release`, the
+default, and `hoover4.ini.development`, which turns on a container that bypasses
+sign-in) is the single source. `deploy.py` renders it into the generated `.env` files
+next to the compose files.
 **Never hand-edit a generated `.env`**. The next deploy overwrites it, and the change looks
 like it worked until then.
 

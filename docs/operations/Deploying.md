@@ -48,8 +48,10 @@ of a failure they prevent:
 
 ## Configuration flows one way
 
-`hoover4.ini` at the repository root is the single source. It is gitignored; the template
-beside it is `hoover4.ini.example`. `deploy.py` renders it into the generated `.env` files
+`hoover4.ini` at the repository root is the single source. It is gitignored. Two
+templates ship beside it, `hoover4.ini.release` and `hoover4.ini.development`. Release
+is the default a fresh checkout copies. Development also turns on a container that
+bypasses sign-in. `deploy.py` renders `hoover4.ini` into the generated `.env` files
 next to the compose files.
 
 **Never hand-edit a generated `.env`.** The next deploy overwrites it, and until then the

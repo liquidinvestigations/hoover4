@@ -1,8 +1,9 @@
 # Configuration reference
 
 `hoover4.ini` at the repository root is the single source of configuration. Every key here is
-in the annotated template `hoover4.ini.example`, which carries the defaults and the reasoning
-per key, and this page is the map of what each group decides and which code reads it.
+in the two annotated templates, `hoover4.ini.release` and `hoover4.ini.development`, which
+carry the defaults and the reasoning per key, and this page is the map of what each group
+decides and which code reads it.
 
 ## Contents
 
@@ -87,12 +88,20 @@ bound the pattern scanner's runtime and its admission control.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults.
 
-`proxy_username` and `proxy_groups` are the identity `hoover4-proxy` asserts on every
-request, as `X-Forwarded-User` and the other three headers `parse_headers` in
-`website/backend/src/auth/session_middleware.rs` reads. A production deployment removes
-that proxy and puts `oauth2-proxy` in its place, which asserts a real identity the same
-way. `proxy_groups` is comma-separated with no space; a group named `admin` or
-`superuser` makes the asserted user an administrator.
+`development_auth_backdoor_enabled` switches on `hoover4-development-auth-backdoor`, a
+header-setting reverse proxy that asserts a fixed identity on every request, with no
+sign-in step. Default `false`: a deployment that omits this key, or copies
+`hoover4.ini.release`, publishes the website's own port and runs no such container.
+`hoover4.ini.development` sets it to `true`. When it is on, the backdoor container
+takes the published port instead of the website, because the two cannot both bind it.
+
+`proxy_username` and `proxy_groups` are the identity the backdoor asserts when it runs,
+as `X-Forwarded-User` and the other three headers `parse_headers` in
+`website/backend/src/auth/session_middleware.rs` reads. A production deployment leaves
+`development_auth_backdoor_enabled` at `false` and puts `oauth2-proxy` in front of the
+website instead, which asserts a real identity the same way. `proxy_groups` is
+comma-separated with no space. A group named `admin` or `superuser` makes the asserted
+user an administrator.
 
 ### Worker fleet and concurrency
 
@@ -110,6 +119,11 @@ distinguishes the two cases.
 `website_bind_ip` and `infra_bind_ip` decide which interface each half publishes on. **Which
 address a given deployment uses is not in this tree**. It is in
 `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
+
+`website_bind_ip` carries the whole access boundary in release mode. The website accepts
+`X-Forwarded-User` from whoever connects, so a caller that reaches port `12345` directly is
+the user it names. `hoover4.ini.release` sets `127.0.0.1` for that reason. Widen it only to
+the one private address the identity provider dials.
 
 Everything else in this group is a port key: the datastores, the workflow service and its
 stores, the admin consoles, the processing services, the MCP servers, the two agent services,
@@ -156,8 +170,8 @@ them is recorded in `INFRASTRUCTURE_INVENTORY.md`, by location, never by value.
 
 ## Every key, by section
 
-The drift check joins on key names, so every key in `hoover4.ini.example` appears here
-literally. The template carries each one's default and the reasoning behind it; this index
+The drift check joins on key names, so every key in `hoover4.ini.release` appears here
+literally. The templates carry each one's default and the reasoning behind it. This index
 is the map back to the group above that explains it.
 
 ### `[ai_services]`: the accelerated tier
@@ -179,7 +193,7 @@ is the map back to the group above that explains it.
 - `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
-- `serena_port`, `proxy_username`, `proxy_groups`
+- `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`
 - `mcp_shared_secret_file`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `garage_s3_port`

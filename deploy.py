@@ -488,9 +488,9 @@ def backup_object_volume_bytes(cfg):
 
 
 def render_main_env(cfg):
-    """Env vars for main_services/ops/docker/.env. Ports come from the ini; no port
-    literal appears here except the proxy's 12345 (which is not rendered at all. It
-    stays in the compose file where humans read it)."""
+    """Env vars for main_services/ops/docker/.env. Ports come from the ini, and no port
+    literal appears here except 12345 (which is not rendered at all. It stays in the
+    compose file where humans read it)."""
     m = "main_services"
     env = {}
     env["COMPOSE_PROJECT_NAME"] = "hoover4"
@@ -601,16 +601,17 @@ def render_main_env(cfg):
 
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
-    # The identity the proxy asserts on every request it forwards. Consumed here so
-    # every rendered ini key is exported (see AGENTS.md); render_nginx_proxy_conf
-    # reads the same two keys straight from cfg to bake them into the proxy's own
-    # configuration file, which is where the website actually reads them from.
+    # The identity hoover4-development-auth-backdoor asserts on every request it
+    # forwards. Consumed here so every rendered ini key is exported (see AGENTS.md).
+    # render_nginx_proxy_conf reads the same two keys straight from cfg to bake them
+    # into that container's own configuration file, which is where the website reads
+    # them from. A release deployment runs its own identity provider instead.
     env["PROXY_USERNAME"] = cfg.get(m, "proxy_username")
     env["PROXY_GROUPS"] = cfg.get(m, "proxy_groups")
     # The address half of every published port mapping. Port 12345 stays hardcoded in
-    # the compose file (see MAIN_PUBLISHED), on the proxy now rather than the website
-    # -- only the interface it answers on is configurable, which is the half that
-    # decides who can reach it.
+    # the compose file (see MAIN_PUBLISHED), on hoover4-website by default and on
+    # hoover4-development-auth-backdoor when that overlay is on. Only the interface it
+    # answers on is configurable, which is the half that decides who can reach it.
     env["WEBSITE_BIND_IP"] = cfg.get(m, "website_bind_ip")
     env["INFRA_BIND_IP"] = cfg.get(m, "infra_bind_ip")
     # Read by the website (the creation form lists its subfolders) and by the worker
@@ -1192,6 +1193,20 @@ def preflight_compose_yaml(cfg, side):
 
     _StrictLoader.add_constructor(
         yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _reject_duplicates)
+
+    def _construct_merge_tag(loader, node):
+        # `!override` and `!reset` are compose's own merge tags (used here to clear a
+        # list-valued key an earlier -f file set, such as a service's ports). PyYAML's
+        # SafeLoader has no constructor for either, so without this they fail the
+        # strict parse below on syntax the real compose provider accepts.
+        if isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node, deep=True)
+        if isinstance(node, yaml.MappingNode):
+            return _reject_duplicates(loader, node, deep=True)
+        return loader.construct_scalar(node)
+
+    _StrictLoader.add_constructor("!override", _construct_merge_tag)
+    _StrictLoader.add_constructor("!reset", _construct_merge_tag)
 
     for path in compose_files(cfg, side):
         try:

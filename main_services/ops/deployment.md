@@ -47,7 +47,7 @@ render are correct as written, which is why they are not configurable.
 
 ## A `hoover4.ini` for a host with no accelerator
 
-Everything not listed stays at `hoover4.ini.example`'s value. Angle-bracketed values are
+Everything not listed stays at `hoover4.ini.release`'s value. Angle-bracketed values are
 placeholders; the real ones are in `INFRASTRUCTURE_INVENTORY.md`.
 
 ```ini

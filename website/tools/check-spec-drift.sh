@@ -19,7 +19,7 @@ cd "$(dirname "$0")/../.." 2>/dev/null || true
 ROOT="${SPEC_ROOT:-$(git rev-parse --show-toplevel)}"
 SPEC="${SPEC_DIR:-$ROOT/docs/technical-specification}"
 ROUTES="$ROOT/website/frontend/src/routes.rs"
-INI="$ROOT/hoover4.ini.example"
+INI="$ROOT/hoover4.ini.release"
 CONFREF="$ROOT/docs/operations/Configuration_Reference.md"
 fail=0
 

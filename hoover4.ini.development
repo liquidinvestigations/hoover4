@@ -292,9 +292,11 @@ mcp_shared_secret_file =
 factcheck_api_key_file =
 
 # ---- which interfaces the published ports answer on ------------------------------
-; Address the proxy's 12345 is published on. 0.0.0.0 = every interface. Set this to a
-; single private address on a host with a public IP: the website's only way in is that
-; proxy, and it sets X-Forwarded-User on every request it forwards.
+; Address 12345 is published on. In development mode
+; hoover4-development-auth-backdoor binds it and asserts proxy_username on every
+; request, so anyone who reaches this port is that user, with no sign-in step. 0.0.0.0
+; = every interface, which is for a trusted dev LAN only. Use 127.0.0.1 on any host
+; someone else can reach.
 website_bind_ip    = 0.0.0.0
 ; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default

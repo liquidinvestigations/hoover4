@@ -21,8 +21,10 @@ The stack includes:
 
 - Workflow orchestration: Temporal with Cassandra and Elasticsearch backends, plus the Temporal UI.
 - Primary data stores: ClickHouse for structured processing tables, Manticore for text search, Garage for object storage, and Redis for auxiliary caching.
-- Application services: the processing worker, the website behind its header-setting
-  reverse proxy (`hoover4-proxy`), and the PDF-to-HTML renderer.
+- Application services: the processing worker, the website, and the PDF-to-HTML
+  renderer. The website publishes its own port by default. A `[main_services]` flag
+  swaps in `hoover4-development-auth-backdoor`, a header-setting reverse proxy, for
+  local development.
 - Monitoring and admin UIs: ClickHouse monitoring and CH-UI.
 
 ## Publishing images
@@ -138,13 +140,15 @@ usage.
 ## Endpoints (local defaults)
 
 Ports are ini keys in `hoover4.ini`, rendered by `deploy.py`; the values below are the
-defaults. `12345` stays hardcoded, which is the one port a human types. It answers on
-`hoover4-proxy` now, a header-setting reverse proxy in front of the website: the website
-itself takes no published port and answers only inside the compose network, on `8080`.
+defaults. `12345` stays hardcoded, which is the one port a human types. The website
+answers on it directly by default. With `development_auth_backdoor_enabled = true`,
+`hoover4-development-auth-backdoor`, a header-setting reverse proxy, takes `12345`
+instead, and the website itself takes no published port, answering only inside the
+compose network, on `8080`.
 
 | service | endpoint | what it is |
 |---|---|---|
-| Website (behind the proxy) | `http://localhost:12345` | the Hoover4 web UI |
+| Website | `http://localhost:12345` | the Hoover4 web UI |
 | Temporal UI | `http://localhost:21909` | workflow dashboard |
 | Temporal gRPC / HTTP | `localhost:21907` / `http://localhost:21908` | the workflow service itself |
 | Temporal Cassandra | `localhost:21912` | Temporal's history store |
@@ -173,7 +177,8 @@ this file.
 
 This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, Garage, Redis, and supporting UIs.
 
-Configuration lives in `hoover4.ini` at the repository root (see `hoover4.ini.example`);
+Configuration lives in `hoover4.ini` at the repository root, and the two shipped
+templates are `hoover4.ini.release` and `hoover4.ini.development`.
 `deploy.py` renders it into a generated `.env` in this directory, never edit that file
 by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); the base
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays

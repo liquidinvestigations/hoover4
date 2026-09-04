@@ -9,8 +9,21 @@ except `/favicon.ico`. The identity comes from a session cookie already in `web_
 or from four headers a reverse proxy asserts on the request. A caller with neither gets a
 `401` response from every other route.
 
-The reverse proxy sits in front of the website and terminates every connection. Nothing
-reaches hoover4 by another path.
+**The website accepts those four headers from whoever connects to it.** It reads no
+address and keeps no list of trusted senders. A caller that reaches the website directly
+and sets `X-Forwarded-User` is that user, and a caller that also sets `X-Forwarded-Groups`
+to `admin` is an administrator. The proxy is the only way in because the deployment binds
+the website where only the proxy reaches it, never because the website checks.
+
+This repository ships two configuration templates, `hoover4.ini.release` and
+`hoover4.ini.development`. A public deployment copies `hoover4.ini.release`. The website
+publishes port `12345` itself, `website_bind_ip` is `127.0.0.1`, and a real identity
+provider, such as `oauth2-proxy`, sits in front of it. A provider on another host needs
+`website_bind_ip` set to the one private address that provider dials.
+`hoover4.ini.development` turns on `hoover4-development-auth-backdoor` instead, a
+container that asserts a fixed identity on every request with no sign-in step. Anyone who
+reaches its published port is that identity, so it never runs on a machine anyone else can
+reach.
 
 ## The four headers
 

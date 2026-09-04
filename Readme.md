@@ -118,10 +118,12 @@ For development:
 ### Deployment
 
 Both stacks deploy from one `hoover4.ini` at the repository root, copied by hand to
-both hosts (see `hoover4.ini.example` for the fully commented template):
+both hosts. Two fully commented templates ship in the repository:
+`hoover4.ini.release`, for a public deployment, and `hoover4.ini.development`, which
+also turns on a container that bypasses sign-in. Copy the one you need:
 
 ```bash
-cp hoover4.ini.example hoover4.ini
+cp hoover4.ini.release hoover4.ini
 $EDITOR hoover4.ini      # ports, providers, secret file paths, never key values
 
 ./deploy                 # main_services: databases, worker, website, agents

@@ -292,10 +292,12 @@ mcp_shared_secret_file =
 factcheck_api_key_file =
 
 # ---- which interfaces the published ports answer on ------------------------------
-; Address the proxy's 12345 is published on. 0.0.0.0 = every interface. Set this to a
-; single private address on a host with a public IP: the website's only way in is that
-; proxy, and it sets X-Forwarded-User on every request it forwards.
-website_bind_ip    = 0.0.0.0
+; Address 12345 is published on. In release mode the website itself binds it, and the
+; website accepts X-Forwarded-User from whoever connects. Anyone who reaches this port
+; is therefore the user they name, so only the identity provider in front of it may
+; reach it. 127.0.0.1 covers a provider on the same host. A provider on another host
+; needs the single private address it dials, and never 0.0.0.0 on a public interface.
+website_bind_ip    = 127.0.0.1
 ; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
 ; pdf-to-html) are published on. These services are unauthenticated or carry default
 ; credentials, so 0.0.0.0 is for a trusted dev LAN only; 127.0.0.1 plus an ssh tunnel
