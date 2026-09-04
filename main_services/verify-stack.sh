@@ -64,9 +64,9 @@ set -euo pipefail
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )";
 cd "$SCRIPT_DIR"
 
-# The proxy's published address follows `website_bind_ip`, so a default of `localhost`
-# is only right when that key is unset or 0.0.0.0. On a host that binds the proxy to one
-# private address, localhost:12345 has nothing listening -- and because every check below
+# The published address of 12345 follows `website_bind_ip`, so a default of `localhost`
+# is only right when that key is unset or 0.0.0.0. On a host that binds one private
+# address, localhost:12345 has nothing listening -- and because every check below
 # runs under `set -e`, a curl that cannot connect used to kill the whole run silently,
 # mid-way through, with the last line of output being an unrelated passing check.
 website_url_default() {
@@ -78,10 +78,30 @@ website_url_default() {
     esac
 }
 WEBSITE_URL="${WEBSITE_URL:-$(website_url_default)}"
+# The identity every website probe asserts, taken from the same two ini keys the
+# development backdoor bakes into its own nginx configuration.
+#
+# This script used to send no identity at all, because hoover4-proxy was in the base
+# compose file and asserted one on every request it forwarded. That container is now the
+# development-auth-backdoor overlay and a release deployment runs no proxy of its own, so
+# an unauthenticated probe gets 401 on every route, including the one that fetches the
+# WASM bundle the later checks read their URLs out of. Sending the headers here covers
+# both deployments: the backdoor replaces them with `proxy_set_header` when it is in
+# front, and the website reads them directly when it is not.
+env_value() { grep -E "^$1=" ops/docker/.env 2>/dev/null | cut -d= -f2- || true; }
+PROXY_USERNAME="${PROXY_USERNAME:-$(env_value PROXY_USERNAME)}"
+PROXY_GROUPS="${PROXY_GROUPS:-$(env_value PROXY_GROUPS)}"
+: "${PROXY_USERNAME:=admin}"
+: "${PROXY_GROUPS:=admin}"
 # Every website probe goes through this. It bounds the wait and never returns
 # non-zero, so an unreachable site is reported by the check that wanted it rather than
 # aborting the run before that check is reached.
-WEB() { curl -s --max-time 30 "$@" || true; }
+WEB() {
+    curl -s --max-time 30 \
+        -H "X-Forwarded-User: $PROXY_USERNAME" \
+        -H "X-Forwarded-Groups: $PROXY_GROUPS" \
+        "$@" || true
+}
 WORKER="${WORKER:-hoover4-worker}"
 SEARCH_WORD="${SEARCH_WORD:-easychair}"
 POLL_TIMEOUT="${POLL_TIMEOUT:-3600}"
@@ -1053,9 +1073,9 @@ fi
 if [ -z "$api_path" ]; then
     fail "could not discover the search server-function URL from the WASM bundle"
 else
-    # Every WEB check goes through the proxy in front of the site, which asserts an
-    # identity with X-Forwarded-User on every request it forwards, so no check here
-    # needs a session cookie of its own.
+    # Every WEB check carries X-Forwarded-User itself, so no check here needs a session
+    # cookie of its own. See the WEB definition above for why the script sends the
+    # header rather than relying on a proxy to add it.
     if [ -z "$whoami_path" ]; then
         fail "could not discover the /api/whoami URL from the WASM bundle"
     else
