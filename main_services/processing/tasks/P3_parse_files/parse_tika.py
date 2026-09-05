@@ -292,12 +292,14 @@ def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict
     in a header wins over the copy's extension. Raises `ValueError` when `mime_type`
     maps to no known extension, so the caller can skip the step.
 
-    A symbolic link is tried first: it costs nothing and still presents the target
-    name to the detector, which opens the link like any other path. A hard link is
-    tried next, for the rare filesystem where a symlink is refused. Both fail with
-    `EXDEV` between the corpus's bind mount and this process's own temporary
-    directory, which is the ordinary case here, so a full copy is the last resort,
-    not the first one.
+    A symbolic link is tried first: it costs nothing, it crosses a filesystem
+    boundary, and it still presents the link's own name to the detector, which opens
+    it like any other path. A hard link is tried next, for a filesystem that refuses
+    a symlink. A hard link cannot cross a device, and the corpus's bind mount and
+    this process's temporary directory are always different devices, so it raises
+    `EXDEV` here and the copy behind it is what would run. The copy is the last
+    resort. Reaching it for every file costs a full read and write of the whole
+    corpus, which is why the order matters.
     """
     from tasks.P3_parse_files.parse_mime import extension_for_mime_type
 
