@@ -122,16 +122,26 @@ fn continues_right(candidate: &Candidate<'_>) -> bool {
     if next.is_ascii_digit() {
         return true;
     }
-    let rest = &candidate.fragment[candidate.end + 1..];
+    // `next` is the one byte at `candidate.end`. Every byte checked below is single-byte ASCII, so
+    // when one of them matches, that byte is a whole character by itself and `candidate.end + 1`
+    // is guaranteed to land on a character boundary. Slicing before this match was reached
+    // unconditionally, so a multi-byte character right after the match (`next` holding its lead
+    // byte, which matches none of these arms) sliced into the middle of it instead.
     match next {
         // A field separator with a digit behind it: the match stops in the middle of a field the
         // format defines, so it is a slice of a timestamp rather than a timestamp.
-        b'+' | b'-' | b'.' | b':' => rest.as_bytes().first().is_some_and(u8::is_ascii_digit),
+        b'+' | b'-' | b'.' | b':' => {
+            let rest = &candidate.fragment[candidate.end + 1..];
+            rest.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        }
         // A date carved out of a timestamp whose clock is perfectly good. The day alone is a
         // truncation there, and it is reported without the instant it was written with. When the
         // clock is *not* a real time of day the date is a salvage rather than a truncation, which
         // is the case the scan loop's shrink-and-retry exists to rescue.
-        b'T' | b't' | b' ' => clock_follows(rest),
+        b'T' | b't' | b' ' => {
+            let rest = &candidate.fragment[candidate.end + 1..];
+            clock_follows(rest)
+        }
         _ => false,
     }
 }

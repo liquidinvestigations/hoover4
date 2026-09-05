@@ -84,7 +84,7 @@ Details in [docs/Architecture.md](docs/Architecture.md).
 | `GET /rules` | Every documented rule: identifier, type, human-readable title, and whether this build has it compiled. |
 | `GET /rules/{rule_id}` | The full static documentation for one rule. |
 | `POST /scan` | `{"text": "…", "offset": 0}` → `{"entities": [...], "rule_set_version": N}`. Every span, for a caller that highlights them. |
-| `POST /scan_batch` | `{"texts": ["…", …]}` → one entry per text, in order, holding deduplicated values per type with an occurrence count. For a caller that stores values rather than spans. |
+| `POST /scan_batch` | `{"texts": ["…", …]}` → one entry per text, in order, holding deduplicated values per type with an occurrence count. For a caller that stores values rather than spans. A text whose scan fails carries an `error` string and no values. The rest of the batch still answers. |
 | `POST /explain` | An entity, posted back exactly as `/scan` returned it → an explainer card. |
 
 `offset` is the byte offset of the fragment's first byte in the source document; it is added to
@@ -109,6 +109,10 @@ thousand. Values are deduplicated server-side on `(type, normalised value)`, and
 count, the rule behind its highest-confidence occurrence, the canonical value object that `/explain`
 takes back, and the surface form of its first occurrence, which is not the normalised value, and is
 what a caller offering find-in-page needs.
+
+Each text in the batch is scanned under its own guard. A scan that panics costs only that text's
+entry, which carries an empty `types` map and an `error` string instead. Every other text in the
+same request still answers.
 
 Scanning is synchronous and CPU-bound, so it runs on a blocking pool and never on an async worker.
 `/health`, `/rules` and `/explain` therefore stay answerable at full load; a health check a busy

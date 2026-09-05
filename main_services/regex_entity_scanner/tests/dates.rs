@@ -43,6 +43,16 @@ fn offsets_canonicalise_to_one_spelling() {
     assert!(tz_known);
 }
 
+/// A regression test for a panic: the guard that decides whether a match continues past its
+/// right edge used to slice the fragment at `end + 1` unconditionally, and a multi-byte character
+/// right after the match landed that slice inside it rather than on a boundary. `\u{a0}`, the
+/// non-breaking space, is the character that triggered it against real documents.
+#[test]
+fn a_multibyte_character_right_after_the_match_does_not_panic() {
+    let (rfc3339, ..) = date_value("filed 2021-03-04\u{a0}in Bucharest");
+    assert_eq!(rfc3339, "2021-03-04");
+}
+
 #[test]
 fn a_zoneless_timestamp_says_so() {
     let scanner = support::scanner();

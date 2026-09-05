@@ -331,8 +331,14 @@ pub struct ScanBatchResponse {
 #[derive(Debug, Serialize)]
 pub struct ScanBatchResult {
     /// Deduplicated values grouped by entity type. A type with no accepted match is absent rather
-    /// than present and empty.
+    /// than present and empty. Also empty for the one document whose scan panicked, because the
+    /// scan that would have populated it did not finish.
     pub types: BTreeMap<crate::model::EntityType, Vec<ScanBatchValue>>,
+    /// Set only for a document whose scan panicked. The field is absent for every document that
+    /// scanned cleanly, never `null`, so the response shape a caller already reads does not
+    /// change.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// One distinct value in one text.
@@ -380,7 +386,7 @@ async fn scan_batch(
         request
             .texts
             .iter()
-            .map(|text| summarise(scanner.scan(text, 0)))
+            .map(|text| scan_one(&scanner, text))
             .collect::<Vec<_>>()
     })
     .await
@@ -398,6 +404,34 @@ async fn scan_batch(
         rule_set_version: RULE_SET_VERSION,
     })
     .into_response()
+}
+
+/// Scans one document from a batch and answers for it, whether or not the scan itself finished.
+///
+/// The isolation sits here, around the one call that can panic, rather than around the whole
+/// batch closure in `scan_batch`. `spawn_blocking` already turns a panic that reaches it into a
+/// `JoinError` that fails the entire batch. Catching one document's panic here, before it gets
+/// that far, is what keeps the other documents answered.
+fn scan_one(scanner: &Scanner, text: &str) -> ScanBatchResult {
+    match catch_panicking_scan(|| scanner.scan(text, 0)) {
+        Ok(entities) => summarise(entities),
+        Err(()) => {
+            tracing::error!("a document panicked during scan, serving the rest of the batch");
+            ScanBatchResult {
+                types: BTreeMap::new(),
+                error: Some("this document could not be scanned".to_string()),
+            }
+        }
+    }
+}
+
+/// Runs `scan`, converting a panic into `Err` instead of letting it unwind past the caller.
+///
+/// `Scanner` carries no interior mutability, so a panic partway through one document's candidates
+/// leaves it fit to scan the next one. `AssertUnwindSafe` is the caller asserting that, because a
+/// `Box<dyn Rule>` erases the field information the compiler would need to prove it.
+fn catch_panicking_scan<F: FnOnce() -> Vec<Entity>>(scan: F) -> Result<Vec<Entity>, ()> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(scan)).map_err(|_| ())
 }
 
 /// Collapses a text's spans into one entry per `(type, normalised value)`.
@@ -450,6 +484,7 @@ fn summarise(entities: Vec<Entity>) -> ScanBatchResult {
                 )
             })
             .collect(),
+        error: None,
     }
 }
 
@@ -462,4 +497,46 @@ fn oversized(len: usize, limit: usize) -> Response {
         StatusCode::PAYLOAD_TOO_LARGE,
         format!("the fragment is {len} bytes and the limit is {limit}"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::catch_panicking_scan;
+
+    /// The mechanism `scan_one` relies on, proven directly: a panic inside the scan comes back
+    /// as `Err` rather than unwinding into the caller, and a scan that does not panic is
+    /// unaffected.
+    #[test]
+    fn a_panic_is_caught_and_a_normal_scan_is_not() {
+        assert!(catch_panicking_scan(|| panic!("synthetic panic for the isolation test")).is_err());
+        assert_eq!(
+            catch_panicking_scan(Vec::new),
+            Ok(Vec::<crate::model::Entity>::new())
+        );
+    }
+
+    /// The shape `scan_batch` maps a text list through: proves that one panicking item does not
+    /// stop the items after it from being answered, which is what keeps a batch's other
+    /// documents served when one document's scan panics.
+    #[test]
+    fn a_panic_on_one_item_does_not_stop_the_rest_of_the_batch() {
+        let texts = ["ok", "boom", "also ok"];
+        let outcomes: Vec<Result<Vec<crate::model::Entity>, ()>> = texts
+            .iter()
+            .map(|text| {
+                catch_panicking_scan(|| {
+                    if *text == "boom" {
+                        panic!("synthetic panic for the isolation test");
+                    }
+                    Vec::new()
+                })
+            })
+            .collect();
+        assert!(outcomes[0].is_ok());
+        assert!(outcomes[1].is_err());
+        assert!(
+            outcomes[2].is_ok(),
+            "the document after the panic must still be answered"
+        );
+    }
 }
