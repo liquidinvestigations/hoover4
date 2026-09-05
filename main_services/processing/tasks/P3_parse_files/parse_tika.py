@@ -1,16 +1,18 @@
 """Tika/Extractous parsing activity for text and metadata extraction."""
 
 from temporalio import activity
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from dataclasses import dataclass
 import json
 import logging
 import os
 import queue
 import select
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 
 from tasks.heartbeat import heartbeat_pump, with_heartbeat
@@ -24,7 +26,6 @@ class RunTikaParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
-    content_type: str | None = None
 
 
 def _coarse_from_mime(mime: str) -> str:
@@ -253,20 +254,126 @@ def _get_pool() -> ExtractousHelperPool:
         return _pool
 
 
-def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
-    """Run Extractous in a pooled helper with a hard timeout.
+def _detector_candidate_types(file_path: str) -> List[Tuple[str, str]]:
+    """Up to three `(source, mime_type)` candidates, ahead of extractous's own guess.
 
-    Extractous (native Tika + Tesseract) wedges forever on some formats (camera
-    RAW, PSD, TGA, ...). A stuck native call cannot be interrupted from Python
-    and blocks the worker's activity threads, and every later Extractor() call
-    with it. A subprocess can always be killed. Helpers stay alive across files
-    so the cost is isolation, not interpreter startup. A timeout is raised as a
-    non-retryable ApplicationError so the file lands in processing_errors after
-    one attempt instead of stalling the batch for hours, and the pool respawns
-    the helper so the next file works.
+    Order: the `file` detector's first match. Then a second match, when `file -k`
+    reports one that differs from the first. Then the type the filename's extension
+    implies, kept only when it differs from both. A file with one confident type
+    across all three sources returns one candidate.
     """
+    from tasks.P3_parse_files.parse_mime import detect_file_and_extension_types
+
+    file_types, extension_types = detect_file_and_extension_types(file_path)
+    candidates: List[Tuple[str, str]] = []
+    seen: set = set()
+
+    if file_types:
+        candidates.append(("the file detector's first match", file_types[0]))
+        seen.add(file_types[0])
+    if len(file_types) > 1 and file_types[1] not in seen:
+        candidates.append(("the file detector's second match", file_types[1]))
+        seen.add(file_types[1])
+    if extension_types and extension_types[0] not in seen:
+        candidates.append(("the file extension", extension_types[0]))
+        seen.add(extension_types[0])
+
+    return candidates
+
+
+def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict]:
+    """Extractous, given a same-bytes copy whose name declares `mime_type`.
+
+    Extractous takes no type argument. `extract_file`, `extract_bytes` and
+    `extract_file_to_string` all read only a path, a buffer, or a string. Checked
+    against this pinned version and against the latest upstream Rust API. The
+    filename's extension is the only lever that reaches its detector. It is a hint
+    the detector weighs against the bytes. Content that already names its own type
+    in a header wins over the copy's extension. Raises `ValueError` when `mime_type`
+    maps to no known extension, so the caller can skip the step.
+    """
+    from tasks.P3_parse_files.parse_mime import extension_for_mime_type
+
+    extension = extension_for_mime_type(mime_type)
+    if extension is None:
+        raise ValueError(f"no extension known for {mime_type!r}")
+    tmp_dir = tempfile.mkdtemp(prefix="hoover4-tika-hint-")
+    hinted_path = os.path.join(tmp_dir, "attempt" + extension)
+    try:
+        try:
+            os.link(file_path, hinted_path)
+        except OSError:
+            shutil.copyfile(file_path, hinted_path)
+        with heartbeat_pump("extractous"):
+            return _get_pool().extract(hinted_path)
+    finally:
+        try:
+            os.remove(hinted_path)
+        except OSError:
+            pass
+        try:
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
+
+
+def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
+    """Run the four-step fallback chain, stopping at the first success.
+
+    1. the type the `file` detector names first,
+    2. a second type from `file`, when `-k` offers one and it differs from the first,
+    3. the type the file's extension implies, when it differs from both,
+    4. extractous's own detection, with no type given at all.
+
+    A step whose type repeats an earlier one is skipped: it is not attempted and
+    does not appear in the error this function raises when every step fails. Giving
+    up raises one `RuntimeError` naming every attempt that ran and what each said, so
+    a person reading the row sees which types were tried.
+
+    Extractous (native Tika + Tesseract) wedges forever on some formats (camera RAW,
+    PSD, TGA, ...). A stuck native call cannot be interrupted from Python and blocks
+    the worker's activity threads, and every later call through the same helper. A
+    subprocess can always be killed, which is why every attempt below goes through
+    the same pooled helper: `ExtractousHelperPool.extract` kills and respawns on a
+    timeout, and does so as a non-retryable `ApplicationError` immediately, without
+    trying the next candidate type. A wedge is a property of the bytes reaching a
+    native call, not of the name attached to them, so a second attempt under a
+    different extension pays the same worst case for a result already certain. Only
+    a parse failure -- extractous returning `ok: false` -- lets the chain move on.
+    """
+    from temporalio.exceptions import ApplicationError
+
+    attempts: List[str] = []
+    errors: List[str] = []
+
+    for source, mime_type in _detector_candidate_types(file_path):
+        attempts.append(f"{source} ({mime_type})")
+        try:
+            text, meta = _extract_with_hinted_type(file_path, mime_type)
+        except ApplicationError:
+            raise
+        except Exception as exc:
+            errors.append(f"{attempts[-1]}: {exc}")
+            continue
+        log.info("[P3] extractous succeeded at %s for %s", source, file_path)
+        return text, meta
+
+    attempts.append("extractous's own detection, no type given")
     with heartbeat_pump("extractous"):
-        return _get_pool().extract(file_path)
+        try:
+            text, meta = _get_pool().extract(file_path)
+        except ApplicationError:
+            raise
+        except Exception as exc:
+            errors.append(f"{attempts[-1]}: {exc}")
+        else:
+            log.info("[P3] extractous succeeded via its own detection for %s", file_path)
+            return text, meta
+
+    raise RuntimeError(
+        f"extractous failed for {file_path} after {len(attempts)} attempt(s): "
+        + "; ".join(errors)
+    )
 
 
 @activity.defn

@@ -90,7 +90,6 @@ class ParseSingleFile:
                 collection_dataset=params.collection_dataset,
                 file_hash=params.item_hash,
                 file_path=params.file_path,
-                content_type="application/octet-stream",
                 timeout_seconds=1000+proc_secs,
             ),
             start_to_close_timeout=timedelta(seconds=1000+proc_secs),

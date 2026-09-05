@@ -88,6 +88,18 @@ object back. A timeout kills that helper, raises a non-retryable `ApplicationErr
 the next file gets a fresh one. Stderr is drained so a noisy child cannot fill a pipe
 and stall.
 
+**`run_tika_and_store` tries up to four candidate types before it records a failure.**
+Extractous takes no type argument, so a candidate is tried by copying the file to a
+temporary path whose extension names that type, which is the only lever that reaches
+its detector. The order is the `file` command's first match, a second match when
+`file -k` offers one, the type the file's real extension implies, then extractous's
+own detection with no hint at all. A candidate whose type repeats an earlier one is
+skipped. Only a parse failure moves to the next candidate; a timeout still aborts the
+whole attempt immediately, because a wedge belongs to the bytes reaching a native
+call, not to the name on the copy, and retrying it under a different name pays the
+same worst case for a result already certain. Giving up raises one error naming every
+candidate that was tried and what each one said.
+
 Every parser output here skips the ClickHouse async-insert wait
 (`insert_arrow_idempotent`): these writers are re-runnable and a lost buffer converges on
 the next pass, while the wait itself costs ~60 ms per insert against ~1 ms without. The

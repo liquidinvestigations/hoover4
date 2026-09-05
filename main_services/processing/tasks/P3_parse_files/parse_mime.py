@@ -267,6 +267,41 @@ def mime_types_from_name(file_path: str) -> Tuple[List[str], List[str]]:
     return sorted(mime_types), extensions
 
 
+def detect_file_and_extension_types(file_path: str) -> Tuple[List[str], List[str]]:
+    """The `file` command's candidate types, and the extension-implied types.
+
+    A thin, named entry point onto two detectors this module already runs inside
+    `detect_mime_all`, for a caller that needs their opinion without paying for a
+    second Temporal activity. `file_types[0]` is `file`'s primary match; a second
+    entry is present only when `file -k` reports an ambiguous secondary match.
+    Each half fails on its own: a broken `file` binary still lets the caller read
+    the extension-implied type, and the reverse.
+    """
+    try:
+        file_types, _encodings, _exts = _run_file_multi(file_path)
+    except Exception:
+        file_types = []
+    try:
+        extension_types, _exts = mime_types_from_name(file_path)
+    except Exception:
+        extension_types = []
+    return file_types, extension_types
+
+
+def extension_for_mime_type(mime_type: str) -> str | None:
+    """The extension this pipeline expects for `mime_type`, or `None` if it knows none.
+
+    The inverse of `mime_types_from_name`: `_EXTRA_EXTENSION_MIMES` first, because it
+    is curated for the types this corpus actually carries, then the standard
+    library's own table. Returns `None` for a type neither table maps to an
+    extension, which the caller reads as "this candidate cannot be attempted."
+    """
+    for ext, curated in _EXTRA_EXTENSION_MIMES.items():
+        if curated == mime_type:
+            return ext
+    return mimetypes.guess_extension(mime_type)
+
+
 def _store_file_types_many(params: DetectMimeParams, rows: List[Dict[str, Any]]) -> None:
     """One `file_types` insert for several detectors' rows.
 
