@@ -291,6 +291,13 @@ def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict
     the detector weighs against the bytes. Content that already names its own type
     in a header wins over the copy's extension. Raises `ValueError` when `mime_type`
     maps to no known extension, so the caller can skip the step.
+
+    A symbolic link is tried first: it costs nothing and still presents the target
+    name to the detector, which opens the link like any other path. A hard link is
+    tried next, for the rare filesystem where a symlink is refused. Both fail with
+    `EXDEV` between the corpus's bind mount and this process's own temporary
+    directory, which is the ordinary case here, so a full copy is the last resort,
+    not the first one.
     """
     from tasks.P3_parse_files.parse_mime import extension_for_mime_type
 
@@ -301,9 +308,15 @@ def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict
     hinted_path = os.path.join(tmp_dir, "attempt" + extension)
     try:
         try:
-            os.link(file_path, hinted_path)
+            # An absolute target: a symlink resolves relative to its own directory,
+            # not to the caller's, and `hinted_path` lives in a directory `file_path`
+            # was never written relative to.
+            os.symlink(os.path.abspath(file_path), hinted_path)
         except OSError:
-            shutil.copyfile(file_path, hinted_path)
+            try:
+                os.link(file_path, hinted_path)
+            except OSError:
+                shutil.copyfile(file_path, hinted_path)
         with heartbeat_pump("extractous"):
             return _get_pool().extract(hinted_path)
     finally:
