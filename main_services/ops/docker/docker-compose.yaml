@@ -34,6 +34,16 @@ services:
     environment:
       - TELEMETRY=0
     user: 999:999
+    healthcheck:
+      # Proves the daemon answers its own MySQL wire protocol, the one every writer and
+      # every search query uses. Without this check, a container that Docker still shows
+      # as running, but whose daemon answers nothing, looks the same as a working one
+      # until a person tries a search.
+      test: ["CMD-SHELL", "mysql -h0 -P9306 -e 'SELECT 1;' || exit 1"]
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
 
   clickhouse:
     container_name: clickhouse
