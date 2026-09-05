@@ -111,6 +111,7 @@ def _passes_for(engine: str, collection_dataset: str) -> List[str]:
 @with_heartbeat
 def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
     import pyarrow as pa
+    import requests
 
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.ocr_client import engine_configured, run_ocr
@@ -179,7 +180,23 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                     return SkippedOutcome("ocr_skipped_too_small")
 
             started = time.time()
-            outcome = run_ocr(params.engine, languages, image_bytes)
+            try:
+                outcome = run_ocr(params.engine, languages, image_bytes)
+            except requests.HTTPError as exc:
+                # 422 is the OCR service's own statement that it read the bytes and
+                # found no processable image. The routing that schedules this
+                # activity fires whenever any one detector's guess includes "image",
+                # even when the other detectors disagree, so this is the expected
+                # shape for a document a weaker detector mistyped: retrying sends
+                # the same bytes and gets the same 422.
+                if getattr(exc.response, "status_code", None) == 422:
+                    from temporalio.exceptions import ApplicationError
+                    raise ApplicationError(
+                        f"OCR engine {params.engine} rejected the bytes as not a "
+                        f"processable image (422) for {params.file_path}",
+                        non_retryable=True,
+                    ) from exc
+                raise
             run_time_ms = max(int((time.time() - started) * 1000), 0)
 
             extracted_by = ocr_extracted_by(outcome.engine, outcome.languages)

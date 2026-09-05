@@ -13,6 +13,14 @@ from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
+#: ffprobe's own, unambiguous statement that the bytes it read are not a media
+#: container it recognises. The routing that calls into this activity fires whenever
+#: any one detector's guess includes "image", even when the other detectors disagree,
+#: so this is the expected shape for a document a weaker detector mistyped: retrying
+#: does not change what ffprobe reads.
+_NOT_MEDIA_MARKER = b"Invalid data found when processing input"
+
+
 def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
     cmd = [
         "ffprobe",
@@ -24,6 +32,12 @@ def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
     ]
     res = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
     if res.returncode != 0:
+        if _NOT_MEDIA_MARKER in (res.stderr or b""):
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError(
+                f"ffprobe failed: {res.stderr[:200]} {res.stdout[:200]}",
+                non_retryable=True,
+            )
         raise RuntimeError(f"ffprobe failed: {res.stderr[:200]} {res.stdout[:200]}")
     try:
         return json.loads((res.stdout or b"").decode("utf-8", errors="ignore"))

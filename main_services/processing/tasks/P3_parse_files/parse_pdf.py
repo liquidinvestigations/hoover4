@@ -36,9 +36,22 @@ def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
                           timeout=_PDF_SUBPROCESS_TIMEOUT_S)
 
 
+#: qpdf's own, unambiguous statement that the bytes it read are not a PDF at all. The
+#: routing that calls into this module fires whenever any one detector's guess includes
+#: "pdf", even when the other detectors disagree, so this is the expected shape for a
+#: document that a weaker detector mistyped: retrying does not change what qpdf reads.
+_NOT_A_PDF_MARKER = b"can't find PDF header"
+
+
 def _qpdf_show_npages(path: str) -> int:
     res = _run_qpdf(["--show-npages", path])
     if res.returncode != 0:
+        if _NOT_A_PDF_MARKER in (res.stderr or b""):
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError(
+                f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}",
+                non_retryable=True,
+            )
         raise RuntimeError(f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}")
     out = (res.stdout or b"").decode("utf-8", errors="ignore").strip()
     try:

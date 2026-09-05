@@ -56,6 +56,17 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
         raise
     if res.returncode != 0:
         shutil.rmtree(out_dir, ignore_errors=True)
+        # 7z's own, unambiguous statement that the bytes it read are not an archive of
+        # any kind it recognises. The routing that calls into this module fires whenever
+        # any one detector's guess includes "archive", even when the other detectors
+        # disagree, so this is the expected shape for a document a weaker detector
+        # mistyped: retrying does not change what 7z reads.
+        if b"Cannot open the file as archive" in (res.stderr or b""):
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError(
+                f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}",
+                non_retryable=True,
+            )
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")
 
     # Counted here so the caller can skip the scan of an archive that turned out to
