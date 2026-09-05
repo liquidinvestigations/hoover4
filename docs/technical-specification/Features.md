@@ -37,6 +37,7 @@ languages.
 | `F-ingest-13` | Re-index a collection from parsed content, without re-parsing | `main.py reindex-collection` |
 | `F-ingest-14` | Purge an abandoned dataset's rows from every table and the index | `main.py purge-dataset`, the `purge_dataset` operation |
 | `F-ingest-15` | Survive a worker restart mid-ingest: in-flight activities are drained rather than killed, batch stages give their work back at an item boundary, and the dataset finishes with every document's chunks, vectors and index rows | `tasks/run_worker.py`, `tasks/heartbeat.py`, `main_services/verify-stack.sh --restart-resilience` |
+| `F-ingest-16` | Record a stage's own decision that an input needs no work (an image too small to hold text, a file below the minimum table shape) as a distinct outcome, never as a failure, so it is never retried and never counted in a failure total | `tasks/task_timing.py` (`SkippedOutcome`, `processing_task_runs.outcome`), `P3_parse_files/parse_ocr.py`, `P3_parse_files/parse_table.py` |
 
 ## Search
 

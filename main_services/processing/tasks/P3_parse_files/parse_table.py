@@ -30,9 +30,12 @@ Where the 2x2 rule is applied
 ------------------------------
 Delimited text has to produce at least `MIN_DELIMITED_ROWS` rows and
 `MIN_DELIMITED_COLUMNS` columns in one sheet before any row is written -- below that it
-is a text file and nothing here happened, recorded as `table_not_a_table`. A binary
-spreadsheet is a table on the strength of its format and only has to produce
-`MIN_BINARY_CELLS` cells. See `table_formats` for why the asymmetry is the point.
+is a text file and nothing here happened. The activity still returns normally, wrapped
+in `SkippedOutcome` so `processing_task_runs.outcome` reads `skipped`, never `error`,
+and `table_not_a_table` names the reason in the worker log rather than in
+`processing_errors`. A binary spreadsheet is a table on the strength of its format and
+only has to produce `MIN_BINARY_CELLS` cells. See `table_formats` for why the asymmetry
+is the point.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from typing import Any, Dict, Iterable, Optional
 from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.task_timing import SkippedOutcome
 from tasks.P3_parse_files.table_formats import (
     MAX_CELL_BYTES,
     MAX_CELLS_PER_DOCUMENT,
@@ -498,7 +502,7 @@ def _copy_structure(client, params: ParseTableParams, source_dataset: str) -> No
 
 @activity.defn
 @with_heartbeat
-def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any]:
+def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedOutcome:
     """Read one tabular document into `table_cells` and describe it in the manifest."""
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
     from tasks.P3_parse_files.table_readers import fallback_reader, read_cells
@@ -592,11 +596,15 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any]:
                 "AND hash = {h:String}",
                 parameters={"cd": params.collection_dataset, "h": params.file_hash},
             )
-            _record_skip(params, run_time_ms,
-                         f"table_not_a_table ({reader}) {collector.cell_count} cell(s)")
-            return {"status": "skipped", "reader": reader,
-                    "cell_count": collector.cell_count,
-                    "reason": "below the minimum table shape"}
+            # A decision, not a failure: below the minimum shape is a text file, not a
+            # table. Recorded as `outcome = 'skipped'` on `processing_task_runs`, never
+            # in `processing_errors`, so it costs no retry and does not count as a
+            # failure anywhere that counts that table.
+            log.info("[P3] table skip for %s: table_not_a_table (%s) %d cell(s)",
+                      params.file_hash, reader, collector.cell_count)
+            return SkippedOutcome({"status": "skipped", "reader": reader,
+                                    "cell_count": collector.cell_count,
+                                    "reason": "below the minimum table shape"})
 
         insert_arrow_idempotent(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)

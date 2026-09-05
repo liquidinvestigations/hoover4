@@ -150,6 +150,52 @@ def test_a_failed_execution_is_recorded_in_the_same_table_and_still_raises(recor
     assert rows[0][3] == "error"
 
 
+def test_a_skip_is_recorded_as_skipped_and_unwrapped_for_the_caller(recorder):
+    """The distinction this outcome exists to make, asserted in both directions.
+
+    An activity that decided its input needs no work returns `SkippedOutcome`. The row
+    must read `skipped` rather than `ok`, so a skip is never counted as real output, and
+    rather than `error`, so it is never counted in a failure total. The caller must get
+    the value unwrapped, because nothing downstream knows the wrapper exists.
+    """
+    interceptor = _TimingActivityInbound(
+        _FakeNext(result=task_timing.SkippedOutcome("ocr_skipped_too_small"))
+    )
+    result = asyncio.run(interceptor.execute_activity(_input("run_ocr_and_store", _DocParams())))
+
+    assert result == "ocr_skipped_too_small"
+    rows = _row(recorder)
+    assert len(rows) == 1
+    assert rows[0][3] == "skipped"
+
+
+def test_a_plain_return_is_still_ok_rather_than_skipped(recorder):
+    """The other direction: wrapping is what marks a skip, so an unwrapped value is not one."""
+    interceptor = _TimingActivityInbound(_FakeNext(result="ocr_skipped_too_small"))
+    asyncio.run(interceptor.execute_activity(_input("run_ocr_and_store", _DocParams())))
+
+    assert _row(recorder)[0][3] == "ok"
+
+
+def test_the_skipped_outcome_matches_the_migration_that_stores_it():
+    """The enum in ClickHouse and the string Python writes are two copies of one fact.
+
+    A value Python writes that the column does not name is rejected at insert time, and
+    the row is lost rather than refused loudly, so the two are checked against each other
+    here instead.
+    """
+    migrations = (
+        Path(__file__).resolve().parents[2] / "database" / "db_collection_migrations"
+    )
+    enums = [
+        p.read_text()
+        for p in migrations.glob("*.sql")
+        if "processing_task_runs" in p.read_text() and "outcome Enum8" in p.read_text()
+    ]
+    assert enums, "no migration defines processing_task_runs.outcome"
+    assert any("'skipped' = 2" in text for text in enums)
+
+
 def test_an_unroutable_activity_is_skipped_but_logged(recorder, caplog):
     """No collectionname means the global table. Dropping is not correct --
     doing it quietly even less so."""

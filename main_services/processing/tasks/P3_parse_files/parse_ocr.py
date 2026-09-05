@@ -31,6 +31,7 @@ from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.P3_parse_files.image_loader import image_dimensions
+from tasks.task_timing import SkippedOutcome
 from tasks.text_sources import (
     ENGINE_EASYOCR, ENGINE_TESSERACT, MIN_OCR_IMAGE_PX, ocr_extracted_by,
 )
@@ -108,7 +109,7 @@ def _passes_for(engine: str, collection_dataset: str) -> List[str]:
 
 @activity.defn
 @with_heartbeat
-def run_ocr_and_store(params: RunOcrParams) -> str:
+def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
     import pyarrow as pa
 
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
@@ -167,12 +168,15 @@ def run_ocr_and_store(params: RunOcrParams) -> str:
                 # is what this reports for a file neither can read.
                 size = image_dimensions(image_bytes)
                 if size is not None and min(size) < MIN_OCR_IMAGE_PX:
-                    _record_skip(
-                        params, 0,
-                        "ocr_skipped_too_small: %dx%d is under %dpx"
-                        % (size[0], size[1], MIN_OCR_IMAGE_PX),
+                    # A decision, not a failure: an image this small has no text to
+                    # read. Recorded as `outcome = 'skipped'` on `processing_task_runs`,
+                    # never in `processing_errors`, so it costs no retry and does not
+                    # count as a failure anywhere that counts that table.
+                    log.info(
+                        "[P3] OCR skip for %s: %dx%d is under %dpx",
+                        params.file_hash, size[0], size[1], MIN_OCR_IMAGE_PX,
                     )
-                    return "ocr_skipped_too_small"
+                    return SkippedOutcome("ocr_skipped_too_small")
 
             started = time.time()
             outcome = run_ocr(params.engine, languages, image_bytes)

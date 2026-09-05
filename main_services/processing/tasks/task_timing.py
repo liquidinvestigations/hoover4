@@ -628,6 +628,23 @@ def attach_temporal_client(client: Any) -> None:
         log.warning("task_timing: failed to attach Temporal client for queue backlog", exc_info=True)
 
 
+class SkippedOutcome:
+    """Wraps an activity's return value to record `outcome = 'skipped'`, not `ok`.
+
+    A skip is an activity that ran to completion, decided the input needs no work
+    (an image too small to hold text, a CSV with too few cells to be a table), and
+    is neither an error nor real output. Return ``SkippedOutcome(value)`` in place of
+    ``value`` at the exact line that decides this, and the timing interceptor records
+    the distinct outcome and hands ``value`` on to the caller unwrapped, so nothing
+    downstream ever sees the wrapper.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+
 class _TimingActivityInbound(ActivityInboundInterceptor):
     """Times one activity execution and hands the row to the buffer."""
 
@@ -646,11 +663,16 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
         start = time.monotonic()
         outcome = "ok"
         try:
-            return await self.next.execute_activity(input)
+            result = await self.next.execute_activity(input)
         except BaseException:
             # Cancellation counts as a failed execution too: it consumed the time.
             outcome = "error"
             raise
+        else:
+            if isinstance(result, SkippedOutcome):
+                outcome = "skipped"
+                result = result.value
+            return result
         finally:
             run_time_ms = max(0, int((time.monotonic() - start) * 1000))
             if token is not None:
