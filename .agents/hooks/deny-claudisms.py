@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""PreToolUse(Edit|Write|MultiEdit): refuse text that adds a banned phrase or an em dash.
+"""PreToolUse edits: refuse text that adds a banned phrase or an em dash.
 
 `AGENTS.md`, "How to write", sets the register: Simplified Technical English (ASD-STE100)
 and plain language (ISO 24495-1). Two of its rules are mechanical, so a hook can hold them.
 The rest are judgement and belong to the reader.
 
-Only the text being ADDED is inspected. Deleting a banned phrase, or moving a file that
-contains one, is allowed. `Edit` compares `new_string` against `old_string`, so a rewrite
-that keeps an existing occurrence in place is not blocked.
+Only added text is inspected. Deleting a banned phrase, or moving a file that contains one,
+is allowed. `Edit` compares `new_string` against `old_string`. Codex `apply_patch` input is
+split by target file and only its lines that start with `+` are inspected.
 
 Narrow by construction:
 
@@ -196,6 +196,47 @@ def added_text(tool_name, tool_input):
     return None
 
 
+def apply_patch_changes(patch):
+    """Return each target path and its added lines from a Codex patch command."""
+    changes = []
+    path = None
+    additions = []
+
+    def finish():
+        if path is not None:
+            changes.append((path, "\n".join(additions)))
+
+    for line in patch.splitlines():
+        header = re.match(r"^\*\*\* (?:Add|Update) File: (.+)$", line)
+        if header:
+            finish()
+            path = header.group(1).strip()
+            additions = []
+            continue
+        move = re.match(r"^\*\*\* Move to: (.+)$", line)
+        if move and path is not None:
+            path = move.group(1).strip()
+            continue
+        if line.startswith("*** Delete File:"):
+            finish()
+            path = None
+            additions = []
+            continue
+        if path is not None and line.startswith("+") and not line.startswith("+++"):
+            additions.append(line[1:])
+    finish()
+    return changes
+
+
+def added_changes(tool_name, tool_input):
+    """Return target paths and added text for one supported edit call."""
+    if tool_name == "apply_patch":
+        return apply_patch_changes(tool_input.get("command", ""))
+    if tool_name in ("Edit", "Write", "MultiEdit"):
+        return [(tool_input.get("file_path", ""), added_text(tool_name, tool_input))]
+    return []
+
+
 def diff_of(old, new):
     """The lines of `new` that are not already in `old`.
 
@@ -233,25 +274,23 @@ def main():
     except Exception:
         return 0
     tool_name = payload.get("tool_name")
-    if tool_name not in ("Edit", "Write", "MultiEdit"):
+    if tool_name not in ("Edit", "Write", "MultiEdit", "apply_patch"):
         return 0
     tool_input = payload.get("tool_input", {}) or {}
-    path = tool_input.get("file_path", "")
-    if os.path.splitext(path)[1] not in EXTENSIONS:
-        return 0
-    if is_exempt(path):
-        return 0
-    found = check(added_text(tool_name, tool_input))
-    if not found:
-        return 0
-    what, detail = found
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": MESSAGE.format(what=what, detail=detail),
-        }
-    }))
+    for path, text in added_changes(tool_name, tool_input):
+        if os.path.splitext(path)[1] not in EXTENSIONS or is_exempt(path):
+            continue
+        found = check(text)
+        if found:
+            what, detail = found
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": MESSAGE.format(what=what, detail=detail),
+                }
+            }))
+            break
     return 0
 
 

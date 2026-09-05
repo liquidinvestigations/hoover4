@@ -1,0 +1,16 @@
+# Codex user privacy settings. The installer merges these values into the user config.
+
+[analytics]
+enabled = false
+
+[feedback]
+enabled = false
+
+[history]
+persistence = "save-all"
+
+[otel]
+exporter = "none"
+metrics_exporter = "none"
+trace_exporter = "none"
+log_user_prompt = false

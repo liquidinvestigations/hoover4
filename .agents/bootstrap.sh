@@ -71,9 +71,29 @@ if [ -f "$REPO_ROOT/opencode.json" ]; then note "ok      opencode.json present"
 else note "MISSING opencode.json -- copy .agents/harnesses/opencode.json to the repo root"; fi
 
 echo "[4] Codex"
-if [ -f "$REPO_ROOT/.codex/config.toml" ]; then note "ok      .codex/config.toml present"
-else note "MISSING .codex/config.toml -- start from .agents/harnesses/codex.toml"; fi
-note "Codex reads AGENTS.md at the repo root and does NOT expand @imports: the root file stands alone"
+if [ -f "$REPO_ROOT/.codex/config.toml" ] \
+   && cmp -s "$REPO_ROOT/.agents/harnesses/codex.toml" "$REPO_ROOT/.codex/config.toml"; then
+    note "ok      .codex/config.toml matches its tracked template"
+else
+    note "MISSING or changed .codex/config.toml -- copy .agents/harnesses/codex.toml"
+fi
+if [ -f "$REPO_ROOT/.codex/agents/executor.toml" ] \
+   && [ -f "$REPO_ROOT/.codex/agents/reviewer.toml" ]; then
+    note "ok      .codex/agents has the executor and reviewer"
+else
+    note "MISSING executor or reviewer in .codex/agents"
+fi
+if python3 "$REPO_ROOT/.agents/update-codex-config.py" --check >/dev/null 2>&1; then
+    note "ok      Codex user privacy settings match the tracked template"
+else
+    note "REVIEW  Codex user privacy settings need an update"
+    note "        Run python3 .agents/update-codex-config.py, then add --apply after review."
+fi
+note "Codex reads AGENTS.md and .agents/skills directly from this checkout"
+note "Codex has no loader for the path-scoped Markdown files in .agents/rules"
+note "REVIEW  Start a fresh Codex session after a project hook changes"
+note "        Run /hooks and inspect each changed project hook."
+note "        Trust each exact definition before you test the hooks."
 
 echo "[5] Gemini CLI"
 if [ -f "$REPO_ROOT/.gemini/settings.json" ]; then note "ok      .gemini/settings.json present"

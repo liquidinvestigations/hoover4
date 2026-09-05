@@ -1,8 +1,7 @@
 # Working with agents on hoover4
 
-Every coding agent that opens this repo is configured by the same set of files. This page is
-the human-facing map of that set: what loads when, what each piece is for, how to add one,
-and how to tell whether it fired.
+The supported coding agents share the files in `.agents/`. Each harness has a small adapter.
+This page explains what loads, what each file controls, and how to verify the configuration.
 
 ## Contents
 
@@ -21,15 +20,14 @@ and how to tell whether it fired.
 
 ## The loading ladder
 
-Four rungs, cheapest first. The whole design is an argument about which rung a given piece
-of knowledge belongs on.
+Four levels keep session context small. Codex does not load the fourth level automatically.
 
 | rung | what it is | when it loads | cost |
 |---|---|---|---|
 | the core | `AGENTS.md` at the repo root | every session, every turn | paid always, keep it near 60 lines |
 | a skill | `.agents/skills/<name>/SKILL.md` | when the agent's task matches its `description` | paid only in matching sessions |
 | a reference file | `reference/*.md` beside a skill | when the skill body sends the agent to it | paid only inside that procedure |
-| a rule | `.agents/rules/<name>.md` with a `paths:` glob | when a matching file is opened | paid only while editing that kind of file |
+| a rule | `.agents/rules/<name>.md` with a `paths:` glob | when a supported harness opens a matching file | paid only while editing that kind of file |
 
 Two consequences that decide most placement questions. A paragraph that is relevant in most
 sessions but applies *one paragraph at a time* is a skill with reference files, not core
@@ -53,6 +51,8 @@ so no file is authored twice.
 .claude/skills    -> ../.agents/skills          directory symlink
 .claude/rules     -> ../.agents/rules           directory symlink
 .claude/settings.json                           declares the hooks by their .agents/ path
+.codex/config.toml                               Codex project settings and hook commands
+.codex/agents/*.toml                             Codex executor and reviewer definitions
 AGENTS.md                                       the shared root instruction file
 CLAUDE.md                                       one line: @AGENTS.md
 ```
@@ -71,13 +71,18 @@ file declares which commands run on every tool call. `.agents/harnesses/claude-s
 holds what the file should contain; merge it by hand and restart the session.
 `verify-wiring.sh` reports whether it is in place.
 
+Codex reads `.codex/config.toml`, `AGENTS.md`, and `.agents/skills` from the checkout. The
+project config matches `.agents/harnesses/codex.toml`. Codex user privacy settings stay in
+the user config. Review `.agents/harnesses/codex-user.toml`, then run
+`python3 .agents/update-codex-config.py --apply` to merge its controlled values.
+
 Directory symlinks do not work on Windows. That is why the core also names the literal
 skills path in prose: a harness that cannot follow the symlink still learns where the skills
 are and can read them as ordinary files.
 
 ## Skills
 
-A skill is a procedure the agent loads on demand. Thirteen exist, in three groups.
+A skill is a procedure that the agent loads on demand. The repository has sixteen skills.
 
 | skill | it answers |
 |---|---|
@@ -94,6 +99,9 @@ A skill is a procedure the agent loads on demand. Thirteen exist, in three group
 | `querying-the-datastores` | the recurring ClickHouse, Manticore and Garage diagnostics |
 | `operating-remote-hosts` | the demo box and the GPU box, see [Remote hosts](../operations/Remote_Hosts.md) |
 | `driving-the-browser` | the browser MCP surface, screenshots, typing into a Dioxus input |
+| `writing-tests` | which tests a source change puts at risk and where a new test belongs |
+| `writing-handoffs` | how to record incomplete work for another session |
+| `running-unattended` | how to run a complete plan when no person can answer during the run |
 
 The `description` field is the whole trigger mechanism: a skill that does not describe the
 *situation* in the words a request uses does not load, and nothing downstream recovers from
@@ -124,23 +132,50 @@ procedure to follow.
 | `migrations.md` | migration SQL | the `;`-splitting runner's three failure modes, what a header may and may not say, enum and replacing-table reading |
 | `agents-mcp.md` | `main_services/agents/**` | the vendored package and its build context, one web-search tool, ids as lookup keys, undrained subprocess pipes |
 
-**Rules are the one rung whose loading is not verified here.** Whether a given harness
-resolves a symlinked rules directory the way it resolves a symlinked skills directory is
-assumed by symmetry and untested. Each rule body therefore reads correctly as an ordinary
-file, and nothing depends on the rule firing automatically.
+Claude loads the rules through `.claude/rules`. Codex has no loader for the `paths:` metadata
+in these Markdown files. A Codex session can read a rule as an ordinary file when a skill or
+instruction names it.
 
 ## Hooks
 
-Five, and deliberately no more. Each is stated in the core as well, so the agent knows the
-rule instead of only hitting the wall.
+Claude declares five hooks. Codex declares the first four because its tool event has no
+sub-agent identifier for the budget hook. Each rule also appears in `AGENTS.md`.
 
 | hook | event | what it denies |
 |---|---|---|
 | unscoped recursive search | `PreToolUse(Bash)` | a recursive `grep`/`ugrep` over `.` or a build-bearing directory with no `--include`/`--exclude-dir`. A scoped search at one small directory passes |
 | long commit message | `PreToolUse(Bash)` | `git commit -m` with a multi-line or over-length message |
-| register | `PreToolUse(Edit\|Write\|MultiEdit)` | text that ADDS a phrase from the list in `AGENTS.md`, "How to write", or an em dash, to a `.md`, `.rs`, `.py`, `.sh`, `.sql`, `.toml` or `.yaml` file. The documents that define the rule are exempt by path, because they have to quote what they ban |
+| register | `PreToolUse(Edit\|Write\|MultiEdit)` or Codex `apply_patch` | added text that contains a phrase from `AGENTS.md`, "How to write", or an em dash. The hook checks the documented file types and preserves its path exemptions |
 | orientation | `SessionStart`, including `compact` | denies nothing; injects the invariants and the routing table, and re-injects them after a compaction |
 | tool-call budget | `PostToolUse(*)` | denies nothing; names the calls used and the calls left at 80% and 95% of a sub-agent's budget. A call whose payload carries no `agent_id` was made by the session that launched the pass, and is not counted |
+
+Codex requires review for each non-managed hook definition. It records trust against the
+current definition hash. A changed definition does not run until a person trusts it again.
+Use this installation procedure after a project hook changes:
+
+1. From the repository root, run `mktemp /tmp/hoover4-codex-hook-probe.XXXXXX.md`.
+2. Keep the returned path as `<probe-path>`.
+3. Run `codex` to start a fresh session.
+4. Run `/hooks` in the Codex session.
+5. Inspect each changed hook from `.codex/config.toml`.
+6. Trust the exact project hook definitions shown by `/hooks`.
+
+The [official Codex hooks documentation](https://developers.openai.com/codex/hooks) defines
+this review step. After trust, use the same fresh session for this dispatch probe:
+
+1. Enter the following prompt in Codex.
+
+   > Use `apply_patch` to add this sentence to `<probe-path>`: "The guard stops a second row from being written."
+
+2. Verify that the allowed edit completes and that the file contains the sentence.
+3. Enter the following prompt in Codex.
+
+   > Use `apply_patch` to add a sentence to `<probe-path>`. Join "load" and "bearing" with a hyphen in the sentence.
+
+4. Verify that Codex reports the register-hook denial and does not add the second sentence.
+
+The probe file stays outside tracked source. Direct script probes in `verify-wiring.sh` check
+payload compatibility. They do not verify Codex dispatch or project-hook trust.
 
 Three things are deliberately *not* hooked: reads of `website/target`, `node_modules` and
 generated output, because debugging regularly needs exactly that source; heredocs, because
@@ -153,6 +188,9 @@ on them damages the agent's work.
 Four servers, all streamable HTTP on loopback, ports from `hoover4.ini`:
 `hoover4-web-search`, `hoover4-browser`, `hoover4-whois`, and `serena` for symbol-level
 navigation and editing.
+
+The Codex browser entry sends the public static session headers in the tracked project
+config. The four server entries remain optional, so Codex can start while the stack is down.
 
 `hoover4-mcp-collections` and `hoover4-mcp-todo` are deliberately absent from the host-side
 configuration: their tools require a header only the chat tier can supply (the permitted
@@ -179,8 +217,8 @@ operational detail.
 
 | harness | instructions | skills | rules | MCP | hooks |
 |---|---|---|---|---|---|
-| Claude Code | `CLAUDE.md` → `@AGENTS.md`, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | `.mcp.json` | the three above |
-| OpenAI Codex CLI | `AGENTS.md`, no import expansion | unverified | unverified | `[mcp_servers.NAME]` with the experimental client flag; stdio and streamable HTTP only | shape unverified, unused |
+| Claude Code | `CLAUDE.md` → `@AGENTS.md`, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | `.mcp.json` | five hooks in `.claude/settings.json` |
+| OpenAI Codex CLI | `AGENTS.md`, no import expansion | native `.agents/skills`, verified | no automatic loader | `[mcp_servers.NAME]`, streamable HTTP | four hooks in `.codex/config.toml` |
 | opencode | `AGENTS.md` | native `.agents/skills/<name>/SKILL.md`; unknown frontmatter keys ignored | unverified | `opencode.json` remote entries | unverified |
 | Gemini CLI | `GEMINI.md` | none | none | `.gemini/settings.json`, `httpUrl` | none |
 | Cursor | `.cursor/rules/*.mdc`, generated from the shared rules | unverified | `.mdc` with `globs:` | `.cursor/mcp.json` | none |
@@ -195,15 +233,15 @@ not as support to rely on.
 | harness | agent definitions | model per agent |
 |---|---|---|
 | Claude Code | `.claude/agents/*.md`, a symlink to `.agents/agents/` | `model` in frontmatter, with `effort` and `maxTurns` |
-| OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort`, behind a features flag |
+| OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort` |
 | opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
 | Cursor | reads `.agents/skills/` directly | unverified |
 | Gemini CLI | `GEMINI.md` | unverified |
 | Kimi CLI | unverified | unverified |
 | Google Antigravity | `AGENTS.md` | unverified |
 
-Only the Claude Code row runs work here. The rest record where the file would go, so the next
-person setting one up does not have to find out again.
+Claude Code and Codex have executor and reviewer definitions. Each Codex session permits one
+sub-agent thread at a time.
 
 ## Which model runs a pass
 
@@ -244,6 +282,10 @@ work package chose. A package that sets a smaller budget, such as 58 for a read-
 carried by the package's own instruction and by `maxTurns`. The hook speaks later than both.
 `HOOVER4_TOOL_BUDGET` changes the hook's number for a whole session.
 
+Codex does not run the budget hook. Its tool event does not include the sub-agent identifier
+that the counter requires. The project config permits one sub-agent thread and does not set a
+rollout budget.
+
 Which model fills which role, and how one qualifies, is in
 [`Choosing_A_Model.md`](Choosing_A_Model.md).
 
@@ -283,18 +325,21 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
 - A hook that fired denies the tool call with its own message. Silence from the commit hook
   is the expected steady state. It guards a behaviour that stopped recurring.
 - A rule that loaded shows up when a matching file is opened, not at session start.
-- `verify-wiring.sh` checks the symlinks, the executable bits, the settings entries and the
-  MCP endpoints in one run.
+- `verify-wiring.sh` checks the adapters, settings, direct hook payloads, agent definitions,
+  skills, and MCP endpoints. It reports an unavailable local service as `SKIP`. It does not
+  inspect Codex hook trust or dispatch.
 
 ## Publication and privacy
 
-**All of this is tracked and public**: `.agents/`, the two `.claude/` symlinks,
+**All of this is tracked and public**: `.agents/`, `.codex/`, the two `.claude/` symlinks,
 `.claude/settings.json`, `AGENTS.md` and `CLAUDE.md`. Git is the backup, and a fresh
 checkout has the whole configuration already: `bootstrap.sh` only creates the machine-local
 per-harness adapters on top of it.
 
 Deliberately not tracked: `.claude/settings.local.json`, `CLAUDE.local.md`, `hoover4.ini`,
-and `INFRASTRUCTURE_INVENTORY.md`.
+`INFRASTRUCTURE_INVENTORY.md`, and the live user file at `~/.codex/config.toml`. The tracked
+Codex user template contains only privacy and local-history settings. The installer preserves
+unrelated user settings when it merges those controlled values.
 
 Because they are public, **skills and rules carry the same secrecy rule as `docs/`**: no
 hostname, no address, no port that identifies a real host, no credential, no description of
