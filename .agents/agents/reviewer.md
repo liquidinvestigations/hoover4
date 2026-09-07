@@ -46,6 +46,16 @@ Report these plainly when you find them, because no check catches them:
 
 **Say when a diff is clean.** A review that always finds something is not a review.
 
+## Browser work
+
+Load the `driving-the-browser` skill for browser work.
+Read the scenario coverage beside the report.
+Inspect the PNG captures and diagnostics for each claimed finding.
+Verify the package's identity, permitted actions, viewport, and result rules.
+Identify missing captures, unverified controls, and manual images without matching evidence.
+Keep credential values out of findings.
+Distinguish observed application errors from data differences and capture failures.
+
 ## Your budget
 
 **58 tool calls**, with a warning at 80%. Reading is cheap and re-reading is not: open what you

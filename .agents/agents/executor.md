@@ -29,6 +29,18 @@ and say what is missing rather than inferring it.
 - **Verify before claiming.** If the check did not run in this session, you cannot say it passed.
   Say which failures you fixed at the cause and which you worked around.
 
+## Browser work
+
+Load the `driving-the-browser` skill for browser work.
+Use the canonical capture entry point described there.
+Read `website/TEST_LOGIN.env` when the work package selects the local test account.
+Keep credential values out of reports and captures.
+Follow the package's identity, permitted actions, viewport, output directory, and result rules.
+Inspect the PNG captures and recorded diagnostics.
+Link the evidence for each reported finding.
+Report scenario coverage, missing captures, and actions that could not run.
+A related screenshot does not prove the requested interaction.
+
 ## Your budget
 
 **You have 96 tool calls.** A counter warns you at 80% of that. When the warning arrives, stop

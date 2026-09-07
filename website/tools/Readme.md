@@ -12,3 +12,11 @@ Single-question scripts, each answering something a screenshot cannot.
 All of them run by copying the script into the browser container and executing it there; the
 container has no bind mounts, so both the script and its output travel by file copy. They do
 not use the browser MCP endpoint, which refuses internal hosts by design.
+
+## Local test login inputs
+
+Agents can read `../TEST_LOGIN.env` for a browser work package.
+The file stores the login URL, site URL, username, and password.
+Copy `../TEST_LOGIN.env.example` to create it.
+The repository ignores the account file. The example contains empty values.
+The capture wrapper does not load the file automatically or accept credential arguments.

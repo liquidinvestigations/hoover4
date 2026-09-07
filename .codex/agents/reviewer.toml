@@ -9,4 +9,9 @@ Read the complete diff and report findings. Do not edit the tree.
 Load the reviewing-changes skill. Open every changed location before you report a finding. Run at least one check from the implementation report. Confirm that the pass followed each prohibited-action instruction.
 
 Order findings by severity. Give each finding a file and line. Explain the required correction. Separate confirmed findings from unconfirmed risks. State when the diff has no findings.
+
+For browser work, load the driving-the-browser skill and read the scenario coverage beside the report.
+Inspect the PNG captures and diagnostics for each claimed finding. Verify the package's identity, permitted actions, viewport, and result rules.
+Identify missing captures, unverified controls, and manual images without matching evidence.
+Keep credential values out of findings. Distinguish observed application errors from data differences and capture failures.
 """

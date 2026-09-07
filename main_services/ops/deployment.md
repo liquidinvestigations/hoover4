@@ -131,6 +131,73 @@ inside the repository. Where a given deployment keeps it is recorded in
 An empty `mcp_shared_secret_file` leaves the MCP servers unauthenticated, which is
 tolerable only because they publish on `127.0.0.1`.
 
+## A `hoover4.ini` for a host that reaches a remote GPU box
+
+The section above turns the accelerated tier off. This is the other shape. The main stack
+runs on this host. The GPU tier runs on a second host, reached over a private network.
+Everything not listed stays at `hoover4.ini.release`'s value. Angle-bracketed values are
+placeholders, and the real ones are in `INFRASTRUCTURE_INVENTORY.md`.
+
+```ini
+[ai_services]
+enabled            = true       ; the tier exists, on the other host
+host               = <gpu-private-ip>   ; an address the CONTAINERS here can route to
+ai_server_enabled  = true
+ner_enabled        = true
+embeddings_enabled = true
+reranker_enabled   = true
+easyocr_enabled    = true
+
+llm_selfhosted     = true
+vllm_port          = 21960
+vllm_served_name   = <served-name>      ; the id the other box answers /v1/models with
+vllm_api_key_file  = <secrets-dir>/vllm-key.txt
+
+[main_services]
+ner_provider          = gpu
+embeddings_provider   = gpu
+pdf_ocr_provider      = tesseract
+gpu_fallback          = true        ; the CPU twin covers a GPU box that stops answering
+
+[llm_provider.selfhosted]
+enabled      = true
+base_url     = http://<gpu-private-ip>:21960/v1
+model        = <served-name>
+api_key_file = <secrets-dir>/vllm-key.txt
+
+[llm_provider.nvidia]
+enabled      = true     ; the fallback, and it serves nothing while the block above is on
+```
+
+**`llm_selfhosted = true` on its own does not select the self-hosted model.**
+`active_llm_provider()` in `deploy.py` reads that flag **and**
+`[llm_provider.selfhosted] enabled`. With the flag on and the provider off, it falls
+through to the first enabled cloud provider. The whole deployment then answers on that
+provider's model, and nothing reports an error. `hoover4.ini.release` ships the
+self-hosted provider disabled and a cloud provider enabled, so an ini rebuilt from the
+template loses this setting silently. Read the two keys together after any rebuild.
+
+**Write `base_url` and `model` out rather than leaving them empty.** The empty form
+derives them from `[ai_services] host`, `vllm_port` and `vllm_served_name`, which state
+what would be deployed *from this file*. This host deploys no GPU tier of its own, so
+those keys carry an intention. Name the endpoint and the served model where they are
+read.
+
+`--print-env` settles it before anything starts:
+
+```bash
+./deploy --print-env | grep '^LLM_'
+```
+
+`LLM_BASE_URL` must name the GPU box and `LLM_MODEL` the served name. Once the stack is
+up, `/admin/ai_status` reports the same pair from the running website, with the result of
+a live probe of the endpoint.
+
+**No `server_settings` row is needed.** `llm_default_chat_model` is unset on a fresh
+deployment, and both the website and the worker fall back to `LLM_MODEL`. An
+administrator can set that key, or a per-profile key such as `llm_model_full_research`.
+The stored value then wins over the ini, and an ini change alone does not move it.
+
 ## Resetting a host that has run an older stack
 
 `./deploy --reset` takes the compose project down and removes its `hoover4_*` data

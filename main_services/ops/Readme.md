@@ -186,10 +186,10 @@ selected by ini flags.
 
 [deployment.md](deployment.md) is the runbook for a host reachable from the internet: the
 `website_bind_ip` / `infra_bind_ip` keys and what each protects, a `hoover4.ini` for a host
-with no accelerator, the reset order, the staged ingest and the assertions to run before
-ingesting anything. It uses placeholder addresses throughout. What a particular deployment
-uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
-gitignored.
+with no accelerator, another for a host that reaches a remote GPU box, the reset order, the
+staged ingest and the assertions to run before ingesting anything. It uses placeholder
+addresses throughout. What a particular deployment uses is in
+`INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
 
 ## Manticore `_vectors` shards (HNSW)
 

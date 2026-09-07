@@ -240,8 +240,13 @@ not as support to rely on.
 | Kimi CLI | unverified | unverified |
 | Google Antigravity | `AGENTS.md` | unverified |
 
-Claude Code and Codex have executor and reviewer definitions. Each Codex session permits one
-sub-agent thread at a time.
+Claude Code uses Sonnet for execution and Opus for review.
+Codex uses `gpt-5.6-terra` with medium reasoning for execution and `gpt-5.6-sol` with high reasoning for review.
+Each Codex session permits one sub-agent thread at a time.
+Both harnesses give browser work instructions to the existing executor and reviewer roles.
+Those instructions require capture inspection, coverage reporting, and evidence links.
+Agents read the ignored `website/TEST_LOGIN.env` when a work package selects the local test account.
+`website/TEST_LOGIN.env.example` defines its keys without account values.
 
 ## Which model runs a pass
 

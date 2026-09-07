@@ -59,6 +59,10 @@ configure the service URLs in `.env.development` from `.env.development.example`
 `website_release_mode` in `hoover4.ini` picks between the dev server and a release build:
 `main_services/ops/Readme.md` has the comparison.
 
+Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screenshots.sh`.
+[`TEST_LOGIN.env.example`](TEST_LOGIN.env.example) defines the account input keys for agents.
+The screenshot wrapper does not load this account file automatically.
+
 ## Navigation
 
 - [Go Back](../Readme.md)
