@@ -1,0 +1,27 @@
+{
+  "mcpAllowlist": [
+    "serena:*",
+    "hoover4-web-search:*",
+    "hoover4-browser:*",
+    "hoover4-whois:*"
+  ],
+  "terminalAllowlist": [
+    "git",
+    "docker",
+    "python3",
+    "./deploy",
+    "./.agents",
+    "./main_services",
+    "./website"
+  ],
+  "autoRun": {
+    "allow_instructions": [
+      "git push, git fetch, git pull, and other git commands in this working tree are routine. The work sits on a local branch and the developer reads every diff before it is published.",
+      "Docker and container commands that operate on the local hoover4 stack are routine, including docker exec, docker compose, docker stop, docker rm, and docker volume operations.",
+      "./deploy and scripts under .agents/, main_services/, and website/ are routine.",
+      "Removing a Docker volume, image or container that belongs to the local hoover4 stack is routine, because ./deploy rebuilds them.",
+      "Renaming, moving or deleting tracked files in this working tree with git mv, git rm, or git checkout of a single named path is routine.",
+      "Terminating or cancelling a Temporal workflow in the local development stack is routine. Those workflows are development runs over disposable fixture data."
+    ]
+  }
+}

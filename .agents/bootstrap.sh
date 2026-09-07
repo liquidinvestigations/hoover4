@@ -102,8 +102,50 @@ else note "MISSING .gemini/settings.json -- start from .agents/harnesses/gemini-
 link "AGENTS.md" "GEMINI.md"
 
 echo "[6] Cursor"
-if [ -f "$REPO_ROOT/.cursor/mcp.json" ]; then note "ok      .cursor/mcp.json present"
-else note "MISSING .cursor/mcp.json -- start from .agents/harnesses/cursor-mcp.json"; fi
+copy_cursor_json() {
+    local template="$1" live="$2" strip_comment="$3"
+    if [ "$strip_comment" = 1 ]; then
+        python3 - "$template" "$live" "$APPLY" <<'PY'
+import json, sys
+from pathlib import Path
+template, live, apply_flag = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3] == "1"
+wanted = json.loads(template.read_text(encoding="utf-8"))
+wanted.pop("_comment", None)
+text = json.dumps(wanted, indent=2) + "\n"
+current = live.read_text(encoding="utf-8") if live.is_file() else ""
+rel = ".cursor/" + live.name
+if current == text:
+    print(f"  ok      {rel}")
+    raise SystemExit(0)
+if apply_flag:
+    live.parent.mkdir(parents=True, exist_ok=True)
+    live.write_text(text, encoding="utf-8")
+    print(f"  wrote   {rel}")
+else:
+    print(f"  WOULD copy {rel}")
+PY
+        return
+    fi
+    if [ -f "$live" ] && cmp -s "$template" "$live"; then
+        note "ok      ${live#$REPO_ROOT/}"
+    elif [ "$APPLY" = 1 ]; then
+        mkdir -p "$(dirname "$live")"
+        cp "$template" "$live"
+        note "wrote   ${live#$REPO_ROOT/}"
+    else
+        note "MISSING or changed ${live#$REPO_ROOT/} -- copy $template"
+    fi
+}
+copy_cursor_json "$HARNESSES/cursor-mcp.json" "$REPO_ROOT/.cursor/mcp.json" 1
+copy_cursor_json "$HARNESSES/cursor-hooks.json" "$REPO_ROOT/.cursor/hooks.json" 0
+copy_cursor_json "$HARNESSES/cursor-permissions.json" "$REPO_ROOT/.cursor/permissions.json" 0
+copy_cursor_json "$HARNESSES/cursor-cli.json" "$REPO_ROOT/.cursor/cli.json" 0
+if [ -x "$REPO_ROOT/.agents/hooks/cursor-wrap.py" ]; then
+    note "ok      .agents/hooks/cursor-wrap.py is executable"
+else
+    note "not executable: .agents/hooks/cursor-wrap.py"
+    act chmod +x "$REPO_ROOT/.agents/hooks/cursor-wrap.py"
+fi
 # Cursor rules are .mdc with their own frontmatter; generate, never duplicate.
 if [ -d "$REPO_ROOT/.agents/rules" ]; then
     for rule in "$REPO_ROOT"/.agents/rules/*.md; do
@@ -127,9 +169,36 @@ if [ -d "$REPO_ROOT/.agents/rules" ]; then
         fi
     done
 fi
+if [ "$APPLY" = 1 ]; then
+    python3 "$HARNESSES/render_cursor_agents.py" --apply
+else
+    if python3 "$HARNESSES/render_cursor_agents.py" --check >/dev/null 2>&1; then
+        note "ok      .cursor/agents matches the shared definitions"
+    else
+        note "MISSING or changed .cursor/agents -- run with --apply"
+    fi
+fi
+if python3 "$REPO_ROOT/.agents/update-cursor-config.py" --check >/dev/null 2>&1; then
+    note "ok      Cursor user privacy and MCP allow settings match the tracked template"
+else
+    note "REVIEW  Cursor user settings need an update"
+    note "        Run python3 .agents/update-cursor-config.py, then add --apply after review."
+fi
+note "Cursor reads AGENTS.md and .agents/skills directly from this checkout"
 
-echo "[7] harnesses needing a manual check on this machine"
-note "Kimi CLI / Kimi Code: config location and MCP shape not established -- check its own docs"
+echo "[7] Kimi Code"
+# Kimi reads AGENTS.md, .agents/skills and ~/.agents/skills without an adapter, so
+# only the user-level settings and MCP servers need installing.
+if python3 "$REPO_ROOT/.agents/update-kimi-config.py" --check >/dev/null 2>&1; then
+    note "ok      Kimi user settings and MCP connections match the tracked templates"
+else
+    note "REVIEW  Kimi user settings need an update"
+    note "        Run python3 .agents/update-kimi-config.py, then add --apply after review."
+fi
+note "Kimi reads AGENTS.md and .agents/skills directly from this checkout"
+note "Start a fresh Kimi session after a settings change, because hooks and permission rules load at session start"
+
+echo "[8] harnesses needing a manual check on this machine"
 note "Google Antigravity: config location and MCP shape not established -- check its own docs"
 
 echo

@@ -153,7 +153,7 @@ commands = [
 valid = (
     data.get("features", {}).get("hooks") is True
     and "experimental_use_rmcp_client" not in data.get("features", {})
-    and data.get("agents", {}).get("max_concurrent_threads_per_session") == 1
+    and data.get("agents", {}).get("max_concurrent_threads_per_session") == 2
     and set(data.get("mcp_servers", {})) == expected
     and headers.get("x-hoover4-chat-session") == "host-mcp-client"
     and headers.get("x-hoover4-user") == "host"
@@ -170,7 +170,7 @@ print("ok" if valid else "fail")
 PY
 )
 [ "$codex_config" = ok ] \
-    && ok "Codex config declares hooks, four MCP servers, headers, and one-agent concurrency" \
+    && ok "Codex config declares hooks, four MCP servers, headers, and two-agent concurrency" \
     || no "Codex config has an incorrect project setting"
 
 if command -v codex >/dev/null 2>&1; then
@@ -220,13 +220,13 @@ from pathlib import Path
 import sys
 import tomllib
 
-expected = {"executor": "medium", "reviewer": "high"}
+expected = {"executor": ("gpt-5.6-terra", "medium"), "reviewer": ("gpt-5.6-sol", "high")}
 valid = True
-for name, effort in expected.items():
+for name, (model, effort) in expected.items():
     with (Path(sys.argv[1]) / f"{name}.toml").open("rb") as handle:
         data = tomllib.load(handle)
     valid = valid and data.get("name") == name
-    valid = valid and data.get("model") == "gpt-5.6-sol"
+    valid = valid and data.get("model") == model
     valid = valid and data.get("model_reasoning_effort") == effort
     valid = valid and bool(data.get("description")) and bool(data.get("developer_instructions"))
 print("ok" if valid else "fail")
@@ -361,6 +361,167 @@ if [ "$idtest" = "ok" ] && [ "$u1" = "allow" ] && [[ "$u2" == DENY* ]] \
     ok "identifier-safe matching: easy_ocr family, underscore participle-only, novel adjective-only"
 else
     no "identifier-safe matching failed: easy=$idtest u1=$u1 u2=$u2 u2b=$u2b u3=$u3 u4=$u4 u5=$u5"
+fi
+
+# 12. Cursor project config, agent models, hook adapter, and user privacy settings.
+if python3 - "$REPO_ROOT/.cursor" "$REPO_ROOT/.agents/harnesses" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+cursor = Path(sys.argv[1])
+harness = Path(sys.argv[2])
+mcp = json.loads((cursor / "mcp.json").read_text(encoding="utf-8"))
+hooks = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))
+perms = json.loads((cursor / "permissions.json").read_text(encoding="utf-8"))
+cli = json.loads((cursor / "cli.json").read_text(encoding="utf-8"))
+spec = json.loads((harness / "cursor.json").read_text(encoding="utf-8"))
+templates_match = True
+for name, current in (("mcp", mcp), ("hooks", hooks), ("permissions", perms), ("cli", cli)):
+    template = json.loads((harness / f"cursor-{name}.json").read_text(encoding="utf-8"))
+    template.pop("_comment", None)
+    templates_match = templates_match and current == template
+expected = {"serena", "hoover4-web-search", "hoover4-browser", "hoover4-whois"}
+allow = set(perms.get("mcpAllowlist") or [])
+commands = [
+    item.get("command", "")
+    for items in (hooks.get("hooks") or {}).values()
+    for item in items
+]
+allow_text = " ".join(perms.get("autoRun", {}).get("allow_instructions") or [])
+cli_allow = set((cli.get("permissions") or {}).get("allow") or [])
+valid = (
+    templates_match
+    and "_comment" not in mcp
+    and set(mcp.get("mcpServers", {})) == expected
+    and mcp["mcpServers"]["hoover4-browser"].get("headers", {}).get("x-hoover4-user") == "host"
+    and spec.get("max_concurrent_subagents") == 2
+    and allow == {f"{name}:*" for name in expected}
+    and "git push" in allow_text
+    and "docker exec" in allow_text
+    and any("cursor-wrap.py session-start" in command for command in commands)
+    and any("cursor-wrap.py before-shell" in command for command in commands)
+    and any("cursor-wrap.py pre-tool-use" in command for command in commands)
+    and any("cursor-wrap.py subagent-start" in command for command in commands)
+    and "Mcp(serena:*)" in cli_allow
+    and "Shell(git)" in cli_allow
+    and "Shell(docker)" in cli_allow
+)
+sys.exit(0 if valid else 1)
+PY
+then
+    ok "Cursor project config declares MCP, hooks, git/docker auto-run, and two-agent concurrency"
+else
+    no "Cursor project config has an incorrect setting"
+fi
+
+if python3 "$REPO_ROOT/.agents/harnesses/render_cursor_agents.py" --check >/dev/null 2>&1; then
+    ok "Cursor organizer, executor, and reviewer pin their selected models"
+else
+    no "Cursor agent files differ from .agents/agents with Cursor model pins"
+fi
+
+if python3 "$REPO_ROOT/.agents/test-harnesses.py"; then
+    ok "Harness installer and Cursor adapter regression tests pass"
+else
+    no "Harness installer or Cursor adapter regression tests fail"
+fi
+
+wrap="$REPO_ROOT/.agents/hooks/cursor-wrap.py"
+c_bad=$(printf '%s' '{"command":"grep -rn foo ."}' | python3 "$wrap" before-shell)
+c_good=$(printf '%s' '{"command":"grep -rn foo --include=*.py ."}' | python3 "$wrap" before-shell)
+c_edit=$(printf '%s' '{"tool_name":"Write","tool_input":{"path":"docs/probe.md","contents":"This is load-bearing."}}' \
+    | python3 "$wrap" pre-tool-use)
+if printf '%s' "$c_bad" | grep -q '"permission": "deny"' \
+   && printf '%s' "$c_good" | grep -q '"permission": "allow"' \
+   && printf '%s' "$c_edit" | grep -q '"permission": "deny"'; then
+    ok "Cursor-form hook adapter denies unscoped search and banned prose"
+else
+    no "Cursor-form hook adapter produces incorrect decisions"
+fi
+
+privacy_user=$(python3 - "$REPO_ROOT/.agents/harnesses/cursor-user-permissions.json" \
+    "$REPO_ROOT/.agents/harnesses/cursor-user-settings.json" <<'PY'
+import json
+import sys
+
+perms = json.loads(open(sys.argv[1], encoding="utf-8").read())
+settings = json.loads(open(sys.argv[2], encoding="utf-8").read())
+expected = {"serena:*", "hoover4-web-search:*", "hoover4-browser:*", "hoover4-whois:*"}
+valid = (
+    set(perms.get("mcpAllowlist") or []) == expected
+    and settings.get("telemetry.telemetryLevel") == "off"
+    and "git push" in " ".join(perms.get("autoRun", {}).get("allow_instructions") or [])
+)
+print("ok" if valid else "fail")
+PY
+)
+[ "$privacy_user" = ok ] \
+    && ok "Cursor user template declares MCP allowlist, git push, and telemetry off" \
+    || no "Cursor user template has an incorrect privacy or MCP setting"
+
+if python3 "$REPO_ROOT/.agents/update-cursor-config.py" --check >/dev/null 2>&1; then
+    ok "live Cursor user privacy settings match the template"
+else
+    sk "live Cursor user privacy settings need installation after review"
+fi
+
+# 13. Kimi Code uses project MCP settings and a template for user settings.
+kimi_mcp=$(python3 - "$REPO_ROOT/.kimi-code/mcp.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as handle:
+    data = json.load(handle)
+servers = data.get("mcpServers", {})
+headers = servers.get("hoover4-browser", {}).get("headers", {})
+valid = (
+    set(servers) == {"serena", "hoover4-web-search", "hoover4-browser", "hoover4-whois"}
+    and all("url" in server for server in servers.values())
+    and headers.get("x-hoover4-chat-session") == "host-mcp-client"
+    and headers.get("x-hoover4-user") == "host"
+)
+print("ok" if valid else "fail")
+PY
+)
+[ "$kimi_mcp" = ok ] \
+    && ok "Kimi project mcp.json declares the four servers and the browser headers" \
+    || no "Kimi project mcp.json has an incorrect server entry"
+
+kimi_template=$(python3 - "$REPO_ROOT/.agents/harnesses/kimi-user.toml" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as handle:
+    data = tomllib.load(handle)
+rules = data.get("permission", {}).get("rules", [])
+hooks = data.get("hooks", [])
+owned = [rule for rule in rules if rule.get("reason") == "hoover4 harness"]
+commands = [hook.get("command", "") for hook in hooks]
+valid = (
+    data.get("telemetry") is False
+    and data.get("default_permission_mode") == "auto"
+    and data.get("background", {}).get("max_running_tasks") == 2
+    and len(owned) == 8
+    and len(hooks) == 5
+    and all(".agents/hooks" in command for command in commands)
+    and all("git rev-parse --show-toplevel" in command for command in commands)
+)
+print("ok" if valid else "fail")
+PY
+)
+[ "$kimi_template" = ok ] \
+    && ok "Kimi user template declares privacy, auto mode, concurrency and the five hooks" \
+    || no "Kimi user template has an incorrect setting"
+
+if [ -d "$HOME/.kimi-code" ]; then
+    if python3 "$REPO_ROOT/.agents/update-kimi-config.py" --check >/dev/null 2>&1; then
+        ok "live Kimi user settings match the tracked templates"
+    else
+        no "live Kimi user settings differ from the templates -- run .agents/update-kimi-config.py --apply"
+    fi
+else
+    sk "Kimi Code data directory is not present on this machine"
 fi
 
 echo "---- $pass passed, $fail failed, $skip skipped"

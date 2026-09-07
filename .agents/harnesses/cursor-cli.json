@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(git)",
+      "Shell(docker)",
+      "Shell(python3)",
+      "Mcp(serena:*)",
+      "Mcp(hoover4-web-search:*)",
+      "Mcp(hoover4-browser:*)",
+      "Mcp(hoover4-whois:*)"
+    ],
+    "deny": []
+  }
+}

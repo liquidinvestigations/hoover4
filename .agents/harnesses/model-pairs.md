@@ -4,7 +4,8 @@
 families here have shipped a new flagship every few weeks, so read this table as a shortlist and
 qualify an executor by running it, never by its position on a leaderboard.
 
-Nothing else in the tracked tree names a model. When a name changes, this file is the only edit.
+The harness configuration files and agent definitions contain the model identifiers.
+Update their identifiers and this table together when a configured model changes.
 
 ## The pairs
 
@@ -17,8 +18,9 @@ Nothing else in the tracked tree names a model. When a name changes, this file i
 | Antigravity | Gemini Flash, current line | Gemini Flash, current line | large |
 | Qwen Code | Qwen3.5 Plus | Qwen3.5 Flash | 1M on Plus |
 
-Only the Claude Code row runs work here. The rest are recorded so a person setting one up starts
-from a shortlist.
+Claude Code, Codex, and Cursor have project agent definitions.
+Kimi model selection stays in the user configuration.
+The other rows provide a shortlist for configuration.
 
 ## Four things the table does not make clear
 

@@ -1,0 +1,15 @@
+{
+  "_comment": "This file defines Cursor models and the concurrency cap. The renderer copies models into generated agent files. The hook adapter reads the cap.",
+  "max_concurrent_subagents": 2,
+  "passthrough_subagent_types": ["explore", "shell", "bash", "browser"],
+  "models": {
+    "organizer": "cursor-grok-4.6-xhigh",
+    "reviewer": "cursor-grok-4.6-xhigh",
+    "executor": "composer-2.5[fast=false]"
+  },
+  "agent_extra": {
+    "reviewer": {
+      "readonly": true
+    }
+  }
+}

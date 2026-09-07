@@ -1,0 +1,87 @@
+# Kimi Code user settings template. The installer copies the marked block into the
+# live config and upserts the two scalars, and never touches provider or model tables.
+#
+#   python3 .agents/update-kimi-config.py --check   report drift, change nothing
+#   python3 .agents/update-kimi-config.py --apply   install after review
+#
+# Permission rules carry reason = "hoover4 harness" so the installer can replace
+# them without touching rules a person added by hand.
+
+telemetry = false
+default_permission_mode = "auto"
+
+# BEGIN hoover4 harness (managed by .agents/update-kimi-config.py -- do not edit)
+[background]
+# The only concurrency knob Kimi exposes. It caps parallel subagents and
+# background Bash tasks together.
+max_running_tasks = 2
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash(git *)"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash(docker *)"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash(docker-compose *)"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash(./deploy *)"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "mcp__serena__*"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "mcp__hoover4-web-search__*"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "mcp__hoover4-browser__*"
+reason = "hoover4 harness"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "mcp__hoover4-whois__*"
+reason = "hoover4 harness"
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; [ -f "$root/.agents/hooks/deny-unscoped-search.py" ] || exit 0; exec python3 "$root/.agents/hooks/deny-unscoped-search.py"'
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; [ -f "$root/.agents/hooks/deny-long-commit-message.py" ] || exit 0; exec python3 "$root/.agents/hooks/deny-long-commit-message.py"'
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Edit|Write"
+command = 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; [ -f "$root/.agents/hooks/deny-claudisms.py" ] || exit 0; exec python3 "$root/.agents/hooks/deny-claudisms.py"'
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+command = 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; [ -f "$root/.agents/hooks/warn-tool-call-budget.py" ] || exit 0; exec python3 "$root/.agents/hooks/warn-tool-call-budget.py"'
+timeout = 10
+
+[[hooks]]
+event = "SessionStart"
+matcher = "startup|resume"
+command = 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; [ -f "$root/.agents/hooks/session-start-orientation.sh" ] || exit 0; exec "$root/.agents/hooks/session-start-orientation.sh"'
+timeout = 10
+# END hoover4 harness

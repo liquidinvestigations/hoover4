@@ -1,0 +1,14 @@
+{
+  "mcpAllowlist": [
+    "serena:*",
+    "hoover4-web-search:*",
+    "hoover4-browser:*",
+    "hoover4-whois:*"
+  ],
+  "autoRun": {
+    "allow_instructions": [
+      "git push, git fetch, git pull, and other git commands on a local branch the developer owns are routine.",
+      "Docker and container commands that operate on a local development stack the developer owns are routine, including docker exec, docker compose, docker stop, docker rm, and docker volume operations."
+    ]
+  }
+}

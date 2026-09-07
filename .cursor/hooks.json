@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py session-start",
+        "timeout": 10
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py before-shell",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py pre-tool-use",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py post-tool-use",
+        "timeout": 10
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py subagent-start",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "python3 .agents/hooks/cursor-wrap.py subagent-stop",
+        "timeout": 10
+      }
+    ]
+  }
+}

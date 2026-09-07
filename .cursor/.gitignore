@@ -1,0 +1,9 @@
+# Generated adapters stay out. Tracked files are the ones Cursor reads as project config.
+*
+!.gitignore
+!mcp.json
+!hooks.json
+!permissions.json
+!cli.json
+!agents
+!agents/**

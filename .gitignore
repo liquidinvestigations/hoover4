@@ -36,3 +36,6 @@ external/
 **/__pycache__
 __pycache__
 *.pyc
+
+# Kimi Code writes machine-local workspace data here
+.kimi-code/local.toml

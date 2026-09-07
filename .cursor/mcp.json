@@ -1,5 +1,4 @@
 {
-  "_comment": "Cursor project MCP list. Copy to .cursor/mcp.json without this key. A remote server is a bare url. Cursor reads AGENTS.md, .agents/skills, and .cursor/rules/*.mdc. bootstrap.sh generates the .mdc wrappers from .agents/rules. MCP auto-approval lives in permissions.json, not here.",
   "mcpServers": {
     "serena": {
       "url": "http://127.0.0.1:21940/mcp"

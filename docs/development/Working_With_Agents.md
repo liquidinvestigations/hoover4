@@ -38,7 +38,8 @@ or in the `SessionStart` hook's `compact` path.
 ## The layout
 
 `.agents/` is the single source of truth. Everything under `.claude/` is a symlink into it,
-so no file is authored twice.
+so no file is authored twice. Cursor reads `AGENTS.md` and `.agents/skills` directly, and
+keeps generated adapters under `.cursor/`.
 
 ```
 .agents/
@@ -46,6 +47,7 @@ so no file is authored twice.
   rules/<name>.md               paths:-gated
   hooks/*.py|*.sh               real executables, run from here by absolute path
   harnesses/                    reference config per harness, copied out by bootstrap.sh
+  agents/*.md                   organizer, executor, and reviewer
   bootstrap.sh                  wires the per-harness adapters
   verify-wiring.sh              proves the wiring, in well under a minute
 .claude/skills    -> ../.agents/skills          directory symlink
@@ -53,6 +55,11 @@ so no file is authored twice.
 .claude/settings.json                           declares the hooks by their .agents/ path
 .codex/config.toml                               Codex project settings and hook commands
 .codex/agents/*.toml                             Codex executor and reviewer definitions
+.cursor/mcp.json                                Cursor MCP servers
+.cursor/hooks.json                              Cursor hook commands, via cursor-wrap.py
+.cursor/permissions.json                        Cursor Auto-review and MCP allowlist
+.cursor/cli.json                                Cursor CLI allowlist for this checkout
+.cursor/agents/*.md                             generated from .agents/agents with Cursor models
 AGENTS.md                                       the shared root instruction file
 CLAUDE.md                                       one line: @AGENTS.md
 ```
@@ -75,6 +82,23 @@ Codex reads `.codex/config.toml`, `AGENTS.md`, and `.agents/skills` from the che
 project config matches `.agents/harnesses/codex.toml`. Codex user privacy settings stay in
 the user config. Review `.agents/harnesses/codex-user.toml`, then run
 `python3 .agents/update-codex-config.py --apply` to merge its controlled values.
+
+Cursor reads `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
+`.cursor/cli.json`, `AGENTS.md`, and `.agents/skills` from the checkout. Agent files under
+`.cursor/agents/` are generated from `.agents/agents/` with Cursor model names.
+`.cursor/rules/*.mdc` is generated from `.agents/rules/` and is not tracked.
+Cursor user privacy settings, the MCP allowlist, and host-specific Auto-review text stay
+in the user config. Review `.agents/harnesses/cursor-user-permissions.json`, then run
+`python3 .agents/update-cursor-config.py --apply` to merge its controlled values. The
+installer copies Auto-review environment text from the live Claude user settings, because
+that text names hosts and must not be tracked.
+The installer preserves strings when it reads JSONC comments and trailing commas.
+The hook adapter serializes counter updates to enforce the configured sub-agent cap.
+`python3 .agents/test-harnesses.py` verifies adapters and installers with temporary files.
+
+The parent chat model is selected in Cursor's model picker.
+The generated organizer definition controls the organizer sub-agent model.
+Account Privacy Mode is separate from the tracked telemetry setting.
 
 Directory symlinks do not work on Windows. That is why the core also names the literal
 skills path in prose: a harness that cannot follow the symlink still learns where the skills
@@ -139,7 +163,10 @@ instruction names it.
 ## Hooks
 
 Claude declares five hooks. Codex declares the first four because its tool event has no
-sub-agent identifier for the budget hook. Each rule also appears in `AGENTS.md`.
+sub-agent identifier for the budget hook. Cursor runs the same five through
+`.agents/hooks/cursor-wrap.py`, and adds a `subagentStart` cap of two counted sub-agents.
+Cursor injects the orientation text on a new conversation. Compaction does not re-run that hook.
+Each rule also appears in `AGENTS.md`.
 
 | hook | event | what it denies |
 |---|---|---|
@@ -221,8 +248,8 @@ operational detail.
 | OpenAI Codex CLI | `AGENTS.md`, no import expansion | native `.agents/skills`, verified | no automatic loader | `[mcp_servers.NAME]`, streamable HTTP | four hooks in `.codex/config.toml` |
 | opencode | `AGENTS.md` | native `.agents/skills/<name>/SKILL.md`; unknown frontmatter keys ignored | unverified | `opencode.json` remote entries | unverified |
 | Gemini CLI | `GEMINI.md` | none | none | `.gemini/settings.json`, `httpUrl` | none |
-| Cursor | `.cursor/rules/*.mdc`, generated from the shared rules | unverified | `.mdc` with `globs:` | `.cursor/mcp.json` | none |
-| Kimi CLI | unverified | unverified | unverified | unverified | unverified |
+| Cursor | `AGENTS.md` plus generated `.cursor/rules/*.mdc` | native `.agents/skills` | `.mdc` with `globs:` | `.cursor/mcp.json` | shared hooks via `.cursor/hooks.json` |
+| Kimi Code | `AGENTS.md`, no import expansion | native `.agents/skills` and `~/.agents/skills` | no automatic loader | `.kimi-code/mcp.json` project file plus user `mcp.json`, streamable HTTP | User `config.toml` declares five hooks, permission rules, and privacy settings. Session dispatch requires verification. |
 | Google Antigravity | unverified | unverified | unverified | unverified | unverified |
 
 Rows marked unverified are exactly that: nobody has run them here. Treat them as work to do,
@@ -235,15 +262,19 @@ not as support to rely on.
 | Claude Code | `.claude/agents/*.md`, a symlink to `.agents/agents/` | `model` in frontmatter, with `effort` and `maxTurns` |
 | OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort` |
 | opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
-| Cursor | reads `.agents/skills/` directly | unverified |
+| Cursor | `.cursor/agents/*.md`, generated from `.agents/agents/` | `model` in frontmatter |
 | Gemini CLI | `GEMINI.md` | unverified |
-| Kimi CLI | unverified | unverified |
+| Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
 | Google Antigravity | `AGENTS.md` | unverified |
 
 Claude Code uses Sonnet for execution and Opus for review.
 Codex uses `gpt-5.6-terra` with medium reasoning for execution and `gpt-5.6-sol` with high reasoning for review.
-Each Codex session permits one sub-agent thread at a time.
-Both harnesses give browser work instructions to the existing executor and reviewer roles.
+Cursor uses Composer 2.5 for execution and Grok 4.6 Extra High for organizing and review.
+Each Codex session permits two sub-agent threads at a time.
+Each Cursor workspace permits two counted sub-agents at a time. Built-in explore, shell, and browser sub-agents are not counted.
+Each Kimi Code session permits two counted background tasks at a time, sub-agents and background shells together.
+These configuration limits do not replace the repository instruction to run sub-agent passes one at a time.
+Claude Code, Codex, and Cursor give browser work instructions to the existing executor and reviewer roles.
 Those instructions require capture inspection, coverage reporting, and evidence links.
 Agents read the ignored `website/TEST_LOGIN.env` when a work package selects the local test account.
 `website/TEST_LOGIN.env.example` defines its keys without account values.
@@ -337,14 +368,16 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
 ## Publication and privacy
 
 **All of this is tracked and public**: `.agents/`, `.codex/`, the two `.claude/` symlinks,
-`.claude/settings.json`, `AGENTS.md` and `CLAUDE.md`. Git is the backup, and a fresh
-checkout has the whole configuration already: `bootstrap.sh` only creates the machine-local
-per-harness adapters on top of it.
+`.claude/settings.json`, `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
+`.cursor/cli.json`, `.cursor/agents/`, `.kimi-code/mcp.json`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. Git is the backup, and a
+fresh checkout has the whole configuration already: `bootstrap.sh` only creates the
+machine-local per-harness adapters on top of it.
 
 Deliberately not tracked: `.claude/settings.local.json`, `CLAUDE.local.md`, `hoover4.ini`,
-`INFRASTRUCTURE_INVENTORY.md`, and the live user file at `~/.codex/config.toml`. The tracked
-Codex user template contains only privacy and local-history settings. The installer preserves
-unrelated user settings when it merges those controlled values.
+`INFRASTRUCTURE_INVENTORY.md`, the live user file at `~/.codex/config.toml`, and the live
+Cursor user files under `~/.cursor/` and `~/.config/Cursor/`, and Kimi user files under `~/.kimi-code/`.
+The tracked user templates contain generic harness, privacy, permission, and local-history settings.
+The installers preserve unrelated user settings when they merge those controlled values.
 
 Because they are public, **skills and rules carry the same secrecy rule as `docs/`**: no
 hostname, no address, no port that identifies a real host, no credential, no description of
