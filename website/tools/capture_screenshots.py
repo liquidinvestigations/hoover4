@@ -1,8 +1,11 @@
-"""Drive the hoover4 UI in a real browser and capture a screenshot + snapshot per page.
+"""Drive the hoover4 UI in a real browser and capture PNGs and DOM snapshots for a scenario list.
 
 Runs INSIDE `hoover4-mcp-browser`, which is the only container with a Chromium and
 `nodriver` installed. It is invoked by `website/take-screenshots.sh`, which copies this
-file and the ini in, runs it, and copies the output back out.
+file and the ini in, runs it, and copies the output back out. Read
+`website/take-screenshots.sh` first: it resolves the target, the credentials, the output
+run directory and the run lock, and passes the results here through arguments and
+environment variables. This file never reads `TEST_LOGIN.env` itself.
 
 Why not the browser MCP endpoint
 --------------------------------
@@ -10,45 +13,55 @@ That container's MCP router refuses internal hosts at two independent layers -- 
 explicit deny-list in `urlcheck.py` and a PAC script handed to Chromium in `netfilter.py`
 -- so `hoover4-development-auth-backdoor` is unreachable through it *by design*. This
 script launches its own Chromium with neither, which is the same route a screenshot
-taken by hand would use. It does not touch, relax or import the MCP server's
-filtering.
+taken by hand would use. It does not touch, relax or import the MCP server's filtering.
 
-What comes out, per page
-------------------------
-* ``NN-name.png``          -- what a person would see
-* ``NN-name.snapshot.txt`` -- a text outline of the rendered DOM: role, name and visible
-  text, one element per line, indented by depth. Diffable, greppable, and the thing that
-  says *why* a screenshot looks wrong.
-* ``report.md``            -- the index, with each page's URL, actions, verdict and the
-  reason behind it.
+What comes out, per run directory
+----------------------------------
+* ``<resolution>/NN-name.png``          -- what a person would see, at an exact pixel size
+* ``<resolution>/NN-name.snapshot.txt`` -- a text outline of the rendered DOM plus the
+  page's observations
+* ``<resolution>/NN-name.FAILED.png``   -- the state at the moment an action raised
+* ``<resolution>/NN-name.FAILED.snapshot.txt`` -- the rendered DOM outline at that same
+  moment, same shape as the passing snapshot
+* ``<resolution>/NN-name.full_page.png``-- present only when the scenario asks for it, a
+  supplementary image taller than the requested size
+* ``diagnostics/<resolution>__NN-name.json`` -- console and network records for that
+  capture, written whether the capture passed or raised
+* ``diagnostics/<resolution>__NN-name.exception.txt`` -- present only when the capture
+  raised: the exception and its full traceback
+* ``manifest.json``, ``report.md``, ``report.html`` -- see their own generators below
 
 This is a gate, not a photographer
-----------------------------------
-A page fails, and the run exits non-zero, when any of these hold:
+-----------------------------------
+Every observation on a page is classified into one of six severities, and the run's exit
+status follows from the worst one seen:
 
-* **An error marker is in the DOM.** Every place the UI shows a user an error carries the
-  class ``x-error-display`` (``frontend/src/components/error_boundary.rs``). Matching on a
-  class rather than on words is what makes this reliable: "Error" is also a column header, and a
-  raw ``ServerError { .. }`` debug string is not a phrase anyone can enumerate.
-  Admin form errors carry ``x-error-bar`` instead and are reported as warnings, because a
-  form rejecting bad input is the panel working.
-* **A response was not 200** -- the main document, or any subresource. A broken server fn
-  presents exactly as a ``POST /api/...`` that 500s, with a page that still looks fine.
-* **A console error that no whitelist covers.** Console *warnings* are reported but never
-  fail; one of them is a bad-CSS warning whose text starts with "Error:", which is why the
-  report has to show warnings at all.
+* ``application_error``    -- an unexpected missing page, a non-200 main document, an
+  ``.x-error-display`` marker, or an ``.x-error-bar`` no scenario declared -- exit 1
+* ``expected_outcome``     -- a negative state a scenario declared with ``expect`` (or the
+  older ``allow_error_markers``) -- exit 0
+* ``trace``                -- a count or a selected document that differs from an earlier
+  run -- exit 0 (no producer in this runner yet; adaptive selection lands in a later pass)
+* ``behavioral_warning``   -- a find term with no match, or a control with no observable
+  effect -- exit 0 (no producer in this runner yet, same reason)
+* ``diagnostic_warning``   -- a console error or warning, a failed or non-200 subresource
+  request, or a request to an origin outside the site -- exit 0
+* ``incomplete_execution`` -- no suitable document, a failed login, a stopped browser, or a
+  capture that could not be written -- exit 2, unless an application error also occurred
 
 Per-page exemptions live in the ini: ``allow_error_markers``, ``allow_http_errors``,
-``allow_console`` (a substring, one per line). Run-wide console exceptions live in
-``console_whitelist.txt``; whitelisted matches still print, as warnings.
+``allow_console`` (a substring, one per line) demote a specific observation the way they
+always have. ``expect`` (values ``missing_page``, ``error_display``, ``error_bar``) is the
+newer, explicit form: it asserts a scenario expects that negative state, and reclassifies
+it as ``expected_outcome`` rather than merely suppressing it. Use ``expect`` for a scenario
+built to demonstrate the state; keep ``allow_*`` for a known, unrelated exemption.
 
-A page tied to a fixture dataset -- one that names a document or a count only
-``main_services/verify-stack.sh``'s corpus produces -- names it in ``requires_dataset``.
-Away from that corpus such a page is skipped, with the missing dataset in the report,
-rather than failed for a reason that reads as a broken site. ``requires_dataset`` is
-checked against the site's own storage tree; ``HOOVER4_SCREENSHOT_PRESENT_DATASETS``
-(comma-separated dataset names) overrides that check, which is how a run simulates an
-absent corpus without deleting or un-ingesting anything.
+Run-wide console exceptions live in ``console_whitelist.txt``; a whitelisted match is still
+a ``diagnostic_warning`` (every console entry is, under this table) but is labelled with the
+rule that excused it.
+
+A page tied to a fixture dataset names it in ``requires_dataset``, exactly as before. Away
+from that corpus such a page is skipped, with the missing dataset in the report.
 """
 
 from __future__ import annotations
@@ -60,9 +73,9 @@ import configparser
 import json
 import os
 import re
-import shutil
 import sys
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -73,14 +86,41 @@ from urllib.parse import urlsplit
 DEFAULT_BASE_URL = os.environ.get(
     "HOOVER4_SITE_URL", "http://hoover4-development-auth-backdoor:8080"
 )
-DEFAULT_VIEWPORT = (1280, 900)
+
 # Chromium in this image takes 5-6s to come up cold; nodriver's own budget is ~2.7s, so
 # the first navigation is given room rather than the browser start.
 PAGE_TIMEOUT_S = 30.0
 
+# Named sizes `--resolutions` may select. `set_device_metrics_override` is what makes
+# these exact -- `tab.set_window_size` sets the OUTER window and does not establish the
+# image size; a 1280x900 request measured 1280x813 through that path.
+RESOLUTIONS: dict[str, tuple[int, int]] = {
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+}
+DEFAULT_RESOLUTIONS = "720p,1080p"
+
 # The four datasets `main_services/verify-stack.sh` always ingests. A page's
 # `requires_dataset = any` is satisfied by any one of these.
 CORPUS_DATASETS = ("testdata_testfiles", "testdata_zips", "testdata_shapes", "other_emails")
+
+# The six severities a capture can report, in the order the report lists them.
+# Exit status: 1 if any APPLICATION_ERROR, else 2 if any INCOMPLETE_EXECUTION, else 0.
+APPLICATION_ERROR = "application_error"
+EXPECTED_OUTCOME = "expected_outcome"
+TRACE = "trace"
+BEHAVIORAL_WARNING = "behavioral_warning"
+DIAGNOSTIC_WARNING = "diagnostic_warning"
+INCOMPLETE_EXECUTION = "incomplete_execution"
+ALL_SEVERITIES = (
+    APPLICATION_ERROR,
+    EXPECTED_OUTCOME,
+    TRACE,
+    BEHAVIORAL_WARNING,
+    DIAGNOSTIC_WARNING,
+    INCOMPLETE_EXECUTION,
+)
+EXPECT_VALUES = ("missing_page", "error_display", "error_bar")
 
 
 # ---------------------------------------------------------------------------------
@@ -92,7 +132,6 @@ class Page:
     name: str
     url: str
     actions: list[tuple[str, str]] = field(default_factory=list)
-    viewport: tuple[int, int] = DEFAULT_VIEWPORT
     full_page: bool = False
     settle_ms: int = 700
     # Opt-outs. A page that deliberately demonstrates a failure still has to be captured,
@@ -100,6 +139,20 @@ class Page:
     allow_error_markers: bool = False
     allow_http_errors: bool = False
     allow_console: list[str] = field(default_factory=list)
+    # The newer, explicit form of the same idea: which negative states this scenario
+    # expects to observe. See the module docstring for how this differs from `allow_*`.
+    expect: list[str] = field(default_factory=list)
+    # Extra captures at recorded scroll offsets (pixels), for a page taller than the
+    # viewport. Each runs at the same exact size as the primary capture.
+    scroll_captures: list[int] = field(default_factory=list)
+    # A declared WIDTHxHEIGHT that replaces the run's resolution list for this one
+    # scenario, such as a narrow-width layout test. `None` means the run's resolution
+    # list applies, unchanged.
+    viewport: tuple[int, int] | None = None
+    # The stable filename docs/user-manual/User_Manual.md links for this scenario's
+    # capture, when it produces one of the manual's images. Empty means this scenario
+    # produces no manual image.
+    manual_asset: str = ""
     # Datasets this page's route or assertions are tied to. Several means all of them are
     # needed; the literal "any" means one of CORPUS_DATASETS, unnamed. Empty means the page
     # renders without the fixture corpus.
@@ -111,18 +164,33 @@ def parse_pages(ini_path: Path) -> list[Page]:
     parser.optionxform = str
     parser.read(ini_path, encoding="utf-8")
 
-    defaults = parser["DEFAULT"] if parser.has_section("DEFAULT") else {}
     pages: list[Page] = []
     for name in parser.sections():
         section = parser[name]
-        viewport = section.get("viewport", defaults.get("viewport", "1280x900"))
-        width, _, height = viewport.partition("x")
+        expect = [
+            v.strip()
+            for v in section.get("expect", "").split(",")
+            if v.strip()
+        ]
+        for value in expect:
+            if value not in EXPECT_VALUES:
+                raise SystemExit(
+                    f"scenario {name!r}: expect={value!r} is not one of {EXPECT_VALUES}"
+                )
+        viewport_raw = section.get("viewport", "").strip()
+        viewport: tuple[int, int] | None = None
+        if viewport_raw:
+            vw, _, vh = viewport_raw.partition("x")
+            if not vw.isdigit() or not vh.isdigit():
+                raise SystemExit(
+                    f"scenario {name!r}: viewport={viewport_raw!r} is not WIDTHxHEIGHT"
+                )
+            viewport = (int(vw), int(vh))
         pages.append(
             Page(
                 name=name,
                 url=section.get("url", "/"),
                 actions=parse_actions(section.get("actions", "")),
-                viewport=(int(width), int(height)),
                 full_page=section.getboolean("full_page", fallback=False),
                 settle_ms=section.getint("settle_ms", fallback=700),
                 allow_error_markers=section.getboolean("allow_error_markers", fallback=False),
@@ -132,22 +200,26 @@ def parse_pages(ini_path: Path) -> list[Page]:
                     for line in section.get("allow_console", "").splitlines()
                     if line.strip()
                 ],
+                expect=expect,
+                scroll_captures=[
+                    int(v.strip())
+                    for v in section.get("scroll_captures", "").split(",")
+                    if v.strip()
+                ],
                 requires_dataset=[
                     d.strip()
                     for d in section.get("requires_dataset", "").split(",")
                     if d.strip()
                 ],
+                viewport=viewport,
+                manual_asset=section.get("manual_asset", "").strip(),
             )
         )
     return pages
 
 
 def missing_datasets(page: Page, present: set[str]) -> list[str]:
-    """The datasets `page` needs that are not in `present`, or `[]` if it can run.
-
-    `any` is satisfied by one of CORPUS_DATASETS; anything else is a literal dataset name
-    and every one named must be present.
-    """
+    """The datasets `page` needs that are not in `present`, or `[]` if it can run."""
     if not page.requires_dataset:
         return []
     if page.requires_dataset == ["any"]:
@@ -168,11 +240,7 @@ def parse_actions(raw: str) -> list[tuple[str, str]]:
 
 
 def parse_whitelist(path: Path) -> list[tuple[str, object]]:
-    """Console-error exceptions: one plain substring per line, or ``re:`` + a regex.
-
-    Returned as (source line, matcher) so the report can name the rule that excused a
-    message -- a whitelist you cannot attribute is a whitelist nobody dares to shrink.
-    """
+    """Console-error exceptions: one plain substring per line, or ``re:`` + a regex."""
     rules: list[tuple[str, object]] = []
     if not path.exists():
         return rules
@@ -215,6 +283,22 @@ async def js(tab, expression: str):
     return json.loads(payload)
 
 
+async def js_async(tab, expression: str):
+    """Like `js`, for an expression that needs `await` -- a `fetch`, for instance.
+
+    `await` only appears inside the IIFE body; the outer expression is the async
+    function's own call, chained into `JSON.stringify` so CDP's `awaitPromise` resolves
+    the whole thing to a string. A bare top-level `await` is a `ReferenceError` in a
+    classic (non-module) `Runtime.evaluate`, which is what an outer `await` produced here.
+    """
+    payload = await tab.evaluate(
+        f"(async () => {{ {expression} }})().then(JSON.stringify)", await_promise=True
+    )
+    if not isinstance(payload, str):
+        raise RuntimeError(f"script did not return a JSON string: {payload!r}")
+    return json.loads(payload)
+
+
 async def click_text(tab, needle: str, scope: str = "body") -> None:
     """Click the deepest visible element whose text contains `needle`.
 
@@ -231,9 +315,6 @@ const visible = nodes.filter(n => n.offsetParent !== null);
 const matches = visible.filter(n => (n.innerText || '').trim().includes(needle));
 const deepest = matches.filter(n => !matches.some(m => m !== n && n.contains(m)));
 const target = deepest[0] || matches[0];
-// Diagnostics, not decoration: "no element containing X" is unactionable, while
-// "the scope holds 0 nodes" and "the scope holds 400 nodes, none matching" point at
-// two completely different mistakes.
 if (!target) return {ok: false, scoped: !!document.querySelector(%s), nodes: nodes.length, visible: visible.length};
 target.scrollIntoView({block: 'center'});
 target.click();
@@ -302,12 +383,7 @@ async def press_enter(tab) -> None:
 
 
 async def wait_text(tab, needle: str, scope: str = "body", timeout: float = PAGE_TIMEOUT_S) -> None:
-    """Wait for text to appear, optionally only inside `scope`.
-
-    The scoped form is what a modal needs. Its panes load over the network while the page
-    behind it already shows the same words, so an unscoped wait is satisfied instantly by
-    the wrong element and the click that follows lands on an empty pane.
-    """
+    """Wait for text to appear, optionally only inside `scope`."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         hit = await js(tab, """
@@ -385,15 +461,15 @@ function label(el) {
     const title = el.getAttribute('title'); if (title) bits.push('[title=' + title.slice(0, 120) + ']');
     if (el.tagName === 'INPUT') {
         bits.push('[type=' + (el.type || '') + ']');
-        if (el.value) bits.push('[value=' + el.value.slice(0, 60) + ']');
+        // A password value is never written into a snapshot, even redacted-length: the
+        // length alone leaks something about the credential.
+        if (el.value) bits.push('[value=' + (el.type === 'password' ? '(redacted)' : el.value.slice(0, 60)) + ']');
         if (el.placeholder) bits.push('[placeholder=' + el.placeholder + ']');
     }
     if (el.tagName === 'A' && el.getAttribute('href')) bits.push('[href=' + el.getAttribute('href').slice(0, 120) + ']');
     return bits.join('');
 }
 function own(el) {
-    // Text belonging to this element and not to a child, so a nested tree does not
-    // repeat every leaf's words at every level above it.
     let text = '';
     for (const node of el.childNodes) {
         if (node.nodeType === 3) text += node.textContent;
@@ -426,8 +502,37 @@ async def screenshot(tab, full_page: bool) -> bytes:
     return base64.b64decode(data) if isinstance(data, str) else bytes(data)
 
 
+def png_dimensions(data: bytes) -> tuple[int, int]:
+    """Read width and height straight out of the PNG's own `IHDR` chunk.
+
+    This is the only check that holds: `tab.set_window_size` measured 1280x813 for a
+    1280x900 request, so the outer window size proves nothing about the saved image.
+    """
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise ValueError("not a PNG, or has no leading IHDR chunk")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    return width, height
+
+
+async def set_exact_viewport(tab, width: int, height: int) -> None:
+    """The CDP device-metrics override, not the outer window. See `png_dimensions`."""
+    import nodriver.cdp.emulation as emulation_cdp
+
+    await tab.send(
+        emulation_cdp.set_device_metrics_override(
+            width=width, height=height, device_scale_factor=1, mobile=False,
+        )
+    )
+
+
+async def measured_viewport(tab) -> tuple[int, int]:
+    size = await js(tab, "return {w: window.innerWidth, h: window.innerHeight};")
+    return size["w"], size["h"]
+
+
 # ---------------------------------------------------------------------------------
-# The three gates
+# The gates
 # ---------------------------------------------------------------------------------
 
 # Installed as a new-document script, so it is in place before the WASM bundle boots and
@@ -454,7 +559,6 @@ if (!window.__h4_console_hooked) {
 MARKER_JS = r"""
 function texts(selector) {
     const all = Array.from(document.querySelectorAll(selector));
-    // An error box nested inside another would otherwise be counted, and quoted, twice.
     const outer = all.filter(n => !all.some(m => m !== n && m.contains(n)));
     return outer.map(n => (n.innerText || n.textContent || '').replace(/\s+/g, ' ').trim());
 }
@@ -467,13 +571,15 @@ class NetworkLog:
     """Per-page HTTP record, cleared before each navigation."""
 
     document: tuple[str, int] | None = None
+    #: subresource-level problems: a bad status, a failed request, or a request outside
+    #: the site's own origin. Always a `diagnostic_warning` -- see `judge`.
     bad: list[str] = field(default_factory=list)
-    #: server-function name -> requests issued while this page was being captured.
-    #: Not a gate (a page that legitimately loads more is not a failure) but the number
-    #: that makes a query storm visible: a tree that fetched per row rather than per
-    #: expansion showed up here as tens of identical calls before it showed up anywhere
-    #: else.
     api_calls: dict[str, int] = field(default_factory=dict)
+    #: server-function name -> (method, first full URL seen for it). NOT reset by
+    #: `clear()`, because the identity check runs once, before the per-page loop starts
+    #: clearing everything else, and still needs to find `whoami`'s call afterwards. The
+    #: method matters: a server function Dioxus mounts as POST answers a GET with 405.
+    known_urls: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def clear(self) -> None:
         self.document = None
@@ -494,12 +600,7 @@ class NetworkLog:
 
 
 def api_function_name(url: str) -> str | None:
-    """The server-function name in a `/api/<name><hash>` URL, or None.
-
-    Dioxus mounts server functions at the function name followed by a decimal content
-    hash, so the trailing digits are stripped to keep one bucket per function across
-    rebuilds.
-    """
+    """The server-function name in a `/api/<name><hash>` URL, or None."""
     path = urlsplit(url).path
     if not path.startswith("/api/"):
         return None
@@ -508,20 +609,10 @@ def api_function_name(url: str) -> str | None:
 
 
 async def watch_network(tab, site_host: str) -> NetworkLog:
-    """Record response statuses through CDP for the life of the tab.
-
-    Resource-timing entries would be simpler, but they do not exist for a request that
-    never got a response, and "the server fn connection died" is a failure worth naming.
-
-    `site_host` is the hostname of the page under test. A request whose host differs
-    reaches a server outside this deployment, which the offline UI must never do, so it
-    fails the page rather than passing unseen.
-    """
+    """Record response statuses through CDP for the life of the tab."""
     import nodriver.cdp.network as network_cdp
 
     log = NetworkLog()
-    # requestId -> "METHOD url", so a failure line says which call broke rather than
-    # quoting an opaque id. ResponseReceived carries no method of its own.
     sent: dict[str, str] = {}
 
     def on_request(event, _connection=None):
@@ -530,14 +621,13 @@ async def watch_network(tab, site_host: str) -> NetworkLog:
         name = api_function_name(url)
         if name is not None:
             log.api_calls[name] = log.api_calls.get(name, 0) + 1
+            log.known_urls.setdefault(name, (event.request.method, url))
         host = urlsplit(url).hostname
         if host is not None and host != site_host:
             log.bad.append(f"outbound request to {url}")
 
     def on_response(event, _connection=None):
         if event.type_ is network_cdp.ResourceType.DOCUMENT and log.document is None:
-            # The top-level navigation, reported on its own line; everything after it is
-            # a subresource and would otherwise say the same thing twice.
             log.document = (event.response.url, event.response.status)
             return
         if event.response.status >= 400:
@@ -563,38 +653,77 @@ def judge(
     console: list[dict],
     network: NetworkLog,
     whitelist: list[tuple[str, object]],
-) -> tuple[list[str], list[str]]:
-    """Turn everything observed on one page into (failures, warnings)."""
-    problems: list[str] = []
-    warnings: list[str] = []
+) -> list[tuple[str, str]]:
+    """Turn everything observed on one capture into a list of (severity, message)."""
+    out: list[tuple[str, str]] = []
 
     for text in markers.get("displays", []):
         line = f"error marker: {text[:300] or '(empty)'}"
-        (warnings if page.allow_error_markers else problems).append(line)
+        if page.allow_error_markers or "error_display" in page.expect:
+            out.append((EXPECTED_OUTCOME, line))
+        else:
+            out.append((APPLICATION_ERROR, line))
+
     for text in markers.get("bars", []):
-        warnings.append(f"admin error bar: {text[:300] or '(empty)'}")
+        line = f"admin error bar: {text[:300] or '(empty)'}"
+        # `allow_error_markers` and `allow_http_errors` do not reach an error bar: an
+        # administrative panel rejecting bad input is only "the panel working" when the
+        # scenario says so with `expect = error_bar`.
+        if "error_bar" in page.expect:
+            out.append((EXPECTED_OUTCOME, line))
+        else:
+            out.append((APPLICATION_ERROR, line))
 
     if network.document is not None and network.document[1] != 200:
         url, status = network.document
-        line = f"main document returned HTTP {status} ({url})"
-        (warnings if page.allow_http_errors else problems).append(line)
+        line = f"main document returned HTTP {status} ({path_and_query(url)})"
+        if "missing_page" in page.expect and status == 404:
+            out.append((EXPECTED_OUTCOME, line))
+        elif page.allow_http_errors:
+            out.append((DIAGNOSTIC_WARNING, line))
+        else:
+            out.append((APPLICATION_ERROR, line))
+
+    # Subresource-level problems and cross-origin requests are always diagnostic: the
+    # result table demotes "a failed external request, or an optional asset 404" and "a
+    # request to an origin outside the expected origins" unconditionally, so neither
+    # `allow_http_errors` nor `expect` changes this bucket. `network.bad` entries carry the
+    # full URL, including the target's host, so `redact_urls` strips the origin before the
+    # line reaches a report: the diagnostics record keeps the whole address, this does not.
     for line in network.bad:
-        (warnings if page.allow_http_errors else problems).append(line)
+        out.append((DIAGNOSTIC_WARNING, redact_urls(line)))
 
     for entry in console:
         text = entry.get("text", "")
         if entry.get("level") != "error":
-            warnings.append(f"console warning: {text[:300]}")
+            out.append((DIAGNOSTIC_WARNING, f"console warning: {text[:300]}"))
             continue
         excused = whitelist_hit(text, whitelist) or next(
             (rule for rule in page.allow_console if rule in text), None
         )
-        if excused:
-            warnings.append(f"console error (allowed by {excused!r}): {text[:300]}")
-        else:
-            problems.append(f"console error: {text[:300]}")
+        label = f" (allowed by {excused!r})" if excused else ""
+        out.append((DIAGNOSTIC_WARNING, f"console error{label}: {text[:300]}"))
 
-    return problems, warnings
+    return out
+
+
+def classify_exception(exc: BaseException) -> str:
+    """`incomplete_execution` for a browser or filesystem failure, `application_error`
+    for everything else (a timed-out wait, an element that was never there -- the
+    ordinary shape of "this page is broken"). This keeps the pre-existing gate strength
+    for an ordinary action failure while giving the incomplete-execution status to a
+    stopped browser and a capture that cannot be written.
+    """
+    if isinstance(exc, OSError):
+        return INCOMPLETE_EXECUTION
+    text = str(exc).lower()
+    markers = (
+        "did not mount", "connection", "target closed", "browser has been stopped",
+        "websocket", "no such file", "permission denied", "disconnected",
+    )
+    if any(m in text for m in markers):
+        return INCOMPLETE_EXECUTION
+    return APPLICATION_ERROR
 
 
 # ---------------------------------------------------------------------------------
@@ -604,31 +733,30 @@ def judge(
 # `dx serve` KEEPS SERVING THE PREVIOUS BUNDLE while it recompiles. A run started right
 # after an edit therefore screenshots the old code and looks like the change did nothing,
 # which is exactly how an hour goes missing.
-#
-# The dev server used to announce a recompile in a toast, and this file used to read it.
-# `website/frontend/index.html` replaced the CLI's default page template, because that
-# template imported a font from a Google host on every page, and the toast went with it.
-# Nothing in the page now says a recompile is in flight, so the wait below is for the one
-# state that is observable: the application mounted. Do not edit source during a run.
 APP_MOUNT_TIMEOUT_S = 600.0
 
-# A page that never finishes loading has to be a failure, not a stalled run. Without this
-# the whole gate hangs on the first request the server does not answer -- and a server fn
-# that never returns is exactly the class of defect this run exists to find.
+# How long a tab may boot undisturbed before the mount wait reloads it. See
+# `wait_for_app_mounted` for why reloading on every failed poll prevents the boot.
+MOUNT_RELOAD_GRACE_S = 60.0
+
+# A page that never finishes loading has to be a failure, not a stalled run.
 PAGE_BUDGET_S = 180.0
 
 
 async def wait_for_app_mounted(tab) -> None:
     """Wait until the wasm bundle has booted and taken over the server-rendered page.
 
-    `dx serve` answers 500 until its first compile finishes. After that the server renders
-    `#main` before the bundle exists, so a filled `#main` proves nothing on its own. The
-    page's own inline script queues hydration calls until the bundle installs
-    `window.hydration_callback`, so that function existing is what says the bundle is
-    running. A page that never gets there raises rather than being photographed dead.
+    Polls without reloading for `MOUNT_RELOAD_GRACE_S`, then reloads at that interval.
+    Reloading on every failed poll interrupts the boot it is waiting for: each reload
+    re-fetches and re-instantiates the whole bundle, so several tabs booting at once
+    keep restarting one another and none of them ever finishes. A four-tab observer run
+    stayed unmounted for over ten minutes that way, where a two-tab run mounted in
+    seconds. The grace period is the fix; a reload is still available for the case the
+    dev server really did serve a page that will never boot.
     """
     deadline = time.monotonic() + APP_MOUNT_TIMEOUT_S
     announced = False
+    next_reload = time.monotonic() + MOUNT_RELOAD_GRACE_S
     while time.monotonic() < deadline:
         state = await js(tab, """
 const main = document.querySelector('#main');
@@ -637,27 +765,21 @@ return {mounted: !!main && main.childElementCount > 0 && booted};
 """)
         if state.get("mounted"):
             if announced:
-                # Give the fresh bundle a moment to settle before the first action.
                 await asyncio.sleep(3.0)
             return
         if not announced:
             print("    waiting for the dev server to serve a mounted app…", flush=True)
             announced = True
         await asyncio.sleep(3.0)
-        await tab.reload()
-        await asyncio.sleep(1.0)
+        if time.monotonic() >= next_reload:
+            await tab.reload()
+            next_reload = time.monotonic() + MOUNT_RELOAD_GRACE_S
+            await asyncio.sleep(1.0)
     raise RuntimeError(f"the application had not mounted after {APP_MOUNT_TIMEOUT_S:g}s")
 
 
 async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set[str]:
-    """Which of `needed` are registered on the running site.
-
-    `HOOVER4_SCREENSHOT_PRESENT_DATASETS` (comma-separated dataset names), when set,
-    answers on its own -- this is how a run simulates an absent corpus without deleting or
-    un-ingesting anything, and is what proves the skip below actually skips. Unset, this
-    asks the site: the unified storage tree at `/file_browser` carries one row per
-    registered dataset, `#x-tree-d-<dataset>`, so a dataset absent from it is not ingested.
-    """
+    """Which of `needed` are registered on the running site."""
     override = os.environ.get("HOOVER4_SCREENSHOT_PRESENT_DATASETS")
     if override is not None:
         return {d.strip() for d in override.split(",") if d.strip()}
@@ -676,41 +798,351 @@ async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set
     return present
 
 
+async def verify_identity(tab, base_url: str, network: NetworkLog, username: str, password: str) -> tuple[bool, str]:
+    """Log in when the page asks, then read the account name back from the site's own
+    identity route. Returns (ok, name-or-reason). A password never appears in the
+    returned reason string.
+
+    The default local target authenticates through headers a reverse proxy asserts, so it
+    shows no login form at all (`frontend/src/components/session_context.rs`'s own
+    doc comment says as much); the form-fill path below exists for a target that fronts
+    the site with a real one, and is exercised generically rather than against a
+    known markup, because this repository has no login form to develop it against.
+    """
+    await tab.get(base_url + "/")
+    await wait_css(tab, "body *")
+
+    has_password_field = await js(tab, "return {ok: !!document.querySelector('input[type=password]')};")
+    if has_password_field.get("ok"):
+        try:
+            await type_css(tab, "input[type=text], input[type=email], input:not([type])", username)
+            await type_css(tab, "input[type=password]", password)
+            await press_enter(tab)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"a login form is on the page but could not be filled: {exc}"
+
+        # A short, bounded wait for the form to clear, rather than the long app-mount
+        # retry loop below: a login that failed leaves the password field on the page,
+        # and spending minutes to discover that is not what a fast failure means.
+        cleared = False
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            still_there = await js(tab, "return {ok: !!document.querySelector('input[type=password]')};")
+            if not still_there.get("ok"):
+                cleared = True
+                break
+            await asyncio.sleep(1.0)
+        if not cleared:
+            return False, "the login form is still on the page 20s after submitting it"
+
+    try:
+        await wait_for_app_mounted(tab)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"the application did not mount after authentication: {exc}"
+
+    known = network.known_urls.get("whoami")
+    if not known:
+        return False, "no whoami request was observed after navigation"
+    whoami_method, whoami_url = known
+
+    result = await js_async(tab, """
+const r = await fetch(%s, {method: %s, credentials: 'same-origin'});
+if (!r.ok) return {ok: false, status: r.status};
+let body;
+try { body = await r.json(); } catch (e) { return {ok: false, parse_error: String(e)}; }
+return {ok: true, username: body.username || null, fullname: body.fullname || null};
+""" % (json.dumps(whoami_url), json.dumps(whoami_method)))
+
+    if not result.get("ok"):
+        return False, f"the identity route did not return an authenticated identity: {result}"
+    name = result.get("fullname") or result.get("username")
+    if not name:
+        return False, "the identity route returned no account name"
+    return True, name
+
+
+def target_label(url: str) -> str:
+    """A label safe for a published report. Never the URL itself.
+
+    `host.startswith("hoover4-")` matches this deployment's OWN container names inside
+    the podman network (`hoover4-website`, `hoover4-development-auth-backdoor`), not a
+    plain substring: an online host can legitimately be named `hoover4.<anything>` too,
+    as the demo deployment is, and that is not "local".
+    """
+    host = urlsplit(url).hostname or ""
+    if host in ("localhost", "127.0.0.1") or host.startswith("hoover4-") or host.endswith(".local"):
+        return "local development target"
+    return "the configured target"
+
+
+def path_and_query(url: str) -> str:
+    """`url` with the scheme, host and port removed. Never the origin.
+
+    A report is publishable, so an observation naming a request must stay as safe as the
+    header, which uses `target_label` instead of the URL for the same reason.
+    """
+    parts = urlsplit(url)
+    tail = parts.path or "/"
+    return f"{tail}?{parts.query}" if parts.query else tail
+
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def redact_urls(text: str) -> str:
+    """`text` with every http(s) URL replaced by its path and query. See `path_and_query`.
+
+    Applied only to what reaches `report.md` and `report.html`. The diagnostics record
+    stays verbatim, because it is written into the ignored `diagnostics/` directory and
+    may hold the whole address.
+    """
+    return _URL_RE.sub(lambda m: path_and_query(m.group(0)), text)
+
+
+def run_gitignore_text() -> str:
+    return (
+        "# Generated by capture_screenshots.py. Governs only this run directory.\n"
+        "manifest.json\n"
+        "diagnostics/\n"
+    )
+
+
+async def capture_one(
+    tab,
+    base_url: str,
+    network: NetworkLog,
+    page: Page,
+    resolution_name: str,
+    size: tuple[int, int],
+    res_dir: Path,
+    stem: str,
+    whitelist: list[tuple[str, object]],
+) -> tuple[list[dict], list[tuple[str, str]], dict]:
+    """Run one scenario at one resolution. Returns (captures, observations, diagnostics)."""
+    rw, rh = size
+    diagnostics: dict = {"console": [], "network_bad": [], "api_calls": {}}
+    captures: list[dict] = []
+
+    await set_exact_viewport(tab, rw, rh)
+    network.clear()
+    await tab.get(base_url + page.url)
+    await wait_css(tab, "body *")
+    await asyncio.sleep(page.settle_ms / 1000.0)
+    for verb, argument in page.actions:
+        await run_action(tab, base_url, verb, argument)
+    await asyncio.sleep(page.settle_ms / 1000.0)
+
+    actual_w, actual_h = await measured_viewport(tab)
+    shot = await screenshot(tab, False)
+    (res_dir / f"{stem}.png").write_bytes(shot)
+    pw, ph = png_dimensions(shot)
+
+    observations: list[tuple[str, str]] = []
+    if (actual_w, actual_h) != (rw, rh):
+        observations.append((
+            DIAGNOSTIC_WARNING,
+            f"viewport mismatch: window reports {actual_w}x{actual_h}, requested {rw}x{rh}",
+        ))
+    if (pw, ph) != (rw, rh):
+        observations.append((
+            DIAGNOSTIC_WARNING,
+            f"image size mismatch: saved PNG is {pw}x{ph}, requested {rw}x{rh}",
+        ))
+    captures.append({
+        "file": f"{resolution_name}/{stem}.png",
+        "resolution": resolution_name,
+        "requested": [rw, rh],
+        "actual_window": [actual_w, actual_h],
+        "actual_png": [pw, ph],
+        "scroll_offset": 0,
+    })
+
+    snap = await snapshot(tab)
+    markers = await js(tab, MARKER_JS)
+    # The hook is a new-document script, but a page reached by an SPA route change never
+    # got one; re-running it is idempotent and never clears what has already been
+    # collected.
+    await js(tab, CONSOLE_HOOK_JS + "\nreturn {ok: true};")
+    console_entries = (await js(tab, "return {entries: window.__h4_console || []};")).get("entries", [])
+
+    observations.extend(judge(page, markers, console_entries, network, whitelist))
+
+    if page.full_page:
+        full_shot = await screenshot(tab, True)
+        (res_dir / f"{stem}.full_page.png").write_bytes(full_shot)
+        captures.append({
+            "file": f"{resolution_name}/{stem}.full_page.png",
+            "resolution": resolution_name,
+            "supplementary": True,
+        })
+
+    for offset in page.scroll_captures:
+        await js(tab, f"window.scrollTo(0, {int(offset)}); return {{ok: true}};")
+        await asyncio.sleep(0.3)
+        scrolled = await screenshot(tab, False)
+        (res_dir / f"{stem}.scroll{offset}.png").write_bytes(scrolled)
+        sw, sh = png_dimensions(scrolled)
+        if (sw, sh) != (rw, rh):
+            observations.append((
+                DIAGNOSTIC_WARNING,
+                f"scrolled capture at offset {offset} is {sw}x{sh}, requested {rw}x{rh}",
+            ))
+        captures.append({
+            "file": f"{resolution_name}/{stem}.scroll{offset}.png",
+            "resolution": resolution_name,
+            "requested": [rw, rh],
+            "actual_png": [sw, sh],
+            "scroll_offset": offset,
+        })
+
+    snapshot_lines = [
+        f"# {stem} ({resolution_name})",
+        f"url:      {snap.get('url', '')}",
+        f"title:    {snap.get('title', '')}",
+        f"actions:  {'; '.join(f'{v} {a}' for v, a in page.actions) or '(none)'}",
+        f"api calls: {network.api_summary()}",
+        "",
+        "## observations",
+        *([f"{sev}: {msg}" for sev, msg in observations] or ["(none)"]),
+        "",
+        "## rendered outline",
+        *snap.get("lines", []),
+    ]
+    (res_dir / f"{stem}.snapshot.txt").write_text("\n".join(snapshot_lines), encoding="utf-8")
+
+    diagnostics["console"] = console_entries
+    diagnostics["network_bad"] = list(network.bad)
+    diagnostics["api_calls"] = dict(network.api_calls)
+    return captures, observations, diagnostics
+
+
+async def write_failure_diagnostics(
+    tab,
+    network: NetworkLog,
+    res_dir: Path,
+    diagnostics_dir: Path,
+    res_name: str,
+    stem: str,
+    exc: BaseException,
+) -> None:
+    """Save everything still available after an action raises, in the same shape a
+    passing capture writes: the rendered DOM outline (`page state`), the console and
+    network records (the same `diagnostics/<res>__<stem>.json` a pass writes), and the
+    exception's full traceback. The caller writes the failure PNG; this covers the rest
+    of the contract that an action that raises still saves everything available at that
+    moment. Every step is independent and best-effort, so one failed read (a stopped
+    browser, a page that no longer responds) does not blank out the others.
+    """
+    try:
+        snap = await snapshot(tab)
+    except Exception:  # noqa: BLE001
+        snap = {}
+    try:
+        console_entries = (
+            await js(tab, "return {entries: window.__h4_console || []};")
+        ).get("entries", [])
+    except Exception:  # noqa: BLE001
+        console_entries = []
+
+    try:
+        (res_dir / f"{stem}.FAILED.snapshot.txt").write_text(
+            "\n".join([
+                f"# {stem} ({res_name}) -- FAILED",
+                f"url:      {snap.get('url', '')}",
+                f"title:    {snap.get('title', '')}",
+                "",
+                "## rendered outline",
+                *snap.get("lines", []),
+            ]),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        (diagnostics_dir / f"{res_name}__{stem}.json").write_text(
+            json.dumps({
+                "console": console_entries,
+                "network_bad": list(network.bad),
+                "api_calls": dict(network.api_calls),
+            }, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        (diagnostics_dir / f"{res_name}__{stem}.exception.txt").write_text(
+            f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc()}", encoding="utf-8"
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def capture_all(
     pages: list[Page],
     base_url: str,
-    out_dir: Path,
+    run_dir: Path,
+    resolutions: list[tuple[str, tuple[int, int]]],
     whitelist: list[tuple[str, object]],
-) -> int:
+    username: str,
+    password: str,
+) -> tuple[dict, int]:
+    """Runs the whole scenario list. Returns (manifest, exit_status)."""
     import nodriver
     import nodriver.cdp.page as page_cdp
+
+    diagnostics_dir = run_dir / "diagnostics"
+    diagnostics_dir.mkdir(exist_ok=True)
+    for res_name, _size in resolutions:
+        (run_dir / res_name).mkdir(exist_ok=True)
+
+    totals = {sev: 0 for sev in ALL_SEVERITIES}
+    manifest: dict = {
+        "target_label": target_label(base_url),
+        "resolutions": {name: list(size) for name, size in resolutions},
+        "identity": "anonymous",
+        "pages": [],
+        "totals": totals,
+    }
+    page_reports: list[str] = []
+
+    def record(sev: str) -> None:
+        totals[sev] = totals.get(sev, 0) + 1
 
     browser = await nodriver.start(
         headless=True,
         sandbox=False,
         browser_args=[
             "--no-sandbox",
-            # /dev/shm is small in containers and Chromium fills it on content-heavy
-            # pages; compose raises it but the flag is free insurance.
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            f"--window-size={DEFAULT_VIEWPORT[0]},{DEFAULT_VIEWPORT[1]}",
+            f"--window-size={resolutions[0][1][0]},{resolutions[0][1][1]}",
         ],
     )
-    failed_pages: list[str] = []
-    warned_pages: list[str] = []
-    skipped_pages: list[str] = []
-    report: list[str] = [
-        "# Screenshot run",
-        "",
-        f"Site: `{base_url}`  |  pages: {len(pages)}",
-        "",
-    ]
     try:
         tab = await browser.get(base_url + "/")
         network = await watch_network(tab, urlsplit(base_url).hostname)
         await tab.send(page_cdp.add_script_to_evaluate_on_new_document(CONSOLE_HOOK_JS))
-        await wait_for_app_mounted(tab)
+
+        if username or password:
+            # `verify_identity` does its own navigation and its own mount-wait, because a
+            # target that shows a login form does not mount hoover4's own app until after
+            # it is filled -- waiting for the mount signal first spins for the full
+            # `APP_MOUNT_TIMEOUT_S` on a page that will never produce it.
+            ok, name_or_reason = await verify_identity(tab, base_url, network, username, password)
+            if not ok:
+                record(INCOMPLETE_EXECUTION)
+                manifest["identity"] = f"login failed: {name_or_reason}"
+                manifest["incomplete_reason"] = name_or_reason
+                page_reports.append(
+                    f"- **incomplete execution**: authentication did not produce an "
+                    f"identity ({name_or_reason})"
+                )
+                return manifest, 2
+            manifest["identity"] = name_or_reason
+        else:
+            await wait_for_app_mounted(tab)
 
         needed_datasets: set[str] = set(CORPUS_DATASETS)
         for page in pages:
@@ -723,133 +1155,201 @@ async def capture_all(
             if missing:
                 reason = f"dataset(s) not on this site: {', '.join(missing)}"
                 print(f"[{index + 1}/{len(pages)}] {stem}: skip ({reason})", flush=True)
-                skipped_pages.append(stem)
-                report.append(f"- `{stem}` (`{page.url}`): skip ({reason})")
+                manifest["pages"].append({"stem": stem, "url": page.url, "skipped": reason})
+                page_reports.append(f"- `{stem}` (`{page.url}`): skip ({reason})")
                 continue
+
             print(f"[{index + 1}/{len(pages)}] {stem}", flush=True)
-            try:
-                async def capture() -> tuple[dict, dict, list]:
-                    await tab.set_window_size(0, 0, page.viewport[0], page.viewport[1])
-                    network.clear()
-                    await tab.get(base_url + page.url)
-                    # The SPA boots into an empty shell; wait for it to render something
-                    # before the actions start looking for elements.
-                    await wait_css(tab, "body *")
-                    await asyncio.sleep(page.settle_ms / 1000.0)
-                    for verb, argument in page.actions:
-                        await run_action(tab, base_url, verb, argument)
-                    await asyncio.sleep(page.settle_ms / 1000.0)
-
-                    shot = await screenshot(tab, page.full_page)
-                    (out_dir / f"{stem}.png").write_bytes(shot)
-                    snap = await snapshot(tab)
-                    markers = await js(tab, MARKER_JS)
-                    # The hook is a new-document script, but a page reached by an SPA
-                    # route change never got one; re-running it is idempotent and never
-                    # clears what has already been collected.
-                    await js(tab, CONSOLE_HOOK_JS + "\nreturn {ok: true};")
-                    console = await js(tab, "return {entries: window.__h4_console || []};")
-                    return snap, markers, console.get("entries", [])
-
-                snap, markers, entries = await asyncio.wait_for(capture(), PAGE_BUDGET_S)
-                problems, warnings = judge(page, markers, entries, network, whitelist)
-
-                verdict = "FAILED" if problems else "ok"
-                lines = [
-                    f"# {stem}",
-                    f"url:     {snap.get('url', '')}",
-                    f"title:   {snap.get('title', '')}",
-                    f"actions: {'; '.join(f'{v} {a}' for v, a in page.actions) or '(none)'}",
-                    f"api calls: {network.api_summary()}",
-                    f"verdict: {verdict}",
-                    "",
-                    "## failures",
-                    *(problems or ["(none)"]),
-                    "",
-                    "## warnings",
-                    *(warnings or ["(none)"]),
-                    "",
-                    "## rendered outline",
-                    *snap.get("lines", []),
-                ]
-                (out_dir / f"{stem}.snapshot.txt").write_text("\n".join(lines), encoding="utf-8")
-
-                if problems:
-                    failed_pages.append(stem)
-                    print(f"    FAILED: {'; '.join(problems)[:400]}", flush=True)
-                    report.append(f"- `{stem}` (`{page.url}`): **FAILED**")
-                elif warnings:
-                    warned_pages.append(stem)
-                    report.append(
-                        f"- `{stem}` (`{page.url}`): ok ({len(warnings)} warning(s))"
+            page_captures: list[dict] = []
+            page_observations: list[tuple[str, str]] = []
+            # A declared `viewport` replaces the run's resolution list for this one
+            # scenario, at a directory named for the declared size, so a narrow-width
+            # layout test keeps testing the width it declares rather than the run's
+            # selected resolutions.
+            if page.viewport is not None:
+                vw, vh = page.viewport
+                page_resolutions = [(f"{vw}x{vh}", (vw, vh))]
+                size_source = "viewport"
+                (run_dir / page_resolutions[0][0]).mkdir(exist_ok=True)
+            else:
+                page_resolutions = resolutions
+                size_source = "resolution_list"
+            for res_name, size in page_resolutions:
+                res_dir = run_dir / res_name
+                try:
+                    captures, observations, diags = await asyncio.wait_for(
+                        capture_one(tab, base_url, network, page, res_name, size, res_dir, stem, whitelist),
+                        PAGE_BUDGET_S,
                     )
-                else:
-                    report.append(f"- `{stem}` (`{page.url}`): ok")
-                report.append(f"    - api calls: {network.api_summary()}")
-                for problem in problems:
-                    report.append(f"    - **{problem}**")
-                for warning in warnings:
-                    report.append(f"    - warn: {warning}")
-            except Exception as exc:  # noqa: BLE001
-                reason = (
-                    f"the page did not finish within {PAGE_BUDGET_S:g}s"
-                    if isinstance(exc, asyncio.TimeoutError)
-                    else str(exc)
-                )
-                failed_pages.append(stem)
-                print(f"    FAILED: {reason}", flush=True)
-                report.append(f"- `{stem}` (`{page.url}`): **FAILED: {reason}**")
-                try:
-                    await tab.send(page_cdp.stop_loading())
-                except Exception:  # noqa: BLE001
-                    pass
-                # Still take a picture: the screenshot of a failed step is usually the
-                # fastest explanation of why the step failed.
-                try:
-                    (out_dir / f"{stem}.FAILED.png").write_bytes(await screenshot(tab, False))
-                except Exception:  # noqa: BLE001
-                    pass
+                    for capture in captures:
+                        capture["size_source"] = size_source
+                    page_captures.extend(captures)
+                    page_observations.extend(observations)
+                    (diagnostics_dir / f"{res_name}__{stem}.json").write_text(
+                        json.dumps(diags, indent=2), encoding="utf-8"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    reason = (
+                        f"the page did not finish within {PAGE_BUDGET_S:g}s"
+                        if isinstance(exc, asyncio.TimeoutError)
+                        else str(exc)
+                    )
+                    severity = classify_exception(exc)
+                    page_observations.append((severity, f"[{res_name}] {reason}"))
+                    print(f"    {severity}: {reason}", flush=True)
+                    try:
+                        await tab.send(page_cdp.stop_loading())
+                    except Exception:  # noqa: BLE001
+                        pass
+                    try:
+                        (res_dir / f"{stem}.FAILED.png").write_bytes(await screenshot(tab, False))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    await write_failure_diagnostics(
+                        tab, network, res_dir, diagnostics_dir, res_name, stem, exc
+                    )
+
+            for sev, _msg in page_observations:
+                record(sev)
+            worst = _worst_severity([sev for sev, _ in page_observations])
+            page_entry = {
+                "stem": stem,
+                "url": page.url,
+                "captures": page_captures,
+                "observations": [{"severity": s, "message": m} for s, m in page_observations],
+                "verdict": worst or "ok",
+            }
+            if page.manual_asset:
+                page_entry["manual_asset"] = page.manual_asset
+            manifest["pages"].append(page_entry)
+            page_reports.append(f"- `{stem}` (`{page.url}`): {worst or 'ok'}")
+            for sev, msg in page_observations:
+                page_reports.append(f"    - {sev}: {msg}")
     finally:
         try:
             browser.stop()
         except Exception:  # noqa: BLE001
             pass
 
-    captured = len(pages) - len(skipped_pages)
-    report.append("")
-    report.append(
-        f"{captured - len(failed_pages)}/{captured} captured pages passed; "
-        f"{len(failed_pages)} failed, {len(warned_pages)} passed with warnings, "
-        f"{len(skipped_pages)} skipped for a missing dataset."
+    manifest["page_reports"] = page_reports
+    exit_status = 1 if totals[APPLICATION_ERROR] else (2 if totals[INCOMPLETE_EXECUTION] else 0)
+    return manifest, exit_status
+
+
+def _worst_severity(severities: list[str]) -> str | None:
+    order = {sev: i for i, sev in enumerate(ALL_SEVERITIES)}
+    present = [s for s in severities if s not in (DIAGNOSTIC_WARNING, EXPECTED_OUTCOME, TRACE)]
+    if not present:
+        return severities[0] if severities else None
+    return min(present, key=lambda s: order[s])
+
+
+# ---------------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------------
+
+def write_reports(run_dir: Path, run_name: str, manifest: dict, exit_status: int) -> None:
+    totals = manifest["totals"]
+    lines = [
+        "# Screenshot run",
+        "",
+        f"Target: {manifest['target_label']}  |  identity: {manifest['identity']}",
+        f"Resolutions: {', '.join(manifest['resolutions'])}",
+        "",
+        "## totals",
+        *(f"- {sev}: {totals.get(sev, 0)}" for sev in ALL_SEVERITIES),
+        f"- exit status: {exit_status}",
+        "",
+        "## pages",
+        *manifest.get("page_reports", []),
+    ]
+    (run_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def esc(text: str) -> str:
+        return (
+            text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        )
+
+    html_rows = "\n".join(f"<li>{esc(line)}</li>" for line in manifest.get("page_reports", []))
+    totals_rows = "\n".join(f"<li>{sev}: {totals.get(sev, 0)}</li>" for sev in ALL_SEVERITIES)
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Screenshot run</title>
+<style>
+body {{ font-family: sans-serif; margin: 2em; }}
+li {{ margin: 0.2em 0; }}
+</style>
+</head>
+<body>
+<h1>Screenshot run</h1>
+<p>Target: {esc(manifest['target_label'])} &mdash; identity: {esc(manifest['identity'])}</p>
+<p>Resolutions: {esc(', '.join(manifest['resolutions']))}</p>
+<h2>Totals</h2>
+<ul>{totals_rows}</ul>
+<p>Exit status: {exit_status}</p>
+<h2>Pages</h2>
+<ul>{html_rows}</ul>
+</body>
+</html>
+"""
+    (run_dir / "report.html").write_text(html, encoding="utf-8")
+
+    index = (
+        "# Screenshot output\n\n"
+        f"Latest run: `{run_name}`\n\n"
+        f"Target: {manifest['target_label']}  |  identity: {manifest['identity']}\n\n"
+        f"Exit status: {exit_status}\n\n"
+        f"See [`{run_name}/report.md`]({run_name}/report.md) for the full run.\n"
     )
-    if failed_pages:
-        report.append("")
-        report.append("## failed pages")
-        report.extend(f"- `{stem}`" for stem in failed_pages)
-    if skipped_pages:
-        report.append("")
-        report.append("## skipped pages")
-        report.extend(f"- `{stem}`" for stem in skipped_pages)
-    (out_dir / "report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
-    return len(failed_pages)
+    (run_dir.parent / "index.md").write_text(index, encoding="utf-8")
+
+    (run_dir / ".gitignore").write_text(run_gitignore_text(), encoding="utf-8")
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ini", default="/tmp/h4shots/screenshots.ini")
-    parser.add_argument("--out", default="/tmp/h4shots/out")
+    parser.add_argument("--out-root", default="/tmp/h4shots/out")
+    parser.add_argument("--run-name", required=True, help="the run-<stamp>-<pid> directory name")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--only", default="", help="capture only sections whose name contains this")
     parser.add_argument("--console-whitelist", default="/tmp/h4shots/console_whitelist.txt")
+    parser.add_argument("--username", default="", help="not secret; the password travels by environment only")
+    parser.add_argument("--resolutions", default=DEFAULT_RESOLUTIONS)
     args = parser.parse_args()
 
-    out_dir = Path(args.out)
-    # Deleting here rather than in the shell wrapper: the run that produced the files is
-    # the run that knows they are stale, and a half-deleted directory from a killed shell
-    # is worse than none.
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    # The password is read from the environment, never from argv: a process's argv is
+    # visible to every other process on the same host through /proc, an env var handed to
+    # exactly one `docker exec` is not.
+    password = os.environ.get("HOOVER4_CAPTURE_PASSWORD", "")
+    username = args.username
+
+    if bool(username) != bool(password):
+        sys.stderr.write(
+            "error: a username with no password, or a password with no username, "
+            "is a validation failure\n"
+        )
+        return 2
+
+    try:
+        resolutions = [(name, RESOLUTIONS[name]) for name in
+                        (n.strip() for n in args.resolutions.split(",")) if name]
+    except KeyError as exc:
+        sys.stderr.write(f"error: unknown resolution {exc}; known: {', '.join(RESOLUTIONS)}\n")
+        return 2
+    if not resolutions:
+        sys.stderr.write("error: no resolutions selected\n")
+        return 2
+
+    out_root = Path(args.out_root)
+    run_dir = out_root / args.run_name
+    # This directory is fresh, ephemeral container scratch (`/tmp/h4shots`, wiped by the
+    # wrapper before every invocation) -- not the persistent host output tree, which the
+    # wrapper never deletes. Creating it here does not touch anything the wrapper owns.
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     pages = parse_pages(Path(args.ini))
     if args.only:
@@ -859,14 +1359,33 @@ def main() -> int:
         return 2
 
     whitelist = parse_whitelist(Path(args.console_whitelist))
-    failures = asyncio.run(
-        capture_all(pages, args.base_url.rstrip("/"), out_dir, whitelist)
-    )
+    try:
+        manifest, exit_status = asyncio.run(
+            capture_all(pages, args.base_url.rstrip("/"), run_dir, resolutions, whitelist, username, password)
+        )
+    except Exception as exc:  # noqa: BLE001
+        # A browser that never started, or another catastrophic setup failure. Still
+        # leave a report behind rather than nothing at all.
+        manifest = {
+            "target_label": target_label(args.base_url),
+            "resolutions": {name: list(size) for name, size in resolutions},
+            "identity": "anonymous",
+            "pages": [],
+            "page_reports": [f"- **incomplete execution**: {type(exc).__name__}: {exc}"],
+            "totals": {sev: (1 if sev == INCOMPLETE_EXECUTION else 0) for sev in ALL_SEVERITIES},
+        }
+        write_reports(run_dir, args.run_name, manifest, 2)
+        print(f"incomplete execution: {exc}", file=sys.stderr)
+        return 2
+
+    write_reports(run_dir, args.run_name, manifest, exit_status)
+    totals = manifest["totals"]
     print(
-        f"{len(pages) - failures}/{len(pages)} pages passed the gate; "
-        f"output in {out_dir} (see report.md)"
+        f"{len(manifest['pages'])} pages: "
+        + ", ".join(f"{sev}={totals.get(sev, 0)}" for sev in ALL_SEVERITIES)
+        + f"; output in {run_dir} (see report.md); exit {exit_status}"
     )
-    return 1 if failures else 0
+    return exit_status
 
 
 if __name__ == "__main__":

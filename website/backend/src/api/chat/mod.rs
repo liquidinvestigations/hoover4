@@ -454,7 +454,18 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     let interrupted = turn_open && newest_ms.is_some() && !advancing;
     let active = turn_open && advancing;
 
-    let live: Vec<_> = rows.iter().filter(|r| r.is_final == 0).collect();
+    // A tool row stays live past `is_final`: the writer marks it final at `end_tool`,
+    // well before the durable `chat_messages` row exists, which the workflow only
+    // writes once the whole agent activity returns. Dropping a tool row the moment it
+    // finalises left a completed tool with no displayed representation for that
+    // interval. An assistant row keeps the old rule (`is_final == 0` only), because the
+    // writer reopens a fresh assistant row on every finalisation (see `_write_assistant`
+    // in `stream_writer.py`), so a finalised assistant row is always superseded by a
+    // newer live one and never needs to stay.
+    let live: Vec<_> = rows
+        .iter()
+        .filter(|r| r.is_final == 0 || r.role == ChatRole::Tool.as_str())
+        .collect();
     if live.is_empty() {
         return Ok(TurnTail {
             stream: None,
@@ -489,7 +500,11 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             tool_call_index: r.tool_call_index,
             tool_name: r.tool_name.clone(),
             summary: r.content.clone(),
-            done: false,
+            // `is_final` on a tool row means `end_tool` has been seen, not that the
+            // durable row exists yet: the row above stays live in that interval on
+            // purpose (see the comment on `live`), and the card reads this to switch
+            // from a running state to a completed one before the durable row arrives.
+            done: r.is_final != 0,
             // A running tool's stream row is written once, at `start_tool`, and not
             // touched again until the call finalises into `chat_messages`, the keepalive
             // rewrites the *assistant* row. So its `updated_at` is when the call started,

@@ -43,6 +43,7 @@ The explanations live in `docs/`, because they outlive any one change here:
 | live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
 | whole stack | `main_services/verify-stack.sh` |
 | screenshots | `./take-screenshots.sh` |
+| chat observation | `./observe-chat.sh` |
 
 **Both fixture-driven suites separate their corpus-dependent cases from their
 corpus-independent ones.** A case that names a dataset, a document or a count only
@@ -61,7 +62,10 @@ configure the service URLs in `.env.development` from `.env.development.example`
 
 Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screenshots.sh`.
 [`TEST_LOGIN.env.example`](TEST_LOGIN.env.example) defines the account input keys for agents.
-The screenshot wrapper does not load this account file automatically.
+`take-screenshots.sh` and `observe-chat.sh` both load this file automatically when no
+`--username`/`--password` or `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` is supplied.
+See [`docs/development/Testing_The_Website.md`](../docs/development/Testing_The_Website.md)
+for the full runner and observer contract.
 
 ## Navigation
 

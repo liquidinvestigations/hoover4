@@ -3,9 +3,11 @@
 The lifetime rules, and why each number is what it is:
 
 * ``BROWSER_MAX_CONTEXTS`` (8), a whole Chromium per chat costs a few hundred MB, so this
-  is a memory ceiling, not a politeness limit. Past it the least recently used chat is
-  evicted: both processes die and the profile directory goes. The evicted chat's next call
-  transparently starts a fresh browser. Its cookies and tabs are gone, which is accepted.
+  is a memory ceiling, not a politeness limit. Past it the least recently used **idle**
+  chat is evicted: both processes die and the profile directory goes. A chat with a call
+  in flight is never evicted, so the cap is exceeded instead when every chat is busy. The
+  evicted chat's next call transparently starts a fresh browser. Its cookies and tabs are
+  gone, which is accepted.
 * ``BROWSER_IDLE_SECONDS`` (900), a conversation the user has walked away from should not
   hold a browser. Fifteen minutes is long enough to survive reading an answer.
 * ``BROWSER_MAX_TABS_PER_CHAT`` (6), a model that opens a tab per search result would
@@ -212,19 +214,41 @@ class Router:
     # ------------------------------------------------------------------- reaping
 
     def _take_over_limit_locked(self, making_room_for: int = 0) -> list[ChatBrowser]:
-        """Remove the least recently used chats from the map and hand them back to be
-        stopped. Caller holds the lock; stopping happens **outside** it, the same split
-        :meth:`sweep` has always used. Killing two processes and deleting a profile
+        """Remove the least recently used **idle** chats from the map and hand them back
+        to be stopped. Caller holds the lock; stopping happens **outside** it, the same
+        split :meth:`sweep` has always used. Killing two processes and deleting a profile
         directory is not a map operation.
+
+        A chat whose call is in flight (`chat.lock.locked()`) is never a candidate: it is
+        the least recently used entry that made it an eviction target before, not a sign
+        the chat is idle, and the map order does not know a call is running. Evicting it
+        would kill a live tool call out from under the request waiting on it, so a chat
+        that is still working is skipped in favour of the next-oldest idle one. When
+        every chat is busy the cap is exceeded until one finishes or the idle reaper
+        collects it, rather than stopping a live one.
         """
         doomed: list[ChatBrowser] = []
-        while len(self._chats) + making_room_for > MAX_CONTEXTS:
-            key, chat = self._chats.popitem(last=False)
+        over = len(self._chats) + making_room_for - MAX_CONTEXTS
+        if over <= 0:
+            return doomed
+        for key in list(self._chats.keys()):
+            if len(doomed) >= over:
+                break
+            chat = self._chats[key]
+            if chat.lock.locked():
+                continue
+            del self._chats[key]
             log.info(
-                "browser cap %d reached; evicting least recently used chat %s (idle %.0fs)",
+                "browser cap %d reached; evicting least recently used idle chat %s (idle %.0fs)",
                 MAX_CONTEXTS, key, chat.idle_seconds(),
             )
             doomed.append(chat)
+        if len(doomed) < over:
+            log.warning(
+                "browser cap %d exceeded by %d: every existing chat has a call in "
+                "flight, none is a safe eviction candidate",
+                MAX_CONTEXTS, over - len(doomed),
+            )
         return doomed
 
     async def _reap_forever(self) -> None:

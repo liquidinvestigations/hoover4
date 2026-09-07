@@ -1,56 +1,52 @@
 #!/bin/bash
-# Capture a screenshot + snapshot of every page listed in `screenshots.ini`, at 720p and
-# 1080p by default.
+# Drive a real chat conversation to completion in a real browser and observe it, the same
+# way take-screenshots.sh drives a page: no application code changed, no server dispatched
+# beyond the identity check and the chat turn itself.
 #
-# Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING]
-#                               [--username NAME] [--password VALUE]
-#                               [--login-env FILE] [--resolutions LIST]
+# Usage: ./observe-chat.sh [--target URL] [--out DIR] [--username NAME] [--password VALUE]
+#                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
+#                           [--conversations N] [--no-followup]
 #
-# Output: <out>/run-<UTC-timestamp>-<pid>/ (default: website/test_reports/screenshots/,
-#   gitignored). Never deleted by this script; each run adds a new directory and rewrites
-#   <out>/index.md and <out>/latest, a symlink to the newest run.
-#   <resolution>/NN-name.png           what a person would see, at an exact pixel size
-#   <resolution>/NN-name.snapshot.txt  the rendered DOM as a text outline, plus observations
-#   <resolution>/NN-name.FAILED.png    the state at the moment an action failed
-#   report.md, report.html             the index: severities per page and why
-#   manifest.json, diagnostics/        machine-readable, ignored by the generated .gitignore
+# --prompts takes a comma-separated list of prompt names from chat_observer.py's PROMPTS,
+#   or 'all'. Defaults to 'collection-exploration'. --conversations caps how many of the
+#   selected prompts run concurrently (0, the default, runs every selected prompt).
+#   --no-followup skips the second-turn check on the collection-exploration conversation.
 #
-# This is a GATE. Exit 1 when an application error occurred (a missing page, a non-200
-# response, an undeclared error marker or bar). Exit 2 when execution was incomplete (a
-# failed login, a stopped browser, a capture that could not be written) and no application
-# error also occurred. See the header of tools/capture_screenshots.py for the full table.
-# tools/console_whitelist.txt holds the run-wide console exceptions and is copied in too.
+# Output: <out>/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/ (default:
+#   website/test_reports/chat_observer/, gitignored). Never deleted by this script; each
+#   run adds a new directory and rewrites <out>/latest, a symlink to the newest run.
+#   See the header of tools/chat_observer.py for the full output shape and the result
+#   classification (same six severities and the same exit-status rule as
+#   take-screenshots.sh: 1 for an application error, 2 for incomplete execution, else 0).
 #
-# Preconditions: the stack is up and `main_services/verify-stack.sh` has been run, so the
-# fixtures the ini names exist. Nothing here ingests anything. Two scenarios in
-# `screenshots.ini`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
-# control that dispatches server work; both capture the control's state without engaging
-# it, so no scenario in the current list dispatches server work.
+# A local generation runs on the CPU model twins. One turn can take several minutes; a
+# Deep Research turn can take tens of minutes. This script waits for the observer's own
+# deadline, which is the workflow's configured turn timeout plus a margin. It never
+# retries a submitted prompt and never cancels a live generation.
+#
+# Preconditions: the stack is up. This reaches /ai_chat, which needs an authenticated
+# identity, so a credential source (below) is required; running with none produces an
+# immediate validation failure rather than an anonymous, doomed attempt.
 #
 # How it works, and why it looks like this
 # ----------------------------------------
-# The website is only reachable from inside the podman network, and the one container
-# with a browser in it -- hoover4-mcp-browser -- deliberately refuses internal hosts
-# through its MCP endpoint (an explicit deny-list plus a PAC script handed to Chromium).
-# So this does not use that endpoint: it copies a standalone nodriver script in and runs
-# it, which launches a plain Chromium with no proxy filtering. Nothing about the MCP
-# server's own filtering is touched or relaxed.
-#
-# The container has NO bind mounts, so the script goes in with `docker cp` and the images
-# come back out the same way. `docker cp` copies are lost when a build recreates the
-# container, which is fine -- the container-side scratch at $REMOTE_DIR is rebuilt every
-# run and never holds anything this script needs to keep.
+# Same mechanism as take-screenshots.sh, described in full in that script's own header:
+# hoover4-mcp-browser's MCP endpoint refuses internal hosts by design, so this copies a
+# standalone nodriver script in with `docker cp` and runs it directly, then copies the
+# images back out the same way. This file does not source or restructure
+# take-screenshots.sh; it repeats that script's target/credential-precedence and
+# lock/copy-in/output-merge shape for chat_observer.py, a different Python entry point
+# with its own arguments.
 set -euo pipefail
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"
 
 BROWSER_CONTAINER="${BROWSER_CONTAINER:-hoover4-mcp-browser}"
-# The PID makes this path unique per run. Two runs with different --out values take
-# different host-side locks and so both proceed; without a unique scratch path they would
-# share this container-side directory and each run's cleanup would delete the other's
-# working files.
-REMOTE_DIR="/tmp/h4shots-$$"
+# The PID makes this path unique per run, for the same reason take-screenshots.sh uses one:
+# without it, two runs with different --out values would share this container-side
+# directory, and the cleanup pkill below could stop a different run's observer process.
+REMOTE_DIR="/tmp/h4chat-$$"
 
 # ---------------------------------------------------------------------------------
 # Arguments
@@ -58,21 +54,25 @@ REMOTE_DIR="/tmp/h4shots-$$"
 
 TARGET_ARG=""
 OUT_ARG=""
-ONLY=""
 USERNAME_ARG=""
 PASSWORD_ARG=""
 LOGIN_ENV_ARG=""
 RESOLUTIONS_ARG=""
+PROMPTS_ARG=""
+CONVERSATIONS_ARG=""
+NO_FOLLOWUP_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET_ARG="${2:?--target needs a value}"; shift 2 ;;
         --out) OUT_ARG="${2:?--out needs a value}"; shift 2 ;;
-        --only) ONLY="${2:?--only needs a value}"; shift 2 ;;
         --username) USERNAME_ARG="${2:?--username needs a value}"; shift 2 ;;
         --password) PASSWORD_ARG="${2:?--password needs a value}"; shift 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
+        --prompts) PROMPTS_ARG="${2:?--prompts needs a value}"; shift 2 ;;
+        --conversations) CONVERSATIONS_ARG="${2:?--conversations needs a value}"; shift 2 ;;
+        --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -101,9 +101,9 @@ read_login_env_value() {
 # ---------------------------------------------------------------------------------
 # Target precedence: --target, then HOOVER4_SITE_URL in the environment, then the
 # built-in backdoor default. The login-env file supplies credentials only, and never the
-# target: the file names a remote deployment, and two scenarios in screenshots.ini name a
-# control that dispatches server work. A run with no arguments must reach the local stack,
-# where the supplied identity cannot dispatch anything. Reaching a remote target stays one
+# target: this script reaches an authenticated area (/ai_chat) on every invocation, so a
+# run with no arguments must still reach the local stack, where the supplied identity
+# cannot dispatch anything against a remote deployment. Reaching a remote target stays one
 # explicit --target or HOOVER4_SITE_URL away. Dials the backdoor by name, so the default
 # needs hoover4.ini.development (development_auth_backdoor_enabled = true); release mode
 # has no identity source this script can use.
@@ -127,7 +127,8 @@ echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 # pair. Sources are not mixed: the highest-priority source that supplies EITHER value
 # supplies both, and an incomplete pair from that source is a validation failure. No
 # credential value is ever printed, including the username, since the precedence list
-# names them as one channel.
+# names them as one channel. A chat conversation needs an identity, so an empty pair from
+# every source is also a validation failure here, unlike take-screenshots.sh's page runner.
 # ---------------------------------------------------------------------------------
 
 CRED_USERNAME=""
@@ -159,19 +160,20 @@ if [ -z "$CRED_USERNAME" ] && [ -n "$CRED_PASSWORD" ]; then
     echo "error: a password with no username is a validation failure (source: $CRED_SOURCE)" >&2
     exit 2
 fi
-if [ -n "$CRED_USERNAME" ]; then
-    echo "== identity: authenticating (credential source: $CRED_SOURCE) =="
-else
-    echo "== identity: no credentials supplied, proceeding unauthenticated =="
+if [ -z "$CRED_USERNAME" ]; then
+    echo "error: a chat conversation needs an identity; no credential source supplied one" >&2
+    echo "       (checked --username/--password, HOOVER4_TEST_USERNAME/PASSWORD, $LOGIN_ENV_FILE)" >&2
+    exit 2
 fi
+echo "== identity: authenticating (credential source: $CRED_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
 # Output and the lock. The lock is taken FIRST, before anything is deleted or created --
-# the previous wrapper wiped its output directory before checking a run marker, so a
-# refused second run had already destroyed the first run's local output.
+# see take-screenshots.sh for why a refused second run must never destroy the first run's
+# local output.
 # ---------------------------------------------------------------------------------
 
-OUT_DIR="${OUT_ARG:-$SCRIPT_DIR/test_reports/screenshots}"
+OUT_DIR="${OUT_ARG:-$SCRIPT_DIR/test_reports/chat_observer}"
 mkdir -p "$OUT_DIR"
 
 LOCK_DIR="$OUT_DIR/.lock"
@@ -185,7 +187,7 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
         OWNER_RUN="$(sed -n '2p' "$LOCK_OWNER_FILE" 2>/dev/null || true)"
     fi
     if [ -n "$OWNER_PID" ] && kill -0 "$OWNER_PID" 2>/dev/null; then
-        echo "error: another capture run is in progress (pid $OWNER_PID, ${OWNER_RUN:-unknown run})." >&2
+        echo "error: another observer run is in progress (pid $OWNER_PID, ${OWNER_RUN:-unknown run})." >&2
         exit 2
     fi
     echo "error: a stale lock is at $LOCK_DIR (owning pid ${OWNER_PID:-unknown} is gone)." >&2
@@ -198,12 +200,26 @@ RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_NAME="run-${RUN_STAMP}-$$"
 printf '%s\n%s\n' "$$" "$RUN_NAME" > "$LOCK_OWNER_FILE"
 
+RESULTS_COPIED=0
+
 cleanup() {
     local status=$?
     # Release only a lock this run took: a run that clears another run's lock is the
     # failure the lock exists to prevent.
     if [ -f "$LOCK_OWNER_FILE" ] && [ "$(sed -n '1p' "$LOCK_OWNER_FILE" 2>/dev/null || true)" = "$$" ]; then
         rm -rf "$LOCK_DIR"
+    fi
+    if [ "$RESULTS_COPIED" != "1" ]; then
+        # An interrupted run reaches here with the container-side observer possibly still
+        # writing into $REMOTE_DIR. Stop that process first -- this does not cancel the
+        # live generation: chat_observer.py's own docstring records that closing or
+        # navigating a browser tab never stops the server-side workflow, so ending the
+        # observer script only stops observation, not the chat turn -- then copy out
+        # whatever exists before the scratch directory is removed, so an interrupted run
+        # keeps its partial evidence instead of losing it.
+        docker exec "$BROWSER_CONTAINER" pkill -f "$REMOTE_DIR/chat_observer.py" >/dev/null 2>&1 || true
+        mkdir -p "$OUT_DIR"
+        docker cp "$BROWSER_CONTAINER:$REMOTE_DIR/out/." "$OUT_DIR/" >/dev/null 2>&1 || true
     fi
     docker exec "$BROWSER_CONTAINER" rm -rf "$REMOTE_DIR" >/dev/null 2>&1 || true
     exit "$status"
@@ -215,52 +231,52 @@ if ! docker inspect -f '{{.State.Running}}' "$BROWSER_CONTAINER" 2>/dev/null | g
     exit 2
 fi
 
-echo "== copying the capture script into $BROWSER_CONTAINER =="
+echo "== copying the observer script into $BROWSER_CONTAINER =="
 docker exec "$BROWSER_CONTAINER" rm -rf "$REMOTE_DIR"
 docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
+# chat_observer.py imports its browser helpers from capture_screenshots.py rather than
+# copying them, so both files travel together.
+docker cp tools/chat_observer.py "$BROWSER_CONTAINER:$REMOTE_DIR/chat_observer.py"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
-docker cp screenshots.ini "$BROWSER_CONTAINER:$REMOTE_DIR/screenshots.ini"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
-echo "== capturing from $SITE_URL =="
+echo "== observing a conversation against $SITE_URL =="
 set +e
-# Forwarded only when set: this is the override a page's `requires_dataset` is checked
-# against instead of the site's own storage tree, which is how a run simulates an absent
-# corpus without deleting or un-ingesting anything.
-PASS_THROUGH_ENV=()
-[ -n "${HOOVER4_SCREENSHOT_PRESENT_DATASETS+x}" ] &&
-    PASS_THROUGH_ENV+=(-e "HOOVER4_SCREENSHOT_PRESENT_DATASETS=$HOOVER4_SCREENSHOT_PRESENT_DATASETS")
+CHAT_ARGS=(
+    --out-root "$REMOTE_DIR/out"
+    --run-name "$RUN_NAME"
+    --base-url "$SITE_URL"
+    --console-whitelist "$REMOTE_DIR/console_whitelist.txt"
+    --username "$CRED_USERNAME"
+    --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
+    --prompts "${PROMPTS_ARG:-collection-exploration}"
+)
+[ -n "$CONVERSATIONS_ARG" ] && CHAT_ARGS+=(--conversations "$CONVERSATIONS_ARG")
+[ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
 # The password travels by environment, set on this one `docker exec` only, and never as a
 # process argument: argv is visible to every other process on the host through /proc, an
 # env var scoped to one exec is not.
-[ -n "$CRED_PASSWORD" ] && PASS_THROUGH_ENV+=(-e "HOOVER4_CAPTURE_PASSWORD=$CRED_PASSWORD")
-docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
-    --ini "$REMOTE_DIR/screenshots.ini" \
-    --out-root "$REMOTE_DIR/out" \
-    --run-name "$RUN_NAME" \
-    --base-url "$SITE_URL" \
-    --console-whitelist "$REMOTE_DIR/console_whitelist.txt" \
-    --only "$ONLY" \
-    --username "$CRED_USERNAME" \
-    --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
-CAPTURE_STATUS=$?
+docker exec -e "HOOVER4_CAPTURE_PASSWORD=$CRED_PASSWORD" "$BROWSER_CONTAINER" \
+    python "$REMOTE_DIR/chat_observer.py" "${CHAT_ARGS[@]}"
+OBSERVE_STATUS=$?
 set -e
 
 echo "== copying the results out =="
 # `.` on the source keeps the directory's CONTENTS rather than nesting another `out/`.
 # This MERGES onto $OUT_DIR: docker cp overwrites matching names (the freshly rewritten
-# index.md) and adds the new run-*/ directory, without touching any sibling it does not
-# name, which is what keeps every earlier run directory intact.
+# `latest` target) and adds the new run-*/ directory, without touching any sibling it does
+# not name, which is what keeps every earlier run directory intact.
 docker cp "$BROWSER_CONTAINER:$REMOTE_DIR/out/." "$OUT_DIR/" 2>/dev/null || {
     echo "error: nothing was produced inside the container" >&2
     exit 2
 }
+RESULTS_COPIED=1
 # The "latest" symlink is written here, host-side, rather than inside the container and
 # copied out: `docker cp` onto an existing symlink can follow it instead of replacing it,
 # which risks writing into a previous run's directory instead of updating the pointer.
 ln -sfn "$RUN_NAME" "$OUT_DIR/latest"
 
 echo
-echo "$(ls -1 "$OUT_DIR/$RUN_NAME"/*/*.png 2>/dev/null | wc -l) screenshots in $OUT_DIR/$RUN_NAME"
-[ -f "$OUT_DIR/$RUN_NAME/report.md" ] && grep -E "application_error|incomplete_execution" "$OUT_DIR/$RUN_NAME/report.md" || true
-exit $CAPTURE_STATUS
+echo "$(find "$OUT_DIR/$RUN_NAME/chat" -name '*.png' 2>/dev/null | wc -l) screenshots in $OUT_DIR/$RUN_NAME/chat"
+[ -f "$OUT_DIR/$RUN_NAME/chat/chat_index.md" ] && cat "$OUT_DIR/$RUN_NAME/chat/chat_index.md" || true
+exit $OBSERVE_STATUS

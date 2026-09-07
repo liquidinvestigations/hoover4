@@ -25,22 +25,29 @@ through the UI, for the reason in the skill: a URL reaches the page in one step.
 4. Run with the `--only` filter on your new section until it passes, then run the whole list.
    A new page can only break the numbering of the ones after it, and that is worth seeing.
 
-## Reading a failed run
+## Reading a run
 
-The run's index names each page with its verdict and the reason. Three failure kinds, and
-they mean different things:
+The run's `report.md` names each page with its worst severity and the reason. Two
+severities change the exit status; the rest are recorded but do not:
 
-| verdict | means |
-|---|---|
-| an error marker on the page | the site rendered its own failure card: read the page, because the backend is probably the cause |
-| a non-200 response | the route did not resolve, or the server is not answering |
-| an uncovered console error | something threw in the client; the message is in the snapshot beside the image |
+| verdict | exit effect | means |
+|---|---|---|
+| `application_error` | exit 1 | an error marker on the page, a non-200 response, or an undeclared error bar: read the page, because the backend is probably the cause |
+| `incomplete_execution` | exit 2 (unless an application error also occurred) | a failed login, a stopped browser, or a capture that could not be written |
+| `diagnostic_warning` | exit 0 | a console error or warning, a failed subresource request, or a request to an outside origin: the message is in the snapshot beside the image, and it is worth reading even on a clean exit |
+| `expected_outcome`, `behavioral_warning`, `trace` | exit 0 | a declared negative state, or a category with no producer in this runner yet |
 
 A page that fails by naming a dataset that does not exist is a **fixture** problem, not a code
 problem. The list assumes the corpus the end-to-end verification ingests.
 
-The whitelist file beside the harness holds run-wide console exceptions. Adding to it is a
-decision: an entry hides that error on every page, forever.
+The whitelist file beside the harness holds run-wide console exceptions. A whitelisted match
+is still a `diagnostic_warning`, only labelled with the rule that excused it; adding an entry
+does not hide it from the report, only from ever changing the exit status.
+
+An action that raises leaves `<resolution>/NN-name.FAILED.png`,
+`<resolution>/NN-name.FAILED.snapshot.txt` (the rendered DOM at that moment), and
+`diagnostics/<resolution>__NN-name.exception.txt` (the full traceback) beside the scenario's
+other files, whether or not the run's overall exit status changed.
 
 ## Cropping
 

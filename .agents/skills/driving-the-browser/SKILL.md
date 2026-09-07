@@ -1,7 +1,7 @@
 ---
 name: driving-the-browser
 description: Looks at the running site with a real browser. Screenshots, clicking through a flow, checking that a page renders and that its controls do something. Use when asked to "take a screenshot", "check the UI", "does it render", "click through it", "walk the page", "show me the page", "verify the frontend", or before claiming any visible change works. Covers the screenshot harness that gates on console errors, why it does not go through the browser tool server, the two input traps that make typing into this frontend silently do nothing, driving the browser tool server directly when its wrapper drops output, and what a browser acceptance walk is for.
-allowed-tools: Bash, Read, Grep, Glob, mcp__hoover4-browser__browser_navigate, mcp__hoover4-browser__browser_snapshot, mcp__hoover4-browser__browser_click, mcp__hoover4-browser__browser_type, mcp__hoover4-browser__browser_take_screenshot, mcp__hoover4-browser__browser_evaluate, mcp__hoover4-browser__browser_wait_for, mcp__hoover4-browser__browser_console_messages
+allowed-tools: Bash, Read, Grep, Glob, mcp__hoover4-browser__browser_navigate, mcp__hoover4-browser__browser_snapshot, mcp__hoover4-browser__browser_click, mcp__hoover4-browser__browser_type, mcp__hoover4-browser__browser_press_key, mcp__hoover4-browser__browser_select_option, mcp__hoover4-browser__read_page
 ---
 
 # Driving the browser
@@ -19,11 +19,32 @@ website/take-screenshots.sh --only search      # one subset
 
 It walks a list of pages, and per page writes the PNG a person would see, a text outline of
 the rendered DOM with the page's verdict, and (where an action failed) the state at the
-moment it failed, plus an index of the whole run. Output goes to a gitignored directory that
-is wiped at the start of every run.
+moment it failed and the diagnostics recorded at that moment, plus an index of the whole
+run. Output goes to a gitignored directory. **A run is never wiped**: each one adds a new
+`run-<timestamp>-<pid>/` directory and rewrites a `latest` symlink; every earlier run stays
+on disk until removed by hand.
 
-**It is a gate.** It exits non-zero when a page shows an error marker, returns a non-200,
-or logs a console error that no whitelist entry covers.
+**It is a gate, but a console error alone does not fail it.** Six severities, in
+`website/tools/capture_screenshots.py`'s own module docstring: `application_error` (a
+missing page, a non-200 main document, or an undeclared error marker) and
+`incomplete_execution` (a failed login, a stopped browser, a capture that could not be
+written) are the only two that change the exit status, 1 and 2. A console error or warning,
+a failed subresource request, or a request to an outside origin is `diagnostic_warning`,
+which is recorded but never gates the exit status. `expected_outcome` and
+`behavioral_warning` also exit 0. Read the run's `report.md` for what was actually seen; a
+clean exit status does not mean the run logged nothing.
+
+## The chat observer
+
+```
+website/observe-chat.sh --prompts collection-exploration --conversations 1
+```
+
+Drives a real chat conversation to completion and observes it with one browser page per
+resolution watching the same live generation, sharing the same mechanism and exit-status
+rule as the screenshot harness. A local generation runs on the CPU model twins; a turn takes
+minutes, and the script never cancels one or retries a submitted prompt. See
+`website/tools/chat_observer.py`'s module docstring for the full output shape.
 
 **It is welded to the corpus that the end-to-end verification ingests.** Away from that
 corpus its pages fail by naming a dataset that does not exist, which reads as a broken site

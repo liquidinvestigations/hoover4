@@ -90,6 +90,31 @@ class TestEviction:
         assert revived.session_id == "chat-1"
         assert started.count("chat-1") == 2
 
+    def test_a_chat_with_a_call_in_flight_is_never_evicted(self, fake_browsers, monkeypatch):
+        """The least recently used chat is the eviction candidate, unless it is mid call.
+        A 9th chat must not tear down an 8th that is still doing work; the cap is
+        exceeded instead, and the next-oldest idle chat goes first."""
+        router, started, stopped = fake_browsers
+        monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 3)
+
+        async def run():
+            for i in range(3):
+                await router.get(f"chat-{i}")
+            # chat-0 is the least recently used and has a call in flight.
+            chat0 = router._chats["chat-0"]
+            await chat0.lock.acquire()
+            await router.get("chat-3")
+            return chat0
+
+        chat0 = asyncio.run(run())
+        # chat-1, not the busy chat-0, was evicted, and the cap is exceeded by one
+        # rather than stopping a live call.
+        assert stopped == ["chat-1"]
+        assert set(started) == {"chat-0", "chat-1", "chat-2", "chat-3"}
+        assert len(router._chats) == 3
+        assert "chat-0" in router._chats
+        chat0.lock.release()
+
     def test_eviction_tears_the_browser_down(self, fake_browsers, monkeypatch):
         router, _, stopped = fake_browsers
         monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 1)

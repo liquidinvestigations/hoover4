@@ -41,9 +41,46 @@ regression.
 
 ## Screenshots
 
-`website/take-screenshots.sh` walks `website/screenshots.ini` and writes a PNG, a text snapshot of the
-rendered DOM and any console errors per page into `website/test_reports/screenshots/` (gitignored,
-wiped each run), plus a `report.md` index.
+`website/take-screenshots.sh` walks `website/screenshots.ini` and, per page, writes the PNG a
+person would see, a text outline of the rendered DOM, and (where an action raised) the state
+at the moment it failed. Output goes to `website/test_reports/screenshots/`, gitignored, and
+is **never wiped**. Each run adds `run-<UTC-timestamp>-<pid>/` and rewrites the `latest`
+symlink, so an earlier run stays on disk until removed by hand.
+
+```
+website/take-screenshots.sh                          # every page in the list
+website/take-screenshots.sh --only search             # one substring of the scenario name
+website/take-screenshots.sh --resolutions 1080p        # one resolution instead of the default 720p,1080p
+website/take-screenshots.sh --target URL --username U --password P
+website/take-screenshots.sh --login-env path/to/file   # credentials from a file instead
+```
+
+With no `--username`/`--password`, `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD`, or
+`--login-env` file, the run proceeds unauthenticated (a screenshot page runner can go on
+without an identity; `observe-chat.sh`, below, cannot). `TEST_LOGIN.env` beside the script,
+when present, is the login-env default; `TEST_LOGIN.env.example` names its keys.
+
+**Result rules.** Every observation is one of six severities; only two change the exit
+status. `application_error` (a missing page, a non-200 main document, or an undeclared error
+marker or bar) exits 1. `incomplete_execution` (a failed login, a stopped browser, a capture
+that could not be written) exits 2 unless an application error also occurred. A console
+error or warning, a failed subresource request, or a request to an outside origin is
+`diagnostic_warning` and exits 0, recorded in the report but never gating the run.
+`expected_outcome` (a negative state a scenario declared with `expect`) and
+`behavioral_warning` also exit 0.
+
+**Output structure**, per run directory: `<resolution>/NN-name.png` and
+`.snapshot.txt`; on a raised action, `<resolution>/NN-name.FAILED.png` and
+`.FAILED.snapshot.txt` (the same shape, captured at the moment of failure);
+`diagnostics/<resolution>__NN-name.json` (console and network records, written whether the
+capture passed or raised) and, on a raise, `diagnostics/<resolution>__NN-name.exception.txt`
+(the full traceback); `manifest.json`, `report.md`, `report.html` for the whole run.
+
+**Troubleshooting.** A page that fails by naming a dataset that does not exist is a fixture
+problem: the ini is welded to the corpus `main_services/verify-stack.sh` ingests, so run that
+first. A whitelisted console entry in `tools/console_whitelist.txt` stays a
+`diagnostic_warning`, only labelled with the rule that excused it; it never changes the exit
+status either way.
 
 It does **not** use the browser MCP endpoint. `hoover4-mcp-browser` refuses internal hosts
 at two independent layers by design (a deny-list in `urlcheck.py` and a PAC script handed
@@ -57,6 +94,36 @@ Dioxus unless you go through the prototype's setter and dispatch a bubbling `inp
 and the home box submits on `onkeypress`, so Enter has to be a real CDP key event. The long
 base64 segments in the ini are CBOR route parameters (`website/frontend/src/data_definitions/url_param.rs`);
 `9g==` is `None`.
+
+## Observing a chat conversation
+
+`website/observe-chat.sh` drives a real chat conversation to completion in the same
+container and by the same mechanism as the screenshot harness, and observes it with one
+browser page per resolution watching the same live generation, not two separate
+generations. It needs an identity: an empty credential pair from every source is a
+validation failure here, unlike the screenshot runner.
+
+```
+website/observe-chat.sh --prompts collection-exploration --conversations 1
+website/observe-chat.sh --prompts all                      # every fixed prompt, run concurrently
+website/observe-chat.sh --prompts p1,p2,p3 --no-followup    # skip the second-turn history check
+```
+
+Every selected prompt runs as a concurrent conversation, not one after another, so an
+overlap claim measures generations that actually ran at the same time. A local generation
+uses the CPU model twins. One turn can take several minutes, a Deep Research turn tens of
+minutes. The observer never cancels a live generation and never retries a submitted prompt.
+A submission failure, or a missed observation deadline, ends that conversation's own
+observation and is recorded, and the turn is left running.
+
+Output lands at `website/test_reports/chat_observer/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/`
+(gitignored, never wiped, same `latest` symlink convention), with `pre_send.snapshot.txt`,
+`<resolution>/interval-NNN-t<seconds>s.png` and matching `.snapshot.txt` at five-second
+deadlines, `<resolution>/completion-top.png` / `completion-bottom.png`,
+`document_preview.png`, `conversation.json`, `report.md`, and a run-level `chat_index.md`
+with the generating-interval column an overlap claim needs. Same six severities and the same
+1/2/0 exit-status rule as the screenshot harness, read from `chat_observer.py`'s own exit
+code.
 
 ## Two single-question diagnostics next to it
 

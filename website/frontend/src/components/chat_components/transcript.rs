@@ -104,6 +104,13 @@ pub fn ChatTranscript(
                         }
                     }
                 }
+                if !turn.reasoning.is_empty() {
+                    div {
+                        key: "stream-reasoning-{turn.answer_seq}",
+                        style: "align-self: stretch; max-width: 96%; padding: 4px 2px 0;",
+                        ReasoningDisclosure { reasoning: turn.reasoning.clone() }
+                    }
+                }
                 if !turn.content.is_empty() {
                     div {
                         key: "stream-answer-{turn.answer_seq}",
