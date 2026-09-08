@@ -31,9 +31,6 @@ pub async fn search_document_item_count(
         sources.len()
     );
 
-    let has_pdf = sources
-        .iter()
-        .any(|source| matches!(source, DocumentSourceItem::Pdf(_)));
     let has_txt = sources
         .iter()
         .any(|source| matches!(source, DocumentSourceItem::Text(_)));
@@ -50,16 +47,23 @@ pub async fn search_document_item_count(
 
     let doc_id = document_identifier.clone();
     let query = find_query.clone();
-    let pdf_task = if has_pdf {
-        let user = user.clone();
-        let doc_id = doc_id.clone();
-        let query = query.clone();
-        Some(tokio::task::spawn(async move {
-            search_document_pdf(&user, doc_id, query).await
-        }))
-    } else {
-        None
-    };
+    let pdf_tasks = sources
+        .iter()
+        .filter_map(|source| match source {
+            DocumentSourceItem::Pdf(item) => Some(item.clone()),
+            _ => None,
+        })
+        .map(|source| {
+            let user = user.clone();
+            let doc_id = doc_id.clone();
+            let query = query.clone();
+            let selected_source = source.clone();
+            let task = tokio::task::spawn(async move {
+                search_document_pdf(&user, doc_id, query, Some(selected_source)).await
+            });
+            (source, task)
+        })
+        .collect::<Vec<_>>();
 
     let txt_task = if has_txt {
         let user = user.clone();
@@ -90,15 +94,15 @@ pub async fn search_document_item_count(
     } else {
         0
     };
-    let _pdf_count = if let Some(pdf_task) = pdf_task {
-        if let Ok(Ok(pdf_search)) = pdf_task.await {
+    let mut pdf_counts = Vec::with_capacity(pdf_tasks.len());
+    for (source, task) in pdf_tasks {
+        let count = if let Ok(Ok(pdf_search)) = task.await {
             pdf_search.results.len() as u64
         } else {
             0
-        }
-    } else {
-        0
-    };
+        };
+        pdf_counts.push((source, count));
+    }
 
     let mut rv = vec![];
     for source in sources {
@@ -107,8 +111,13 @@ pub async fn search_document_item_count(
             _ => "".to_string(),
         };
         match &source {
-            DocumentSourceItem::Pdf(_i) => {
-                rv.push((source, _pdf_count));
+            DocumentSourceItem::Pdf(item) => {
+                let count = pdf_counts
+                    .iter()
+                    .find(|(pdf_source, _)| pdf_source == item)
+                    .map(|(_, count)| *count)
+                    .unwrap_or(0);
+                rv.push((source, count));
             }
             DocumentSourceItem::Table(_i) => {
                 rv.push((source, _table_count));

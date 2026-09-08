@@ -1,7 +1,7 @@
 //! Virtual file system browsing endpoints.
 
 pub mod tree;
-pub use tree::{vfs_search_in_folder, vfs_tree_children, vfs_tree_path_to};
+pub use tree::{vfs_search_in_folder, vfs_tree_children, vfs_tree_container_node, vfs_tree_path_to};
 
 use std::collections::BTreeSet;
 

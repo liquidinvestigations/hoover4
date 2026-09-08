@@ -17,6 +17,8 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
+The transcript and persisted answer nodes expose stable attributes for browser history verification.
+
 ## The two switches are frozen after the first message
 
 They decide **which agent answers**, so changing them mid-thread would give a transcript

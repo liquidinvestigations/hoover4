@@ -39,6 +39,10 @@ pub fn DocumentPreviewForPdf(
     });
 
     let mut controller = use_signal(move || None);
+    use_effect(move || {
+        let _ = pdf_url();
+        controller.set(None);
+    });
     let on_document_loaded = Callback::new(move |x: PdfViewerControllerJs| {
         controller.set(Some(x));
     });
@@ -51,7 +55,7 @@ pub fn DocumentPreviewForPdf(
                 }
             },
             page: rsx! {
-                PdfViewer { pdf_url, on_document_loaded, document_identifier: document_identifier() }
+                PdfViewer { pdf_url, source, on_document_loaded, document_identifier: document_identifier() }
                 if let Some(controller) = controller() {
                     PdfControllerOverlay {controller }
                 }

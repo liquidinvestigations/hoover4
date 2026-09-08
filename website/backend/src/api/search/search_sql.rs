@@ -153,7 +153,7 @@ pub fn sql_options_clause(max_matches: u64) -> String {
 /// `Relevance` is `weight()` and never a column, which is why this returns the whole
 /// key expression rather than a name.
 pub fn sort_column(sort: &SortSpec) -> &'static str {
-    match sort.key {
+    match sort.normalized().key {
         SortKey::Relevance => "weight()",
         SortKey::Date => {
             if sort.desc {
@@ -175,7 +175,8 @@ pub fn sort_column(sort: &SortSpec) -> &'static str {
 /// without a total order a document tied at the truncation boundary appears on two pages
 /// or on none.
 pub fn sort_order_by(sort: &SortSpec) -> String {
-    let column = sort_column(sort);
+    let sort = sort.normalized();
+    let column = sort_column(&sort);
     let direction = if sort.desc { "DESC" } else { "ASC" };
     format!("ORDER BY {column} {direction}, collection_dataset ASC, file_hash ASC")
 }
@@ -669,6 +670,14 @@ mod tests {
         assert_eq!(
             sort_order_by(&SortSpec { key: SortKey::FileSize, desc: true }),
             "ORDER BY file_size_bytes DESC, collection_dataset ASC, file_hash ASC"
+        );
+    }
+
+    #[test]
+    fn qa_sort_ascending_relevance_sql_is_descending() {
+        assert_eq!(
+            sort_order_by(&SortSpec { key: SortKey::Relevance, desc: false }),
+            "ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC",
         );
     }
 

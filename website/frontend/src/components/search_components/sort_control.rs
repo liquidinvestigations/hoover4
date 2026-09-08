@@ -25,7 +25,8 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         md_content_icons::MdSort,
-        md_navigation_icons::{MdArrowDownward, MdArrowForward, MdArrowUpward, MdCheck},
+        md_navigation_icons::{MdArrowForward, MdCheck},
+        go_icons::{GoSortAsc, GoSortDesc},
     },
 };
 
@@ -85,22 +86,13 @@ pub fn SortControl(
 ) -> Element {
     let mut menu_open = use_signal(|| false);
 
-    // The spec the UI shows is the RESOLVED one: with no query string, Relevance is not
-    // a valid order and the server would silently sort by date anyway. Showing "Sort"
-    // while the results come back date-ordered is the confusing half of that.
-    let applied = use_memo(move || {
-        let q = original_query.read();
-        q.sort.resolved(&q.query_string)
-    });
-    let effective = use_memo(move || {
-        let q = query.read();
-        q.sort.resolved(&q.query_string)
-    });
-    let relevance_available = use_memo(move || !query.read().query_string.trim().is_empty());
-    let applied_is_default = use_memo(move || original_query.read().sort == SortSpec::default());
+    // Both states normalize legacy ascending-Relevance URLs before the control renders.
+    let applied = use_memo(move || original_query.read().sort.normalized());
+    let effective = use_memo(move || query.read().sort.normalized());
+    let applied_is_default = use_memo(move || applied() == SortSpec::default());
 
-    // Compared after resolution, so a spec that only differs in a field the server would
-    // ignore anyway does not advertise a change nobody would see.
+    // Compared after normalization, so a legacy ascending-Relevance URL does not
+    // advertise a pending state that the server cannot use.
     let key_pending = use_memo(move || effective().key != applied().key);
     let direction_pending = use_memo(move || effective().desc != applied().desc);
     let is_pending = use_memo(move || key_pending() || direction_pending());
@@ -126,6 +118,9 @@ pub fn SortControl(
     });
 
     let direction_tooltip = use_memo(move || {
+        if effective().key == SortKey::Relevance {
+            return "Relevance always sorts descending.".to_string();
+        }
         let base = if effective().desc {
             "Descending. Click for ascending."
         } else {
@@ -141,6 +136,13 @@ pub fn SortControl(
     // says the results are not in that direction yet.
     let direction_colour = use_memo(move || {
         if direction_pending() { ACCENT } else { "rgba(0,0,0,0.8)" }
+    });
+    let direction_aria_label = use_memo(move || {
+        if effective().desc {
+            "Sort direction: descending"
+        } else {
+            "Sort direction: ascending"
+        }
     });
 
     let mut set_key = move |key: SortKey| {
@@ -181,20 +183,22 @@ pub fn SortControl(
             button {
                 style: "{BUTTON_STYLE} border: none; padding: 0 8px;",
                 class: "hoover4-hover-shadow-background",
-                title: "{direction_tooltip}",
+                title: "{direction_tooltip()}",
+                aria_label: "{direction_aria_label()}",
+                disabled: effective().key == SortKey::Relevance,
                 onclick: move |event: Event<MouseData>| {
                     event.stop_propagation();
                     {
                         let mut q = query.write();
-                        let current = q.sort.resolved(&q.query_string);
+                        let current = q.sort.normalized();
                         q.sort = SortSpec { key: current.key, desc: !current.desc };
                     }
                     on_commit.call(());
                 },
                 if effective().desc {
-                    Icon { icon: MdArrowDownward, style: "width: 18px; height: 18px; color: {direction_colour()};" }
+                    Icon { icon: GoSortDesc, style: "width: 18px; height: 18px; color: {direction_colour()};" }
                 } else {
-                    Icon { icon: MdArrowUpward, style: "width: 18px; height: 18px; color: {direction_colour()};" }
+                    Icon { icon: GoSortAsc, style: "width: 18px; height: 18px; color: {direction_colour()};" }
                 }
             }
 
@@ -208,12 +212,12 @@ pub fn SortControl(
                     style: "{MENU_STYLE}",
                     for key in SortKey::ALL {
                         {
-                            let enabled = key != SortKey::Relevance || relevance_available();
+                            let enabled = true;
                             let selected = effective().key == key;
                             // rsx! interpolation takes an expression, not a block.
                             let cursor = if enabled { "pointer" } else { "not-allowed" };
                             let colour = if enabled { "rgb(17,24,39)" } else { "rgba(17,24,39,0.4)" };
-                            let tooltip = if enabled { "" } else { "There is no relevance without a query" };
+                            let tooltip = "";
                             rsx! {
                                 button {
                                     key: "{key:?}",

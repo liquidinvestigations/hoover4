@@ -358,9 +358,11 @@ pane still addresses that level as the descriptor `container_hash + "/"`. A desc
 and a tree node are different things. Past
 `MAX_CRUMBS_SHOWN` (3) the leading crumbs collapse into a `…` chip whose popup lists them.
 
-Every read of it goes through `manticore_search_sql_uncached`: the tree changes while
-ingestion runs, watching a folder fill up is the normal case, and a stale tree is worse
-than a slow one.
+Every tree endpoint reads through `manticore_search_sql_uncached`.
+The mounted dataset tree retains child pages and resolved paths for five seconds.
+Navigation or remount refreshes expired entries while existing rows remain visible.
+Successful path results retain their original fetch time, and failed requests remain errors.
+The file browser shares the resolved path between its sidebar and breadcrumbs, so one navigation requests the ancestor chain once.
 
 Filtering on a folder finds everything below it **including through containers**, and a
 content-addressed container that sits at two paths contributes both ancestries. The

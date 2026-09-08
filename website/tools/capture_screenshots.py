@@ -157,6 +157,10 @@ class Page:
     # needed; the literal "any" means one of CORPUS_DATASETS, unnamed. Empty means the page
     # renders without the fixture corpus.
     requires_dataset: list[str] = field(default_factory=list)
+    # The browser media preference applied before navigation. Empty uses the browser default.
+    color_scheme: str = ""
+    procedure: str = ""
+    init_script: str = ""
 
 
 def parse_pages(ini_path: Path) -> list[Page]:
@@ -186,9 +190,16 @@ def parse_pages(ini_path: Path) -> list[Page]:
                     f"scenario {name!r}: viewport={viewport_raw!r} is not WIDTHxHEIGHT"
                 )
             viewport = (int(vw), int(vh))
+        color_scheme = section.get("color_scheme", "").strip()
+        if color_scheme not in ("", "light", "dark"):
+            raise SystemExit(
+                f"scenario {name!r}: color_scheme={color_scheme!r} is not light or dark"
+            )
         pages.append(
             Page(
                 name=name,
+                procedure=section.get("procedure", "").strip(),
+                init_script=section.get("init_script", "").strip(),
                 url=section.get("url", "/"),
                 actions=parse_actions(section.get("actions", "")),
                 full_page=section.getboolean("full_page", fallback=False),
@@ -213,6 +224,7 @@ def parse_pages(ini_path: Path) -> list[Page]:
                 ],
                 viewport=viewport,
                 manual_asset=section.get("manual_asset", "").strip(),
+                color_scheme=color_scheme,
             )
         )
     return pages
@@ -406,7 +418,7 @@ async def wait_css(tab, selector: str, timeout: float = PAGE_TIMEOUT_S) -> None:
     raise RuntimeError(f"timed out waiting for selector {selector!r}")
 
 
-async def run_action(tab, base_url: str, verb: str, argument: str) -> None:
+async def run_action(tab, base_url: str, verb: str, argument: str):
     if verb == "goto":
         await tab.get(base_url + argument)
     elif verb == "wait_text":
@@ -416,6 +428,8 @@ async def run_action(tab, base_url: str, verb: str, argument: str) -> None:
         await wait_text(tab, needle.strip(), scope.strip())
     elif verb == "wait_css":
         await wait_css(tab, argument)
+    elif verb == "wait_eval":
+        return await wait_eval(tab, argument)
     elif verb == "click_text":
         await click_text(tab, argument)
     elif verb == "click_text_in":
@@ -423,11 +437,19 @@ async def run_action(tab, base_url: str, verb: str, argument: str) -> None:
         await click_text(tab, needle.strip(), scope.strip())
     elif verb == "click_css":
         await click_css(tab, argument)
+    elif verb == "pointer_click_css":
+        return await pointer_click_css(tab, argument)
     elif verb == "type_css":
         selector, _, text = argument.partition("::")
         await type_css(tab, selector.strip(), text.strip())
     elif verb == "press_enter":
         await press_enter(tab)
+    elif verb == "press_key":
+        await press_key(tab, argument)
+    elif verb == "history_back":
+        await navigate_history(tab, -1)
+    elif verb == "history_forward":
+        await navigate_history(tab, 1)
     elif verb == "sleep":
         await asyncio.sleep(int(argument) / 1000.0)
     elif verb == "scroll":
@@ -441,7 +463,7 @@ el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true}));
 return {ok: true};
 """ % json.dumps(argument))
     elif verb == "eval":
-        await js(tab, argument)
+        return await js(tab, argument)
     else:
         raise RuntimeError(f"unknown action {verb!r}")
 
@@ -524,6 +546,97 @@ async def set_exact_viewport(tab, width: int, height: int) -> None:
             width=width, height=height, device_scale_factor=1, mobile=False,
         )
     )
+
+
+async def wait_eval(tab, expression: str, timeout: float = PAGE_TIMEOUT_S):
+    """Wait until an expression returns `true` or an object with `ok: true`."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = await js(tab, expression)
+        if result is True or (isinstance(result, dict) and result.get("ok") is True):
+            return result
+        await asyncio.sleep(0.25)
+    raise RuntimeError(f"timed out waiting for expression {expression!r}")
+
+
+async def set_color_scheme(tab, color_scheme: str) -> None:
+    """Apply one color-scheme preference before a scenario navigation."""
+    import nodriver.cdp.emulation as emulation_cdp
+
+    features = []
+    if color_scheme:
+        features.append(
+            emulation_cdp.MediaFeature(name="prefers-color-scheme", value=color_scheme)
+        )
+    await tab.send(emulation_cdp.set_emulated_media(features=features))
+
+
+async def pointer_click_css(tab, selector: str) -> dict:
+    """Click the center of `selector` through Chrome DevTools Protocol pointer events."""
+    import nodriver.cdp.input_ as input_cdp
+
+    point = await js(tab, """
+const el = document.querySelector(%s);
+if (!el) return {ok: false};
+const box = el.getBoundingClientRect();
+if (!box.width || !box.height) return {ok: false};
+const x = box.left + box.width / 2;
+const y = box.top + box.height / 2;
+if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return {ok: false};
+const hit = document.elementFromPoint(x, y);
+const describe = node => node ? {
+    tag: node.tagName,
+    role: node.getAttribute('role'),
+    aria_label: node.getAttribute('aria-label'),
+} : null;
+return {ok: true, x, y, selector_target: describe(el), hit_target: describe(hit), hit_matches_selector: hit === el || el.contains(hit)};
+""" % json.dumps(selector))
+    if not point.get("ok"):
+        raise RuntimeError(f"cannot pointer click visible selector {selector!r}")
+    await js(tab, "window.__h4_pointer_click = %s; return {ok: true};" % json.dumps(point))
+    common = {"x": point["x"], "y": point["y"], "pointer_type": "mouse"}
+    await tab.send(input_cdp.dispatch_mouse_event(type_="mouseMoved", **common))
+    await tab.send(input_cdp.dispatch_mouse_event(
+        type_="mousePressed", button=input_cdp.MouseButton.LEFT, buttons=1, click_count=1, **common,
+    ))
+    await tab.send(input_cdp.dispatch_mouse_event(
+        type_="mouseReleased", button=input_cdp.MouseButton.LEFT, buttons=0, click_count=1, **common,
+    ))
+    return point
+
+
+async def press_key(tab, key_name: str) -> None:
+    """Send one declared navigation or focus key through Chrome DevTools Protocol."""
+    import nodriver.cdp.input_ as input_cdp
+
+    key_spec = {
+        "Escape": ("Escape", "Escape", 27, 0),
+        "Tab": ("Tab", "Tab", 9, 0),
+        "Shift+Tab": ("Tab", "Tab", 9, 8),
+    }.get(key_name)
+    if key_spec is None:
+        raise RuntimeError(f"unsupported key {key_name!r}")
+    key, code, virtual_key, modifiers = key_spec
+    common = {
+        "key": key,
+        "code": code,
+        "windows_virtual_key_code": virtual_key,
+        "native_virtual_key_code": virtual_key,
+        "modifiers": modifiers or None,
+    }
+    await tab.send(input_cdp.dispatch_key_event(type_="keyDown", **common))
+    await tab.send(input_cdp.dispatch_key_event(type_="keyUp", **common))
+
+
+async def navigate_history(tab, offset: int) -> None:
+    """Navigate to an adjacent entry in the browser's actual history."""
+    import nodriver.cdp.page as page_cdp
+
+    current, entries = await tab.send(page_cdp.get_navigation_history())
+    target = current + offset
+    if not 0 <= target < len(entries):
+        raise RuntimeError(f"browser history has no entry at offset {offset}")
+    await tab.send(page_cdp.navigate_to_history_entry(entries[target].id_))
 
 
 async def measured_viewport(tab) -> tuple[int, int]:
@@ -778,6 +891,22 @@ return {mounted: !!main && main.childElementCount > 0 && booted};
     raise RuntimeError(f"the application had not mounted after {APP_MOUNT_TIMEOUT_S:g}s")
 
 
+async def navigate_document(tab, url: str, init_script: str = "") -> None:
+    """Wait for the new mounted document in the current protocol session."""
+    import nodriver.cdp.page as page_cdp
+
+    await tab.send(page_cdp.enable())
+    token = await tab.send(page_cdp.add_script_to_evaluate_on_new_document(source=init_script)) if init_script else None
+    previous_origin = await js(tab, "return performance.timeOrigin;")
+    try:
+        await tab.send(page_cdp.navigate(url))
+        await wait_eval(tab, "return performance.timeOrigin!==%s&&document.readyState==='complete';" % json.dumps(previous_origin))
+        await wait_for_app_mounted(tab)
+    finally:
+        if token is not None:
+            await tab.send(page_cdp.remove_script_to_evaluate_on_new_document(identifier=token))
+
+
 async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set[str]:
     """Which of `needed` are registered on the running site."""
     override = os.environ.get("HOOVER4_SCREENSHOT_PRESENT_DATASETS")
@@ -785,13 +914,12 @@ async def discover_present_datasets(tab, base_url: str, needed: set[str]) -> set
         return {d.strip() for d in override.split(",") if d.strip()}
     if not needed:
         return set()
-    await tab.get(base_url + "/file_browser")
-    await wait_css(tab, "body *")
-    await asyncio.sleep(1500 / 1000.0)
+    await navigate_document(tab, base_url + "/file_browser")
+    await wait_eval(tab, "const e=document.querySelector('#x-storage-tree');return !!e&&(!!e.querySelector('[id^=x-tree-d-]')||e.innerText.includes('No collections.')); ")
     present: set[str] = set()
     for dataset in needed:
         found = await js(
-            tab, "return {ok: !!document.querySelector(%s)};" % json.dumps(f"#x-tree-d-{dataset}")
+            tab, "return {ok: Array.from(document.querySelectorAll('#x-storage-tree .x-facet-list-item')).some(row => row.title === %s)};" % json.dumps(dataset)
         )
         if found.get("ok"):
             present.add(dataset)
@@ -904,7 +1032,32 @@ def run_gitignore_text() -> str:
         "# Generated by capture_screenshots.py. Governs only this run directory.\n"
         "manifest.json\n"
         "diagnostics/\n"
+        "*.steps.json\n"
     )
+
+
+async def run_recorded_actions(tab, base_url: str, actions, path: Path, network=None) -> list[dict]:
+    """Record each completed action and retain prior steps when a later action fails."""
+    steps = []
+    for index, (verb, argument) in enumerate(actions):
+        step = {"index": index, "action": verb, "argument": argument, "started_at": time.time()}
+        try:
+            step["before"] = await js(tab, "return {url: location.href};")
+            step["observed"] = await run_action(tab, base_url, verb, argument)
+            step["status"] = "completed"
+        except BaseException as error:
+            step["status"] = "failed"
+            step["error"] = str(error)
+            raise
+        finally:
+            step["finished_at"] = time.time()
+            if network is not None:
+                step["api_calls"] = dict(network.api_calls)
+            steps.append(step)
+            pending = path.with_suffix(".pending.json")
+            pending.write_text(json.dumps(steps, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            pending.replace(path)
+    return steps
 
 
 async def capture_one(
@@ -924,12 +1077,15 @@ async def capture_one(
     captures: list[dict] = []
 
     await set_exact_viewport(tab, rw, rh)
+    await set_color_scheme(tab, page.color_scheme)
     network.clear()
-    await tab.get(base_url + page.url)
+    await navigate_document(tab, base_url + page.url, page.init_script)
     await wait_css(tab, "body *")
     await asyncio.sleep(page.settle_ms / 1000.0)
-    for verb, argument in page.actions:
-        await run_action(tab, base_url, verb, argument)
+    await run_recorded_actions(tab, base_url, page.actions, res_dir / f"{stem}.steps.json", network)
+    if page.procedure:
+        from manual_qa_runtime import run_procedure
+        await run_procedure(page.procedure, tab, base_url, network, res_dir, stem, sys.modules[__name__])
     await asyncio.sleep(page.settle_ms / 1000.0)
 
     actual_w, actual_h = await measured_viewport(tab)
@@ -1110,9 +1266,10 @@ async def capture_all(
     def record(sev: str) -> None:
         totals[sev] = totals.get(sev, 0) + 1
 
-    browser = await nodriver.start(
-        headless=True,
-        sandbox=False,
+    from browser_lifecycle import start_browser, stop_browser
+
+    browser = await start_browser(
+        diagnostics_dir / "chromium.log",
         browser_args=[
             "--no-sandbox",
             "--disable-dev-shm-usage",
@@ -1179,7 +1336,7 @@ async def capture_all(
                 try:
                     captures, observations, diags = await asyncio.wait_for(
                         capture_one(tab, base_url, network, page, res_name, size, res_dir, stem, whitelist),
-                        PAGE_BUDGET_S,
+                        600.0 if page.procedure else PAGE_BUDGET_S,
                     )
                     for capture in captures:
                         capture["size_source"] = size_source
@@ -1190,7 +1347,7 @@ async def capture_all(
                     )
                 except Exception as exc:  # noqa: BLE001
                     reason = (
-                        f"the page did not finish within {PAGE_BUDGET_S:g}s"
+                        f"the page did not finish within {600.0 if page.procedure else PAGE_BUDGET_S:g}s"
                         if isinstance(exc, asyncio.TimeoutError)
                         else str(exc)
                     )
@@ -1226,10 +1383,7 @@ async def capture_all(
             for sev, msg in page_observations:
                 page_reports.append(f"    - {sev}: {msg}")
     finally:
-        try:
-            browser.stop()
-        except Exception:  # noqa: BLE001
-            pass
+        await stop_browser(browser)
 
     manifest["page_reports"] = page_reports
     exit_status = 1 if totals[APPLICATION_ERROR] else (2 if totals[INCOMPLETE_EXECUTION] else 0)
@@ -1309,6 +1463,19 @@ li {{ margin: 0.2em 0; }}
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
+def select_pages(pages: list[Page], only: str, names_csv: str) -> list[Page]:
+    """Select named pages and fail if an exact name is absent."""
+    if only:
+        pages = [page for page in pages if only in page.name]
+    if names_csv:
+        names = {name.strip() for name in names_csv.split(",") if name.strip()}
+        pages = [page for page in pages if page.name in names]
+        missing = names - {page.name for page in pages}
+        if missing:
+            raise ValueError(f"unknown pages selected: {', '.join(sorted(missing))}")
+    return pages
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ini", default="/tmp/h4shots/screenshots.ini")
@@ -1316,6 +1483,7 @@ def main() -> int:
     parser.add_argument("--run-name", required=True, help="the run-<stamp>-<pid> directory name")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--only", default="", help="capture only sections whose name contains this")
+    parser.add_argument("--names", default="", help="capture exactly these comma-separated section names")
     parser.add_argument("--console-whitelist", default="/tmp/h4shots/console_whitelist.txt")
     parser.add_argument("--username", default="", help="not secret; the password travels by environment only")
     parser.add_argument("--resolutions", default=DEFAULT_RESOLUTIONS)
@@ -1352,8 +1520,11 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     pages = parse_pages(Path(args.ini))
-    if args.only:
-        pages = [p for p in pages if args.only in p.name]
+    try:
+        pages = select_pages(pages, args.only, args.names)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     if not pages:
         print("no pages selected", file=sys.stderr)
         return 2

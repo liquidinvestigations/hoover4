@@ -21,7 +21,7 @@ use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
 };
 use crate::components::search_components::storage_tree::{StorageRow, StorageTree};
-use crate::components::search_components::vfs_tree::TreeSkin;
+use crate::components::search_components::vfs_tree::{TreeSkin, browser_now_ms, CHILDREN_CACHE_TTL_MS};
 use common::search_result::FacetOriginalValue;
 use common::vfs::{VfsNodeKind, VfsTreeNode, make_node_key};
 use crate::data_definitions::doc_viewer_state::DocViewerState;
@@ -42,6 +42,17 @@ const PAGE_STYLE: &str = "
     flex-direction: row;
     overflow: hidden;
 ";
+
+/// The container-root lookup and the descriptor it answered for.
+///
+/// A container-root URL identifies bytes and its inner path. It has no outer-location
+/// field, so duplicate archive bytes resolve by the endpoint's stable path order.
+#[derive(Clone)]
+struct ContainerFocus {
+    collection: String,
+    descriptor: PathDescriptor,
+    node: Option<VfsTreeNode>,
+}
 
 /// The inside of the storage pane. Its WIDTH belongs to [`ResizableSidebar`], which owns
 /// the drag handle and the remembered value; putting a width here as well would fight it.
@@ -503,10 +514,67 @@ fn FileBrowserContent(
     // The node the URL is pointing at, as a MEMO over the route signals. Ancestor
     // elision, sibling capping and the highlighted row are all defined relative to it,
     // and all three have to follow an in-app navigation, which a plain prop does not.
-    let focus_key = use_memo(move || {
+    let descriptor_focus = use_memo(move || {
         let path = path();
         make_node_key(&collection(), &path.container_hash, &path.path)
     });
+    let mut cached_containers = use_signal(std::collections::BTreeMap::<(String, String), (f64, Option<VfsTreeNode>)>::new);
+    let container_focus = use_resource(move || {
+        let collection = collection();
+        let descriptor = path();
+        let cache_key = (collection.clone(), descriptor.container_hash.clone());
+        let cached = cached_containers.peek().get(&cache_key).cloned();
+        async move {
+            if descriptor.container_hash.is_empty() || descriptor.path != "/" {
+                return Ok::<ContainerFocus, ServerFnError>(ContainerFocus { collection, descriptor, node: None });
+            }
+            if let Some((fetched_at, node)) = cached
+                && browser_now_ms() - fetched_at < CHILDREN_CACHE_TTL_MS
+            {
+                return Ok(ContainerFocus { collection, descriptor, node });
+            }
+            let node = crate::api::vfs_api::vfs_tree_container_node(
+                collection.clone(),
+                descriptor.container_hash.clone(),
+            )
+            .await?;
+            cached_containers.write().insert(cache_key, (
+                browser_now_ms(), node.clone(),
+            ));
+            Ok::<ContainerFocus, ServerFnError>(ContainerFocus { collection, descriptor, node })
+        }
+    });
+    let focus_key = use_memo(move || match container_focus.read().clone() {
+        Some(Ok(resolved)) if resolved.collection == collection() && resolved.descriptor == path() => resolved
+            .node
+            .map(|node| node.node_key)
+            .unwrap_or_else(|| descriptor_focus()),
+        _ if !path().container_hash.is_empty() && path().path == "/" => String::new(),
+        _ => descriptor_focus(),
+    });
+
+    let mut cached_paths = use_signal(std::collections::BTreeMap::<String, (f64, Vec<VfsTreeNode>)>::new);
+    let resolved_path = use_resource(move || {
+        let dataset = collection();
+        let key = focus_key();
+        let cached = cached_paths.peek().get(&key).cloned();
+        async move {
+            if key.is_empty() {
+                return Ok::<_, ServerFnError>(None);
+            }
+            if let Some((fetched_at, nodes)) = cached
+                && browser_now_ms() - fetched_at < CHILDREN_CACHE_TTL_MS
+            {
+                return Ok(Some((key, nodes)));
+            }
+            let nodes = crate::api::vfs_api::vfs_tree_path_to(dataset, key.clone()).await?;
+            cached_paths.write().insert(key.clone(), (
+                browser_now_ms(), nodes.clone(),
+            ));
+            Ok(Some((key, nodes)))
+        }
+    });
+    use_context_provider(move || crate::api::vfs_api::ResolvedVfsPath { dataset: collection, chain: resolved_path });
 
     let collection_value = collection();
     let path_value = path();
@@ -535,8 +603,9 @@ fn FileBrowserContent(
                 style: MAIN_AREA_STYLE,
                 div {
                     style: TABLE_PANE_STYLE,
-                    Breadcrumbs { collection, path }
+                    Breadcrumbs { collection, path, focus_key }
                     FolderToolbar {
+                        key: descriptor_focus(),
                         collection: collection_value.clone(),
                         path: path_value.clone(),
                         matches: folder_matches,
@@ -695,28 +764,14 @@ pub(crate) fn collapse_duplicate_crumbs(crumbs: Vec<Crumb>) -> Vec<Crumb> {
 /// breadcrumb bar that blinks empty on every navigation is worse than one that is briefly
 /// missing a container hop.
 #[component]
-fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>) -> Element {
+fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>, focus_key: ReadSignal<String>) -> Element {
     let mut popup_open = use_signal(|| false);
-
-    // Signals read INSIDE the closure, which is what subscribes the resource to them.
-    // Component props are not reactive in Dioxus, with `path` as a plain value the bar
-    // kept showing the folder you had navigated away from, while a fresh page load on the
-    // same URL rendered perfectly.
-    let chain = use_resource(move || {
-        let collection = collection();
-        let descriptor = path();
-        async move {
-            let node_key = make_node_key(&collection, &descriptor.container_hash, &descriptor.path);
-            crate::api::vfs_api::vfs_tree_path_to(collection, node_key)
-                .await
-                .unwrap_or_default()
-        }
-    });
+    let shared = use_context::<crate::api::vfs_api::ResolvedVfsPath>();
 
     // `(label, descriptor, is_container)` for every crumb after the dataset root. From
     // the index when it answers, from the raw path while it has not.
-    let crumbs: Vec<Crumb> = match chain.read().clone() {
-        Some(nodes) if nodes.len() > 1 => nodes
+    let crumbs: Vec<Crumb> = match shared.chain.read().clone() {
+        Some(Ok(Some((key, nodes)))) if key == focus_key() && nodes.len() > 1 => nodes
             .iter()
             .skip(1)
             .map(|node| {
@@ -1086,6 +1141,8 @@ fn ViewDetailsButton(
 
 // ---------- Folder tree sidebar, in-folder search, Open in Search ----------
 
+static FOLDER_SEARCHES: GlobalSignal<std::collections::BTreeMap<String, String>> = Signal::global(std::collections::BTreeMap::new);
+
 /// `[Search in folder…]` on the left, `Open in Search` on the right.
 #[component]
 fn FolderToolbar(
@@ -1093,8 +1150,13 @@ fn FolderToolbar(
     path: PathDescriptor,
     matches: Signal<Option<Vec<VfsTreeNode>>>,
 ) -> Element {
-    let mut needle = use_signal(String::new);
     let node_key = make_node_key(&collection, &path.container_hash, &path.path);
+    let initial_key = node_key.clone();
+    let mut needle = use_signal(move || FOLDER_SEARCHES.peek().get(&initial_key).cloned().unwrap_or_default());
+    let remembered_key = node_key.clone();
+    use_effect(move || {
+        FOLDER_SEARCHES.write().insert(remembered_key.clone(), needle());
+    });
 
     // The Open in Search href needs the folder's term id, which is a round trip. Fetched
     // once per folder rather than per keystroke.

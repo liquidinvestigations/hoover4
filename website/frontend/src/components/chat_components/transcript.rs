@@ -51,6 +51,7 @@ pub fn ChatTranscript(
 
     rsx! {
         div {
+            id: "x-chat-transcript",
             style: "flex: 1; overflow-y: auto; padding: 18px; display: flex; \
                     flex-direction: column; gap: 12px;",
             if messages.is_empty() {
@@ -239,6 +240,7 @@ fn MessageEntry(
     match message.role {
         ChatRole::User => rsx! {
             div {
+                "data-chat-user": "{message.seq}",
                 style: "align-self: flex-end; background: #4096FF; color: white; max-width: 78%; \
                         padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; \
                         word-break: break-word; line-height: 1.55; {ring}",
@@ -257,7 +259,10 @@ fn MessageEntry(
                     if !message.reasoning.is_empty() {
                         ReasoningDisclosure { reasoning: message.reasoning.clone() }
                     }
-                    MarkdownishText { text: message.content.clone() }
+                    div {
+                        "data-chat-answer": "{message.seq}",
+                        MarkdownishText { text: message.content.clone() }
+                    }
                     if !sources.is_empty() {
                         SourcesStrip { sources: sources.clone() }
                     }

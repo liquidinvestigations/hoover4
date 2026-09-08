@@ -886,8 +886,8 @@ fn FileSizePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
     });
     // The custom inputs are in MB because that is the unit a person works in; bytes go
     // on the wire.
-    let mut min_mb = use_signal(String::new);
-    let mut max_mb = use_signal(String::new);
+    let mut min_mb = use_signal(move || current().min.map(|bytes| (bytes as f64 / 1_048_576.0).to_string()).unwrap_or_default());
+    let mut max_mb = use_signal(move || current().max.map(|bytes| (bytes as f64 / 1_048_576.0).to_string()).unwrap_or_default());
 
     let apply_custom = move |_| {
         let parse = |raw: String| -> Option<i64> {
@@ -1197,6 +1197,13 @@ fn DatePane(
                     } else {
                         "A document matches if any of its confirmed dates falls in the range."
                     }
+                }
+            }
+
+            if current().is_inverted() {
+                div {
+                    style: "color: rgb(160,30,30); font-size: 13px; margin-top: 4px;",
+                    "The start date is after the end date."
                 }
             }
 

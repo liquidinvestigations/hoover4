@@ -8,6 +8,13 @@
 use common::vfs::{VfsTreeChildren, VfsTreeNode};
 use dioxus::prelude::*;
 
+/// The file browser shares its resolved path between the tree and breadcrumbs.
+#[derive(Clone, Copy)]
+pub(crate) struct ResolvedVfsPath {
+    pub dataset: ReadSignal<String>,
+    pub chain: Resource<Result<Option<(String, Vec<VfsTreeNode>)>, ServerFnError>>,
+}
+
 #[cfg(feature = "server")]
 use crate::api::error_util::to_server_fn_error;
 
@@ -47,6 +54,18 @@ pub async fn vfs_tree_path_to(
 ) -> Result<Vec<VfsTreeNode>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::vfs::vfs_tree_path_to(&user, collection_dataset, node_key)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The materialised archive or email row that owns a container root descriptor.
+#[server]
+pub async fn vfs_tree_container_node(
+    collection_dataset: String,
+    container_hash: String,
+) -> Result<Option<VfsTreeNode>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::vfs_tree_container_node(&user, collection_dataset, container_hash)
         .await
         .map_err(to_server_fn_error)
 }

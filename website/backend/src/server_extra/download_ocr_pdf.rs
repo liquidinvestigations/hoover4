@@ -17,7 +17,7 @@ use axum::{
     extract::{Extension, Path},
     response::{IntoResponse, Response},
 };
-use common::current_user::CurrentUser;
+use common::{current_user::CurrentUser, document_sources::DocumentPdfSourceItem, search_result::DocumentIdentifier};
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 
@@ -64,6 +64,57 @@ async fn lookup_blob_key(
         anyhow::bail!("refusing to serve {key:?}: it is not under {DERIVED_PREFIX}");
     }
     Ok((key, size))
+}
+
+pub async fn read_ocr_pdf_bytes(
+    user: &CurrentUser,
+    document_identifier: &DocumentIdentifier,
+    source: &DocumentPdfSourceItem,
+    max_bytes: u64,
+) -> anyhow::Result<Vec<u8>> {
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    anyhow::ensure!(source.is_ocr(), "an OCR source is required");
+    let (blob_key, size_bytes) = lookup_blob_key(
+        &document_identifier.collection_dataset,
+        &document_identifier.file_hash,
+        &source.engine,
+        &source.languages,
+    )
+    .await?;
+    anyhow::ensure!(size_bytes <= max_bytes, "OCR PDF is over the search byte limit");
+    let collectionname = crate::db_utils::collectionname_of_dataset(&document_identifier.collection_dataset).await?;
+    let bucket = crate::db_utils::collection_bucket(&collectionname);
+    let client = crate::db_utils::s3_client().await?;
+    let object = client.get_object().bucket(bucket).key(blob_key).send().await?;
+    read_limited_body(object.body.into_async_read(), max_bytes).await
+}
+
+async fn read_limited_body(
+    reader: impl tokio::io::AsyncRead + Unpin,
+    max_bytes: u64,
+) -> anyhow::Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt;
+
+    let mut bytes = Vec::new();
+    reader.take(max_bytes.saturating_add(1)).read_to_end(&mut bytes).await?;
+    anyhow::ensure!(bytes.len() as u64 <= max_bytes, "OCR PDF is over the search byte limit");
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod search_body_tests {
+    use super::read_limited_body;
+
+    #[tokio::test]
+    async fn received_body_over_limit_is_rejected() {
+        let result = read_limited_body(&b"more bytes than recorded"[..], 4).await;
+        assert!(result.unwrap_err().to_string().contains("over the search byte limit"));
+    }
+
+    #[tokio::test]
+    async fn received_body_at_limit_is_complete() {
+        assert_eq!(read_limited_body(&b"pdf bytes"[..], 9).await.unwrap(), b"pdf bytes");
+    }
 }
 
 async fn _download_ocr_pdf(

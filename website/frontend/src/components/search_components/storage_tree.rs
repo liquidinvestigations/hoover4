@@ -325,6 +325,7 @@ fn CollectionBranch(
             is_current: false,
             expansion_key: expansion_key.clone(),
             expanded,
+            has_disclosure: true,
             icon: SyntheticIcon::Collection,
             on_click: Callback::new({
                 let name = name.clone();
@@ -351,6 +352,7 @@ fn CollectionBranch(
                     key: "{dataset.collection_dataset}",
                     collection_dataset: dataset.collection_dataset.clone(),
                     label: dataset.label().to_string(),
+                    has_folder_children: dataset.has_folder_children,
                     skin,
                     selected,
                     current_dataset,
@@ -375,6 +377,7 @@ fn CollectionBranch(
 fn DatasetBranch(
     collection_dataset: String,
     label: String,
+    has_folder_children: bool,
     skin: TreeSkin,
     selected: Signal<BTreeSet<String>>,
     current_dataset: ReadSignal<String>,
@@ -417,6 +420,7 @@ fn DatasetBranch(
             is_current: is_current() && focus_key() == dataset_root_key(&collection_dataset),
             expansion_key: expansion_key.clone(),
             expanded,
+            has_disclosure: has_folder_children,
             icon: SyntheticIcon::Dataset,
             on_click: Callback::new({
                 let collection_dataset = collection_dataset.clone();
@@ -428,7 +432,7 @@ fn DatasetBranch(
                 }
             }),
         }
-        if is_expanded {
+        if is_expanded && has_folder_children {
             VfsTree {
                 collection_dataset: collection_dataset.clone(),
                 skin,
@@ -468,6 +472,7 @@ fn SyntheticRow(
     is_current: bool,
     expansion_key: String,
     expanded: Signal<BTreeSet<String>>,
+    has_disclosure: bool,
     icon: SyntheticIcon,
     on_click: Callback<()>,
 ) -> Element {
@@ -506,15 +511,19 @@ fn SyntheticRow(
             title: "{title}",
             onclick: move |_| on_click.call(()),
 
-            button {
-                id: "{toggle_id}",
-                style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
-                onclick: toggle,
-                if is_expanded {
-                    Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
-                } else {
-                    Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+            if has_disclosure {
+                button {
+                    id: "{toggle_id}",
+                    style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
+                    onclick: toggle,
+                    if is_expanded {
+                        Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                    } else {
+                        Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                    }
                 }
+            } else {
+                div { style: "width: 18px; flex-shrink: 0;" }
             }
 
             if skin == TreeSkin::Picker {

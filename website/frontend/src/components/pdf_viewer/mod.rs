@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use _js::*;
-use common::{pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
+use common::{document_sources::DocumentPdfSourceItem, pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsValue, prelude::Closure};
@@ -33,7 +33,10 @@ impl PartialEq for PdfViewerControllerJs {
 struct PdfViewerControllerInnerJs {
     pdf_url: String,
     document_identifier: DocumentIdentifier,
+    source: DocumentPdfSourceItem,
     loaded_event: PdfLoadedEvent,
+    source_generation: u64,
+    source_lifetime: Rc<Cell<u64>>,
     scroll_api: PdfScrollApi,
     search_api: PdfSearchApi,
     zoom_api: PdfZoomApi,
@@ -51,6 +54,9 @@ impl PdfViewerControllerJs {
     }
     fn document_id(&self) -> String {
         self.inner.loaded_event.documentId.clone()
+    }
+    fn is_active(&self) -> bool {
+        self.inner.source_generation == self.inner.source_lifetime.get()
     }
 }
 
@@ -104,6 +110,9 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let mut current_page = use_signal(move || controller().initial_page());
     let total_pages = use_signal(move || controller().total_pages());
     let set_page = Callback::new(move |new_page: i32| {
+        if !controller().is_active() {
+            return;
+        }
         let new_page = new_page.clamp(1, total_pages());
         controller().inner.scroll_api.scrollToPage(
             scroll_to_page_options(new_page, 0., 0., 0.),
@@ -111,7 +120,11 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         );
     });
 
+    let controller_for_page_change = controller();
     let on_page_change = move |obj| {
+        if !controller_for_page_change.is_active() {
+            return;
+        }
         #[derive(Debug, Deserialize)]
         struct PdfPageChangeEvent {
             pub pageNumber: i32,
@@ -130,6 +143,7 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let mut search_query = use_signal(move || "".to_string());
     let mut search_hit_index = use_signal(move || 0);
     let mut _sig_search_task: Signal<Option<dioxus_core::Task>> = use_signal(move || None);
+    let mut search_generation = use_signal(move || 0_u64);
     let mut search_results = use_signal(move || PdfSearchResults {
         results: vec![],
         total: 0,
@@ -137,6 +151,9 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let search_hit_count = use_memo(move || search_results.read().results.len() as i32);
 
     let set_search_idx = Callback::new(move |new_idx: i32| {
+        if !controller().is_active() {
+            return;
+        }
         if search_hit_count() == 0 {
             return;
         }
@@ -161,6 +178,11 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     });
 
     let set_search_query = Callback::new(move |new_query: String| {
+        if !controller().is_active() {
+            return;
+        }
+        let next_search_generation = *search_generation.peek() + 1;
+        search_generation.set(next_search_generation);
         search_hit_index.set(0);
         search_results.set(PdfSearchResults {
             results: vec![],
@@ -175,25 +197,42 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         search_query.set(new_query.clone());
         let new_query = new_query.clone();
         let document_identifier = controller().inner.document_identifier.clone();
+        let search_controller = controller();
         let _c = spawn(async move {
-            let results = match search_document_pdf(document_identifier, new_query).await {
+            let results = match search_document_pdf(document_identifier, new_query, Some(search_controller.inner.source.clone())).await {
                 Ok(result) => result,
                 Err(e) => {
                     error!("Failed to get search results: {e:?}");
                     return;
                 }
             };
+            if !search_controller.is_active()
+                || search_generation() != next_search_generation
+            {
+                return;
+            }
             _sig_search_task.set(None);
             search_results.set(results.clone());
-            set_search_idx.call(0);
-            controller()
+            search_hit_index.set(0);
+            search_controller
                 .inner
                 .search_api
-                .startSearch(controller().document_id());
-            controller().inner.search_api.setExternalSearchResults(
-                controller().document_id(),
+                .startSearch(search_controller.document_id());
+            if !search_controller.is_active()
+                || search_generation() != next_search_generation
+            {
+                return;
+            }
+            search_controller.inner.search_api.setExternalSearchResults(
+                search_controller.document_id(),
                 serde_wasm_bindgen::to_value(&results).unwrap(),
             );
+            if !search_controller.is_active()
+                || search_generation() != next_search_generation
+            {
+                return;
+            }
+            set_search_idx.call(0);
         });
         _sig_search_task.set(Some(_c));
     });
@@ -201,10 +240,16 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     // =========== ZOOM ============
     let mut zoom_state_jsvalue = use_signal(move || controller().inner.zoom_api.getState());
     let zoom_in = Callback::new(move |_| {
+        if !controller().is_active() {
+            return;
+        }
         controller().inner.zoom_api.zoomIn();
         zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
     });
     let zoom_out = Callback::new(move |_| {
+        if !controller().is_active() {
+            return;
+        }
         controller().inner.zoom_api.zoomOut();
         zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
     });
@@ -218,7 +263,11 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
         let zoom = (obj.currentZoomLevel * 100.0) as i32;
         format!("{}%", zoom)
     });
+    let controller_for_zoom_change = controller();
     let on_zoom_change = move |_obj| {
+        if !controller_for_zoom_change.is_active() {
+            return;
+        }
         zoom_state_jsvalue.set(controller().inner.zoom_api.getState());
     };
     let on_zoom_change = Closure::new(Box::new(on_zoom_change) as Box<dyn FnMut(JsValue)>);
@@ -245,12 +294,14 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
 async fn search_document_pdf(
     document_identifier: DocumentIdentifier,
     query: String,
+    source: Option<DocumentPdfSourceItem>,
 ) -> anyhow::Result<PdfSearchResults> {
     let user = crate::api::server_auth::extract_user().await?;
     let results = backend::api::documents::search_document_pdf::search_document_pdf(
         &user,
         document_identifier,
         query,
+        source,
     )
     .await?;
     Ok(results)
@@ -258,10 +309,22 @@ async fn search_document_pdf(
 #[component]
 pub fn PdfViewer(
     pdf_url: ReadSignal<String>,
+    source: ReadSignal<DocumentPdfSourceItem>,
     document_identifier: ReadSignal<DocumentIdentifier>,
     on_document_loaded: Callback<PdfViewerControllerJs>,
 ) -> Element {
     let mut is_mounted = use_signal(move || false);
+    let source_lifetime = use_hook(|| Rc::new(Cell::new(0_u64)));
+    let source_lifetime_for_drop = source_lifetime.clone();
+    use_drop(move || {
+        source_lifetime_for_drop.set(source_lifetime_for_drop.get() + 1);
+        let promise = x_dispose_pdf_viewer();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(error) = wasm_bindgen_futures::JsFuture::from(promise).await {
+                error!("PDF viewer disposal failed: {:?}", error);
+            }
+        });
+    });
 
     let proxy_cb = Callback::new(move |e: PdfViewerControllerJs| {
         let current_url = pdf_url.peek().clone();
@@ -281,19 +344,28 @@ pub fn PdfViewer(
         if !is_mounted() {
             return;
         }
+        let source_generation = source_lifetime.get() + 1;
+        source_lifetime.set(source_generation);
+        let source_lifetime_for_callback = source_lifetime.clone();
 
         let cb = move |pdf_url: String,
                        event: JsValue,
                        scroll: PdfScrollApi,
                        search: PdfSearchApi,
                        zoom: PdfZoomApi| {
+            if source_lifetime_for_callback.get() != source_generation {
+                return;
+            }
             let loaded_event =
                 serde_wasm_bindgen::from_value(event).expect("Failed to deserialize loaded event");
             proxy_cb.call(PdfViewerControllerJs {
                 inner: Arc::new(PdfViewerControllerInnerJs {
                     pdf_url: pdf_url,
                     document_identifier: document_identifier(),
+                    source: source(),
                     loaded_event,
+                    source_generation,
+                    source_lifetime: source_lifetime_for_callback.clone(),
                     scroll_api: scroll,
                     search_api: search,
                     zoom_api: zoom,
@@ -308,11 +380,11 @@ pub fn PdfViewer(
         let cb = cb.into_js_value();
 
         let promise = x_open_pdf_viewer(pdf_url.clone(), cb);
-        spawn(async move {
-            // Awaited rather than dropped: a dropped promise that rejects surfaces as an
-            // uncaught rejection in the console. The resolved value is the viewer handle
-            // the callback above already received, so there is nothing here to report.
-            let _ = promise.await;
+        wasm_bindgen_futures::spawn_local(async move {
+            // The browser task remains active after the component scope is removed.
+            if let Err(error) = wasm_bindgen_futures::JsFuture::from(promise).await {
+                error!("PDF viewer initialization failed: {:?}", error);
+            }
         });
     });
 
@@ -335,10 +407,13 @@ mod _js {
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
-        pub async fn x_open_pdf_viewer(
+        pub fn x_open_pdf_viewer(
             pdf_url: String,
             callback_fn: JsValue,
-        ) -> web_sys::js_sys::Boolean;
+        ) -> Promise;
+
+        #[wasm_bindgen(js_namespace = window)]
+        pub fn x_dispose_pdf_viewer() -> Promise;
     }
 
     #[wasm_bindgen]

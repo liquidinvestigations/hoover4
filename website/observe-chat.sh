@@ -61,6 +61,7 @@ RESOLUTIONS_ARG=""
 PROMPTS_ARG=""
 CONVERSATIONS_ARG=""
 NO_FOLLOWUP_ARG=""
+HISTORY_ONLY_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -73,6 +74,7 @@ while [ $# -gt 0 ]; do
         --prompts) PROMPTS_ARG="${2:?--prompts needs a value}"; shift 2 ;;
         --conversations) CONVERSATIONS_ARG="${2:?--conversations needs a value}"; shift 2 ;;
         --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
+        --history-only) HISTORY_ONLY_ARG="${2:?--history-only needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -204,6 +206,7 @@ RESULTS_COPIED=0
 
 cleanup() {
     local status=$?
+    docker exec "$BROWSER_CONTAINER" python "$REMOTE_DIR/browser_lifecycle.py" --stop-run "$REMOTE_DIR" >/dev/null 2>&1 || true
     # Release only a lock this run took: a run that clears another run's lock is the
     # failure the lock exists to prevent.
     if [ -f "$LOCK_OWNER_FILE" ] && [ "$(sed -n '1p' "$LOCK_OWNER_FILE" 2>/dev/null || true)" = "$$" ]; then
@@ -225,6 +228,8 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if ! docker inspect -f '{{.State.Running}}' "$BROWSER_CONTAINER" 2>/dev/null | grep -q true; then
     echo "error: $BROWSER_CONTAINER is not running. Start the stack with ./deploy" >&2
@@ -238,6 +243,7 @@ docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
 # copying them, so both files travel together.
 docker cp tools/chat_observer.py "$BROWSER_CONTAINER:$REMOTE_DIR/chat_observer.py"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
+docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
 echo "== observing a conversation against $SITE_URL =="
@@ -253,6 +259,7 @@ CHAT_ARGS=(
 )
 [ -n "$CONVERSATIONS_ARG" ] && CHAT_ARGS+=(--conversations "$CONVERSATIONS_ARG")
 [ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
+[ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
 # The password travels by environment, set on this one `docker exec` only, and never as a
 # process argument: argv is visible to every other process on the host through /proc, an
 # env var scoped to one exec is not.

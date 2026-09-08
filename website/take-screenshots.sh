@@ -2,7 +2,7 @@
 # Capture a screenshot + snapshot of every page listed in `screenshots.ini`, at 720p and
 # 1080p by default.
 #
-# Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING]
+# Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
 #                               [--username NAME] [--password VALUE]
 #                               [--login-env FILE] [--resolutions LIST]
 #
@@ -59,6 +59,7 @@ REMOTE_DIR="/tmp/h4shots-$$"
 TARGET_ARG=""
 OUT_ARG=""
 ONLY=""
+NAMES=""
 USERNAME_ARG=""
 PASSWORD_ARG=""
 LOGIN_ENV_ARG=""
@@ -69,6 +70,7 @@ while [ $# -gt 0 ]; do
         --target) TARGET_ARG="${2:?--target needs a value}"; shift 2 ;;
         --out) OUT_ARG="${2:?--out needs a value}"; shift 2 ;;
         --only) ONLY="${2:?--only needs a value}"; shift 2 ;;
+        --names) NAMES="${2:?--names needs a value}"; shift 2 ;;
         --username) USERNAME_ARG="${2:?--username needs a value}"; shift 2 ;;
         --password) PASSWORD_ARG="${2:?--password needs a value}"; shift 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
@@ -200,6 +202,10 @@ printf '%s\n%s\n' "$$" "$RUN_NAME" > "$LOCK_OWNER_FILE"
 
 cleanup() {
     local status=$?
+    docker exec "$BROWSER_CONTAINER" python "$REMOTE_DIR/browser_lifecycle.py" --stop-run "$REMOTE_DIR" >/dev/null 2>&1 || true
+    if [ "$status" -ne 0 ]; then
+        docker cp "$BROWSER_CONTAINER:$REMOTE_DIR/out/." "$OUT_DIR/" >/dev/null 2>&1 || true
+    fi
     # Release only a lock this run took: a run that clears another run's lock is the
     # failure the lock exists to prevent.
     if [ -f "$LOCK_OWNER_FILE" ] && [ "$(sed -n '1p' "$LOCK_OWNER_FILE" 2>/dev/null || true)" = "$$" ]; then
@@ -209,6 +215,8 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if ! docker inspect -f '{{.State.Running}}' "$BROWSER_CONTAINER" 2>/dev/null | grep -q true; then
     echo "error: $BROWSER_CONTAINER is not running. Start the stack with ./deploy" >&2
@@ -219,6 +227,16 @@ echo "== copying the capture script into $BROWSER_CONTAINER =="
 docker exec "$BROWSER_CONTAINER" rm -rf "$REMOTE_DIR"
 docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
+docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
+docker cp tools/manual_qa.py "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa.py"
+docker cp tools/manual_qa_runtime.py "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_runtime.py"
+docker cp tools/manual_qa_fixtures.json "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_fixtures.json"
+if [ -f test_reports/manual_qa_fixtures.json ]; then
+    docker cp test_reports/manual_qa_fixtures.json "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_profile.json"
+fi
+if [ -f test_reports/manual_qa_original_cases.json ]; then
+    docker cp test_reports/manual_qa_original_cases.json "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_original_cases.json"
+fi
 docker cp screenshots.ini "$BROWSER_CONTAINER:$REMOTE_DIR/screenshots.ini"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
@@ -241,6 +259,7 @@ docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/ca
     --base-url "$SITE_URL" \
     --console-whitelist "$REMOTE_DIR/console_whitelist.txt" \
     --only "$ONLY" \
+    --names "$NAMES" \
     --username "$CRED_USERNAME" \
     --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
 CAPTURE_STATUS=$?

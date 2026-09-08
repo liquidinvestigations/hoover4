@@ -466,12 +466,14 @@ mod tests {
                         collectionname: "enron".to_string(),
                         dataset_name: "kaminski".to_string(),
                         dataset_display_name: "".to_string(),
+                        has_folder_children: false,
                     },
                     DatasetSummary {
                         collection_dataset: "enron_maildir".to_string(),
                         collectionname: "enron".to_string(),
                         dataset_name: "maildir".to_string(),
                         dataset_display_name: "Mail Dir".to_string(),
+                        has_folder_children: false,
                     },
                 ],
             },
@@ -482,6 +484,7 @@ mod tests {
                     collectionname: "testdata".to_string(),
                     dataset_name: "zips".to_string(),
                     dataset_display_name: "".to_string(),
+                    has_folder_children: false,
                 }],
             },
         ]

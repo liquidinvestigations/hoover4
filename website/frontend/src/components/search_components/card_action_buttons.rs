@@ -39,11 +39,7 @@ pub fn DocCardActionButtonOpenNewTab(
             target: "_blank",
             class: "hoover4-hover-shadow-background",
             href: Route::ViewDocumentPage { document_identifier: document_identifier.read().clone().into(), doc_viewer_state: None.into(), viewer_right_tab_state: ViewerRightTabState::default().into() }.to_string(),
-            // onclick: move |_e| {
-            //     _e.prevent_default();
-            //     _e.stop_propagation();
-            //     navigator().push(Route::ViewDocumentPage { document_identifier: document_identifier.read().clone().into() });
-            // },
+            onclick: move |event| event.stop_propagation(),
             Icon {
                 icon: MdOpenInNew,
                 style: "width: 24px; height: 24px;"

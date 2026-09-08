@@ -43,9 +43,9 @@
 //! [`MAX_INDENT_PX`] is the backstop for a user who opens twenty chevrons by hand, past
 //! which the depth badge is what carries the number.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use common::vfs::{VfsNodeKind, VfsTreeNode, dataset_root_key};
+use common::vfs::{VfsNodeKind, VfsTreeChildren, VfsTreeNode, dataset_root_key};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
@@ -67,6 +67,19 @@ use crate::api::vfs_api::{vfs_tree_children, vfs_tree_path_to};
 /// numbers were equal, a client asking for more than one page had its request clamped
 /// back to the page it already had, and the row could never resolve.
 pub const CHILDREN_PAGE_SIZE: u64 = 500;
+/// The mounted-tree cache lifetime in milliseconds.
+///
+/// A route change reuses child pages during this interval. The next access refreshes a
+/// retained page in place, so ingestion changes become visible without removing the
+/// ancestor rows that establish the user's location.
+pub(crate) const CHILDREN_CACHE_TTL_MS: f64 = 5_000.0;
+
+pub(crate) fn browser_now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now())
+        .unwrap_or(0.0)
+}
 
 /// Rungs that get the full [`INDENT_PX`] step. Past this the step shrinks to
 /// [`DEEP_INDENT_PX`]; it never stops.
@@ -184,6 +197,8 @@ pub struct TreeContext {
     pub focus_chain: Signal<Vec<String>>,
     /// Parent keys whose elision gap or sibling window the user has clicked open.
     pub unfolded: Signal<BTreeSet<String>>,
+    /// Child pages retained for this mounted dataset tree, keyed by parent and offset.
+    child_pages: Signal<BTreeMap<(String, u64), CachedChildren>>,
 }
 
 /// The tree rooted at one dataset.
@@ -210,6 +225,7 @@ pub fn VfsTree(
     let root_key = dataset_root_key(&collection_dataset);
     let focus_chain = use_signal(Vec::<String>::new);
     let unfolded = use_signal(BTreeSet::<String>::new);
+    let child_pages = use_signal(BTreeMap::<(String, u64), CachedChildren>::new);
     use_context_provider({
         let collection_dataset = collection_dataset.clone();
         move || TreeContext {
@@ -221,22 +237,39 @@ pub fn VfsTree(
             focus_key,
             focus_chain,
             unfolded,
+            child_pages,
         }
     });
     let expanded = use_signal(|| initially_expanded.iter().cloned().collect::<BTreeSet<String>>());
     use_context_provider(|| expanded);
 
+    let shared_path = use_hook(try_consume_context::<crate::api::vfs_api::ResolvedVfsPath>);
+    let mut cached_paths = use_signal(BTreeMap::<String, (f64, Vec<VfsTreeNode>)>::new);
     let chain = use_resource({
         let collection_dataset = collection_dataset.clone();
         move || {
             let collection_dataset = collection_dataset.clone();
             // Read OUTSIDE the async block: that read is the subscription.
             let key = focus_key();
+            let cached = cached_paths.peek().get(&key).cloned();
+            let shared = shared_path
+                .filter(|shared| (shared.dataset)() == collection_dataset)
+                .map(|shared| shared.chain.read().clone());
             async move {
-                if key.is_empty() {
-                    return Vec::new();
+                if let Some(shared) = shared {
+                    return shared.unwrap_or(Ok(None));
                 }
-                vfs_tree_path_to(collection_dataset, key).await.unwrap_or_default()
+                if key.is_empty() {
+                    return Ok::<_, ServerFnError>(None);
+                }
+                if let Some((fetched_at, nodes)) = cached
+                    && browser_now_ms() - fetched_at < CHILDREN_CACHE_TTL_MS
+                {
+                    return Ok(Some((key, nodes)));
+                }
+                let nodes = vfs_tree_path_to(collection_dataset, key.clone()).await?;
+                cached_paths.write().insert(key.clone(), (browser_now_ms(), nodes.clone()));
+                Ok(Some((key, nodes)))
             }
         }
     });
@@ -244,9 +277,12 @@ pub fn VfsTree(
     let mut chain_signal = focus_chain;
     let mut expanded_signal = expanded;
     use_effect(move || {
-        let Some(nodes) = chain.read().clone() else {
+        let Some(Ok(Some((key, nodes)))) = chain.read().clone() else {
             return;
         };
+        if key != *focus_key.peek() {
+            return;
+        }
         let keys: Vec<String> = nodes.iter().map(|node| node.node_key.clone()).collect();
         // Open the path to the focus and close everything under it. See
         // [`expansion_after_refocus`]. Written only when it changes: this effect re-runs
@@ -267,6 +303,9 @@ pub fn VfsTree(
             // half of the no-horizontal-scrolling rule: without it a row that somehow
             // overflows makes the whole panel scrollable sideways.
             style: "width: 100%; min-width: 0; overflow-x: hidden; overflow-y: auto;",
+            if let Some(Err(error)) = chain.read().as_ref() {
+                div { class: "x-error-display", "Could not load the folder path: {error}" }
+            }
             VfsTreeLevel { parent_key: root_key, depth: 0, rung: indent_offset }
         }
     }
@@ -407,7 +446,10 @@ fn VfsTreeLevelBody(
         move || (parent_key.clone(), 0u64)
     });
     // Everything fetched for this level so far, appended page by page.
-    let loaded = use_signal(LoadedChildren::default);
+    let loaded = use_signal({
+        let parent_key = parent_key.clone();
+        move || loaded_pages_for_parent(&context.child_pages.peek(), &parent_key)
+    });
 
     let mut request_signal = request;
     use_effect(move || {
@@ -421,37 +463,67 @@ fn VfsTreeLevelBody(
 
     let children = use_resource({
         let dataset = context.collection_dataset.clone();
+        let child_pages = context.child_pages;
         move || {
             let dataset = dataset.clone();
             // Read OUTSIDE the async block: that read is the subscription.
             let (parent, offset) = request();
+            // Navigation revalidates expired pages while their current rows stay visible.
+            let _focus = (context.focus_key)();
+            let cached = child_pages.peek().get(&(parent.clone(), offset)).cloned();
             async move {
+                if let Some(cached) = cached
+                    && browser_now_ms() - cached.fetched_at_ms < CHILDREN_CACHE_TTL_MS
+                {
+                    return Ok(ChildPageResult {
+                        page: VfsTreeChildren {
+                            parent_key: parent,
+                            nodes: cached.nodes,
+                            total: cached.total,
+                        },
+                        fetched_at_ms: cached.fetched_at_ms,
+                        from_cache: true,
+                        offset,
+                    });
+                }
                 // `folders_only`: the tree draws only what can be opened, so the server
                 // must count only that too. Counting files into `total` is what gave
                 // every folder full of plain files a "N more…" row for rows that could
                 // never be drawn, and no click could ever resolve it.
-                vfs_tree_children(dataset, parent, CHILDREN_PAGE_SIZE, offset, true).await
+                vfs_tree_children(dataset, parent, CHILDREN_PAGE_SIZE, offset, true)
+                    .await
+                    .map(|page| ChildPageResult {
+                        page,
+                        fetched_at_ms: browser_now_ms(),
+                        from_cache: false,
+                        offset,
+                    })
             }
         }
     });
 
     let mut loaded_signal = loaded;
+    let mut child_pages_signal = context.child_pages;
     use_effect(move || {
-        let Some(Ok(page)) = children.read().clone() else {
+        let Some(Ok(result)) = children.read().clone() else {
             return;
         };
+        let page = result.page;
         let (asked_parent, asked_offset) = request.peek().clone();
         // The server echoes the key it answered for, so a page that arrives after the
         // level moved on is recognisable rather than merged into the wrong folder.
-        if page.parent_key != asked_parent {
+        if page.parent_key != asked_parent || result.offset != asked_offset {
             return;
         }
+        let cache_page = page.clone();
         let mut next = loaded_signal.peek().clone();
-        if next.parent_key != asked_parent || asked_offset == 0 {
-            next = LoadedChildren { parent_key: asked_parent, nodes: Vec::new(), total: 0 };
+        if next.parent_key != asked_parent || (asked_offset == 0 && !result.from_cache) {
+            next = LoadedChildren { parent_key: asked_parent.clone(), nodes: Vec::new(), total: 0 };
         }
-        if asked_offset == 0 {
+        if asked_offset == 0 && !result.from_cache {
             next.nodes = page.nodes;
+        } else if asked_offset == 0 {
+            next = loaded_pages_for_parent(&child_pages_signal.peek(), &asked_parent);
         } else if next.nodes.len() as u64 == asked_offset {
             next.nodes.extend(page.nodes);
         } else {
@@ -464,6 +536,19 @@ fn VfsTreeLevelBody(
         if *loaded_signal.peek() != next {
             loaded_signal.set(next);
         }
+        let mut pages = child_pages_signal.write();
+        if asked_offset == 0 && !result.from_cache {
+            // A refreshed first page changes the offsets of later pages.
+            pages.retain(|(parent, offset), _| parent != &asked_parent || *offset == 0);
+        }
+        pages.insert(
+            (asked_parent, asked_offset),
+            CachedChildren {
+                nodes: cache_page.nodes,
+                total: cache_page.total,
+                fetched_at_ms: result.fetched_at_ms,
+            },
+        );
     });
 
     let parent_now = parent();
@@ -574,6 +659,48 @@ struct LoadedChildren {
     /// Folder-like children this node has, as the server counts them. `nodes.len()` is
     /// how many of those are loaded; the difference is what the "N more…" row states.
     total: u64,
+}
+
+/// One retained VFS response. The key that owns it includes the page offset.
+#[derive(Clone, PartialEq)]
+struct CachedChildren {
+    nodes: Vec<VfsTreeNode>,
+    total: u64,
+    fetched_at_ms: f64,
+}
+
+/// A child page together with the time its server response was received.
+#[derive(Clone)]
+struct ChildPageResult {
+    page: VfsTreeChildren,
+    fetched_at_ms: f64,
+    from_cache: bool,
+    offset: u64,
+}
+
+/// Restore every cached page that starts at the next unloaded offset.
+fn loaded_pages_for_parent(
+    pages: &BTreeMap<(String, u64), CachedChildren>,
+    parent_key: &str,
+) -> LoadedChildren {
+    let mut result = LoadedChildren { parent_key: parent_key.to_string(), ..Default::default() };
+    loop {
+        let offset = result.nodes.len() as u64;
+        let Some(page) = pages.get(&(parent_key.to_string(), offset)) else {
+            break;
+        };
+        if page.nodes.is_empty() {
+            result.total = page.total;
+            break;
+        }
+        let previous_offset = offset;
+        result.nodes.extend(page.nodes.clone());
+        result.total = page.total;
+        if result.nodes.len() as u64 == previous_offset {
+            break;
+        }
+    }
+    result
 }
 
 /// One row of the tree and, when it is open, the level beneath it.
@@ -767,6 +894,8 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
         div {
             style: "{ROW_STYLE} padding-left: {indent}; background: {row_background};",
             class: "x-facet-list-item",
+            "data-node-key": "{node_key}",
+            "aria-current": if is_selected { "location" } else { "false" },
             // The full path, always. It is the only place a truncated label can be read
             // in full, and truncation is the normal case here rather than the exception.
             title: "{node.path}",
@@ -933,6 +1062,38 @@ pub fn tri_state_icon(state: TriState) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cached_node(key: &str) -> VfsTreeNode {
+        VfsTreeNode {
+            collection_dataset: "testdata_shapes".into(), node_key: key.into(),
+            parent_key: "parent".into(), container_hash: String::new(),
+            path: format!("/{key}"), name: key.into(), kind: VfsNodeKind::Dir,
+            file_hash: String::new(), file_size_bytes: 0, depth: 1,
+        }
+    }
+
+    #[test]
+    fn restored_child_pages_stop_at_a_gap_and_exclude_other_parents() {
+        let pages = BTreeMap::from([
+            (("parent".into(), 0), CachedChildren { nodes: vec![cached_node("one")], total: 4, fetched_at_ms: 0.0 }),
+            (("parent".into(), 1), CachedChildren { nodes: vec![cached_node("two")], total: 4, fetched_at_ms: 0.0 }),
+            (("parent".into(), 3), CachedChildren { nodes: vec![cached_node("four")], total: 4, fetched_at_ms: 0.0 }),
+            (("other".into(), 2), CachedChildren { nodes: vec![cached_node("other")], total: 3, fetched_at_ms: 0.0 }),
+        ]);
+        let restored = loaded_pages_for_parent(&pages, "parent");
+        assert_eq!(restored.nodes.iter().map(|node| node.node_key.as_str()).collect::<Vec<_>>(), vec!["one", "two"]);
+        assert_eq!(restored.total, 4);
+    }
+
+    #[test]
+    fn an_empty_cached_page_terminates_restoration() {
+        let pages = BTreeMap::from([(("parent".into(), 0), CachedChildren {
+            nodes: Vec::new(), total: 0, fetched_at_ms: 0.0,
+        })]);
+        let restored = loaded_pages_for_parent(&pages, "parent");
+        assert!(restored.nodes.is_empty());
+        assert_eq!(restored.parent_key, "parent");
+    }
 
     #[test]
     fn the_indent_keeps_stepping_past_the_full_step_rungs() {

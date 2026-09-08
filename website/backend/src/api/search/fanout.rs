@@ -350,6 +350,7 @@ pub fn merge_hits_sorted<T: HitIdentity>(
     offset: usize,
     limit: usize,
 ) -> Vec<crate::db_utils::manticore_utils::RawSearchResultHit<T>> {
+    let sort = sort.normalized();
     let mut hits: Vec<_> = sources
         .into_iter()
         .flat_map(|(_, response)| response.hits.hits)
@@ -825,6 +826,24 @@ mod tests {
         let by_relevance = merge_hits_sorted(two_sources(), SortSpec::default(), 0, 10);
         let by_default = merge_hits(two_sources(), 0, 10);
         assert_eq!(ids(&by_relevance), ids(&by_default));
+    }
+
+    #[test]
+    fn qa_sort_legacy_ascending_relevance_keeps_descending_cross_shard_order() {
+        let full: Vec<String> = merge_hits_sorted(two_sources(), SortSpec::default(), 0, 10)
+            .into_iter()
+            .map(|hit| hit._source.file_hash)
+            .collect();
+        let legacy: Vec<String> = merge_hits_sorted(
+            two_sources(),
+            SortSpec { key: SortKey::Relevance, desc: false },
+            0,
+            10,
+        )
+        .into_iter()
+        .map(|hit| hit._source.file_hash)
+        .collect();
+        assert_eq!(legacy, full);
     }
 
     #[test]

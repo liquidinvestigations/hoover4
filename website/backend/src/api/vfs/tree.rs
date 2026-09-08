@@ -208,6 +208,31 @@ pub async fn vfs_tree_path_to(
     Ok(chain)
 }
 
+/// Resolve an archive or email container hash to the materialised row that enters it.
+///
+/// The root descriptor inside a container has no row key of its own. The container row
+/// remains the active tree row while its root is open.
+pub async fn vfs_tree_container_node(
+    user: &CurrentUser,
+    collection_dataset: String,
+    container_hash: String,
+) -> anyhow::Result<Option<VfsTreeNode>> {
+    let table = structure_table(user, &collection_dataset).await?;
+    let sql = format!(
+        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND file_hash = {} AND kind = 2 ORDER BY container_hash ASC, path ASC LIMIT 1 {} ;",
+        format_sql_query::QuotedData(&collection_dataset),
+        format_sql_query::QuotedData(&container_hash),
+        sql_options_clause(1),
+    );
+    Ok(manticore_search_sql_uncached::<NodeRow>(sql)
+        .await?
+        .hits
+        .hits
+        .into_iter()
+        .next()
+        .map(|hit| hit._source.into()))
+}
+
 /// Names matching `pattern` anywhere under `node_key`, folders and files alike.
 ///
 /// "Under" means the full ancestor closure, so a match three archives deep still comes

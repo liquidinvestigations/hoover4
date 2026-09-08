@@ -12,22 +12,26 @@ result.
 
 ## Controls
 
+The date filter shows a range error when its start date follows its end date.
+Folder search retains its query during return navigation within the mounted application.
+The remembered query is specific to the dataset, container, and folder path.
+
 | id | control | does | constraint |
 |---|---|---|---|
 | `.query` | query input | the words to match | empty is legal and returns the whole collection selection |
 | `.collections` | collection selector | which collections and datasets are searched | an empty selection searches nothing and says so, rather than searching everything |
 | `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
-| `.range.file_size_bytes` | file size filter | narrow by size | unknown size is a distinct value from zero and is excluded from every range |
+| `.range.file_size_bytes` | file size filter | narrow by size | Unknown size is excluded from every range. Reopening the filter restores its applied bounds, including after reload. |
 | `.filters_modal` | "All filters", clear all, cancel, show results | edits every filter at once, pending until `.search_button` commits them | edits are pending until committed; cancel discards them; the button names how many results committing would show |
-| `.sort` | sort menu (Relevance, Date, File size, Name) plus a direction toggle | the order of the result list | Relevance is not an order without words to be relevant to: with an empty query it resolves to newest-first, and the control shows the resolved order rather than the one that was asked for |
+| `.sort` | sort menu (Relevance, Date, File size, Name) plus a direction toggle | the order of the result list | Relevance sorts descending for empty and non-empty queries. Its direction control is disabled. Date, File size, and Name support both directions. |
 | `.search_button` | Search button | commits the pending query, filters and sort into the applied query and runs the search | disabled while the pending query matches the applied one; the magnifier icon beside the query input runs the same action |
 | `.pager` | previous/next page | walks the result list | 20 results a page, and the pager stops at 1000 documents however large the match is; the page says so beside the count instead of pretending the rest are reachable |
 | `.result_step` | previous/next result | moves the selection within the list, crossing a page boundary when it runs out | disabled at the ends rather than hidden |
 | `.result_card` | a result | selects it into the preview pane | selection is part of the URL, so the browser's back button steps through selections |
 | `.card_actions` | per-result actions, open the document page, open its folder | leave the search for another page | opens in the same tab: an action that silently opens a background tab reads as an action that did nothing |
-| `.tree` | folder tree | narrows to a path within a collection | the tree reflects a corpus that changes while ingestion runs, so it is read uncached; a stale tree is worse than a slow one |
-| `.preview` | preview pane, source selector, in-document search, page navigation | reads the selected document without leaving the page | the pane's arrangement is part of the URL |
+| `.tree` | folder tree | narrows to a path within a collection | Each endpoint request is uncached. Navigation or remount revalidates browser entries older than five seconds while retaining current rows. Moving the elision boundary can recreate descendant rows. |
+| `.preview` | preview pane, source selector, in-document search, page navigation | reads the selected document without leaving the page | the pane's arrangement is part of the URL. A source change retains the find query and invalidates prior PDF controller work. |
 
 ## States
 

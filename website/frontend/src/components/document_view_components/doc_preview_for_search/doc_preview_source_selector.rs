@@ -126,6 +126,7 @@ fn SelectedItemList(
 ) -> Element {
     rsx! {
         ul {
+            "data-source-list": "true",
             style: "
             width: 300px;
             height: fit-content;
@@ -166,6 +167,7 @@ fn SelectedItemDropdownDisplay(
 ) -> Element {
     rsx! {
         div {
+            "data-source-trigger": "true",
             onclick: move |_e| {
                 _e.prevent_default();
                 _e.stop_propagation();
@@ -248,7 +250,7 @@ fn SourceItemRow(
     rsx! {
         div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px;", {dot_icon} }
         div { style: "font-size: 16px; line-height: 24px; width: 24px;", {icon} }
-        div { style: "flex-grow: 1; flex-shrink: 1; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
+        div { "data-source-label": "{label}", style: "flex-grow: 1; flex-shrink: 1; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
         div { style: "flex-shrink: 0;color: #333; font-weight: 400; font-size: 20px; line-height: 24px; margin-left: 4px;", "{count}" }
     }
 }

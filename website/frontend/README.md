@@ -14,6 +14,7 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
   and offers a retry that cannot work.
 - `src/routes.rs` - Route definitions (search, document view, file browser, AI chat, admin).
 - `src/pages/` - Page-level UI compositions (`ai_chat/`, `admin/`, search, …).
+  Folder search remembers each folder's query during browser return navigation within the mounted application.
 - `src/components/` - Reusable UI building blocks (`chat_components/`, `search_components/`, …).
   `resizable_sidebar.rs` is the storage pane's drag handle and remembered width; it reads
   local storage and measures the layout scale, so it is the one component that needs
@@ -21,6 +22,9 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
 - `src/api/` - Server functions that proxy to the backend crate.
 
 ## The document viewer's right-hand tabs
+
+PDF source changes invalidate previous controllers and await each viewer's disposal once.
+Browser cleanup remains active after the PDF component is removed.
 
 `/view_document/…` ends with a `ViewerRightTabState` URL parameter naming one of three
 tabs: `Entities`, `File Locations`, `Metadata`. **Declaration order in
@@ -36,6 +40,14 @@ descriptions of a document rather than renderings of it, which is why neither th
 metadata panel is offered as a preview source in the source dropdown.
 
 ## The Collections filter is composed client-side
+
+The storage tree retains child pages and resolved paths while its dataset remains mounted.
+Moving the deep-chain elision boundary can recreate descendant rows despite cached data.
+The file browser shares each resolved path between its tree and breadcrumbs.
+Navigation or remount refreshes entries older than five seconds while existing rows remain visible.
+Dataset summaries identify leaf datasets, which have no disclosure control.
+Container-root routes resolve the archive row by dataset and content identity.
+Duplicate archive locations use a stable path order because the route does not identify an outer occurrence.
 
 `collections_facet_pane.rs` groups the flat `collection_dataset` facet buckets into
 collections using `list_storage_tree()`, sums the counts and sorts both levels

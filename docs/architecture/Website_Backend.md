@@ -139,6 +139,12 @@ its registered size before a byte is fetched. The whole PDF is buffered here, on
 and inside pdfium's wasm heap. Over that ceiling, the document still opens, downloads and
 searches by text; only the in-page highlight overlay is unavailable.
 
+The selected PDF source determines which bytes the server reads.
+Original PDFs use the document blob. OCR PDFs use their stored engine and language row in `pdf_ocr_results`.
+The server verifies document access before reading either source.
+An OCR read also limits the received body, so an incorrect recorded size cannot exceed the search limit.
+The source picker requests a separate hit count for each PDF source.
+
 That blob read runs on the server's multi-threaded runtime through
 `startup::on_multi_thread_runtime`. The S3 SDK blocks internally while collecting the body,
 and Dioxus server functions do not run on the runtime the axum routes do. A bare
@@ -169,6 +175,11 @@ pulled into the build by a `#[used] static … asset!(…folder…)` in
 the entry point by literal URL, so the `with_hash_suffix(false)` option and the
 `/assets/_viewer/…` path in the tag have to be changed together, and dropping the
 declaration silently ships a site with no PDF viewer.
+
+Each PDF source has a generation. A source change invalidates its controller and cancels its
+search task. The bridge destroys the previous EmbedPDF registry before it removes the viewer
+elements. A delayed callback checks its generation before it updates search state or controls
+the viewer.
 
 
 ## Browsing a tabular document

@@ -3,6 +3,8 @@
 The suites, what each one covers, and the two diagnostics beside them. What each check does
 *not* cover is [Running the checks](Running_Checks.md).
 
+Use [Design browser tests around state changes](Browser_Test_Design.md) to define fixtures, ordered interactions, assertions, and evidence.
+
 | what | how |
 |---|---|
 | unit (Rust) | `cargo test --offline` inside `hoover4-website`, Rust is not on `$PATH` there, so `export PATH=/usr/local/cargo/bin:$PATH` first |
@@ -50,6 +52,7 @@ symlink, so an earlier run stays on disk until removed by hand.
 ```
 website/take-screenshots.sh                          # every page in the list
 website/take-screenshots.sh --only search             # one substring of the scenario name
+website/take-screenshots.sh --names qa-sort-empty-default,qa-sort-explicit-relevance
 website/take-screenshots.sh --resolutions 1080p        # one resolution instead of the default 720p,1080p
 website/take-screenshots.sh --target URL --username U --password P
 website/take-screenshots.sh --login-env path/to/file   # credentials from a file instead
@@ -94,6 +97,15 @@ Dioxus unless you go through the prototype's setter and dispatch a bubbling `inp
 and the home box submits on `onkeypress`, so Enter has to be a real CDP key event. The long
 base64 segments in the ini are CBOR route parameters (`website/frontend/src/data_definitions/url_param.rs`);
 `9g==` is `None`.
+
+## Manual QA matrix
+
+`website/run-manual-qa.sh` validates the resolved fixture profile before it starts a browser capture.
+It records each selected baseline and annex variation in `manual-qa-plan.json`.
+It records each observed outcome in `manual-qa-results.json` and retains partial procedure evidence after failures.
+Use `--select` for a row list and `--skip-chat` when the row list does not include chat.
+The command uses one chat generation for row 25 and its viewport observations.
+Chat history verification compares persisted assistant answers. It excludes temporary disclosures and document previews.
 
 ## Observing a chat conversation
 

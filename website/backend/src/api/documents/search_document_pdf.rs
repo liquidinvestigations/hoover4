@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use common::{current_user::CurrentUser, pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
+use common::{current_user::CurrentUser, document_sources::DocumentPdfSourceItem, pdf_search_results::PdfSearchResults, search_result::DocumentIdentifier};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -46,6 +46,7 @@ pub async fn search_document_pdf(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     query: String,
+    source: Option<DocumentPdfSourceItem>,
 ) -> anyhow::Result<PdfSearchResults> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
@@ -80,12 +81,14 @@ pub async fn search_document_pdf(
     // HTTP port instead makes the server fetch a document it already knows how to read,
     // over a request that can carry no session, so requiring a session on the download
     // route silently kills in-document search.
-    let pdf_bytes = crate::api::documents::download_document::read_blob_bytes(
-        user,
-        &document_identifier,
-        MAX_PDF_SEARCH_BYTES,
-    )
-    .await?;
+    let pdf_bytes = match source.filter(DocumentPdfSourceItem::is_ocr) {
+        Some(source) => crate::server_extra::download_ocr_pdf::read_ocr_pdf_bytes(
+            user, &document_identifier, &source, MAX_PDF_SEARCH_BYTES,
+        ).await?,
+        None => crate::api::documents::download_document::read_blob_bytes(
+            user, &document_identifier, MAX_PDF_SEARCH_BYTES,
+        ).await?,
+    };
 
     let keywords_param = json!(keywords).to_string();
     let pdf_results = reqwest::ClientBuilder::new()

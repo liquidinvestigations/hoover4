@@ -43,6 +43,7 @@ use dioxus_free_icons::{
 };
 
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
+use crate::components::chat_components::tool_cards::{focus, FocusHandle, ModalCloseButton, ModalShell};
 use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::data_definitions::doc_viewer_state::DocTableState;
@@ -50,6 +51,13 @@ use crate::pages::search_page::DocViewerStateControl;
 
 /// Characters of a cell drawn inline before it is cut. The whole value is one click away.
 const CELL_PREVIEW_CHARS: usize = 120;
+
+/// The one table-level column control that can cover the grid.
+#[derive(Clone, PartialEq)]
+enum TableColumnModal {
+    Picker,
+    Filter(TableColumnInfo),
+}
 
 #[component]
 pub fn DocumentPreviewForTable(
@@ -73,6 +81,20 @@ pub fn DocumentPreviewForTable(
     let viewer_state = control.doc_viewer_state.read().clone().unwrap_or_default();
     let find_query = viewer_state.find_query.clone();
     let table_state = viewer_state.table_state();
+    let mut column_modal = use_signal(|| None::<TableColumnModal>);
+    let mut modal_opener: FocusHandle = use_signal(|| None);
+    let mut modal_identity = use_signal(|| None::<(DocumentIdentifier, u16)>);
+    let mut had_column_modal = use_signal(|| false);
+    use_effect(move || {
+        let is_open = column_modal().is_some();
+        let was_open = *had_column_modal.peek();
+        if was_open != is_open {
+            had_column_modal.set(is_open);
+            if was_open && !is_open {
+                focus(modal_opener);
+            }
+        }
+    });
     let overview_value = overview.read().clone().flatten();
 
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
@@ -84,6 +106,19 @@ pub fn DocumentPreviewForTable(
         (Some(overview), _) => overview.first_sheet_id(),
         (None, wanted) => wanted.unwrap_or(0),
     };
+    use_effect(move || {
+        let state = control.doc_viewer_state.read().clone();
+        let next = (
+            document_identifier(),
+            state.unwrap_or_default().table_state().sheet_id.unwrap_or(0),
+        );
+        if modal_identity() != Some(next.clone()) {
+            if modal_identity().is_some() {
+                column_modal.set(None);
+            }
+            modal_identity.set(Some(next));
+        }
+    });
 
     let sheet_columns: Vec<TableColumnInfo> = overview_value
         .as_ref()
@@ -172,6 +207,8 @@ pub fn DocumentPreviewForTable(
                 columns: sheet_columns.clone(),
                 table_state: table_state.clone(),
                 set_table_state,
+                column_modal,
+                modal_opener,
             }
             if active_filters > 0 {
                 button {
@@ -235,6 +272,8 @@ pub fn DocumentPreviewForTable(
                             find_query: find_query.clone(),
                             document_identifier: document_identifier_value.clone(),
                             sheet_id,
+                            column_modal,
+                            modal_opener,
                         }
                         TablePager {
                             page: page_value,
@@ -249,6 +288,17 @@ pub fn DocumentPreviewForTable(
 
     rsx! {
         PreviewWrapper { controls, page: body }
+        if let Some(modal) = column_modal() {
+            TableColumnModalDialog {
+                modal,
+                columns: sheet_columns,
+                table_state,
+                set_table_state,
+                document_identifier: document_identifier_value,
+                sheet_id,
+                column_modal,
+            }
+        }
     }
 }
 
@@ -336,18 +386,92 @@ fn SheetPicker(
     }
 }
 
-/// The column-visibility popover: a checkbox per column, show/hide all, and a filter box
-/// over column names for the sheets that have 300 of them.
+/// Opens the table-level column-visibility modal.
 #[component]
 fn ColumnPicker(
     columns: Vec<TableColumnInfo>,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
 ) -> Element {
-    let mut open = use_signal(|| false);
-    let mut name_filter = use_signal(String::new);
+    let mut trigger: FocusHandle = use_signal(|| None);
     let hidden = table_state.hidden_columns.clone();
     let shown = columns.len().saturating_sub(hidden.len());
+    rsx! {
+        button {
+            r#type: "button",
+            style: CONTROL_BUTTON_STYLE,
+            "aria-label": "Choose visible columns",
+            "aria-haspopup": "dialog",
+            onmounted: move |e| trigger.set(Some(e.data())),
+            onclick: move |_| {
+                modal_opener.set(trigger());
+                column_modal.set(Some(TableColumnModal::Picker));
+            },
+            Icon { icon: MdViewColumn, style: "width: 16px; height: 16px;" }
+            "{shown} of {columns.len()}"
+        }
+    }
+}
+
+#[component]
+fn TableColumnModalDialog(
+    modal: TableColumnModal,
+    columns: Vec<TableColumnInfo>,
+    table_state: DocTableState,
+    set_table_state: Callback<DocTableState>,
+    document_identifier: DocumentIdentifier,
+    sheet_id: u16,
+    column_modal: Signal<Option<TableColumnModal>>,
+) -> Element {
+    let on_close = move |_| {
+        column_modal.set(None);
+    };
+    let label = match &modal {
+        TableColumnModal::Picker => "Choose visible columns".to_string(),
+        TableColumnModal::Filter(column) => format!("Filter {}", column.label()),
+    };
+    let body = match modal {
+        TableColumnModal::Picker => rsx! {
+            ColumnPickerDialog { columns, table_state, set_table_state }
+        },
+        TableColumnModal::Filter(column) => rsx! {
+            ColumnFilterPopover {
+                column,
+                table_state,
+                set_table_state,
+                document_identifier,
+                sheet_id,
+                on_close,
+            }
+        },
+    };
+    rsx! {
+        ModalShell {
+            label: label.clone(),
+            on_close,
+            header: rsx! {
+                div {
+                    style: "display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #d0d0d0;",
+                    h2 { style: "margin: 0; font-size: 18px;", "{label}" }
+                    ModalCloseButton { on_close }
+                }
+            },
+            pane_size: "width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px);",
+            div { style: "overflow-y: auto; padding: 12px 16px;", {body} }
+        }
+    }
+}
+
+#[component]
+fn ColumnPickerDialog(
+    columns: Vec<TableColumnInfo>,
+    table_state: DocTableState,
+    set_table_state: Callback<DocTableState>,
+) -> Element {
+    let mut name_filter = use_signal(String::new);
+    let hidden = table_state.hidden_columns.clone();
     let needle = name_filter().to_lowercase();
     let listed: Vec<TableColumnInfo> = columns
         .iter()
@@ -355,82 +479,67 @@ fn ColumnPicker(
         .cloned()
         .collect();
     rsx! {
-        PopoverRoot {
-            open: open(),
-            on_open_change: move |value: bool| open.set(value),
-            PopoverTrigger {
-                span {
-                    style: CONTROL_BUTTON_STYLE,
-                    Icon { icon: MdViewColumn, style: "width: 16px; height: 16px;" }
-                    "{shown} of {columns.len()}"
-                }
+        input {
+            style: "width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;",
+            placeholder: "Find a column\u{2026}",
+            value: "{name_filter}",
+            oninput: move |e| name_filter.set(e.value()),
+        }
+        div {
+            style: "display: flex; gap: 8px; margin-bottom: 8px;",
+            button {
+                "aria-label": "Show all columns",
+                style: FILTER_CHIP_STYLE,
+                onclick: {
+                    let table_state = table_state.clone();
+                    move |_| {
+                        let mut next = table_state.clone();
+                        next.hidden_columns.clear();
+                        set_table_state.call(next);
+                    }
+                },
+                "Show all"
             }
-            PopoverContent {
-                div {
-                    style: "min-width: 280px; max-height: 380px; overflow-y: auto; padding: 6px;",
-                    input {
-                        style: "width: 100%; padding: 4px 6px; margin-bottom: 6px;",
-                        placeholder: "Find a column\u{2026}",
-                        value: "{name_filter}",
-                        oninput: move |e| name_filter.set(e.value()),
+            button {
+                "aria-label": "Hide all columns",
+                style: FILTER_CHIP_STYLE,
+                onclick: {
+                    let table_state = table_state.clone();
+                    let all: Vec<u32> = columns.iter().map(|c| c.column_id).collect();
+                    move |_| {
+                        let mut next = table_state.clone();
+                        next.hidden_columns = all.clone();
+                        set_table_state.call(next);
                     }
-                    div {
-                        style: "display: flex; gap: 8px; margin-bottom: 6px;",
-                        button {
-                            style: FILTER_CHIP_STYLE,
-                            onclick: {
-                                let table_state = table_state.clone();
-                                move |_| {
-                                    let mut next = table_state.clone();
-                                    next.hidden_columns.clear();
-                                    set_table_state.call(next);
+                },
+                "Hide all"
+            }
+        }
+        for column in listed {
+            {
+                let is_hidden = hidden.contains(&column.column_id);
+                let table_state = table_state.clone();
+                let column_id = column.column_id;
+                rsx! {
+                    label {
+                        key: "{column_id}",
+                        style: "display: flex; align-items: center; gap: 8px; padding: 4px 2px; cursor: pointer;",
+                        input {
+                            r#type: "checkbox",
+                            checked: !is_hidden,
+                            onchange: move |_| {
+                                let mut next = table_state.clone();
+                                if is_hidden {
+                                    next.hidden_columns.retain(|c| *c != column_id);
+                                } else {
+                                    next.hidden_columns.push(column_id);
                                 }
+                                set_table_state.call(next);
                             },
-                            "Show all"
                         }
-                        button {
-                            style: FILTER_CHIP_STYLE,
-                            onclick: {
-                                let table_state = table_state.clone();
-                                let all: Vec<u32> = columns.iter().map(|c| c.column_id).collect();
-                                move |_| {
-                                    let mut next = table_state.clone();
-                                    next.hidden_columns = all.clone();
-                                    set_table_state.call(next);
-                                }
-                            },
-                            "Hide all"
-                        }
-                    }
-                    for column in listed {
-                        {
-                            let is_hidden = hidden.contains(&column.column_id);
-                            let table_state = table_state.clone();
-                            let column_id = column.column_id;
-                            rsx! {
-                                div {
-                                    key: "{column_id}",
-                                    style: "display: flex; align-items: center; gap: 8px; padding: 3px 2px; cursor: pointer;",
-                                    onclick: move |_| {
-                                        let mut next = table_state.clone();
-                                        if is_hidden {
-                                            next.hidden_columns.retain(|c| *c != column_id);
-                                        } else {
-                                            next.hidden_columns.push(column_id);
-                                        }
-                                        set_table_state.call(next);
-                                    },
-                                    input {
-                                        r#type: "checkbox",
-                                        checked: !is_hidden,
-                                        readonly: true,
-                                    }
-                                    span { style: "color: rgba(0,0,0,0.45); width: 28px;", "{column.letter}" }
-                                    span { "{column.label()}" }
-                                    span { style: "color: rgba(0,0,0,0.4); font-size: 12px;", "{column.column_type}" }
-                                }
-                            }
-                        }
+                        span { style: "color: rgba(0,0,0,0.45); width: 28px;", "{column.letter}" }
+                        span { "{column.label()}" }
+                        span { style: "color: rgba(0,0,0,0.4); font-size: 12px;", "{column.column_type}" }
                     }
                 }
             }
@@ -450,6 +559,8 @@ fn TableGrid(
     find_query: String,
     document_identifier: DocumentIdentifier,
     sheet_id: u16,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
 ) -> Element {
     rsx! {
         div {
@@ -481,6 +592,8 @@ fn TableGrid(
                                         set_table_state,
                                         document_identifier: document_identifier.clone(),
                                         sheet_id,
+                                        column_modal,
+                                        modal_opener,
                                     }
                                 }
                             }
@@ -529,6 +642,8 @@ fn ColumnHeader(
     set_table_state: Callback<DocTableState>,
     document_identifier: DocumentIdentifier,
     sheet_id: u16,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
 ) -> Element {
     let column_id = column.column_id;
     let class = column.class();
@@ -590,57 +705,77 @@ fn ColumnHeader(
                         },
                     }
                 }
-                ColumnFilterPopover {
+                ColumnFilterTrigger {
                     column: column.clone(),
                     active: filtered,
-                    table_state: table_state.clone(),
-                    set_table_state,
-                    document_identifier,
-                    sheet_id,
+                    column_modal,
+                    modal_opener,
                 }
             }
         }
     }
 }
 
-/// The per-column filter popover. Which controls it offers follows the column's class,
-/// because a range filter over a column that is half text silently hides rows.
+/// Opens the table-level filter modal for one column.
+#[component]
+fn ColumnFilterTrigger(
+    column: TableColumnInfo,
+    active: bool,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
+) -> Element {
+    let mut trigger: FocusHandle = use_signal(|| None);
+    let colour = if active { "#0b57d0" } else { "rgba(0,0,0,0.35)" };
+    let label = column.label();
+    rsx! {
+        button {
+            r#type: "button",
+            style: "cursor: pointer; display: inline-flex; color: {colour}; background: none; border: none; padding: 0;",
+            "aria-label": "Filter {label}",
+            "aria-haspopup": "dialog",
+            onmounted: move |e| trigger.set(Some(e.data())),
+            onclick: move |_| {
+                modal_opener.set(trigger());
+                column_modal.set(Some(TableColumnModal::Filter(column.clone())));
+            },
+            span {
+                title: "Filter this column",
+                Icon { icon: MdFilterList, style: "width: 14px; height: 14px;" }
+            }
+        }
+    }
+}
+
+/// The per-column controls inside the centred modal. Which controls it offers follows
+/// the stored class, because range filtering text would hide rows without a valid order.
 #[component]
 fn ColumnFilterPopover(
     column: TableColumnInfo,
-    active: bool,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
     document_identifier: DocumentIdentifier,
     sheet_id: u16,
+    on_close: EventHandler<()>,
 ) -> Element {
     let column_id = column.column_id;
     let class = column.class();
-    let mut open = use_signal(|| false);
     let mut text = use_signal(String::new);
     let mut low = use_signal(String::new);
     let mut high = use_signal(String::new);
 
-    // Declared for every column, not only text ones: a resource behind an `if` would
-    // shift the hook order of every header after it. Every condition lives in the closure.
-    //
-    // `is_open` is one of them, and it is not an optimisation. A header renders one of
-    // these per column, so fetching the value list eagerly costs one GROUP BY over a whole
-    // column PER COLUMN on every page render, 60 server calls to open a wide sheet whose
-    // reader may never touch a filter. The list is only ever shown inside the popover.
+    // This component exists only while its modal is open. The resource still declares for
+    // every column class, because a conditional resource would shift this hook's order.
     let value_search = text();
     let is_text = class == TableColumnClass::Text;
-    let is_open = open();
     let values: Resource<Vec<TableColumnValue>> = use_resource(use_reactive!(|(
         document_identifier,
         sheet_id,
         column_id,
         value_search,
-        is_text,
-        is_open
+        is_text
     )| {
         async move {
-            if !is_text || !is_open {
+            if !is_text {
                 return Vec::new();
             }
             get_table_column_values(document_identifier, sheet_id, column_id, value_search)
@@ -667,20 +802,8 @@ fn ColumnFilterPopover(
     let apply_starts = apply.clone();
     let apply_value = apply;
 
-    let colour = if active { "#0b57d0" } else { "rgba(0,0,0,0.35)" };
     rsx! {
-        PopoverRoot {
-            open: open(),
-            on_open_change: move |value: bool| open.set(value),
-            PopoverTrigger {
-                span {
-                    style: "cursor: pointer; display: inline-flex; color: {colour};",
-                    title: "Filter this column",
-                    Icon { icon: MdFilterList, style: "width: 14px; height: 14px;" }
-                }
-            }
-            PopoverContent {
-                div {
+        div {
                     style: "min-width: 260px; max-width: 320px; max-height: 380px; overflow-y: auto; padding: 8px; font-weight: 400; text-align: left;",
                     div {
                         style: "font-size: 12px; color: rgba(0,0,0,0.55); margin-bottom: 6px;",
@@ -721,7 +844,7 @@ fn ColumnFilterPopover(
                                         }
                                     };
                                     apply_range(kind);
-                                    open.set(false);
+                                    on_close.call(());
                                 },
                                 "Apply range"
                             }
@@ -736,10 +859,11 @@ fn ColumnFilterPopover(
                             div {
                                 style: "display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;",
                                 button {
+                                    "aria-label": "Apply contains filter",
                                     style: FILTER_CHIP_STYLE,
                                     onclick: move |_| {
                                         apply_text(TableFilterKind::Contains(text()));
-                                        open.set(false);
+                                        on_close.call(());
                                     },
                                     "Contains"
                                 }
@@ -747,7 +871,7 @@ fn ColumnFilterPopover(
                                     style: FILTER_CHIP_STYLE,
                                     onclick: move |_| {
                                         apply_starts(TableFilterKind::StartsWith(text()));
-                                        open.set(false);
+                                        on_close.call(());
                                     },
                                     "Starts with"
                                 }
@@ -769,7 +893,7 @@ fn ColumnFilterPopover(
                                                     let apply_value = apply_value.clone();
                                                     move |_| {
                                                         apply_value(TableFilterKind::Equals(chosen.clone()));
-                                                        open.set(false);
+                                                        on_close.call(());
                                                     }
                                                 },
                                                 span {
@@ -790,7 +914,7 @@ fn ColumnFilterPopover(
                             style: FILTER_CHIP_STYLE,
                             onclick: move |_| {
                                 apply_empty(TableFilterKind::IsEmpty);
-                                open.set(false);
+                                on_close.call(());
                             },
                             "Is empty"
                         }
@@ -799,13 +923,11 @@ fn ColumnFilterPopover(
                             onclick: move |_| {
                                 // A no-op kind clears this column's filter.
                                 apply_clear(TableFilterKind::Contains(String::new()));
-                                open.set(false);
+                                on_close.call(());
                             },
                             "Clear"
                         }
                     }
-                }
-            }
         }
     }
 }

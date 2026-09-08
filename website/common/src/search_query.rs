@@ -90,21 +90,26 @@ impl SortKey {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SortSpec {
     pub key: SortKey,
     pub desc: bool,
 }
 
+impl Default for SortSpec {
+    fn default() -> Self {
+        Self { key: SortKey::Relevance, desc: true }
+    }
+}
+
 impl SortSpec {
-    /// Relevance is not a valid order without something to be relevant to. Callers
-    /// resolve the spec through this so the UI and the SQL builder cannot disagree.
-    pub fn resolved(&self, query_string: &str) -> SortSpec {
-        if self.key == SortKey::Relevance && query_string.trim().is_empty() {
-            SortSpec { key: SortKey::Date, desc: true }
+    /// Relevance always uses descending score order. This also repairs legacy URLs.
+    pub fn normalized(self) -> SortSpec {
+        if self.key == SortKey::Relevance {
+            Self { key: SortKey::Relevance, desc: true }
         } else {
-            *self
+            self
         }
     }
 }
@@ -157,14 +162,14 @@ mod tests {
     }
 
     #[test]
-    fn relevance_falls_back_without_a_query_string() {
-        let relevance = SortSpec { key: SortKey::Relevance, desc: true };
-        assert_eq!(relevance.resolved("word").key, SortKey::Relevance);
-        assert_eq!(relevance.resolved("").key, SortKey::Date);
-        assert_eq!(relevance.resolved("   ").key, SortKey::Date);
-        // Any other key is left alone whether or not there is a query.
+    fn qa_sort_normalizes_default_and_legacy_relevance() {
+        assert_eq!(SortSpec::default(), SortSpec { key: SortKey::Relevance, desc: true });
+        assert_eq!(
+            SortSpec { key: SortKey::Relevance, desc: false }.normalized(),
+            SortSpec { key: SortKey::Relevance, desc: true },
+        );
         let by_name = SortSpec { key: SortKey::Name, desc: false };
-        assert_eq!(by_name.resolved("").key, SortKey::Name);
+        assert_eq!(by_name.normalized(), by_name);
     }
 
     /// The bookmark-compatibility guarantee: a CBOR blob written by the build BEFORE
@@ -187,6 +192,21 @@ mod tests {
         assert_eq!(decoded.query_string, "easychair");
         assert!(decoded.range_filters.is_empty());
         assert_eq!(decoded.sort, SortSpec::default());
+    }
+
+    #[test]
+    fn qa_sort_normalizes_legacy_ascending_url_state() {
+        let old = serde_json::json!({
+            "collection_datasets": [],
+            "query_string": "easychair",
+            "facet_filters": {},
+            "range_filters": {},
+            "sort": { "key": "Relevance", "desc": false },
+        });
+        let mut cbor = Vec::new();
+        ciborium::into_writer(&old, &mut cbor).unwrap();
+        let decoded: SearchQuery = ciborium::from_reader(std::io::Cursor::new(cbor)).unwrap();
+        assert_eq!(decoded.sort.normalized(), SortSpec::default());
     }
 
     #[test]

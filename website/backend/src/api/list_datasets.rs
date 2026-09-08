@@ -6,11 +6,13 @@ use std::time::{Duration, Instant};
 
 use common::current_user::CurrentUser;
 use common::storage_tree::{CollectionNode, CollectionOverview, DatasetAggregates, DatasetSummary};
+use common::vfs::dataset_root_key;
 
 use crate::auth::permissions::{self, PermissionSet};
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
 };
+use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
 pub async fn list_dataset_ids() -> anyhow::Result<Vec<String>> {
     let client = get_global_client();
@@ -63,6 +65,7 @@ async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Result<Vec<Datas
             collectionname: row.collectionname,
             dataset_name: row.dataset_name,
             dataset_display_name: row.dataset_display_name,
+            has_folder_children: false,
         })
         .collect())
 }
@@ -77,7 +80,34 @@ async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Result<Vec<Datas
 pub async fn list_permitted_collection_tree(
     user: &CurrentUser,
 ) -> anyhow::Result<Vec<CollectionNode>> {
-    Ok(group_by_collection(list_permitted_datasets(user).await?))
+    let mut tree = group_by_collection(list_permitted_datasets(user).await?);
+    for collection in &mut tree {
+        let table = format!("{}_vfs", collection.collectionname);
+        let response = manticore_search_sql_uncached::<FolderPresenceRow>(format!(
+            "SELECT collection_dataset FROM {table} WHERE parent_key IN ({}) AND kind != 1 GROUP BY collection_dataset LIMIT {} {} ;",
+            collection.datasets.iter().map(|dataset| format_sql_query::QuotedData(&dataset_root_key(&dataset.collection_dataset)).to_string()).collect::<Vec<_>>().join(", "),
+            collection.datasets.len(),
+            crate::api::search::search_sql::sql_options_clause(collection.datasets.len() as u64),
+        ))
+        .await;
+        let rows: Vec<FolderPresenceRow> = match response {
+            Ok(response) => response.hits.hits.into_iter().map(|hit| hit._source).collect(),
+            Err(error) if error.to_string().contains(&format!("unknown local table(s) '{table}'")) => {
+                tracing::debug!(collection = %collection.collectionname, "storage index is not available");
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
+        for dataset in &mut collection.datasets {
+            dataset.has_folder_children = rows.iter().any(|row| row.collection_dataset == dataset.collection_dataset);
+        }
+    }
+    Ok(tree)
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct FolderPresenceRow {
+    collection_dataset: String,
 }
 
 /// Group an already-sorted dataset list into collection nodes, preserving order.
@@ -217,6 +247,7 @@ mod tests {
             collectionname: collection.to_string(),
             dataset_name: name.to_string(),
             dataset_display_name: String::new(),
+            has_folder_children: false,
         }
     }
 

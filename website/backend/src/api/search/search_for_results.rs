@@ -219,9 +219,9 @@ pub async fn search_for_results(
         });
     }
 
-    // Relevance is meaningless without something to be relevant to; the resolution is
-    // done here as well as in the UI so a hand-written URL cannot ask for it.
-    let sort = query.sort.resolved(&query.query_string);
+    // Normalize at the request boundary so hand-written legacy URLs use descending
+    // relevance before every shard query and the global merge.
+    let sort = query.sort.normalized();
 
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();

@@ -14,6 +14,7 @@ languages.
 - [Search](#search)
 - [Reading a document](#reading-a-document)
 - [Storage browsing](#storage-browsing)
+- [Browser verification](#browser-verification)
 - [Chat](#chat)
 - [Administration](#administration)
 - [Identity and access](#identity-and-access)
@@ -50,7 +51,7 @@ languages.
 | `F-search-05` | Filter by document date (before, after, between, or no confirmed date) as an interval overlap | `website/backend/src/api/search/search_sql.rs` |
 | `F-search-06` | Show a date histogram of the match without its own date filter, over computed bins | `website/backend/src/api/search/date_histogram.rs` |
 | `F-search-07` | Filter by file size, with unknown size distinct from zero | `website/backend/src/api/search/search_sql.rs` |
-| `F-search-08` | Sort by relevance, date, file size or name, in either direction, consistently across shards | `api/search/`, `website/common/src/search_query.rs` |
+| `F-search-08` | Sort by descending relevance, or by date, file size or name in either direction, consistently across shards | `api/search/`, `website/common/src/search_query.rs` |
 | `F-search-09` | Find a document by filename | the synthetic filename row |
 | `F-search-10` | Narrow to a folder, including through containers, from the tree or the filter pane | `api/vfs/` |
 | `F-search-11` | Report a partial result when some collections could not be searched, and offer a retry | `website/backend/src/api/search/fanout.rs` |
@@ -62,10 +63,10 @@ languages.
 | id | capability | owned by |
 |---|---|---|
 | `F-doc-01` | Preview a result beside the list without leaving the search | `frontend/src/components/document_view_components/` |
-| `F-doc-02` | Choose among a document's text sources, each labelled by the extractor that produced it | `website/common/src/document_sources.rs` |
-| `F-doc-03` | Render a PDF and highlight in-document search hits at their real positions | `api/search_document_pdf`, the viewer sidecar |
+| `F-doc-02` | Choose among a document's text sources, each labelled by the extractor that produced it, while retaining the in-document query | `website/common/src/document_sources.rs` |
+| `F-doc-03` | Render PDF search hits at their source-specific positions and show each source's own count. Prior controllers cannot change the current viewer. | `api/search_document_pdf`, the viewer sidecar |
 | `F-doc-04` | Show an email's headers, body and attachments, and say so explicitly when no body text was extracted | `api/documents/` |
-| `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging | `website/backend/src/api/documents/table_browse.rs` |
+| `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging. Column visibility and filter controls open one centred modal with a closing backdrop. | `website/backend/src/api/documents/table_browse.rs`, `doc_preview_for_table.rs` |
 | `F-doc-06` | Show a document's extracted entities, filterable, with a detail card explaining a scanner value; a link may name one entity, which opens that card alone and says so when the document no longer carries the value | `api/documents/`, `main_services/regex_entity_scanner/` |
 | `F-doc-07` | Show a document's dates with the provenance of each | `document_dates` |
 | `F-doc-08` | Show raw metadata, and download the original file or its searchable PDF | `website/backend/src/api/documents/download_document.rs` |
@@ -76,10 +77,16 @@ languages.
 | id | capability | owned by |
 |---|---|---|
 | `F-store-01` | Browse a collection's folder tree, including inside archives and emails | `website/backend/src/api/vfs/tree.rs` |
-| `F-store-02` | Page a folder with many children, and window the siblings and ancestors around the current focus | `website/frontend/src/components/search_components/vfs_tree.rs` |
+| `F-store-02` | Page folder children, reuse mounted-tree pages and paths for five seconds, and window siblings and ancestors around the current focus | `website/frontend/src/components/search_components/vfs_tree.rs` |
 | `F-store-03` | Resize the storage sidebar and remember its width | `website/frontend/src/components/resizable_sidebar.rs` |
 | `F-store-04` | Navigate by breadcrumb across container boundaries | `website/backend/src/api/vfs/tree.rs` |
-| `F-store-05` | Read the tree uncached, so it is correct while ingestion runs | `website/backend/src/db_utils/manticore_utils.rs` |
+| `F-store-05` | Read each tree endpoint request without the search cache and revalidate expired browser entries on navigation or remount | `website/backend/src/db_utils/manticore_utils.rs` |
+
+## Browser verification
+
+| id | capability | owned by |
+|---|---|---|
+| `F-qa-01` | Run browser scenarios with recorded actions, observed values, request counts, and partial failure evidence. Await owned browser startup and cleanup. | `website/tools/capture_screenshots.py`, `website/tools/browser_lifecycle.py` |
 
 ## Chat
 
@@ -99,7 +106,7 @@ languages.
 | `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
 | `F-chat-08a` | Open a listed entity's explainer card from inside the transcript, in the address so the open card is a link, offered only for a value a rule validated, since a model-found name has no card, and only for a document the conversation named a dataset for | `chat_components/tool_cards/entities_card.rs`, `DocViewerState::selected_entity` |
-| `F-chat-09` | Keep a conversation history, resume it, and title it automatically | `chat_sessions`, `chat_messages` |
+| `F-chat-09` | Keep a conversation history, resume it, and title it automatically. Browser verification compares persisted answer content across reload and navigation. | `chat_sessions`, `chat_messages`, `chat_observer.check_history` |
 | `F-chat-10` | Stop a turn in flight, keeping its partial answer out of the conversation rather than saving an unmarked fragment, and saying so on the control; and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
 | `F-chat-11` | Retry a failed turn automatically, on whichever worker picks it up | `ChatTurn`, its activity retry policy |
 | `F-chat-12` | Run every turn durably, outside the request, so a website restart or a closed tab does not lose it | `main_services/processing/tasks/P_agent/` |

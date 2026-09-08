@@ -577,6 +577,12 @@ async fn permissions_restrict_search_to_granted_collections() {
 
 use common::search_query::{RangeFilter, SortKey, SortSpec};
 
+#[derive(Debug, serde::Deserialize)]
+struct RawRelevanceHit {
+    collection_dataset: String,
+    file_hash: String,
+}
+
 fn dated_query(min: Option<i64>, max: Option<i64>, include_unknown: bool) -> SearchQuery {
     let mut query = SearchQuery::default();
     query
@@ -725,6 +731,76 @@ async fn sort_by_size_is_monotonic_across_shards() {
         let ordered = sizes.windows(2).all(|p| if desc { p[0] >= p[1] } else { p[0] <= p[1] });
         assert!(ordered, "sort by size desc={desc} produced {sizes:?}");
     }
+}
+
+/// Raw Manticore scores are the independent source for this assertion. The application
+/// result is compared to those scores after two separately ordered shard responses merge.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn qa_sort_relevance_matches_raw_scores_across_shards_and_pages() {
+    let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    skip_unless_full_corpus!();
+    let _budget = Budget::start("qa_sort_relevance_matches_raw_scores_across_shards_and_pages");
+    let query = SearchQuery { query_string: "the".to_string(), ..SearchQuery::default() };
+    let mut raw = Vec::new();
+    for collection in ["testdata", "other"] {
+        for shard in list_shards(collection).await.unwrap() {
+            let target = backend::api::search::fanout::FanoutTarget::shard(collection, shard);
+            let parts = backend::api::search::fanout::shard_query_parts(&target, &query)
+                .await
+                .unwrap();
+            let sql = format!(
+                "SELECT collection_dataset, file_hash FROM {} {} GROUP BY file_hash \
+                 ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC LIMIT 40",
+                parts.pages_table, parts.where_clause,
+            );
+            let response = backend::db_utils::manticore_utils::manticore_search_sql::<RawRelevanceHit>(
+                sql,
+                &parts.salt,
+            )
+            .await
+            .unwrap();
+            raw.extend(response.hits.hits.into_iter().map(|hit| {
+                (hit._score, hit._source.collection_dataset, hit._source.file_hash)
+            }));
+        }
+    }
+    assert!(
+        raw.iter().any(|(_, dataset, _)| dataset.starts_with("testdata_"))
+            && raw.iter().any(|(_, dataset, _)| dataset.starts_with("other_")),
+        "the fixture query must return raw scores from both collections"
+    );
+    raw.sort_by(|left, right| {
+        right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)).then_with(|| left.2.cmp(&right.2))
+    });
+    let page_size = common::search_const::PAGE_SIZE as usize;
+    assert!(raw.len() > page_size, "the fixture query must cross a result-page boundary");
+    let expected: Vec<_> = raw
+        .iter()
+        .take(page_size * 2)
+        .map(|(_, dataset, hash)| (dataset.clone(), hash.clone()))
+        .collect();
+    let mut actual = Vec::new();
+    for page in 0..2 {
+        let results = backend::api::search::search_for_results(
+            &admin_user(),
+            SearchQuery {
+                sort: SortSpec { key: SortKey::Relevance, desc: false },
+                ..query.clone()
+            },
+            page,
+        )
+        .await
+        .unwrap();
+        assert!(!results.partial);
+        actual.extend(
+            results
+                .results
+                .into_iter()
+                .map(|hit| (hit.collection_dataset, hit.file_hash)),
+        );
+    }
+    assert_eq!(actual, expected, "descending raw-score order must cross both pages unchanged");
 }
 
 /// A word that appears only in a FILENAME finds the document. `pdf-doc-txt` is the only
@@ -1067,6 +1143,42 @@ async fn vfs_tree_path_to_crosses_a_container() {
     for pair in chain.windows(2) {
         assert_eq!(pair[1].parent_key, pair[0].node_key);
     }
+}
+
+/// A container-root route selects the archive row that owns its children.
+#[tokio::test]
+#[ignore = "qa-storage live stack"]
+async fn qa_storage_archive_root_resolves_a_materialized_node() {
+    skip_unless_dataset!(ZIPS);
+    let _budget = Budget::start("qa_storage_archive_root_resolves_a_materialized_node");
+    use common::vfs::{VfsNodeKind, make_node_key};
+
+    let outer = backend::api::vfs::vfs_tree_children(
+        &admin_user(),
+        ZIPS.to_string(),
+        make_node_key(ZIPS, "", "/location-1"),
+        50,
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+    let archive = outer
+        .nodes
+        .iter()
+        .find(|node| node.kind == VfsNodeKind::Container)
+        .expect("the ZIP fixture must contain an archive row");
+    let resolved = backend::api::vfs::vfs_tree_container_node(
+        &admin_user(),
+        ZIPS.to_string(),
+        archive.file_hash.clone(),
+    )
+    .await
+    .unwrap()
+    .expect("a container hash must resolve to a materialized container row");
+    assert_eq!(resolved.kind, VfsNodeKind::Container);
+    assert_eq!(resolved.file_hash, archive.file_hash);
+    assert_ne!(resolved.node_key, make_node_key(ZIPS, &archive.file_hash, "/"));
 }
 
 /// `folders_only` drops plain files from the page AND from `total`, so the tree's
@@ -1539,6 +1651,7 @@ async fn in_pdf_search_returns_hits_through_the_sidecar() {
             file_hash,
         },
         keyword.clone(),
+        None,
     )
     .await
     .expect("in-PDF search must reach the sidecar");
@@ -1546,6 +1659,117 @@ async fn in_pdf_search_returns_hits_through_the_sidecar() {
         results.total > 0,
         "{keyword:?} is in the PDF's text layer but the sidecar found it nowhere in the PDF"
     );
+}
+
+/// Compare selected-source search with each source's independently loaded PDF bytes.
+#[tokio::test]
+#[ignore = "needs the manual QA fixtures and live stack"]
+async fn slow_qa_pdf_sources_match_bytes_in_both_orders_and_keep_individual_counts() {
+    use common::document_sources::{DocumentPdfSourceItem, DocumentSourceItem};
+    use common::pdf_search_results::PdfSearchResults;
+    use common::search_result::DocumentIdentifier;
+    use backend::api::documents::{get_document_sources::get_document_sources,
+        search_document_itemcount::search_document_item_count,
+        search_document_pdf::{pdf_search_endpoint, search_document_pdf}};
+
+    let _guard = GLOBAL_SEARCH_LOCK.lock().await;
+    let dataset = "testdata_manualqa";
+    assert!(dataset_present(dataset).await, "prepare the manual QA fixture profile first");
+    let doc = DocumentIdentifier {
+        collection_dataset: dataset.into(),
+        file_hash: "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3".into(),
+    };
+    let user = admin_user();
+    let sources = get_document_sources(&user, doc.clone()).await.unwrap();
+    let original = sources.iter().find_map(|source| match source {
+        DocumentSourceItem::Pdf(item) if !item.is_ocr() => Some(item.clone()),
+        _ => None,
+    }).expect("the fixture must have an original PDF");
+    let ocr = sources.iter().find_map(|source| match source {
+        DocumentSourceItem::Pdf(item) if item.is_ocr() => Some(item.clone()),
+        _ => None,
+    }).expect("the fixture must have an OCR PDF");
+    let client = get_client_for_dataset(dataset).await.unwrap();
+    let (key, size): (String, u64) = client.query(
+        "SELECT blob_key, size_bytes FROM pdf_ocr_results FINAL \
+         WHERE collection_dataset = ? AND pdf_hash = ? AND engine = ? AND languages = ? AND is_deleted = 0",
+    ).bind(dataset).bind(&doc.file_hash).bind(&ocr.engine).bind(&ocr.languages)
+        .fetch_one().await.unwrap();
+    assert!(key.starts_with("derived/"));
+    assert!(size > 0 && size <= 128 * 1024 * 1024);
+    let collection = backend::db_utils::collectionname_of_dataset(dataset).await.unwrap();
+    let ocr_bytes = backend::db_utils::s3_client().await.unwrap().get_object()
+        .bucket(backend::db_utils::collection_bucket(&collection)).key(key)
+        .send().await.unwrap().body.collect().await.unwrap().into_bytes().to_vec();
+    assert_eq!(ocr_bytes.len() as u64, size);
+    let original_bytes = backend::api::documents::download_document::read_blob_bytes(
+        &user, &doc, 128 * 1024 * 1024,
+    ).await.unwrap();
+    assert_ne!(sha256::digest(&original_bytes), sha256::digest(&ocr_bytes));
+    let selected_bytes = backend::server_extra::download_ocr_pdf::read_ocr_pdf_bytes(
+        &user, &doc, &ocr, 128 * 1024 * 1024,
+    ).await.unwrap();
+    assert_eq!(selected_bytes, ocr_bytes);
+    assert!(backend::server_extra::download_ocr_pdf::read_ocr_pdf_bytes(
+        &user, &doc, &ocr, size - 1,
+    ).await.unwrap_err().to_string().contains("byte limit"));
+
+    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().unwrap();
+    let mut expected = Vec::new();
+    for bytes in [original_bytes, ocr_bytes] {
+        let response: serde_json::Value = http.post(pdf_search_endpoint())
+            .query(&[("keywords", "[\"mit\"]")]).header("Content-Type", "application/pdf")
+            .body(bytes).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+        let result: PdfSearchResults = serde_json::from_value(response[0]["result_set"].clone()).unwrap();
+        assert!(result.total > 0);
+        expected.push(serde_json::to_value(result).unwrap());
+    }
+    assert_eq!(expected[0]["total"], 7, "the original source has seven MIT matches");
+    assert_ne!(expected[0]["results"], expected[1]["results"], "the source pair must have distinct match geometry");
+    let variants = [original.clone(), ocr.clone()];
+    for order in [[0, 1], [1, 0]] {
+        for index in order {
+            let actual = search_document_pdf(&user, doc.clone(), "MIT".into(), Some(variants[index].clone()))
+                .await.unwrap();
+            assert_eq!(serde_json::to_value(actual).unwrap(), expected[index], "source {index}, order {order:?}");
+        }
+    }
+    let fallback = search_document_pdf(&user, doc.clone(), "MIT".into(), None).await.unwrap();
+    assert_eq!(serde_json::to_value(fallback).unwrap(), expected[0]);
+    let missing = DocumentPdfSourceItem { languages: "qa-missing-language".into(), ..ocr.clone() };
+    let error = search_document_pdf(&user, doc.clone(), "MIT".into(), Some(missing.clone()))
+        .await.unwrap_err();
+    assert!(error.to_string().contains("not found"));
+    let counts = search_document_item_count(&user, doc.clone(), "MIT".into(), vec![
+        DocumentSourceItem::Pdf(ocr.clone()), DocumentSourceItem::Pdf(missing.clone()),
+        DocumentSourceItem::Pdf(original.clone()),
+    ]).await.unwrap();
+    for (source, expected_count) in [
+        (ocr.clone(), expected[1]["total"].as_u64().unwrap()), (missing.clone(), 0), (original, 7),
+    ] {
+        assert_eq!(counts.0.iter().find(|(item, _)| item == &DocumentSourceItem::Pdf(source.clone()))
+            .map(|(_, count)| *count), Some(expected_count));
+    }
+
+    let denied = CurrentUser { username: "qa-pdf-source-denied-user".into(), is_admin: false, groups: vec![],
+        fullname: String::new(), email: String::new() };
+    for source in [None, Some(ocr), Some(missing)] {
+        let error = search_document_pdf(&denied, doc.clone(), "MIT".into(), source).await.unwrap_err();
+        assert!(backend::auth::guard::is_forbidden(&error), "permission must precede source lookup: {error}");
+    }
+    let original_only = DocumentIdentifier {
+        collection_dataset: "testdata_manualpdf".into(),
+        file_hash: "6ae2f4181bc5af14b42ff9001db4ea0c6c834f02c23bdcdb051005e88244f1aa".into(),
+    };
+    let variants = get_document_sources(&user, original_only.clone()).await.unwrap().into_iter()
+        .filter_map(|source| match source { DocumentSourceItem::Pdf(item) => Some(item), _ => None })
+        .collect::<Vec<_>>();
+    assert_eq!(variants.len(), 1);
+    assert!(!variants[0].is_ocr());
+    assert_eq!(variants[0].page_count, 1);
+    assert_eq!(search_document_pdf(&user, original_only, "absent-qa-term".into(), None).await.unwrap().total, 0);
+    eprintln!("[qa-pdf] source totals: original={}, OCR={}; both orders and permission checks pass",
+        expected[0]["total"], expected[1]["total"]);
 }
 
 /// The sidecar's address is configuration, not a literal, and defaults to the loopback
@@ -1835,6 +2059,7 @@ fn site_url() -> String {
 /// function at `/api/<name><decimal hash>` and the hash changes whenever the function's
 /// signature does, so a literal path here would rot into a 404 that reads as a missing
 /// refusal. Fetched once for the whole suite. The bundle is megabytes.
+/// Asset discovery uses a proxy identity. Tests select their request identity independently.
 struct ServerFnPaths {
     whoami: String,
     search_hit_count: String,
@@ -1845,13 +2070,18 @@ static SERVER_FN_PATHS: tokio::sync::OnceCell<ServerFnPaths> = tokio::sync::Once
 async fn server_fn_paths() -> &'static ServerFnPaths {
     SERVER_FN_PATHS
         .get_or_init(|| async {
-            let client = reqwest::Client::new();
-            let index = client.get(site_url()).send().await.unwrap().text().await.unwrap();
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("X-Forwarded-User", "stack-test-user".parse().unwrap());
+            headers.insert("X-Forwarded-Groups", "admin".parse().unwrap());
+            let client = reqwest::Client::builder().default_headers(headers).build().unwrap();
+            let index = client.get(site_url()).send().await.unwrap().error_for_status().unwrap().text().await.unwrap();
             let js = first_match(&index, "/wasm/frontend").unwrap_or("/wasm/frontend.js".to_string());
             let glue = client
                 .get(format!("{}{}", site_url(), js.trim_start_matches('.')))
                 .send()
                 .await
+                .unwrap()
+                .error_for_status()
                 .unwrap()
                 .text()
                 .await
@@ -1862,7 +2092,7 @@ async fn server_fn_paths() -> &'static ServerFnPaths {
             } else {
                 format!("{}/wasm/{}", site_url(), wasm_href)
             };
-            let bytes = client.get(&wasm_url).send().await.unwrap().bytes().await.unwrap();
+            let bytes = client.get(&wasm_url).send().await.unwrap().error_for_status().unwrap().bytes().await.unwrap();
             assert_eq!(
                 &bytes[..4],
                 b"\0asm",

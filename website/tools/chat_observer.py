@@ -190,7 +190,7 @@ STOP_BUTTON_SEL = "button[title^='Stop the answer']"
 # `transcript.rs`'s live/finished transcript pane has no id; it is the one scrollable
 # flex column in the left panel. Selected structurally rather than by a class the source
 # does not have. A behavioral_warning is recorded, not a crash, if this stops matching.
-TRANSCRIPT_SEL = "div[style*='overflow-y: auto']"
+TRANSCRIPT_SEL = "#x-chat-transcript"
 DOCREFS_TOGGLE_SEL = ".x-chat-docrefs-toggle"
 # `search_result_item_card.rs` has no id or class either; matched on its distinguishing
 # inline style (a fixed 148px card height is unique to this card on the chat page).
@@ -292,6 +292,7 @@ for (const el of bubbles) {
 const text = root.innerText || '';
 const working = text.includes('is working') || text.includes('is searching');
 return {
+    assistant_answers: [...root.querySelectorAll('[data-chat-answer]')].map(e=>({seq:e.dataset.chatAnswer,text:e.textContent})),
     matched_transcript_selector: matched,
     text_length: text.length,
     user_bubble_count: userCount,
@@ -530,7 +531,7 @@ async def submit_and_observe(
     (res_dir / "completion-bottom.png").write_bytes(bottom_shot)
 
     final_state = await transcript_state(tab)
-    result.completed_answer_present = final_state.get("text_length", 0) > 0
+    result.completed_answer_present = any(answer.get("text", "").strip() for answer in final_state.get("assistant_answers", []))
     if not result.stop_disappeared_at_s:
         result.observations.append((
             APPLICATION_ERROR,
@@ -586,15 +587,18 @@ async def capture_interval(
     }
 
 
-async def check_history(tab, base_url: str, other_session_url: str | None) -> dict:
+async def check_history(tab, base_url: str, other_session_url: str | None, timeout_s: float = 30) -> dict:
     """Step 9: pre-send vs during vs after-completion vs after-reload vs after switching
     away and back. Pre/during/after-completion are read by the caller from the interval
     captures already taken; this covers the two DOM-destroying actions."""
     before_reload = await transcript_state(tab)
     await tab.reload()
     await wait_for_app_mounted(tab)
-    await asyncio.sleep(1.0)
+    deadline = time.monotonic() + timeout_s
     after_reload = await transcript_state(tab)
+    while time.monotonic() < deadline and after_reload.get("assistant_answers") != before_reload.get("assistant_answers"):
+        await asyncio.sleep(0.25)
+        after_reload = await transcript_state(tab)
 
     switch_result: dict = {"attempted": False}
     if other_session_url:
@@ -606,16 +610,28 @@ async def check_history(tab, base_url: str, other_session_url: str | None) -> di
         await tab.get(current)
         await wait_for_app_mounted(tab)
         await asyncio.sleep(1.0)
+        deadline = time.monotonic() + timeout_s
         after_switch = await transcript_state(tab)
+        while time.monotonic() < deadline and after_switch.get("assistant_answers") != before_reload.get("assistant_answers"):
+            await asyncio.sleep(0.25)
+            after_switch = await transcript_state(tab)
         switch_result["text_length_after_switch_back"] = after_switch.get("text_length")
-        switch_result["survived"] = after_switch.get("text_length", 0) >= before_reload.get("text_length", 0)
+        switch_result["survived"] = bool(before_reload.get("assistant_answers")) and after_switch.get("assistant_answers") == before_reload.get("assistant_answers")
 
     return {
         "before_reload_text_length": before_reload.get("text_length"),
         "after_reload_text_length": after_reload.get("text_length"),
-        "reload_survived": after_reload.get("text_length", 0) >= before_reload.get("text_length", 0) * 0.9,
+        "reload_survived": bool(before_reload.get("assistant_answers")) and after_reload.get("assistant_answers") == before_reload.get("assistant_answers"),
+        "before_answers": before_reload.get("assistant_answers"),
+        "after_answers": after_reload.get("assistant_answers"),
         "switch": switch_result,
     }
+
+
+def history_is_preserved(history: dict) -> bool:
+    """Require an observed answer match for every attempted history transition."""
+    switch = history.get("switch", {})
+    return history.get("reload_survived") is True and (not switch.get("attempted") or switch.get("survived") is True)
 
 
 # ---------------------------------------------------------------------------------
@@ -730,6 +746,7 @@ async def run_all(
     username: str,
     password: str,
     run_followup: bool,
+    history_only: str = "",
 ) -> tuple[list[ConversationResult], int]:
     import nodriver
     import nodriver.cdp.page as page_cdp
@@ -745,8 +762,10 @@ async def run_all(
         flush=True,
     )
 
-    browser = await nodriver.start(
-        headless=True, sandbox=False,
+    from browser_lifecycle import start_browser, stop_browser
+
+    browser = await start_browser(
+        out_dir / "chromium.log",
         browser_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     )
     results: list[ConversationResult] = []
@@ -760,6 +779,31 @@ async def run_all(
             if not ok:
                 print(f"incomplete execution: identity check failed: {name_or_reason}", file=sys.stderr)
                 return results, 2
+
+        if history_only:
+            if not history_only.startswith("/ai_chat/c/"):
+                raise ValueError("The history path must identify a saved conversation.")
+            result = ConversationResult(name="history-only", profile="chat", prompt_text="")
+            result.session_url = base_url + history_only
+            result.history = {"by_resolution": {}}
+            destination = out_dir / result.name
+            destination.mkdir()
+            for resolution, size in resolutions:
+                await set_exact_viewport(identity_tab, *size)
+                await identity_tab.get(result.session_url)
+                await wait_css(identity_tab, "#x-chat-transcript [data-chat-answer]")
+                history = await check_history(identity_tab, base_url, base_url + "/ai_chat")
+                result.history["by_resolution"][resolution] = history
+                if not history["reload_survived"] or not history["switch"].get("survived"):
+                    result.observations.append((APPLICATION_ERROR, f"Saved answers changed at {resolution}."))
+                filename = f"{resolution}.png"
+                (destination / filename).write_bytes(await screenshot(identity_tab, False))
+                result.captures[resolution] = [{"file": filename}]
+            result.completed_answer_present = all(h["reload_survived"] for h in result.history["by_resolution"].values())
+            write_conversation_report(destination, result)
+            exit_status = 1 if result.observations else 0
+            write_run_index(out_dir, [result], exit_status)
+            return [result], exit_status
 
         # Item 4: every selected prompt runs as a concurrent conversation, not one after
         # another. `session_urls` replaces the old "prior_session_url" (which assumed one
@@ -838,16 +882,17 @@ async def run_all(
                 except Exception as exc:  # noqa: BLE001
                     merged.observations.append((DIAGNOSTIC_WARNING, f"document preview step failed: {exc}"))
 
-                # The "switch to another conversation and back" history check needs a
-                # second conversation's URL. Every selected prompt runs concurrently now,
-                # so there is no single "prior" one: use whichever other conversation has
-                # already published its URL, and skip the check (attempted: False) when
-                # none has yet -- both are recorded in the result, never substituted.
-                other_url = next((u for n, u in session_urls.items() if n != name and u), None)
+                # Use the conversation list when no other session has completed.
+                other_url = next((u for n, u in session_urls.items() if n != name and u), base_url + "/ai_chat")
                 try:
-                    merged.history = await check_history(tabs[0], base_url, other_url)
+                    histories = {}
+                    for index, (resolution, _) in enumerate(resolutions):
+                        histories[resolution] = await check_history(tabs[index], base_url, other_url)
+                    merged.history = {"by_resolution": histories}
+                    if not all(history_is_preserved(item) for item in histories.values()):
+                        merged.observations.append((APPLICATION_ERROR, "Saved assistant answers changed after history navigation."))
                 except Exception as exc:  # noqa: BLE001
-                    merged.observations.append((DIAGNOSTIC_WARNING, f"history check failed: {exc}"))
+                    merged.observations.append((INCOMPLETE_EXECUTION, f"history check failed: {exc}"))
 
                 if run_followup and name == "collection-exploration":
                     followup_dir = conv_dir / "followup"
@@ -890,10 +935,7 @@ async def run_all(
                 conv_res = err
             results.append(conv_res)
     finally:
-        try:
-            browser.stop()
-        except Exception:  # noqa: BLE001
-            pass
+        await stop_browser(browser)
 
     totals = {sev: 0 for sev in ALL_SEVERITIES}
     for r in results:
@@ -924,6 +966,7 @@ def main() -> int:
              "(0 = every selected prompt)",
     )
     parser.add_argument("--no-followup", action="store_true")
+    parser.add_argument("--history-only", default="")
     args = parser.parse_args()
 
     password = os.environ.get("HOOVER4_CAPTURE_PASSWORD", "")
@@ -959,7 +1002,7 @@ def main() -> int:
     try:
         results, exit_status = asyncio.run(run_all(
             names, args.base_url.rstrip("/"), out_dir, resolutions, whitelist,
-            username, password, not args.no_followup,
+            username, password, not args.no_followup, args.history_only,
         ))
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"incomplete execution: {type(exc).__name__}: {exc}\n")

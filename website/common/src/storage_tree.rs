@@ -15,6 +15,10 @@ pub struct DatasetSummary {
     pub collectionname: String,
     pub dataset_name: String,
     pub dataset_display_name: String,
+    /// Whether the dataset root has a directory or a container child in the structure index.
+    /// The storage tree uses this to reserve no disclosure control for a leaf dataset.
+    #[serde(default)]
+    pub has_folder_children: bool,
 }
 
 impl DatasetSummary {
@@ -108,6 +112,7 @@ mod tests {
             collectionname: "testdata".to_string(),
             dataset_name: "shapes".to_string(),
             dataset_display_name: String::new(),
+            has_folder_children: false,
         };
         assert_eq!(dataset.label(), "shapes");
         dataset.dataset_display_name = "Shapes fixture".to_string();
