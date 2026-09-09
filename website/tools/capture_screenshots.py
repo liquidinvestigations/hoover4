@@ -5,7 +5,9 @@ Runs INSIDE `hoover4-mcp-browser`, which is the only container with a Chromium a
 file and the ini in, runs it, and copies the output back out. Read
 `website/take-screenshots.sh` first: it resolves the target, the credentials, the output
 run directory and the run lock, and passes the results here through arguments and
-environment variables. This file never reads `TEST_LOGIN.env` itself.
+environment variables. This file never reads ``TEST_LOGIN.env`` itself. The wrapper exports
+``HOOVER4_TEST_USERNAME`` and ``HOOVER4_TEST_PASSWORD`` and passes those names
+to Docker without values.
 
 Why not the browser MCP endpoint
 --------------------------------
@@ -46,7 +48,7 @@ status follows from the worst one seen:
   effect -- exit 0 (no producer in this runner yet, same reason)
 * ``diagnostic_warning``   -- a console error or warning, a failed or non-200 subresource
   request, or a request to an origin outside the site -- exit 0
-* ``incomplete_execution`` -- no suitable document, a failed login, a stopped browser, or a
+* ``incomplete_execution`` -- no suitable document, a missing fixture, a failed login, a stopped browser, or a
   capture that could not be written -- exit 2, unless an application error also occurred
 
 Per-page exemptions live in the ini: ``allow_error_markers``, ``allow_http_errors``,
@@ -61,7 +63,12 @@ a ``diagnostic_warning`` (every console entry is, under this table) but is label
 rule that excused it.
 
 A page tied to a fixture dataset names it in ``requires_dataset``, exactly as before. Away
-from that corpus such a page is skipped, with the missing dataset in the report.
+from that corpus such a page is recorded as ``incomplete_execution`` and the rest of the
+run continues. A missing fixture never counts as a successful assertion.
+
+``document_fixture`` names a contract fixture whose current document identity replaces
+the ``/view_document/`` identity segment. The resolved profile supplies that identity.
+An unmet fixture is ``incomplete_execution``.
 """
 
 from __future__ import annotations
@@ -79,6 +86,14 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
+
+from capture_credentials import (
+    IMAGE_REVIEW_PENDING,
+    capture_revision,
+    collect_image_inventory,
+    read_credentials,
+    CredentialError,
+)
 
 # Dials the backdoor by name, so this needs hoover4.ini.development
 # (development_auth_backdoor_enabled = true). Release mode has no identity source
@@ -123,6 +138,10 @@ ALL_SEVERITIES = (
 EXPECT_VALUES = ("missing_page", "error_display", "error_bar")
 
 
+class IncompleteCapture(OSError):
+    """A required fixture or operation row is absent. Later pages still run."""
+
+
 # ---------------------------------------------------------------------------------
 # The ini
 # ---------------------------------------------------------------------------------
@@ -161,6 +180,7 @@ class Page:
     color_scheme: str = ""
     procedure: str = ""
     init_script: str = ""
+    document_fixture: str = ""
 
 
 def parse_pages(ini_path: Path) -> list[Page]:
@@ -225,6 +245,7 @@ def parse_pages(ini_path: Path) -> list[Page]:
                 viewport=viewport,
                 manual_asset=section.get("manual_asset", "").strip(),
                 color_scheme=color_scheme,
+                document_fixture=section.get("document_fixture", "").strip(),
             )
         )
     return pages
@@ -237,6 +258,38 @@ def missing_datasets(page: Page, present: set[str]) -> list[str]:
     if page.requires_dataset == ["any"]:
         return [] if present & set(CORPUS_DATASETS) else ["any of " + ", ".join(CORPUS_DATASETS)]
     return [d for d in page.requires_dataset if d not in present]
+
+
+def load_fixture_profile(profile_path: Path, contract_path: Path) -> tuple[dict, dict]:
+    """Read the resolved profile and the tracked fixture contract, or empty maps."""
+    profile: dict = {}
+    contract: dict = {}
+    if profile_path.is_file():
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    if contract_path.is_file():
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    return profile, contract
+
+
+def resolve_document_url(page: Page, profile: dict, contract: dict) -> str:
+    """Replace a view_document identity from the current profile, or return page.url."""
+    if not page.document_fixture:
+        return page.url
+    fixtures = contract.get("fixtures") or []
+    item = next((row for row in fixtures if row.get("name") == page.document_fixture), None)
+    if item is None:
+        raise IncompleteCapture(f"unknown document_fixture {page.document_fixture}")
+    rows = profile.get("datasets", {}).get(item["dataset"], [])
+    match = next((row for row in rows if row.get("path") == item.get("path")), None)
+    if match is None:
+        raise IncompleteCapture(f"document_fixture {page.document_fixture} has no resolved document")
+    from manual_qa_runtime import route
+    identity = route({"collection_dataset": item["dataset"], "file_hash": match["hash"]})
+    parts = page.url.strip("/").split("/")
+    if parts[:1] != ["view_document"] or len(parts) < 2:
+        raise IncompleteCapture(f"document_fixture {page.document_fixture} needs a /view_document/ url")
+    parts[1] = identity
+    return "/" + "/".join(parts)
 
 
 def parse_actions(raw: str) -> list[tuple[str, str]]:
@@ -555,6 +608,8 @@ async def wait_eval(tab, expression: str, timeout: float = PAGE_TIMEOUT_S):
         result = await js(tab, expression)
         if result is True or (isinstance(result, dict) and result.get("ok") is True):
             return result
+        if isinstance(result, dict) and result.get("incomplete"):
+            raise IncompleteCapture(result.get("reason") or "unmet fixture")
         await asyncio.sleep(0.25)
     raise RuntimeError(f"timed out waiting for expression {expression!r}")
 
@@ -827,6 +882,8 @@ def classify_exception(exc: BaseException) -> str:
     for an ordinary action failure while giving the incomplete-execution status to a
     stopped browser and a capture that cannot be written.
     """
+    if isinstance(exc, IncompleteCapture):
+        return INCOMPLETE_EXECUTION
     if isinstance(exc, OSError):
         return INCOMPLETE_EXECUTION
     text = str(exc).lower()
@@ -1243,6 +1300,8 @@ async def capture_all(
     whitelist: list[tuple[str, object]],
     username: str,
     password: str,
+    profile: dict | None = None,
+    contract: dict | None = None,
 ) -> tuple[dict, int]:
     """Runs the whole scenario list. Returns (manifest, exit_status)."""
     import nodriver
@@ -1258,6 +1317,7 @@ async def capture_all(
         "target_label": target_label(base_url),
         "resolutions": {name: list(size) for name, size in resolutions},
         "identity": "anonymous",
+        "revision": capture_revision(),
         "pages": [],
         "totals": totals,
     }
@@ -1311,9 +1371,25 @@ async def capture_all(
             missing = missing_datasets(page, present_datasets)
             if missing:
                 reason = f"dataset(s) not on this site: {', '.join(missing)}"
-                print(f"[{index + 1}/{len(pages)}] {stem}: skip ({reason})", flush=True)
-                manifest["pages"].append({"stem": stem, "url": page.url, "skipped": reason})
-                page_reports.append(f"- `{stem}` (`{page.url}`): skip ({reason})")
+                print(f"[{index + 1}/{len(pages)}] {stem}: incomplete ({reason})", flush=True)
+                record(INCOMPLETE_EXECUTION)
+                manifest["pages"].append({
+                    "stem": stem, "url": page.url, "skipped": reason,
+                    "verdict": INCOMPLETE_EXECUTION,
+                })
+                page_reports.append(f"- `{stem}` (`{page.url}`): {INCOMPLETE_EXECUTION} ({reason})")
+                continue
+            try:
+                page.url = resolve_document_url(page, profile or {}, contract or {})
+            except IncompleteCapture as error:
+                reason = str(error)
+                print(f"[{index + 1}/{len(pages)}] {stem}: incomplete ({reason})", flush=True)
+                record(INCOMPLETE_EXECUTION)
+                manifest["pages"].append({
+                    "stem": stem, "url": page.url, "skipped": reason,
+                    "verdict": INCOMPLETE_EXECUTION,
+                })
+                page_reports.append(f"- `{stem}` (`{page.url}`): {INCOMPLETE_EXECUTION} ({reason})")
                 continue
 
             print(f"[{index + 1}/{len(pages)}] {stem}", flush=True)
@@ -1461,6 +1537,18 @@ li {{ margin: 0.2em 0; }}
 
     (run_dir / ".gitignore").write_text(run_gitignore_text(), encoding="utf-8")
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    inventory = collect_image_inventory(
+        run_dir,
+        manifest.get("target_label", ""),
+        manifest.get("revision") or capture_revision(),
+    )
+    (run_dir / "image_inventory.json").write_text(
+        json.dumps({
+            "review_state_default": IMAGE_REVIEW_PENDING,
+            "images": inventory,
+        }, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def select_pages(pages: list[Page], only: str, names_csv: str) -> list[Page]:
@@ -1485,21 +1573,21 @@ def main() -> int:
     parser.add_argument("--only", default="", help="capture only sections whose name contains this")
     parser.add_argument("--names", default="", help="capture exactly these comma-separated section names")
     parser.add_argument("--console-whitelist", default="/tmp/h4shots/console_whitelist.txt")
-    parser.add_argument("--username", default="", help="not secret; the password travels by environment only")
     parser.add_argument("--resolutions", default=DEFAULT_RESOLUTIONS)
+    parser.add_argument(
+        "--profile",
+        default=str(Path(__file__).with_name("manual_qa_profile.json")),
+    )
+    parser.add_argument(
+        "--contract",
+        default=str(Path(__file__).with_name("manual_qa_fixtures.json")),
+    )
     args = parser.parse_args()
 
-    # The password is read from the environment, never from argv: a process's argv is
-    # visible to every other process on the same host through /proc, an env var handed to
-    # exactly one `docker exec` is not.
-    password = os.environ.get("HOOVER4_CAPTURE_PASSWORD", "")
-    username = args.username
-
-    if bool(username) != bool(password):
-        sys.stderr.write(
-            "error: a username with no password, or a password with no username, "
-            "is a validation failure\n"
-        )
+    try:
+        username, password = read_credentials()
+    except CredentialError as error:
+        sys.stderr.write(f"error: {error}\n")
         return 2
 
     try:
@@ -1530,9 +1618,15 @@ def main() -> int:
         return 2
 
     whitelist = parse_whitelist(Path(args.console_whitelist))
+    profile, contract = load_fixture_profile(
+        Path(args.profile), Path(args.contract) if args.contract else Path()
+    )
     try:
         manifest, exit_status = asyncio.run(
-            capture_all(pages, args.base_url.rstrip("/"), run_dir, resolutions, whitelist, username, password)
+            capture_all(
+                pages, args.base_url.rstrip("/"), run_dir, resolutions, whitelist,
+                username, password, profile, contract,
+            )
         )
     except Exception as exc:  # noqa: BLE001
         # A browser that never started, or another catastrophic setup failure. Still
@@ -1541,6 +1635,7 @@ def main() -> int:
             "target_label": target_label(args.base_url),
             "resolutions": {name: list(size) for name, size in resolutions},
             "identity": "anonymous",
+            "revision": capture_revision(),
             "pages": [],
             "page_reports": [f"- **incomplete execution**: {type(exc).__name__}: {exc}"],
             "totals": {sev: (1 if sev == INCOMPLETE_EXECUTION else 0) for sev in ALL_SEVERITIES},

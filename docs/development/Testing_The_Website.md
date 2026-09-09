@@ -54,19 +54,21 @@ website/take-screenshots.sh                          # every page in the list
 website/take-screenshots.sh --only search             # one substring of the scenario name
 website/take-screenshots.sh --names qa-sort-empty-default,qa-sort-explicit-relevance
 website/take-screenshots.sh --resolutions 1080p        # one resolution instead of the default 720p,1080p
-website/take-screenshots.sh --target URL --username U --password P
-website/take-screenshots.sh --login-env path/to/file   # credentials from a file instead
+website/take-screenshots.sh --target URL
+website/take-screenshots.sh --login-env path/to/file   # credentials from a file
 ```
 
-With no `--username`/`--password`, `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD`, or
-`--login-env` file, the run proceeds unauthenticated (a screenshot page runner can go on
-without an identity; `observe-chat.sh`, below, cannot). `TEST_LOGIN.env` beside the script,
-when present, is the login-env default; `TEST_LOGIN.env.example` names its keys.
+With no `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair or `--login-env` file, the run
+proceeds unauthenticated (a screenshot page runner can go on without an identity;
+`observe-chat.sh`, below, cannot). `TEST_LOGIN.env` beside the script, when present, is the
+login-env default; `TEST_LOGIN.env.example` names its keys. Credential values are not
+accepted as wrapper arguments.
 
 **Result rules.** Every observation is one of six severities; only two change the exit
 status. `application_error` (a missing page, a non-200 main document, or an undeclared error
-marker or bar) exits 1. `incomplete_execution` (a failed login, a stopped browser, a capture
-that could not be written) exits 2 unless an application error also occurred. A console
+marker or bar) exits 1. `incomplete_execution` (a failed login, a stopped browser, a missing
+fixture, or a capture that could not be written) exits 2 unless an application error also
+occurred. A console
 error or warning, a failed subresource request, or a request to an outside origin is
 `diagnostic_warning` and exits 0, recorded in the report but never gating the run.
 `expected_outcome` (a negative state a scenario declared with `expect`) and
@@ -77,10 +79,12 @@ error or warning, a failed subresource request, or a request to an outside origi
 `.FAILED.snapshot.txt` (the same shape, captured at the moment of failure);
 `diagnostics/<resolution>__NN-name.json` (console and network records, written whether the
 capture passed or raised) and, on a raise, `diagnostics/<resolution>__NN-name.exception.txt`
-(the full traceback); `manifest.json`, `report.md`, `report.html` for the whole run.
+(the full traceback); `manifest.json`, `image_inventory.json`, `report.md`, `report.html`
+for the whole run. Every PNG path appears in the inventory. Review state starts as `unreviewed`
+and is stored apart from assertion verdicts.
 
-**Troubleshooting.** A page that fails by naming a dataset that does not exist is a fixture
-problem: the ini is welded to the corpus `main_services/verify-stack.sh` ingests, so run that
+**Troubleshooting.** A page that names a dataset that does not exist is incomplete execution:
+the ini is welded to the corpus `main_services/verify-stack.sh` ingests, so run that
 first. A whitelisted console entry in `tools/console_whitelist.txt` stays a
 `diagnostic_warning`, only labelled with the rule that excused it; it never changes the exit
 status either way.

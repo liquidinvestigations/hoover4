@@ -5,6 +5,8 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | script | answers |
 |---|---|
 | `capture_screenshots.py` | drives a plain browser over a page list and writes a PNG, a DOM text snapshot and console errors per page |
+| `capture_credentials.py` | reads `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD` from the process environment, and writes the image inventory default |
+| `capture_credentials.sh` | sourced by the capture wrappers after the login file path is set |
 | `chat_observer.py` | drives a chat conversation to completion and writes its screenshots, DOM snapshots and history checks; imports its browser helpers from `capture_screenshots.py` rather than copying them |
 | `count_whoami.py` | how many identity requests one navigation costs |
 | `check_session_gate.py` | which of the session gate's three states a page settled in |
@@ -32,8 +34,8 @@ Run the capture-driver tests in the browser container.
 
 ```sh
 docker exec hoover4-mcp-browser mkdir -p /tmp/capture-tests
-docker cp website/tools/capture_screenshots.py hoover4-mcp-browser:/tmp/capture-tests/
-docker cp website/tools/test_capture_screenshots.py hoover4-mcp-browser:/tmp/capture-tests/
+docker cp website/tools/. hoover4-mcp-browser:/tmp/capture-tests/
+docker cp website/screenshots.ini hoover4-mcp-browser:/tmp/capture-tests/screenshots.ini
 docker exec -w /tmp/capture-tests hoover4-mcp-browser python3 -m unittest test_capture_screenshots -v
 ```
 
@@ -60,7 +62,8 @@ docker exec -e PDF_VIEWER_SCRIPT=/tmp/pdf-lifecycle-tests/viewer.js hoover4-mcp-
 ## Manual QA fixtures
 
 Run `website/tools/prepare_manual_qa.sh` from the repository root.
-The script prepares `testdata_manualqa`, `testdata_excelsc`, `testdata_wide`, and `testdata_leaf` through disk ingestion.
+The script prepares `testdata_manualqa`, `testdata_excelsc`, `testdata_wide`,
+`testdata_leaf`, and `testdata_diskfiles` through disk ingestion.
 It writes local document identities, source rows, PDF rows, table rows, and image OCR rows to `website/test_reports/manual_qa_fixtures.json`.
 
 `manual_qa_fixtures.json` is the tracked logical contract.
@@ -77,7 +80,10 @@ Ordinary preparation writes its source bytes but does not rescan this dataset un
 Run `website/run-stack-tests.sh --slow slow_qa_pdf_sources` to verify PDF bytes, source-specific search, both source orders, and permissions.
 
 The profile command returns one when a required fixture is unmet.
-Use `--observe-incomplete` only to record an incomplete local profile without a failure status.
+`--discover-only` reads indexed identities and operation rows without ingest, rescan, or
+recovery. Use it for a remote profile. `--profile-only` writes the local resolved profile
+from already prepared sources. Use `--observe-incomplete` only to record an incomplete
+local profile without a failure status.
 Each invocation moves the previous profile to `manual_qa_fixtures.previous.json` before contacting the worker.
 A failed refresh cannot leave that profile at the current result path.
 The worker log includes captured command output when ingestion fails.
@@ -91,6 +97,7 @@ Run `website/run-manual-qa.sh` after the fixture profile reports each required f
 The command writes `manual-qa-plan.json` beside the capture evidence.
 It rejects an empty or unknown case selection.
 It records unmet prerequisites and continues the runnable cases.
+The observer runs one collection-exploration conversation and its follow-up.
 Use `--select 6,18` to run named rows.
 Use `--skip-chat` to omit generation. A selected chat case then remains incomplete.
 The capture wrapper accepts `--names name-a,name-b` for an exact scenario list.
@@ -136,7 +143,7 @@ The file stores the login URL, site URL, username, and password.
 Copy `../TEST_LOGIN.env.example` to create it.
 The repository ignores the account file. The example contains empty values.
 `../take-screenshots.sh` and `../observe-chat.sh` load the file automatically, beside a
-`--username`/`--password` pair and a `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD`
-environment pair that both take precedence over it. Neither wrapper reads a target from
-this file; a target comes from `--target`, `HOOVER4_SITE_URL`, or the built-in local
-default.
+`HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` environment pair that takes precedence
+over it. Credential values are not accepted as `--username` or `--password` arguments.
+Neither wrapper reads a target from this file; a target comes from `--target`,
+`HOOVER4_SITE_URL`, or the built-in local default.

@@ -28,6 +28,19 @@ LEAF_ROOT = Path("/testdata/generated/manual-qa-leaf")
 WIDE_ROOT = Path("/testdata/generated/wide")
 ORIGINAL_PDF_ROOT = Path("/testdata/generated/manual-qa-original-pdf")
 EXCELS_ROOT = SOURCE_ROOT / "www.learningcontainer.com/excels"
+DISKFILES_ROOT = SOURCE_ROOT / "disk-files"
+QA_ERRORED_DATASET = "testdata_qa_errored_confirm"
+DISCOVER_DATASETS = (
+    "testdata_manualqa", "testdata_excelsc", "testdata_wide", "testdata_leaf",
+    "testdata_shapes", "testdata_manualpdf", "testdata_diskfiles",
+)
+LOCAL_INGEST = (
+    ("manualqa", GENERATED_ROOT),
+    ("excelsc", EXCELS_ROOT),
+    ("wide", WIDE_ROOT),
+    ("leaf", LEAF_ROOT),
+    ("diskfiles", DISKFILES_ROOT),
+)
 
 SOURCES = {
     "entity-fixtures/shipping-manifest.txt": SOURCE_ROOT / "disk-files/entity-fixtures/shipping-manifest.txt",
@@ -58,6 +71,15 @@ def clickhouse(sql: str) -> list[dict[str, str]]:
         sys.path.insert(0, "/app")
     from database.clickhouse import get_collection_client
     with get_collection_client("testdata") as client:
+        result = client.query(sql)
+    return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
+
+
+def global_clickhouse(sql: str) -> list[dict[str, str]]:
+    if "/app" not in sys.path:
+        sys.path.insert(0, "/app")
+    from database.clickhouse import get_global_client
+    with get_global_client() as client:
         result = client.query(sql)
     return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
@@ -173,7 +195,7 @@ def source_expectations(generated_root: Path) -> dict[str, object]:
 
 
 def profile(generated_root: Path) -> dict[str, object]:
-    datasets = ("testdata_manualqa", "testdata_excelsc", "testdata_wide", "testdata_leaf", "testdata_shapes", "testdata_manualpdf")
+    datasets = ("testdata_manualqa", "testdata_excelsc", "testdata_wide", "testdata_leaf", "testdata_shapes", "testdata_manualpdf", "testdata_diskfiles")
     result: dict[str, object] = {"schema_version": 2, "datasets": {dataset: source_rows(dataset) for dataset in datasets},
         "pdf_rows": {}, "text_page_counts": {}, "table_documents": {}, "table_cells": {}, "image_ocr_rows": {},
         "source_expectations": source_expectations(generated_root),
@@ -255,11 +277,14 @@ def fixture_outcomes(contract: dict[str, object], resolved: dict[str, object]) -
             if email is None or len(email["attachments"]) != expected["attachment_count"]:
                 status, reason = "unmet", "email attachment source expectations are unavailable or differ"
         if fixture["name"] == "screenshot_table_corpus":
-            status = "verified" if resolved["table_documents"][fixture["dataset"]] else "unmet"
+            status = "verified" if resolved.get("table_documents", {}).get(fixture["dataset"]) else "unmet"
             reason = "indexed table documents" if status == "verified" else "no indexed table documents"
         if fixture["name"] == "deep_tree":
-            status = "verified" if resolved["datasets"][fixture["dataset"]] else "unmet"
+            status = "verified" if resolved.get("datasets", {}).get(fixture["dataset"]) else "unmet"
             reason = "indexed deep-tree source rows" if status == "verified" else "no indexed deep-tree source rows"
+        if fixture["name"] == "diskfiles_dataset":
+            status = "verified" if resolved.get("datasets", {}).get(fixture["dataset"]) else "unmet"
+            reason = "indexed diskfiles source rows" if status == "verified" else "no indexed diskfiles source rows"
         if row and expected.get("required_extractors"):
             missing = set(expected["required_extractors"]) - set(row["extracted_by"])
             if missing: status, reason = "unmet", "missing extractors: " + ", ".join(sorted(missing))
@@ -278,10 +303,141 @@ def fixture_outcomes(contract: dict[str, object], resolved: dict[str, object]) -
     return outcomes
 
 
+def ingest_commands() -> list[list[str]]:
+    """Local dataset ingest commands. Discovery never calls these."""
+    return [
+        ["uv", "run", "python", "main.py", "add-disk-dataset", "testdata", dataset, str(root)]
+        for dataset, root in LOCAL_INGEST
+    ]
+
+
+def ingest_local_datasets() -> None:
+    if not EXCELS_ROOT.is_dir():
+        raise FileNotFoundError(EXCELS_ROOT)
+    if not DISKFILES_ROOT.is_dir():
+        raise FileNotFoundError(DISKFILES_ROOT)
+    for command in ingest_commands():
+        run(command)
+
+
+def discover_operation_states() -> dict[str, object]:
+    """Read existing operation rows. This path does not dispatch work."""
+    try:
+        rows = global_clickhouse(
+            "SELECT op_id, kind, collection_dataset, state FROM operations FINAL "
+            "WHERE state = 'errored' ORDER BY started_at DESC"
+        )
+    except Exception as error:  # noqa: BLE001
+        return {"available": False, "reason": str(error), "errored_destructive": [],
+                "qa_errored_confirm": "absent"}
+    destructive = {"purge_dataset", "delete_dataset", "drop_collection_database", "import_collection"}
+    errored_destructive = [row for row in rows if row["kind"] in destructive]
+    qa = next((row for row in errored_destructive if row["collection_dataset"] == QA_ERRORED_DATASET), None)
+    return {
+        "available": True,
+        "errored_destructive": errored_destructive,
+        "qa_errored_confirm": "present" if qa else "absent",
+    }
+
+
+def ensure_errored_operation_fixture() -> dict[str, object]:
+    """Create one isolated errored destructive row for local confirmation captures."""
+    if "/app" not in sys.path:
+        sys.path.insert(0, "/app")
+    from database.operations import create_operation, finish_operation, list_operations
+    existing = [
+        row for row in list_operations(state="errored", kind="delete_dataset", limit=50)
+        if row.get("collection_dataset") == QA_ERRORED_DATASET
+    ]
+    if existing:
+        return {"status": "present", "op_id": existing[0]["op_id"]}
+    row = create_operation(
+        "delete_dataset", "testdata", QA_ERRORED_DATASET,
+        detail={"qa_fixture": True, "purpose": "isolated confirmation input"},
+        user_id="qa-fixture",
+    )
+    finish_operation(row["op_id"], "errored", error="isolated QA confirmation fixture")
+    return {"status": "created", "op_id": row["op_id"]}
+
+
+def original_case_status(*, discovered: bool = False) -> list[dict[str, str]]:
+    """Record original Enron, Messinai, and Barak coverage as unmet."""
+    names = ("original_enron_document", "Messinai-szoros.txt", "original_barak_document")
+    if discovered:
+        reason = (
+            "Independent expected values are not established. "
+            "Use the per-target original-case inventory."
+        )
+        return [{"name": name, "status": "unmet", "reason": reason} for name in names]
+    return [
+        {"name": "original_enron_document", "status": "unmet",
+         "reason": "Local testdata including enron-kaminski-v has no jeff.hoover@enron.com source."},
+        {"name": "Messinai-szoros.txt", "status": "unmet",
+         "reason": "Local testdata has no Messinai table file by name or content."},
+        {"name": "original_barak_document", "status": "unmet",
+         "reason": "Local testdata has no Barak PDF. stanley.ec02.pdf is the independent substitute."},
+    ]
+
+
+def discover_profile(contract: dict[str, object]) -> dict[str, object]:
+    """Resolve current identities from indexed data without ingest or recovery."""
+    result: dict[str, object] = {
+        "schema_version": 2, "mode": "discover",
+        "datasets": {}, "pdf_rows": {}, "table_documents": {}, "table_cells": {},
+        "image_ocr_rows": {}, "source_expectations": {},
+    }
+    for dataset in DISCOVER_DATASETS:
+        try:
+            result["datasets"][dataset] = source_rows(dataset)
+        except Exception as error:  # noqa: BLE001
+            result["datasets"][dataset] = []
+            result.setdefault("dataset_errors", {})[dataset] = str(error)
+        try:
+            result["pdf_rows"][dataset] = clickhouse(
+                "SELECT 'original' AS source_kind, pdf_hash, '' AS engine, '' AS languages, "
+                "toString(page_count) AS page_count, '' AS blob_hash FROM Hoover4_Collection_testdata.pdfs FINAL "
+                f"WHERE collection_dataset='{dataset}' UNION ALL SELECT 'ocr' AS source_kind, pdf_hash, engine, "
+                "languages, toString(page_count) AS page_count, blob_hash FROM Hoover4_Collection_testdata.pdf_ocr_results FINAL "
+                f"WHERE collection_dataset='{dataset}' AND is_deleted=0 ORDER BY source_kind, pdf_hash, engine, languages")
+        except Exception:  # noqa: BLE001
+            result["pdf_rows"][dataset] = []
+        try:
+            result["table_documents"][dataset] = clickhouse(
+                "SELECT hash, status, reader, table_format, toString(sheet_count) AS sheet_count, "
+                "toString(row_count) AS row_count, toString(column_count) AS column_count, "
+                "toString(cell_count) AS cell_count, toString(truncated) AS truncated "
+                "FROM Hoover4_Collection_testdata.table_documents FINAL "
+                f"WHERE collection_dataset='{dataset}' ORDER BY hash")
+        except Exception:  # noqa: BLE001
+            result["table_documents"][dataset] = []
+        try:
+            result["image_ocr_rows"][dataset] = clickhouse(
+                "SELECT image_hash, engine, languages, result_hash FROM Hoover4_Collection_testdata.raw_ocr_results FINAL "
+                f"WHERE collection_dataset='{dataset}' ORDER BY image_hash, engine, languages")
+        except Exception:  # noqa: BLE001
+            result["image_ocr_rows"][dataset] = []
+    result["outcomes"] = fixture_outcomes(contract, result)
+    result["operation_states"] = discover_operation_states()
+    result["original_cases"] = original_case_status(discovered=True)
+    return result
+
+
+def write_discovered_profile(contract: dict[str, object]) -> bool:
+    resolved = discover_profile(contract)
+    resolved["contract_schema_version"] = contract["schema_version"]
+    pending_path = PROFILE_PATH.with_suffix(".pending.json")
+    pending_path.write_text(json.dumps(resolved, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    pending_path.replace(PROFILE_PATH)
+    print(f"Wrote {PROFILE_PATH}")
+    return all(item["status"] == "verified" for item in resolved["outcomes"])
+
+
 def write_profile(contract: dict[str, object], generated_root: Path) -> bool:
     resolved = profile(generated_root)
     resolved["contract_schema_version"] = contract["schema_version"]
     resolved["outcomes"] = fixture_outcomes(contract, resolved)
+    resolved["operation_states"] = discover_operation_states()
+    resolved["original_cases"] = original_case_status()
     pending_path = PROFILE_PATH.with_suffix(".pending.json")
     pending_path.write_text(json.dumps(resolved, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     pending_path.replace(PROFILE_PATH)
@@ -294,12 +450,17 @@ def main() -> int:
     parser.add_argument("--generated-root", type=Path, default=GENERATED_ROOT)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--profile-only", action="store_true")
+    parser.add_argument("--discover-only", action="store_true")
     parser.add_argument("--observe-incomplete", action="store_true")
     args = parser.parse_args()
     if not Path("/app/main.py").is_file():
         raise RuntimeError("Run this script in hoover4-worker through prepare_manual_qa.sh")
-    if args.prepare_only and args.profile_only: parser.error("--prepare-only and --profile-only cannot be used together")
+    if sum(bool(flag) for flag in (args.prepare_only, args.profile_only, args.discover_only)) > 1:
+        parser.error("--prepare-only, --profile-only, and --discover-only cannot be used together")
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    if args.discover_only:
+        complete = write_discovered_profile(contract)
+        return 0 if complete or args.observe_incomplete else 1
     if args.profile_only:
         complete = write_profile(contract, args.generated_root)
         return 0 if complete or args.observe_incomplete else 1
@@ -307,9 +468,8 @@ def main() -> int:
     if args.prepare_only:
         print("Prepared source files only.")
         return 0
-    if not EXCELS_ROOT.is_dir(): raise FileNotFoundError(EXCELS_ROOT)
-    for dataset, root in (("manualqa", args.generated_root), ("excelsc", EXCELS_ROOT), ("wide", WIDE_ROOT), ("leaf", LEAF_ROOT)):
-        run(["uv", "run", "python", "main.py", "add-disk-dataset", "testdata", dataset, str(root)])
+    ingest_local_datasets()
+    ensure_errored_operation_fixture()
     complete = write_profile(contract, args.generated_root)
     return 0 if complete or args.observe_incomplete else 1
 

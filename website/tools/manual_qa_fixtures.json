@@ -18,7 +18,8 @@
     {"collection": "testdata", "dataset": "wide", "source_root": "/testdata/generated/wide", "purpose": "Truncated-table case."},
     {"collection": "testdata", "dataset": "leaf", "source_root": "/testdata/generated/manual-qa-leaf", "purpose": "Leaf tree case."},
     {"collection": "testdata", "dataset": "manualpdf", "source_root": "/testdata/generated/manual-qa-original-pdf", "purpose": "Original-only PDF fixture ingested with the global PDF provider set to none."},
-    {"collection": "testdata", "dataset": "shapes", "source_root": "existing registered dataset", "purpose": "Deep tree case with known branches."}
+    {"collection": "testdata", "dataset": "shapes", "source_root": "existing registered dataset", "purpose": "Deep tree case with known branches."},
+    {"collection": "testdata", "dataset": "diskfiles", "source_root": "/testdata/hoover-testdata/data/disk-files", "purpose": "Rescan control capture."}
   ],
   "fixtures": [
     {"name": "shipping_manifest", "dataset": "testdata_manualqa", "path": "/entity-fixtures/shipping-manifest.txt", "original": true, "expected": {"document_find_term": "is", "document_find_count": 4, "entity_values": [{"category": "Organization", "value": "org", "count": 2}, {"category": "Organization", "value": "maptools", "count": 2}, {"category": "Misc", "value": "IMO", "count": 4}, {"category": "Email", "value": "shapelib-admin@lists.maptools.org", "count": 1}, {"category": "Phone", "value": "+24762889", "count": 1}, {"category": "Money", "value": "EUR 950.00 (EUR 100–1k)", "count": 1}, {"category": "Money", "value": "EUR 4100.00 (EUR 1k–10k)", "count": 1}, {"category": "Money", "value": "EUR 25000.00 (EUR 10k–100k)", "count": 1}, {"category": "Mentioned Date", "value": "2011-09-08", "count": 1}, {"category": "Mentioned Date", "value": "1974-06-30", "count": 1}, {"category": "Other", "value": "CSQU3054383", "count": 1}, {"category": "Other", "value": "9319466", "count": 1}, {"category": "Other", "value": "8814275", "count": 1}, {"category": "Other", "value": "538090443", "count": 1}, {"category": "Other", "value": "367533950", "count": 1}]}},
@@ -37,11 +38,13 @@
     {"name": "screenshot_table_corpus", "dataset": "testdata_excelsc", "path": "dataset-root", "original": true, "expected": {"table_documents": true}},
     {"name": "screenshot_wide_table", "dataset": "testdata_wide", "path": "/wide.csv", "original": true, "expected": {"column_count": 350, "stored_column_limit": 300}},
     {"name": "leaf_dataset", "dataset": "testdata_leaf", "path": "/leaf.txt", "original": true, "expected": {"leaf": true}},
-    {"name": "deep_tree", "dataset": "testdata_shapes", "path": "dataset-root", "original": true, "expected": {"known_branches": true}}
+    {"name": "deep_tree", "dataset": "testdata_shapes", "path": "dataset-root", "original": true, "expected": {"known_branches": true}},
+    {"name": "diskfiles_dataset", "dataset": "testdata_diskfiles", "path": "dataset-root", "original": true, "expected": {"dataset_present": true}}
   ],
   "gaps": [
-    {"fixture": "original_enron_document", "reason": "The local checkout has no supplied Enron document.", "substitute": "enron_like_text_substitute"},
-    {"fixture": "Messinai-szoros.txt", "reason": "The local checkout has no supplied table file with this name.", "substitute": "manual_table_substitute"},
+    {"fixture": "original_enron_document", "reason": "Local testdata including enron-kaminski-v has no jeff.hoover@enron.com source.", "substitute": "enron_like_text_substitute"},
+    {"fixture": "Messinai-szoros.txt", "reason": "Local testdata has no Messinai table file by name or content.", "substitute": "manual_table_substitute"},
+    {"fixture": "original_barak_document", "reason": "Local testdata has no Barak PDF. stanley.ec02.pdf is the independent substitute.", "substitute": "stanley_pdf_with_ocr"},
     {"fixture": "easychair_entity_values", "reason": "The manual gives no independent entity value and count list."}
   ]
 }

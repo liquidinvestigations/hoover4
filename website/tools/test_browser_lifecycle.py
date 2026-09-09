@@ -11,6 +11,21 @@ from browser_lifecycle import BrowserOwner, close_owner, stop_process, stop_run
 
 
 class BrowserLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_close_owner_success(self):
+        process = SimpleNamespace(returncode=0, wait=AsyncMock(return_value=0))
+        connection = SimpleNamespace(aclose=AsyncMock())
+        browser = SimpleNamespace(tabs=[connection], aclose=AsyncMock())
+        owner = BrowserOwner(process, Mock(), Mock(), browser)
+        await close_owner(owner)
+        connection.aclose.assert_awaited_once()
+        browser.aclose.assert_awaited_once()
+        process.wait.assert_awaited_once()
+        owner.profile.cleanup.assert_called_once()
+        owner.log.close.assert_called_once()
+        self.assertTrue(owner.closed)
+        await close_owner(owner)
+        process.wait.assert_awaited_once()
+
     async def test_termination_is_awaited(self):
         process = SimpleNamespace(returncode=None, terminate=Mock(), kill=Mock(), wait=AsyncMock(return_value=0))
         await stop_process(process)

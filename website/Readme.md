@@ -46,12 +46,10 @@ The explanations live in `docs/`, because they outlive any one change here:
 | chat observation | `./observe-chat.sh` |
 
 **Both fixture-driven suites separate their corpus-dependent cases from their
-corpus-independent ones.** A case that names a dataset, a document or a count only
-`main_services/verify-stack.sh`'s corpus produces skips, naming the missing dataset,
-when that corpus is absent, instead of failing in a way that reads as a broken page.
-`screenshots.ini` marks such a page with `requires_dataset`; `stack_integration.rs` checks
-with `skip_unless_dataset!` and its two corpus-wide forms. Run the stack verification first
-to exercise the corpus-dependent half too.
+corpus-independent ones.** A screenshot page that names a missing dataset is
+`incomplete_execution` and does not pass. Other pages still run.
+`stack_integration.rs` checks with `skip_unless_dataset!` and its two corpus-wide forms.
+Run the stack verification first to exercise the corpus-dependent half too.
 
 ## Development notes
 
@@ -63,7 +61,9 @@ configure the service URLs in `.env.development` from `.env.development.example`
 Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screenshots.sh`.
 [`TEST_LOGIN.env.example`](TEST_LOGIN.env.example) defines the account input keys for agents.
 `take-screenshots.sh` and `observe-chat.sh` both load this file automatically when no
-`--username`/`--password` or `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` is supplied.
+`HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair is supplied. Pass `--login-env FILE`
+to name another file. Credential values are not accepted as `--username` or `--password`
+arguments.
 See [`docs/development/Testing_The_Website.md`](../docs/development/Testing_The_Website.md)
 for the full runner and observer contract.
 

@@ -51,6 +51,14 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from capture_credentials import (
+    IMAGE_REVIEW_PENDING,
+    capture_revision,
+    collect_image_inventory,
+    read_credentials,
+    CredentialError,
+)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from capture_screenshots import (  # noqa: E402
@@ -731,6 +739,11 @@ def write_run_index(out_dir: Path, results: list[ConversationResult], exit_statu
         json.dumps([json.loads((out_dir / r.name / "conversation.json").read_text()) for r in results], indent=2),
         encoding="utf-8",
     )
+    inventory = collect_image_inventory(out_dir, "", capture_revision())
+    (out_dir / "image_inventory.json").write_text(
+        json.dumps({"review_state_default": IMAGE_REVIEW_PENDING, "images": inventory}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 # ---------------------------------------------------------------------------------
@@ -954,7 +967,6 @@ def main() -> int:
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--base-url", default="http://hoover4-development-auth-backdoor:8080")
     parser.add_argument("--console-whitelist", default="/tmp/h4shots/console_whitelist.txt")
-    parser.add_argument("--username", default="")
     parser.add_argument("--resolutions", default="720p,1080p")
     parser.add_argument(
         "--prompts", default="collection-exploration",
@@ -969,10 +981,10 @@ def main() -> int:
     parser.add_argument("--history-only", default="")
     args = parser.parse_args()
 
-    password = os.environ.get("HOOVER4_CAPTURE_PASSWORD", "")
-    username = args.username
-    if bool(username) != bool(password):
-        sys.stderr.write("error: a username with no password, or the reverse, is a validation failure\n")
+    try:
+        username, password = read_credentials()
+    except CredentialError as error:
+        sys.stderr.write(f"error: {error}\n")
         return 2
 
     if args.prompts.strip() == "all":

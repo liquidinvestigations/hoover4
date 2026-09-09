@@ -3,9 +3,12 @@
 # way take-screenshots.sh drives a page: no application code changed, no server dispatched
 # beyond the identity check and the chat turn itself.
 #
-# Usage: ./observe-chat.sh [--target URL] [--out DIR] [--username NAME] [--password VALUE]
+# Usage: ./observe-chat.sh [--target URL] [--out DIR]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
 #                           [--conversations N] [--no-followup]
+# Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
+# Credential values are not accepted as wrapper arguments and are not placed in
+# Docker or Python argument lists.
 #
 # --prompts takes a comma-separated list of prompt names from chat_observer.py's PROMPTS,
 #   or 'all'. Defaults to 'collection-exploration'. --conversations caps how many of the
@@ -54,8 +57,6 @@ REMOTE_DIR="/tmp/h4chat-$$"
 
 TARGET_ARG=""
 OUT_ARG=""
-USERNAME_ARG=""
-PASSWORD_ARG=""
 LOGIN_ENV_ARG=""
 RESOLUTIONS_ARG=""
 PROMPTS_ARG=""
@@ -67,8 +68,9 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --target) TARGET_ARG="${2:?--target needs a value}"; shift 2 ;;
         --out) OUT_ARG="${2:?--out needs a value}"; shift 2 ;;
-        --username) USERNAME_ARG="${2:?--username needs a value}"; shift 2 ;;
-        --password) PASSWORD_ARG="${2:?--password needs a value}"; shift 2 ;;
+        --username|--password)
+            echo "error: $1 is not accepted. Set HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD, or pass --login-env FILE." >&2
+            exit 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         --prompts) PROMPTS_ARG="${2:?--prompts needs a value}"; shift 2 ;;
@@ -85,20 +87,6 @@ LOGIN_ENV_FILE="${LOGIN_ENV_ARG:-$SCRIPT_DIR/TEST_LOGIN.env}"
 if [ -z "$LOGIN_ENV_ARG" ] && [ ! -f "$LOGIN_ENV_FILE" ]; then
     LOGIN_ENV_FILE=""
 fi
-
-read_login_env_value() {
-    # $1: file (may be empty or missing), $2: key. Last matching line wins, matching
-    # ordinary shell-var-file semantics. Strips one layer of surrounding single or double
-    # quotes, since TEST_LOGIN.env.example writes its values that way.
-    local file="$1" key="$2" raw
-    [ -n "$file" ] && [ -f "$file" ] || return 0
-    raw="$(sed -n "s/^${key}=//p" "$file" | tail -n1)"
-    raw="${raw%$'\r'}"
-    if [[ "$raw" == \'*\' || "$raw" == \"*\" ]]; then
-        raw="${raw:1:-1}"
-    fi
-    printf '%s' "$raw"
-}
 
 # ---------------------------------------------------------------------------------
 # Target precedence: --target, then HOOVER4_SITE_URL in the environment, then the
@@ -124,50 +112,23 @@ fi
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
-# Credential precedence: --username and --password together, then
-# HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD together, then the login-env file's
-# pair. Sources are not mixed: the highest-priority source that supplies EITHER value
-# supplies both, and an incomplete pair from that source is a validation failure. No
-# credential value is ever printed, including the username, since the precedence list
-# names them as one channel. A chat conversation needs an identity, so an empty pair from
-# every source is also a validation failure here, unlike take-screenshots.sh's page runner.
+# Credential precedence: HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD together,
+# then the login-env file's pair. A chat conversation needs an identity, so an empty
+# pair from every source is a validation failure here, unlike take-screenshots.sh.
 # ---------------------------------------------------------------------------------
 
-CRED_USERNAME=""
-CRED_PASSWORD=""
-CRED_SOURCE=""
-if [ -n "$USERNAME_ARG" ] || [ -n "$PASSWORD_ARG" ]; then
-    CRED_USERNAME="$USERNAME_ARG"
-    CRED_PASSWORD="$PASSWORD_ARG"
-    CRED_SOURCE="--username/--password"
-elif [ -n "${HOOVER4_TEST_USERNAME:-}" ] || [ -n "${HOOVER4_TEST_PASSWORD:-}" ]; then
-    CRED_USERNAME="${HOOVER4_TEST_USERNAME:-}"
-    CRED_PASSWORD="${HOOVER4_TEST_PASSWORD:-}"
-    CRED_SOURCE="the HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD environment variables"
-else
-    FILE_USER="$(read_login_env_value "$LOGIN_ENV_FILE" HOOVER4_TEST_USERNAME)"
-    FILE_PASS="$(read_login_env_value "$LOGIN_ENV_FILE" HOOVER4_TEST_PASSWORD)"
-    if [ -n "$FILE_USER" ] || [ -n "$FILE_PASS" ]; then
-        CRED_USERNAME="$FILE_USER"
-        CRED_PASSWORD="$FILE_PASS"
-        CRED_SOURCE="$LOGIN_ENV_FILE"
-    fi
-fi
-
-if [ -n "$CRED_USERNAME" ] && [ -z "$CRED_PASSWORD" ]; then
-    echo "error: a username with no password is a validation failure (source: $CRED_SOURCE)" >&2
-    exit 2
-fi
-if [ -z "$CRED_USERNAME" ] && [ -n "$CRED_PASSWORD" ]; then
-    echo "error: a password with no username is a validation failure (source: $CRED_SOURCE)" >&2
-    exit 2
-fi
+# shellcheck source=tools/capture_credentials.sh
+source "$SCRIPT_DIR/tools/capture_credentials.sh"
 if [ -z "$CRED_USERNAME" ]; then
     echo "error: a chat conversation needs an identity; no credential source supplied one" >&2
-    echo "       (checked --username/--password, HOOVER4_TEST_USERNAME/PASSWORD, $LOGIN_ENV_FILE)" >&2
+    echo "       (checked HOOVER4_TEST_USERNAME/PASSWORD, $LOGIN_ENV_FILE)" >&2
     exit 2
 fi
 echo "== identity: authenticating (credential source: $CRED_SOURCE) =="
+CAPTURE_REVISION="$(git -C "$SCRIPT_DIR/.." rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$CAPTURE_REVISION" ]; then
+    export HOOVER4_CAPTURE_REVISION="$CAPTURE_REVISION"
+fi
 
 # ---------------------------------------------------------------------------------
 # Output and the lock. The lock is taken FIRST, before anything is deleted or created --
@@ -243,6 +204,7 @@ docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
 # copying them, so both files travel together.
 docker cp tools/chat_observer.py "$BROWSER_CONTAINER:$REMOTE_DIR/chat_observer.py"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
+docker cp tools/capture_credentials.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_credentials.py"
 docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
@@ -253,17 +215,16 @@ CHAT_ARGS=(
     --run-name "$RUN_NAME"
     --base-url "$SITE_URL"
     --console-whitelist "$REMOTE_DIR/console_whitelist.txt"
-    --username "$CRED_USERNAME"
     --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
     --prompts "${PROMPTS_ARG:-collection-exploration}"
 )
 [ -n "$CONVERSATIONS_ARG" ] && CHAT_ARGS+=(--conversations "$CONVERSATIONS_ARG")
 [ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
 [ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
-# The password travels by environment, set on this one `docker exec` only, and never as a
-# process argument: argv is visible to every other process on the host through /proc, an
-# env var scoped to one exec is not.
-docker exec -e "HOOVER4_CAPTURE_PASSWORD=$CRED_PASSWORD" "$BROWSER_CONTAINER" \
+# Names only: docker reads values from this process environment.
+CHAT_ENV=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
+[ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && CHAT_ENV+=(-e HOOVER4_CAPTURE_REVISION)
+docker exec "${CHAT_ENV[@]}" "$BROWSER_CONTAINER" \
     python "$REMOTE_DIR/chat_observer.py" "${CHAT_ARGS[@]}"
 OBSERVE_STATUS=$?
 set -e

@@ -28,6 +28,9 @@ class ManualQaTests(unittest.TestCase):
     def test_unmet_fixture_marks_the_case_incomplete(self) -> None:
         result = MODULE.prerequisite_status(MODULE.select_cases("6"), {"outcomes": []})
         self.assertEqual(result, [{"row": 6, "status": "unmet_prerequisite", "missing": ["shipping_manifest"]}])
+        plan = MODULE.plan(MODULE.select_cases("6"), {"outcomes": []}, Path("/dev/null"))
+        self.assertEqual(plan["result"], "incomplete_execution")
+        self.assertEqual(plan["capture_scenarios"], [])
 
     def test_entity_viewer_uses_the_easychair_fixture(self) -> None:
         case = MODULE.select_cases("23")[0]

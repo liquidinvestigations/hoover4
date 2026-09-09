@@ -3,8 +3,10 @@
 # 1080p by default.
 #
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
-#                               [--username NAME] [--password VALUE]
 #                               [--login-env FILE] [--resolutions LIST]
+# Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
+# Credential values are not accepted as wrapper arguments and are not placed in
+# Docker or Python argument lists.
 #
 # Output: <out>/run-<UTC-timestamp>-<pid>/ (default: website/test_reports/screenshots/,
 #   gitignored). Never deleted by this script; each run adds a new directory and rewrites
@@ -17,15 +19,17 @@
 #
 # This is a GATE. Exit 1 when an application error occurred (a missing page, a non-200
 # response, an undeclared error marker or bar). Exit 2 when execution was incomplete (a
-# failed login, a stopped browser, a capture that could not be written) and no application
-# error also occurred. See the header of tools/capture_screenshots.py for the full table.
+# failed login, a stopped browser, a missing fixture, or a capture that could not be
+# written) and no application error also occurred. See the header of
+# tools/capture_screenshots.py for the full table.
 # tools/console_whitelist.txt holds the run-wide console exceptions and is copied in too.
 #
 # Preconditions: the stack is up and `main_services/verify-stack.sh` has been run, so the
 # fixtures the ini names exist. Nothing here ingests anything. Two scenarios in
 # `screenshots.ini`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
 # control that dispatches server work; both capture the control's state without engaging
-# it, so no scenario in the current list dispatches server work.
+# it, so no scenario in the current list dispatches server work. A page whose dataset is
+# absent is incomplete_execution; other pages still run.
 #
 # How it works, and why it looks like this
 # ----------------------------------------
@@ -60,8 +64,6 @@ TARGET_ARG=""
 OUT_ARG=""
 ONLY=""
 NAMES=""
-USERNAME_ARG=""
-PASSWORD_ARG=""
 LOGIN_ENV_ARG=""
 RESOLUTIONS_ARG=""
 
@@ -71,8 +73,9 @@ while [ $# -gt 0 ]; do
         --out) OUT_ARG="${2:?--out needs a value}"; shift 2 ;;
         --only) ONLY="${2:?--only needs a value}"; shift 2 ;;
         --names) NAMES="${2:?--names needs a value}"; shift 2 ;;
-        --username) USERNAME_ARG="${2:?--username needs a value}"; shift 2 ;;
-        --password) PASSWORD_ARG="${2:?--password needs a value}"; shift 2 ;;
+        --username|--password)
+            echo "error: $1 is not accepted. Set HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD, or pass --login-env FILE." >&2
+            exit 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
@@ -85,20 +88,6 @@ LOGIN_ENV_FILE="${LOGIN_ENV_ARG:-$SCRIPT_DIR/TEST_LOGIN.env}"
 if [ -z "$LOGIN_ENV_ARG" ] && [ ! -f "$LOGIN_ENV_FILE" ]; then
     LOGIN_ENV_FILE=""
 fi
-
-read_login_env_value() {
-    # $1: file (may be empty or missing), $2: key. Last matching line wins, matching
-    # ordinary shell-var-file semantics. Strips one layer of surrounding single or double
-    # quotes, since TEST_LOGIN.env.example writes its values that way.
-    local file="$1" key="$2" raw
-    [ -n "$file" ] && [ -f "$file" ] || return 0
-    raw="$(sed -n "s/^${key}=//p" "$file" | tail -n1)"
-    raw="${raw%$'\r'}"
-    if [[ "$raw" == \'*\' || "$raw" == \"*\" ]]; then
-        raw="${raw:1:-1}"
-    fi
-    printf '%s' "$raw"
-}
 
 # ---------------------------------------------------------------------------------
 # Target precedence: --target, then HOOVER4_SITE_URL in the environment, then the
@@ -124,47 +113,21 @@ fi
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
-# Credential precedence: --username and --password together, then
-# HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD together, then the login-env file's
-# pair. Sources are not mixed: the highest-priority source that supplies EITHER value
-# supplies both, and an incomplete pair from that source is a validation failure. No
-# credential value is ever printed, including the username, since the precedence list
-# names them as one channel.
+# Credential precedence: HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD together,
+# then the login-env file's pair. Sources are not mixed. No credential value is
+# printed, including the username.
 # ---------------------------------------------------------------------------------
 
-CRED_USERNAME=""
-CRED_PASSWORD=""
-CRED_SOURCE=""
-if [ -n "$USERNAME_ARG" ] || [ -n "$PASSWORD_ARG" ]; then
-    CRED_USERNAME="$USERNAME_ARG"
-    CRED_PASSWORD="$PASSWORD_ARG"
-    CRED_SOURCE="--username/--password"
-elif [ -n "${HOOVER4_TEST_USERNAME:-}" ] || [ -n "${HOOVER4_TEST_PASSWORD:-}" ]; then
-    CRED_USERNAME="${HOOVER4_TEST_USERNAME:-}"
-    CRED_PASSWORD="${HOOVER4_TEST_PASSWORD:-}"
-    CRED_SOURCE="the HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD environment variables"
-else
-    FILE_USER="$(read_login_env_value "$LOGIN_ENV_FILE" HOOVER4_TEST_USERNAME)"
-    FILE_PASS="$(read_login_env_value "$LOGIN_ENV_FILE" HOOVER4_TEST_PASSWORD)"
-    if [ -n "$FILE_USER" ] || [ -n "$FILE_PASS" ]; then
-        CRED_USERNAME="$FILE_USER"
-        CRED_PASSWORD="$FILE_PASS"
-        CRED_SOURCE="$LOGIN_ENV_FILE"
-    fi
-fi
-
-if [ -n "$CRED_USERNAME" ] && [ -z "$CRED_PASSWORD" ]; then
-    echo "error: a username with no password is a validation failure (source: $CRED_SOURCE)" >&2
-    exit 2
-fi
-if [ -z "$CRED_USERNAME" ] && [ -n "$CRED_PASSWORD" ]; then
-    echo "error: a password with no username is a validation failure (source: $CRED_SOURCE)" >&2
-    exit 2
-fi
+# shellcheck source=tools/capture_credentials.sh
+source "$SCRIPT_DIR/tools/capture_credentials.sh"
 if [ -n "$CRED_USERNAME" ]; then
     echo "== identity: authenticating (credential source: $CRED_SOURCE) =="
 else
     echo "== identity: no credentials supplied, proceeding unauthenticated =="
+fi
+CAPTURE_REVISION="$(git -C "$SCRIPT_DIR/.." rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$CAPTURE_REVISION" ]; then
+    export HOOVER4_CAPTURE_REVISION="$CAPTURE_REVISION"
 fi
 
 # ---------------------------------------------------------------------------------
@@ -227,6 +190,7 @@ echo "== copying the capture script into $BROWSER_CONTAINER =="
 docker exec "$BROWSER_CONTAINER" rm -rf "$REMOTE_DIR"
 docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
+docker cp tools/capture_credentials.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_credentials.py"
 docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
 docker cp tools/manual_qa.py "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa.py"
 docker cp tools/manual_qa_runtime.py "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_runtime.py"
@@ -248,10 +212,10 @@ set +e
 PASS_THROUGH_ENV=()
 [ -n "${HOOVER4_SCREENSHOT_PRESENT_DATASETS+x}" ] &&
     PASS_THROUGH_ENV+=(-e "HOOVER4_SCREENSHOT_PRESENT_DATASETS=$HOOVER4_SCREENSHOT_PRESENT_DATASETS")
-# The password travels by environment, set on this one `docker exec` only, and never as a
-# process argument: argv is visible to every other process on the host through /proc, an
-# env var scoped to one exec is not.
-[ -n "$CRED_PASSWORD" ] && PASS_THROUGH_ENV+=(-e "HOOVER4_CAPTURE_PASSWORD=$CRED_PASSWORD")
+# Names only: docker reads values from this process environment. A `-e NAME=value`
+# form would place the secret in the host argument list.
+[ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
+[ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
 docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
     --ini "$REMOTE_DIR/screenshots.ini" \
     --out-root "$REMOTE_DIR/out" \
@@ -260,7 +224,6 @@ docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/ca
     --console-whitelist "$REMOTE_DIR/console_whitelist.txt" \
     --only "$ONLY" \
     --names "$NAMES" \
-    --username "$CRED_USERNAME" \
     --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
 CAPTURE_STATUS=$?
 set -e

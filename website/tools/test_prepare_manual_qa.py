@@ -144,5 +144,52 @@ class SourceExpectationTests(unittest.TestCase):
         self.assertEqual(MODULE.fixture_outcomes(contract, resolved())[0]["status"], "unmet")
 
 
+class DiscoveryTests(unittest.TestCase):
+    def test_discover_only_does_not_ingest_or_prepare_sources(self) -> None:
+        with patch.object(MODULE, "run") as ingest, patch.object(MODULE, "write_generated_sources") as prepare, \
+             patch.object(MODULE, "ensure_errored_operation_fixture") as ops, \
+             patch.object(MODULE, "write_discovered_profile", return_value=True) as discover, \
+             patch.object(sys, "argv", ["prepare_manual_qa.py", "--discover-only"]), \
+             patch.object(Path, "is_file", return_value=True), \
+             patch.object(MODULE, "CONTRACT_PATH", Path("/tmp/missing-contract.json")):
+            # CONTRACT_PATH.read_text still needs a file; patch json load via Path.read_text
+            with patch.object(Path, "read_text", return_value='{"schema_version": 2}'):
+                self.assertEqual(MODULE.main(), 0)
+        ingest.assert_not_called()
+        prepare.assert_not_called()
+        ops.assert_not_called()
+        discover.assert_called_once()
+
+    def test_ingest_commands_include_diskfiles_and_never_run_from_discover(self) -> None:
+        commands = MODULE.ingest_commands()
+        self.assertTrue(any("diskfiles" in command for command in commands))
+        self.assertTrue(all(command[4] == "add-disk-dataset" for command in commands))
+
+    def test_original_cases_remain_incomplete(self) -> None:
+        names = {item["name"] for item in MODULE.original_case_status()}
+        self.assertEqual(names, {"original_enron_document", "Messinai-szoros.txt", "original_barak_document"})
+        self.assertTrue(all(item["status"] == "unmet" for item in MODULE.original_case_status()))
+        local_reasons = " ".join(item["reason"] for item in MODULE.original_case_status())
+        self.assertIn("enron-kaminski-v", local_reasons)
+
+    def test_discover_original_reasons_omit_local_paths(self) -> None:
+        rows = MODULE.original_case_status(discovered=True)
+        self.assertEqual({item["name"] for item in rows},
+                         {"original_enron_document", "Messinai-szoros.txt", "original_barak_document"})
+        self.assertTrue(all(item["status"] == "unmet" for item in rows))
+        reasons = " ".join(item["reason"] for item in rows)
+        self.assertNotIn("testdata", reasons)
+        self.assertNotIn("enron-kaminski-v", reasons)
+        self.assertNotIn("stanley.ec02.pdf", reasons)
+        self.assertIn("per-target original-case inventory", reasons)
+
+    def test_empty_operation_state_is_distinct_from_errored_confirm(self) -> None:
+        empty = {"available": True, "errored_destructive": [], "qa_errored_confirm": "absent"}
+        present = {"available": True, "errored_destructive": [{"kind": "delete_dataset", "collection_dataset": MODULE.QA_ERRORED_DATASET}],
+                   "qa_errored_confirm": "present"}
+        self.assertNotEqual(empty["qa_errored_confirm"], present["qa_errored_confirm"])
+        self.assertEqual(empty["errored_destructive"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

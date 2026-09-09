@@ -45,7 +45,7 @@ fi
 chat_status=2
 if ! $skip_chat && docker exec -w "$remote_dir" "$browser_container" python3 -c 'import json; raise SystemExit(0 if json.load(open("manual-qa-plan.json", encoding="utf-8"))["chat_required"] else 1)'; then
     set +e
-    "$repo_root/website/observe-chat.sh" --prompts collection-exploration --conversations 1 --no-followup --resolutions "$resolutions" --out "$out/chat"
+    "$repo_root/website/observe-chat.sh" --prompts collection-exploration --conversations 1 --resolutions "$resolutions" --out "$out/chat"
     chat_status=$?
     set -e
 fi
