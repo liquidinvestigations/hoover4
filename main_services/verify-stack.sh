@@ -101,7 +101,10 @@ website_url_is_local() {
     esac
     bind=$(grep -E '^WEBSITE_BIND_IP=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
     [ -n "$bind" ] && [ "$host" = "$bind" ] && return 0
-    [ "${host#hoover4-}" != "$host" ] && return 0
+    case "$host" in
+        hoover4-*.*) ;;
+        hoover4-*) return 0 ;;
+    esac
     return 1
 }
 

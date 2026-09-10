@@ -46,8 +46,9 @@ site_url_is_local() {
     local host="$1"
     case "$host" in
         localhost|127.0.0.1|0.0.0.0|::1) return 0 ;;
+        hoover4-*.*) ;;
+        hoover4-*) return 0 ;;
     esac
-    [ "${host#hoover4-}" != "$host" ] && return 0
     return 1
 }
 

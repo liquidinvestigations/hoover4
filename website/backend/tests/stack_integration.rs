@@ -2071,7 +2071,8 @@ fn site_url_is_local(url: &str) -> bool {
     } else {
         host_port.split(':').next().unwrap_or("")
     };
-    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1") || host.starts_with("hoover4-")
+    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
+        || (host.starts_with("hoover4-") && !host.contains('.'))
 }
 
 fn site_url() -> String {
@@ -2089,6 +2090,7 @@ fn site_url_refuses_a_non_local_target() {
     assert!(site_url_is_local("http://127.0.0.1:8080"));
     assert!(site_url_is_local("http://localhost:12345"));
     assert!(site_url_is_local("http://hoover4-website:8080"));
+    assert!(!site_url_is_local("http://hoover4-example.invalid"));
     assert!(!site_url_is_local("http://example.invalid"));
     let url = std::env::var("HOOVER4_SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
     if site_url_is_local(&url) {
