@@ -40,6 +40,9 @@
 # take-screenshots.sh; it repeats that script's target/credential-precedence and
 # lock/copy-in/output-merge shape for chat_observer.py, a different Python entry point
 # with its own arguments.
+#
+# internet_tools_enabled in hoover4.ini must be true. This script does not start
+# hoover4-mcp-browser. When that key is off, the script refuses and names the key.
 set -euo pipefail
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}" )" &> /dev/null && pwd )"
@@ -176,6 +179,21 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+if ! python3 - "$REPO_ROOT" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root))
+from deploy import Config, INI_PATH
+cfg = Config(INI_PATH if INI_PATH.exists() else None)
+raise SystemExit(0 if cfg.internet_tools_enabled() else 1)
+PY
+then
+    echo "error: internet tools are off. Set internet_tools_enabled = true in hoover4.ini" >&2
+    exit 2
+fi
 
 if ! docker inspect -f '{{.State.Running}}' "$BROWSER_CONTAINER" 2>/dev/null | grep -q true; then
     echo "error: $BROWSER_CONTAINER is not running. Start the stack with ./deploy" >&2

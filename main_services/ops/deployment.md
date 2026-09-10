@@ -379,7 +379,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |
-| **A browser ships with the stack** | `compose/agents.yaml` is always on, so `hoover4-mcp-browser` is part of any deployment. Its URL checks are strict (public http/https only, deny-list, PAC), but it is there. |
+| **A browser ships only when the internet-tools switch is on** | `compose/internet-tools.yaml` is selected by `internet_tools_enabled`. Off, `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and `hoover4-mcp-whois` do not start. On, the browser's URL checks are still strict (public http/https only, deny-list, PAC). |
 
 ## Navigation
 

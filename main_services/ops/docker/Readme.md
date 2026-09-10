@@ -5,7 +5,7 @@ Everything `deploy.py` feeds to compose.
 | path | holds |
 |---|---|
 | `docker-compose.yaml` | the always-on core of the main stack |
-| `compose/` | one optional overlay per service, selected by a configuration flag |
+| `compose/` | optional overlays, selected by a configuration flag |
 | `garage/` | the object store's configuration and its layout bootstrap |
 | `pdf-to-html/` | the conversion service image |
 | `serena/` | the symbol-server image and its entrypoint |

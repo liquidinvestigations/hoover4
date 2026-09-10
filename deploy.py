@@ -139,6 +139,11 @@ DEFAULTS = {
         "agent_subagent_concurrency": "5",
         "mcp_browser_mem_limit": "24G",
         "full_research_agent_workers": "4",
+        # Three internet-facing MCP servers: browser, metasearch, whois. Off means
+        # those containers do not start. An absent or empty value is off. Turning
+        # this off on a workstation also removes the developer harness tools those
+        # containers publish.
+        "internet_tools_enabled": "false",
         # How long a shutting-down worker may keep its in-flight activities before they
         # are cancelled. The container's stop grace period is DERIVED from this (see
         # render_main_env) rather than configured beside it, because an SDK grace period
@@ -283,7 +288,8 @@ AI_OVERLAYS = [
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
 MAIN_OVERLAYS = [
-    (None, "compose/agents.yaml", None),          # always on
+    (None, "compose/agents.yaml", None),          # collections, todo, both agents
+    ("internet_tools_enabled", "compose/internet-tools.yaml", None),
     (None, "compose/regex-entity-scanner.yaml", None),  # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
@@ -352,6 +358,27 @@ def fail(msg):
     raise DeployError(msg)
 
 
+# The three internet-facing MCP servers. Whois queries domain registries, so it
+# is the third of the same kind.
+INTERNET_TOOL_SERVICES = (
+    "hoover4-mcp-browser",
+    "hoover4-mcp-metasearch",
+    "hoover4-mcp-whois",
+)
+
+FULL_RESEARCH_MCP_SERVERS_ON = (
+    "http://hoover4-mcp-collections:8085/mcp,"
+    "http://hoover4-mcp-metasearch:8086/mcp,"
+    "http://hoover4-mcp-browser:8087/mcp,"
+    "http://hoover4-mcp-whois:8082/mcp,"
+    "http://hoover4-mcp-todo:8088/mcp"
+)
+FULL_RESEARCH_MCP_SERVERS_OFF = (
+    "http://hoover4-mcp-collections:8085/mcp,"
+    "http://hoover4-mcp-todo:8088/mcp"
+)
+
+
 # --------------------------------------------------------------------------------------
 # Config loading
 # --------------------------------------------------------------------------------------
@@ -390,6 +417,13 @@ class Config:
         if value in ("0", "false", "no", "off"):
             return False
         fail("[%s] %s must be a boolean, got %r" % (section, key, value))
+
+    def internet_tools_enabled(self):
+        """Off when the key is absent or empty. On only for an explicit true value."""
+        value = self.get("main_services", "internet_tools_enabled").strip().lower()
+        if not value:
+            return False
+        return self.get_bool("main_services", "internet_tools_enabled")
 
     def secret_files(self):
         """All (section, key, host_path) for non-empty *_file keys."""
@@ -728,6 +762,10 @@ def render_main_env(cfg):
     env["AGENT_SUBAGENT_CONCURRENCY"] = cfg.get(m, "agent_subagent_concurrency")
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")
     env["FULL_RESEARCH_AGENT_WORKERS"] = cfg.get(m, "full_research_agent_workers")
+    env["FULL_RESEARCH_MCP_SERVERS"] = (
+        FULL_RESEARCH_MCP_SERVERS_ON if cfg.internet_tools_enabled()
+        else FULL_RESEARCH_MCP_SERVERS_OFF
+    )
 
     return env
 
@@ -877,10 +915,19 @@ def selected_overlays(cfg, side):
     overlays = []
     if side == "ai":
         base = AI_OVERLAYS
+        section = "ai_services"
     else:
         base = MAIN_OVERLAYS
+        section = "main_services"
     for flag, rel, _svc in base:
-        if flag is None or cfg.get_bool("ai_services" if side == "ai" else "main_services", flag):
+        if flag is None:
+            overlays.append(rel)
+            continue
+        if flag == "internet_tools_enabled":
+            if cfg.internet_tools_enabled():
+                overlays.append(rel)
+            continue
+        if cfg.get_bool(section, flag):
             overlays.append(rel)
     return overlays
 
@@ -1124,6 +1171,8 @@ def expected_ports(cfg, side):
             # it when the flag is on, hoover4-website holds it otherwise.
             svc = ("hoover4-development-auth-backdoor" if backdoor_on
                    else "hoover4-website")
+        if svc in INTERNET_TOOL_SERVICES and not cfg.internet_tools_enabled():
+            continue
         checks.append((svc, port))
     if cfg.get_bool("main_services", "serena_enabled"):
         checks.append(("hoover4-serena", int(cfg.get("main_services", "serena_port"))))
@@ -1429,10 +1478,24 @@ def compose_up(cfg, side, rt, build):
     else:
         up_args = ["up", "-d"]
     run_or_fail(compose_command(cfg, side, rt, up_args))
+    if side == "main":
+        stop_disabled_internet_tools(cfg, rt)
     if rt.name == "podman" and build:
         podman_stale_image_fix(cfg, side, rt, files)
     if side == "main":
         report_worker_stop_timeout(cfg, rt)
+
+
+def stop_disabled_internet_tools(cfg, rt):
+    """When the switch is off, remove leftover internet-facing MCP containers.
+
+    `compose up` without those services in the file list does not stop a container
+    that was started by an earlier deploy with the switch on.
+    """
+    if cfg.internet_tools_enabled():
+        return
+    for name in INTERNET_TOOL_SERVICES:
+        rt.run(["rm", "-f", name], capture_output=True)
 
 
 def report_worker_stop_timeout(cfg, rt):

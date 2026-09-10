@@ -62,7 +62,7 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ## `[main_services]`
 
-Seventy-seven keys plus the six chat and agent cap keys. Read by `deploy.py`, the main compose files, the worker and the website.
+Seventy-eight keys plus the six chat and agent cap keys. Read by `deploy.py`, the main compose files, the worker and the website.
 
 ### Which provider serves what
 
@@ -116,6 +116,12 @@ the three chat keys, which are set: a slot is one turn in flight, not one model 
 `mcp_browser_mem_limit` is that container's memory ceiling. `agent_subagent_concurrency`
 is how many subagent workers one `run_subagent` call may start at once.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
+
+`internet_tools_enabled` starts `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and
+`hoover4-mcp-whois`. Default off: an absent or empty key does not start them. Turning it
+off on a workstation also removes the developer harness tools those containers publish.
+`hoover4-full-research-agent` then binds only collections and todo. Capture wrappers
+refuse when the key is off.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
@@ -205,6 +211,7 @@ is the map back to the group above that explains it.
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `agent_subagent_concurrency`, `mcp_browser_mem_limit`, `full_research_agent_workers`
+- `internet_tools_enabled`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`

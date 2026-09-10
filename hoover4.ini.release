@@ -201,6 +201,11 @@ agent_subagent_concurrency = 5
 ; its own graph cache and MCP connections. The citation handle table lives in
 ; the collections MCP server, so these workers do not split it.
 full_research_agent_workers = 4
+; Three internet-facing MCP servers: hoover4-mcp-browser, hoover4-mcp-metasearch,
+; hoover4-mcp-whois. Off means those containers do not start. An absent or empty
+; value is off. Turning this off on a workstation also removes the developer
+; harness tools those containers publish.
+internet_tools_enabled = false
 
 # How long a worker being shut down may keep its in-flight activities before they are
 # cancelled. ONE key, because the container's own stop grace period is derived from it:

@@ -354,7 +354,7 @@ The application is configured entirely via environment variables (rendered from
 ### Required Variables
 
 - `LLM_API_KEY` (or `LLM_API_KEY_FILE`, a bind-mounted file takes precedence when the plain var is unset): Your LLM API key
-- `MCP_SERVERS`: Comma-separated list of MCP server URLs
+- `MCP_SERVERS`: Comma-separated list of MCP server URLs. On `hoover4-full-research-agent`, `deploy.py` renders this from `internet_tools_enabled`: five servers when on, collections and todo when off.
 
 ### Optional Variables
 

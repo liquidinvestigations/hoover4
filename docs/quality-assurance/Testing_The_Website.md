@@ -48,7 +48,8 @@ regression.
 
 `website/browser-tests/` holds one file per page. `website/take-screenshots.sh` captures each page and writes the PNG a
 person would see, a text outline of the rendered DOM, and (where an action raised) the state
-at the moment it failed. Output goes to `website/test_reports/screenshots/`, gitignored, and
+at the moment it failed. `internet_tools_enabled` in `hoover4.ini` must be on. When it is
+off, the wrapper refuses and names that key. Output goes to `website/test_reports/screenshots/`, gitignored, and
 is **never wiped**. Each run adds `run-<UTC-timestamp>-<pid>/` and rewrites the `latest`
 symlink, so an earlier run stays on disk until removed by hand.
 
@@ -128,7 +129,8 @@ Chat history verification compares persisted assistant answers. It excludes temp
 `website/observe-chat.sh` drives a real chat conversation to completion in the same
 container and by the same mechanism as the screenshot harness, and observes it with one
 browser page per resolution watching the same live generation, not two separate
-generations. It needs an identity: an empty credential pair from every source is a
+generations. `internet_tools_enabled` must be on. When it is off, this wrapper refuses
+and names that key, and does not start `hoover4-mcp-browser`. It needs an identity: an empty credential pair from every source is a
 validation failure here, unlike the screenshot runner.
 
 ```

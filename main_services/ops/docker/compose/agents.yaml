@@ -1,9 +1,10 @@
-# Always-on overlay: the MCP servers and the two research agents.
+# Always-on overlay: collections, todo, and the two research agents.
 #
-# These belong to the MAIN stack, not ai_services: they read ClickHouse and
-# Manticore directly and serve the website's chat.
-# ai_services never calls into main_services. That one-way dependency is what makes
-# the GPU tier optional.
+# Browser, metasearch and whois live in internet-tools.yaml, selected by
+# [main_services] internet_tools_enabled. These belong to the MAIN stack, not
+# ai_services: they read ClickHouse and Manticore directly and serve the website's
+# chat. ai_services never calls into main_services. That one-way dependency is what
+# makes the GPU tier optional.
 services:
   # ------------------------------------------------------- MCP: Hoover4 collections
   # The RAG path. Searches the Manticore shards and ClickHouse text of exactly the
@@ -63,31 +64,6 @@ services:
     networks:
       - hoover4
 
-  # --------------------------------------------------------------- MCP: whois
-  hoover4-mcp-whois:
-    build:
-      # Context is the agents directory, not this server's: agent_common/ is vendored in
-      # (the batching mechanics `whois_lookup` shares with every other batched tool).
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents
-      dockerfile: whois_search_server/Dockerfile
-    image: hoover4-mcp-whois:local
-    container_name: hoover4-mcp-whois
-    ports:
-      - "127.0.0.1:${MCP_WHOIS_PORT}:8082"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8082
-      - SERVER_NAME=${WHOIS_SERVER_NAME:-whois_lookup}
-      - SERVER_INSTRUCTIONS=${WHOIS_SERVER_INSTRUCTIONS:-Domain registration lookup.}
-      - WHOIS_RATE_LIMITING=${WHOIS_RATE_LIMITING:-true}
-      - WHOIS_RATE_LIMIT_MS=${WHOIS_RATE_LIMIT_MS:-100}
-      - WHOIS_TIMEOUT=${WHOIS_TIMEOUT:-30.0}
-      - WHOIS_MAX_RETRIES=${WHOIS_MAX_RETRIES:-3}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    restart: unless-stopped
-    networks:
-      - hoover4
-
   # ---------------------------------------------------------------- MCP: todo
   # The agent's plan for one conversation: a goal and a list of steps, read and written
   # through four tools. The rules live in processing/database/chat_todos.py, which the
@@ -126,167 +102,6 @@ services:
     networks:
       - hoover4
 
-  # Metasearch: THE web search server. One `web_search` tool covering four HTML scrapers,
-  # the ddgs library (text and news) and Wikipedia, merged with reciprocal rank fusion and
-  # then reordered by the GPU tier's cross-encoder. Every open-web source lives behind
-  # this one tool and must stay there. Several overlapping "search the web" tools is a
-  # choice a small model makes badly.
-  #
-  # The scrapers have no API keys, so expect one to rot. METASEARCH_SOURCES turns a
-  # broken one off without a rebuild, and the response's `degraded` list is how you notice.
-  #
-  # RERANK_URL is the GPU tier's /v1 base (deploy.py renders it from the same setting as
-  # EMBEDDINGS_URL). Empty means no reranking: search still works, the results come back
-  # in RRF order, and `rerank_applied: false` says so on the card.
-  hoover4-mcp-metasearch:
-    build:
-      # Context is the agents directory, not this server's: agent_common/ is vendored in.
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents
-      dockerfile: metasearch_server/Dockerfile
-    image: hoover4-mcp-metasearch:local
-    container_name: hoover4-mcp-metasearch
-    ports:
-      - "127.0.0.1:${MCP_METASEARCH_PORT}:8086"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8086
-      - SERVER_NAME=${METASEARCH_SERVER_NAME:-hoover4_metasearch}
-      # Leave this UNSET to use every registered source. Naming them here is how a newly
-      # registered source silently never runs. The server's own default is derived from
-      # the registry, and a list written out by hand cannot be.
-      - METASEARCH_SOURCES=${METASEARCH_SOURCES:-}
-      - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
-      # GDELT answers in ten to twelve seconds even when it answers 429, so it carries its
-      # own deadline. It must stay under the overall one, which bounds the fan-out anyway.
-      - METASEARCH_GDELT_TIMEOUT=${METASEARCH_GDELT_TIMEOUT:-15}
-      - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
-      # Queries one web_search call may fan out over. Each is a full fan-out across every
-      # source plus its share of one cross-encoder pass.
-      - METASEARCH_MAX_QUERIES=${METASEARCH_MAX_QUERIES:-5}
-      - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
-      - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
-      # The result policy: 15 results, always reranked. The floor is per kind and must stay well
-      # under the cap, 10 across three kinds reserves 30 and overrides the cap entirely.
-      - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
-      - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
-      # Rerank logit below which a result no longer earns a reserved floor slot. 0 is the
-      # cross-encoder's own decision boundary; it is model-specific, so it is a knob.
-      - METASEARCH_RESERVE_MIN_SCORE=${METASEARCH_RESERVE_MIN_SCORE:-0}
-      - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-15}
-      - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
-      - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
-      # Reranking, and the breaker in front of it.
-      - RERANK_URL=${RERANK_URL:-}
-      - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-25}
-      - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
-      - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
-      # Search-detail artifacts: bytes to S3, one index row in ClickHouse.
-      - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
-      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
-      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
-      # The blob store. `S3_ENDPOINT` carries a scheme; every client strips it when its
-      # library wants bare host:port. Garage refuses an access key id under 8 characters
-      # and a secret under 16, which is why these are not the old short literals.
-      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
-      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
-      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
-      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
-      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
-      # The one key-gated source. A path to a mounted file, never a value: without a
-      # non-empty file the fact-check source is not registered at all, so it is absent
-      # from the source list the model is shown rather than present and failing.
-      - FACTCHECK_API_KEY_FILE=/run/secrets/factcheck_api_key
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    volumes:
-      # /dev/null when unset: readable and empty, which is what "no key" means here.
-      - ${FACTCHECK_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/factcheck_api_key:ro
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8086/health', timeout=5)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    networks:
-      - hoover4
-
-  # Browser: a router in front of one Chromium + one playwright-mcp sidecar PER CHAT.
-  # The image is ~1.5 GB (Chromium, fonts, Node, two extensions) and that is expected.
-  #
-  # Memory is the reason BROWSER_MAX_CONTEXTS is 16 and not 32: this is a whole browser
-  # per conversation, not a browser context. It has to be a whole browser. Playwright-mcp
-  # attached with --cdp-endpoint shares one context across every client on that endpoint,
-  # measured, so the isolation boundary has to sit one level lower. One live chat costs
-  # about 500 MB. Sixteen chats plus the template fit in the 24 GB container limit.
-  #
-  # SECURITY: this server is driven by an LLM and sits on the same network as
-  # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL-shaped
-  # argument of every forwarded tool is checked against browser_use_server/urlcheck.py
-  # first. Public http/https only, and the host must resolve exclusively to public
-  # addresses. The sidecar's own --blocked-origins is the second line, not the first.
-  # Do not weaken either.
-  hoover4-mcp-browser:
-    build:
-      # Context is the agents directory, not this server's: agent_common/ is vendored in.
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents
-      dockerfile: browser_use_server/Dockerfile
-    image: hoover4-mcp-browser:local
-    container_name: hoover4-mcp-browser
-    ports:
-      - "127.0.0.1:${MCP_BROWSER_PORT}:8087"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8087
-      - SERVER_NAME=${BROWSER_SERVER_NAME:-hoover4_browser}
-      - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
-      - BROWSER_ACTION_TIMEOUT=${BROWSER_ACTION_TIMEOUT:-15}
-      - BROWSER_MAX_CONTEXTS=${BROWSER_MAX_CONTEXTS:-16}
-      - BROWSER_IDLE_SECONDS=${BROWSER_IDLE_SECONDS:-900}
-      - BROWSER_MAX_TABS_PER_CHAT=${BROWSER_MAX_TABS_PER_CHAT:-6}
-      - BROWSER_WINDOW_WIDTH=${BROWSER_WINDOW_WIDTH:-1280}
-      - BROWSER_WINDOW_HEIGHT=${BROWSER_WINDOW_HEIGHT:-720}
-      # Page captures: screenshot always, MHTML under the cap.
-      - CAPTURE_MAX_SNAPSHOT_BYTES=${CAPTURE_MAX_SNAPSHOT_BYTES:-8388608}
-      - CAPTURE_TIMEOUT_SECONDS=${CAPTURE_TIMEOUT_SECONDS:-20}
-      - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
-      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
-      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
-      # The blob store. `S3_ENDPOINT` carries a scheme; every client strips it when its
-      # library wants bare host:port. Garage refuses an access key id under 8 characters
-      # and a secret under 16, which is why these are not the old short literals.
-      - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
-      - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
-      - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
-      - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
-      - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
-    # With up to sixteen browsers live at once this is the difference between "slow" and
-    # "the container dies mid-answer".
-    shm_size: 2gb
-    mem_limit: ${HOOVER4_MCP_BROWSER_MEM_LIMIT:-24G}
-    memswap_limit: ${HOOVER4_MCP_BROWSER_MEM_LIMIT:-24G}
-    # A real init as PID 1, because Chromium is a process TREE. PID 1 here is the Python
-    # server, which never calls wait() on grandchildren, so every renderer and crashpad
-    # handler a closed browser leaves behind stays a zombie forever, 104 of them were
-    # counted on a stack that had been up for hours. Zombies hold a PID each and the
-    # container's PID space is not large; the failure mode at the end of that road is
-    # "cannot fork", which surfaces as an unrelated browser launch failing. `init: true`
-    # gives the container a subreaper whose whole job is reaping them.
-    init: true
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      # The template browser and its sidecar start at boot, which is a Chromium launch
-      # plus a node process. 40s was not enough once Node was in the picture.
-      start_period: 90s
-    networks:
-      - hoover4
 
   # ------------------------------------------------------------------- Agents
   # Internal search agent: collection RAG only. This is what the website's AI Chat page
@@ -408,9 +223,10 @@ services:
       # The collection MCP server contributes the MATCH syntax through its own
       # instructions, so it does not need repeating here.
       - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
-      # One search server, one browser router, one whois. Do not add a second
-      # web-search server here; every source belongs inside metasearch.
-      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-metasearch:8086/mcp,http://hoover4-mcp-browser:8087/mcp,http://hoover4-mcp-whois:8082/mcp,http://hoover4-mcp-todo:8088/mcp
+      # Rendered by deploy.py from internet_tools_enabled. Off is collections and
+      # todo. On adds metasearch, browser and whois. Do not add a second web-search
+      # server here; every source belongs inside metasearch.
+      - MCP_SERVERS=${FULL_RESEARCH_MCP_SERVERS:-http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp}
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       # See the internal search agent: the compaction trigger, as a fraction of the
       # model's stated context window, and the summarisation that follows when eviction
@@ -446,9 +262,6 @@ services:
       - ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent/main.py:/app/main.py:ro
     depends_on:
       - hoover4-mcp-collections
-      - hoover4-mcp-metasearch
-      - hoover4-mcp-browser
-      - hoover4-mcp-whois
       - hoover4-mcp-todo
     restart: unless-stopped
     healthcheck:

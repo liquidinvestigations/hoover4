@@ -8,9 +8,12 @@ GPU tier optional.
 
 Each MCP server is a standalone FastMCP server in its own container, published on
 `127.0.0.1` and joined to the `hoover4` podman network. The agents discover tools over
-HTTP at `/mcp`. All of them come up with the main stack via the always-on overlay
-[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml): `./deploy`
-from the repo root, no separate tier to start.
+HTTP at `/mcp`. Collections, todo and the two research agents come up with the main stack
+via the always-on overlay
+[`../ops/docker/compose/agents.yaml`](../ops/docker/compose/agents.yaml). Browser,
+metasearch and whois come up only when `internet_tools_enabled` is on, via
+[`../ops/docker/compose/internet-tools.yaml`](../ops/docker/compose/internet-tools.yaml).
+`./deploy` from the repo root, no separate tier to start.
 
 | Server | Directory | Port | Used by | What it does |
 |---|---|---|---|---|
