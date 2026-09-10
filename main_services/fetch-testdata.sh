@@ -19,7 +19,7 @@ set -euo pipefail
 TESTDATA_REPO="${TESTDATA_REPO:-https://github.com/liquidinvestigations/hoover-testdata}"
 # The revision every fixture path in verify-stack.sh and backend/tests/stack_integration.rs
 # was written against. Bump it together with those paths, never on its own.
-TESTDATA_COMMIT="${TESTDATA_COMMIT:-57a8300e73c6b524e3eed10c13a051c134de6998}"
+TESTDATA_COMMIT="${TESTDATA_COMMIT:-15f0c39b4f26885024475b845ae7f6d2e920f1bf}"
 
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"
@@ -57,14 +57,16 @@ fi
 # missing one is reported once, by name, instead of as an ingest that quietly does nothing.
 missing=0
 for path in \
-    disk-files/pdf-doc-txt \
-    eml-2-attachment \
-    zip-in-multiple-locations \
-    many-children/deep-stuff \
-    many-children/the-directory
+    data/disk-files/pdf-doc-txt \
+    data/eml-2-attachment \
+    data/zip-in-multiple-locations \
+    data/many-children/deep-stuff \
+    data/many-children/the-directory \
+    qa/datasets.json \
+    qa/filenames
 do
-    if [ ! -e "$TARGET/data/$path" ]; then
-        echo "MISSING - data/$path"
+    if [ ! -e "$TARGET/$path" ]; then
+        echo "MISSING - $path"
         missing=$((missing + 1))
     fi
 done

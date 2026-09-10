@@ -94,6 +94,7 @@ languages.
 | `F-qa-05` | Discover current fixture identities from indexed data without ingest, rescan, recovery, or reprocessing. Resolve document routes from the current profile. | `website/tools/prepare_manual_qa.py`, `resolve_document_url` |
 | `F-qa-06` | Record missing fixtures, missing originals, and missing operation rows as incomplete execution. Continue other runnable cases. A missing fixture is not a successful assertion. | `website/tools/capture_screenshots.py`, `website/tools/manual_qa.py` |
 | `F-qa-07` | Run one real conversation and follow-up in the manual orchestration. Reuse preview and per-resolution history evidence when the session matches. Verify cleanup on success, failure, and interruption without stopping unrelated browser processes. | `website/run-manual-qa.sh`, `website/tools/chat_observer.py`, `website/tools/browser_lifecycle.py` |
+| `F-qa-08` | Locate every verification dataset from one committed mapping in the testdata repository. The mapping names the collection, the dataset, the root inside the checkout, the purpose, and the shape a check can assert. | `qa/datasets.json` in hoover-testdata, `website/tools/manual_qa_fixtures.json`, `main_services/verify-stack.sh` |
 
 ## Chat
 

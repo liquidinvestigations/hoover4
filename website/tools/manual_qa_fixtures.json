@@ -2,7 +2,8 @@
   "schema_version": 2,
   "resolved_profile": "website/test_reports/manual_qa_fixtures.json",
   "source_provenance": {
-    "fixture_repository_revision": "57a8300e73c6b524e3eed10c13a051c134de6998",
+    "fixture_repository_revision": "15f0c39b4f26885024475b845ae7f6d2e920f1bf",
+    "entity_fixture_root": "/testdata/hoover-testdata/data/disk-files/entity-fixtures",
     "copied_sources": "The resolved profile records source paths, SHA3-256 document identities, SHA-256 provenance hashes, and byte sizes after verifying each prepared copy.",
     "email_expectations": "The resolved profile parses the original email envelope and attachment bytes independently of application responses.",
     "generated_sources": ["mail-search-substitute.txt", "manual-qa-table.csv", "leaf.txt", "wide.csv", "original-only.pdf"]
@@ -13,13 +14,13 @@
     "replacement_counts": "Profile observations only. Browser procedures use identities and relationships until a pinned corpus count is verified."
   },
   "datasets": [
-    {"collection": "testdata", "dataset": "manualqa", "source_root": "/testdata/generated/manual-qa", "purpose": "Manual QA documents, archives, and substitutes."},
+    {"collection": "testdata", "dataset": "manualqa", "source_root": "/testdata/hoover-testdata/qa/manualqa", "purpose": "Manual QA documents, archives, and substitutes."},
     {"collection": "testdata", "dataset": "excelsc", "source_root": "/testdata/hoover-testdata/data/www.learningcontainer.com/excels", "purpose": "Table screenshot cases."},
-    {"collection": "testdata", "dataset": "wide", "source_root": "/testdata/generated/wide", "purpose": "Truncated-table case."},
-    {"collection": "testdata", "dataset": "leaf", "source_root": "/testdata/generated/manual-qa-leaf", "purpose": "Leaf tree case."},
-    {"collection": "testdata", "dataset": "manualpdf", "source_root": "/testdata/generated/manual-qa-original-pdf", "purpose": "Original-only PDF fixture ingested with the global PDF provider set to none."},
-    {"collection": "testdata", "dataset": "shapes", "source_root": "existing registered dataset", "purpose": "Deep tree case with known branches."},
-    {"collection": "testdata", "dataset": "diskfiles", "source_root": "/testdata/hoover-testdata/data/disk-files", "purpose": "Rescan control capture."}
+    {"collection": "testdata", "dataset": "wide", "source_root": "/testdata/hoover-testdata/qa/wide", "purpose": "Truncated-table case."},
+    {"collection": "testdata", "dataset": "leaf", "source_root": "/testdata/hoover-testdata/qa/leaf", "purpose": "Leaf tree case."},
+    {"collection": "testdata", "dataset": "manualpdf", "source_root": "/testdata/hoover-testdata/qa/manualpdf", "purpose": "Original-only PDF fixture ingested with the global PDF provider set to none."},
+    {"collection": "testdata", "dataset": "shapes", "source_root": "/testdata/hoover-testdata/data/many-children", "purpose": "Deep tree case with known branches."},
+    {"collection": "testdata", "dataset": "diskfiles", "source_root": "/testdata/hoover-testdata/qa/diskfiles", "purpose": "Rescan control capture."}
   ],
   "fixtures": [
     {"name": "shipping_manifest", "dataset": "testdata_manualqa", "path": "/entity-fixtures/shipping-manifest.txt", "original": true, "expected": {"document_find_term": "is", "document_find_count": 4, "entity_values": [{"category": "Organization", "value": "org", "count": 2}, {"category": "Organization", "value": "maptools", "count": 2}, {"category": "Misc", "value": "IMO", "count": 4}, {"category": "Email", "value": "shapelib-admin@lists.maptools.org", "count": 1}, {"category": "Phone", "value": "+24762889", "count": 1}, {"category": "Money", "value": "EUR 950.00 (EUR 100–1k)", "count": 1}, {"category": "Money", "value": "EUR 4100.00 (EUR 1k–10k)", "count": 1}, {"category": "Money", "value": "EUR 25000.00 (EUR 10k–100k)", "count": 1}, {"category": "Mentioned Date", "value": "2011-09-08", "count": 1}, {"category": "Mentioned Date", "value": "1974-06-30", "count": 1}, {"category": "Other", "value": "CSQU3054383", "count": 1}, {"category": "Other", "value": "9319466", "count": 1}, {"category": "Other", "value": "8814275", "count": 1}, {"category": "Other", "value": "538090443", "count": 1}, {"category": "Other", "value": "367533950", "count": 1}]}},
