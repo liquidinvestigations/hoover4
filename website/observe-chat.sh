@@ -89,26 +89,14 @@ if [ -z "$LOGIN_ENV_ARG" ] && [ ! -f "$LOGIN_ENV_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------------
-# Target precedence: --target, then HOOVER4_SITE_URL in the environment, then the
-# built-in backdoor default. The login-env file supplies credentials only, and never the
-# target: this script reaches an authenticated area (/ai_chat) on every invocation, so a
-# run with no arguments must still reach the local stack, where the supplied identity
-# cannot dispatch anything against a remote deployment. Reaching a remote target stays one
-# explicit --target or HOOVER4_SITE_URL away. Dials the backdoor by name, so the default
-# needs hoover4.ini.development (development_auth_backdoor_enabled = true); release mode
-# has no identity source this script can use.
+# Target precedence: --target, then HOOVER4_SITE_URL in the environment or the
+# login-env file. There is no built-in default. A missing target exits 2 and names
+# the sources that were checked.
 # ---------------------------------------------------------------------------------
 
-if [ -n "$TARGET_ARG" ]; then
-    SITE_URL="$TARGET_ARG"
-    TARGET_SOURCE="--target"
-elif [ -n "${HOOVER4_SITE_URL:-}" ]; then
-    SITE_URL="$HOOVER4_SITE_URL"
-    TARGET_SOURCE="the HOOVER4_SITE_URL environment variable"
-else
-    SITE_URL="http://hoover4-development-auth-backdoor:8080"
-    TARGET_SOURCE="the built-in default"
-fi
+# shellcheck source=tools/capture_credentials.sh
+source "$SCRIPT_DIR/tools/capture_credentials.sh"
+require_capture_target
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
@@ -116,9 +104,6 @@ echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 # then the login-env file's pair. A chat conversation needs an identity, so an empty
 # pair from every source is a validation failure here, unlike take-screenshots.sh.
 # ---------------------------------------------------------------------------------
-
-# shellcheck source=tools/capture_credentials.sh
-source "$SCRIPT_DIR/tools/capture_credentials.sh"
 if [ -z "$CRED_USERNAME" ]; then
     echo "error: a chat conversation needs an identity; no credential source supplied one" >&2
     echo "       (checked HOOVER4_TEST_USERNAME/PASSWORD, $LOGIN_ENV_FILE)" >&2

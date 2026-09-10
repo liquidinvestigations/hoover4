@@ -8,5 +8,6 @@
 # Anything the site emits belongs in a fix, not here. Whitelisted messages are still
 # printed in report.md as warnings, so an entry that stops being needed stays visible.
 #
-# A single page's local noise goes in screenshots.ini as `allow_console = <substring>`
-# instead, so it cannot silently excuse the same message everywhere else.
+# A single page's local noise goes in that page's file under browser-tests/ as
+# `allow_console = <substring>` instead, so it cannot silently excuse the same
+# message everywhere else.

@@ -79,6 +79,38 @@ website_url_default() {
     esac
 }
 WEBSITE_URL="${WEBSITE_URL:-$(website_url_default)}"
+
+url_host() {
+    local url="$1" rest host
+    rest="${url#*://}"
+    rest="${rest%%/*}"
+    if [ "${rest#\[}" != "$rest" ]; then
+        host="${rest#\[}"
+        host="${host%%]*}"
+        printf '%s' "$host"
+        return
+    fi
+    printf '%s' "${rest%%:*}"
+}
+
+website_url_is_local() {
+    local host bind
+    host="$(url_host "$1")"
+    case "$host" in
+        localhost|127.0.0.1|0.0.0.0|::1) return 0 ;;
+    esac
+    bind=$(grep -E '^WEBSITE_BIND_IP=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
+    [ -n "$bind" ] && [ "$host" = "$bind" ] && return 0
+    [ "${host#hoover4-}" != "$host" ] && return 0
+    return 1
+}
+
+if ! website_url_is_local "$WEBSITE_URL"; then
+    echo "error: verify-stack.sh refuses a non-local target." >&2
+    echo "       It ingests into the stack it talks to, and a shared deployment would receive that write." >&2
+    echo "       Use a loopback URL or the local WEBSITE_BIND_IP." >&2
+    exit 2
+fi
 # The identity every website probe asserts, taken from the same two ini keys the
 # development backdoor bakes into its own nginx configuration.
 #

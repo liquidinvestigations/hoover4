@@ -1,5 +1,5 @@
 #!/bin/bash
-# Capture a screenshot + snapshot of every page listed in `screenshots.ini`, at 720p and
+# Capture a screenshot + snapshot of every page listed in `browser-tests/`, at 720p and
 # 1080p by default.
 #
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
@@ -25,8 +25,8 @@
 # tools/console_whitelist.txt holds the run-wide console exceptions and is copied in too.
 #
 # Preconditions: the stack is up and `main_services/verify-stack.sh` has been run, so the
-# fixtures the ini names exist. Nothing here ingests anything. Two scenarios in
-# `screenshots.ini`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
+# fixtures the scenarios name exist. Nothing here ingests anything. Two scenarios in
+# `browser-tests/`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
 # control that dispatches server work; both capture the control's state without engaging
 # it, so no scenario in the current list dispatches server work. A page whose dataset is
 # absent is incomplete_execution; other pages still run.
@@ -90,26 +90,14 @@ if [ -z "$LOGIN_ENV_ARG" ] && [ ! -f "$LOGIN_ENV_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------------
-# Target precedence: --target, then HOOVER4_SITE_URL in the environment, then the
-# built-in backdoor default. The login-env file supplies credentials only, and never the
-# target: the file names a remote deployment, and two scenarios in screenshots.ini name a
-# control that dispatches server work. A run with no arguments must reach the local stack,
-# where the supplied identity cannot dispatch anything. Reaching a remote target stays one
-# explicit --target or HOOVER4_SITE_URL away. Dials the backdoor by name, so the default
-# needs hoover4.ini.development (development_auth_backdoor_enabled = true); release mode
-# has no identity source this script can use.
+# Target precedence: --target, then HOOVER4_SITE_URL in the environment or the
+# login-env file. There is no built-in default. A missing target exits 2 and names
+# the sources that were checked.
 # ---------------------------------------------------------------------------------
 
-if [ -n "$TARGET_ARG" ]; then
-    SITE_URL="$TARGET_ARG"
-    TARGET_SOURCE="--target"
-elif [ -n "${HOOVER4_SITE_URL:-}" ]; then
-    SITE_URL="$HOOVER4_SITE_URL"
-    TARGET_SOURCE="the HOOVER4_SITE_URL environment variable"
-else
-    SITE_URL="http://hoover4-development-auth-backdoor:8080"
-    TARGET_SOURCE="the built-in default"
-fi
+# shellcheck source=tools/capture_credentials.sh
+source "$SCRIPT_DIR/tools/capture_credentials.sh"
+require_capture_target
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
@@ -117,9 +105,6 @@ echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 # then the login-env file's pair. Sources are not mixed. No credential value is
 # printed, including the username.
 # ---------------------------------------------------------------------------------
-
-# shellcheck source=tools/capture_credentials.sh
-source "$SCRIPT_DIR/tools/capture_credentials.sh"
 if [ -n "$CRED_USERNAME" ]; then
     echo "== identity: authenticating (credential source: $CRED_SOURCE) =="
 else
@@ -201,7 +186,7 @@ fi
 if [ -f test_reports/manual_qa_original_cases.json ]; then
     docker cp test_reports/manual_qa_original_cases.json "$BROWSER_CONTAINER:$REMOTE_DIR/manual_qa_original_cases.json"
 fi
-docker cp screenshots.ini "$BROWSER_CONTAINER:$REMOTE_DIR/screenshots.ini"
+docker cp browser-tests "$BROWSER_CONTAINER:$REMOTE_DIR/browser-tests"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
 echo "== capturing from $SITE_URL =="
@@ -217,7 +202,7 @@ PASS_THROUGH_ENV=()
 [ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
 docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
-    --ini "$REMOTE_DIR/screenshots.ini" \
+    --ini "$REMOTE_DIR/browser-tests" \
     --out-root "$REMOTE_DIR/out" \
     --run-name "$RUN_NAME" \
     --base-url "$SITE_URL" \

@@ -2063,8 +2063,40 @@ async fn the_collections_facet_offers_exactly_the_registered_datasets() {
 // the proxy sits in front of, so they set that header themselves to stand in for it.
 
 /// The site, as seen from inside its own container.
+fn site_url_is_local(url: &str) -> bool {
+    let rest = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let host_port = rest.split('/').next().unwrap_or("");
+    let host = if let Some(inner) = host_port.strip_prefix('[') {
+        inner.split(']').next().unwrap_or("")
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1") || host.starts_with("hoover4-")
+}
+
 fn site_url() -> String {
-    std::env::var("HOOVER4_SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
+    let url = std::env::var("HOOVER4_SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    assert!(
+        site_url_is_local(&url),
+        "this suite runs inside the website container against the local stack; a non-local HOOVER4_SITE_URL is refused because these tests call the process that serves the site"
+    );
+    url
+}
+
+#[test]
+#[ignore]
+fn site_url_refuses_a_non_local_target() {
+    assert!(site_url_is_local("http://127.0.0.1:8080"));
+    assert!(site_url_is_local("http://localhost:12345"));
+    assert!(site_url_is_local("http://hoover4-website:8080"));
+    assert!(!site_url_is_local("http://example.invalid"));
+    let url = std::env::var("HOOVER4_SITE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    if site_url_is_local(&url) {
+        assert!(site_url_is_local(&site_url()));
+        return;
+    }
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(site_url));
+    assert!(panicked.is_err(), "site_url must refuse a non-local target");
 }
 
 /// The two server-function URLs these tests need.

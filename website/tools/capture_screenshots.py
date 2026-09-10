@@ -265,9 +265,6 @@ def default_scenarios_path() -> Path:
     for candidate in (here / "browser-tests", here.parent / "browser-tests"):
         if candidate.is_dir() and any(SCENARIO_FILE.match(child.name) for child in candidate.iterdir()):
             return candidate
-    for candidate in (here / "screenshots.ini", here.parent / "screenshots.ini"):
-        if candidate.is_file():
-            return candidate
     raise FileNotFoundError(
         "browser scenario files are missing; copy website/browser-tests next to the capture tools"
     )
@@ -1424,7 +1421,8 @@ async def capture_all(
                 print(f"[{index + 1}/{len(pages)}] {stem}: incomplete ({reason})", flush=True)
                 record(INCOMPLETE_EXECUTION)
                 manifest["pages"].append({
-                    "stem": stem, "url": page.url, "skipped": reason,
+                    "stem": stem, "slug": page.slug or page.name, "summary": page.summary,
+                    "url": page.url, "skipped": reason,
                     "verdict": INCOMPLETE_EXECUTION,
                 })
                 page_reports.append(f"- `{stem}` (`{page.url}`): {INCOMPLETE_EXECUTION} ({reason})")
@@ -1436,7 +1434,8 @@ async def capture_all(
                 print(f"[{index + 1}/{len(pages)}] {stem}: incomplete ({reason})", flush=True)
                 record(INCOMPLETE_EXECUTION)
                 manifest["pages"].append({
-                    "stem": stem, "url": page.url, "skipped": reason,
+                    "stem": stem, "slug": page.slug or page.name, "summary": page.summary,
+                    "url": page.url, "skipped": reason,
                     "verdict": INCOMPLETE_EXECUTION,
                 })
                 page_reports.append(f"- `{stem}` (`{page.url}`): {INCOMPLETE_EXECUTION} ({reason})")
@@ -1497,6 +1496,8 @@ async def capture_all(
             worst = _worst_severity([sev for sev, _ in page_observations])
             page_entry = {
                 "stem": stem,
+                "slug": page.slug or page.name,
+                "summary": page.summary,
                 "url": page.url,
                 "captures": page_captures,
                 "observations": [{"severity": s, "message": m} for s, m in page_observations],
@@ -1528,30 +1529,134 @@ def _worst_severity(severities: list[str]) -> str | None:
 # Reports
 # ---------------------------------------------------------------------------------
 
+REPORT_VERDICT_PASS = "PASS"
+REPORT_VERDICT_FAIL = "FAIL"
+REPORT_VERDICT_WARNING = "WARNING"
+REPORT_VERDICT_INCOMPLETE = "INCOMPLETE"
+
+SEVERITY_TO_REPORT_VERDICT = {
+    APPLICATION_ERROR: REPORT_VERDICT_FAIL,
+    EXPECTED_OUTCOME: REPORT_VERDICT_PASS,
+    TRACE: REPORT_VERDICT_PASS,
+    BEHAVIORAL_WARNING: REPORT_VERDICT_WARNING,
+    DIAGNOSTIC_WARNING: REPORT_VERDICT_WARNING,
+    INCOMPLETE_EXECUTION: REPORT_VERDICT_INCOMPLETE,
+}
+
+
+def report_verdict(severity: str | None) -> str:
+    """Map a recorded severity to a report word. An unknown severity raises."""
+    if severity is None or severity in ("", "ok"):
+        return REPORT_VERDICT_PASS
+    try:
+        return SEVERITY_TO_REPORT_VERDICT[severity]
+    except KeyError as exc:
+        raise ValueError(f"unmapped severity {severity!r}") from exc
+
+
+def inventory_images_for_stem(inventory: list[dict], stem: str) -> list[str]:
+    """PNG paths from the inventory that belong to this page stem."""
+    prefix = f"{stem}."
+    return [
+        item["path"]
+        for item in inventory
+        if Path(item["path"]).name.startswith(prefix)
+    ]
+
+
+def snapshot_href(run_dir: Path, stem: str, image_paths: list[str]) -> str:
+    """Relative snapshot path beside the first matching image, if that file exists."""
+    for path in image_paths:
+        candidate = Path(path).parent / f"{stem}.snapshot.txt"
+        if (run_dir / candidate).is_file():
+            return candidate.as_posix()
+    return ""
+
+
+def _esc(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def inline_image_html(path: str, alt: str) -> str:
+    """A 500-pixel preview that links to the original file."""
+    safe_path = _esc(path)
+    return (
+        f'<a href="{safe_path}">'
+        f'<img src="{safe_path}" width="500" alt="{_esc(alt)}">'
+        f"</a>"
+    )
+
+
+def _resolution_label(resolutions: object) -> str:
+    if isinstance(resolutions, dict):
+        return ", ".join(str(name) for name in resolutions)
+    if isinstance(resolutions, (list, tuple)):
+        return ", ".join(str(name) for name in resolutions)
+    return str(resolutions)
+
+
 def write_reports(run_dir: Path, run_name: str, manifest: dict, exit_status: int) -> None:
     totals = manifest["totals"]
+    inventory = collect_image_inventory(
+        run_dir,
+        manifest.get("target_label", ""),
+        manifest.get("revision") or capture_revision(),
+    )
+    pages = list(manifest.get("pages") or [])
+    pages.sort(key=lambda page: 1 if report_verdict(page.get("verdict")) == REPORT_VERDICT_INCOMPLETE else 0)
+
+    def image_cell(stem: str, slug: str, image_paths: list[str]) -> str:
+        return " ".join(
+            inline_image_html(path, f"{slug} {Path(path).parent.as_posix()}")
+            for path in image_paths
+        )
+
+    md_rows = []
+    html_rows = []
+    for page in pages:
+        stem = page.get("stem") or ""
+        slug = page.get("slug") or stem
+        summary = page.get("summary") or ""
+        verdict = report_verdict(page.get("verdict"))
+        image_paths = inventory_images_for_stem(inventory, stem)
+        images = image_cell(stem, slug, image_paths)
+        snapshot = snapshot_href(run_dir, stem, image_paths)
+        snapshot_md = f"[snapshot]({snapshot})" if snapshot else ""
+        snapshot_html = f'<a href="{_esc(snapshot)}">snapshot</a>' if snapshot else ""
+        md_rows.append(
+            f"| `{slug}` | {_esc(summary).replace('|', '\\|')} | {verdict} | {images} | {snapshot_md} |"
+        )
+        html_rows.append(
+            "<tr>"
+            f"<td><code>{_esc(slug)}</code></td>"
+            f"<td>{_esc(summary)}</td>"
+            f"<td class=\"verdict-{verdict.lower()}\">{verdict}</td>"
+            f"<td>{images}</td>"
+            f"<td>{snapshot_html}</td>"
+            "</tr>"
+        )
+
+    totals_md = "\n".join(f"- {sev}: {totals.get(sev, 0)}" for sev in ALL_SEVERITIES)
+    resolution_label = _resolution_label(manifest.get("resolutions") or [])
     lines = [
         "# Screenshot run",
         "",
         f"Target: {manifest['target_label']}  |  identity: {manifest['identity']}",
-        f"Resolutions: {', '.join(manifest['resolutions'])}",
+        f"Resolutions: {resolution_label}",
         "",
         "## totals",
-        *(f"- {sev}: {totals.get(sev, 0)}" for sev in ALL_SEVERITIES),
+        totals_md,
         f"- exit status: {exit_status}",
         "",
         "## pages",
-        *manifest.get("page_reports", []),
+        "",
+        "| slug | summary | verdict | images | snapshot |",
+        "| --- | --- | --- | --- | --- |",
+        *md_rows,
     ]
     (run_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    def esc(text: str) -> str:
-        return (
-            text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        )
-
-    html_rows = "\n".join(f"<li>{esc(line)}</li>" for line in manifest.get("page_reports", []))
-    totals_rows = "\n".join(f"<li>{sev}: {totals.get(sev, 0)}</li>" for sev in ALL_SEVERITIES)
+    totals_html = "".join(f"<li>{_esc(sev)}: {totals.get(sev, 0)}</li>" for sev in ALL_SEVERITIES)
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1559,18 +1664,30 @@ def write_reports(run_dir: Path, run_name: str, manifest: dict, exit_status: int
 <title>Screenshot run</title>
 <style>
 body {{ font-family: sans-serif; margin: 2em; }}
-li {{ margin: 0.2em 0; }}
+table {{ border-collapse: collapse; width: 100%; }}
+th, td {{ border: 1px solid #ccc; padding: 0.5em; vertical-align: top; }}
+th {{ text-align: left; }}
+img {{ width: 500px; height: auto; }}
+.verdict-fail {{ color: #a40000; font-weight: bold; }}
+.verdict-warning {{ color: #8a6d00; font-weight: bold; }}
+.verdict-incomplete {{ color: #555; }}
+.verdict-pass {{ color: #1a7f37; }}
 </style>
 </head>
 <body>
 <h1>Screenshot run</h1>
-<p>Target: {esc(manifest['target_label'])} &mdash; identity: {esc(manifest['identity'])}</p>
-<p>Resolutions: {esc(', '.join(manifest['resolutions']))}</p>
+<p>Target: {_esc(manifest['target_label'])}. Identity: {_esc(manifest['identity'])}.</p>
+<p>Resolutions: {_esc(resolution_label)}</p>
 <h2>Totals</h2>
-<ul>{totals_rows}</ul>
+<ul>{totals_html}</ul>
 <p>Exit status: {exit_status}</p>
 <h2>Pages</h2>
-<ul>{html_rows}</ul>
+<table>
+<thead><tr><th>slug</th><th>summary</th><th>verdict</th><th>images</th><th>snapshot</th></tr></thead>
+<tbody>
+{"".join(html_rows)}
+</tbody>
+</table>
 </body>
 </html>
 """
@@ -1587,11 +1704,6 @@ li {{ margin: 0.2em 0; }}
 
     (run_dir / ".gitignore").write_text(run_gitignore_text(), encoding="utf-8")
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    inventory = collect_image_inventory(
-        run_dir,
-        manifest.get("target_label", ""),
-        manifest.get("revision") or capture_revision(),
-    )
     (run_dir / "image_inventory.json").write_text(
         json.dumps({
             "review_state_default": IMAGE_REVIEW_PENDING,
@@ -1618,7 +1730,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ini",
-        default="/tmp/h4shots/screenshots.ini",
+        default="/tmp/h4shots/browser-tests",
         help="concatenated scenario ini, or a directory of numbered per-slug ini files",
     )
     parser.add_argument("--out-root", default="/tmp/h4shots/out")

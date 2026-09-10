@@ -29,6 +29,36 @@ if [ "${1:-}" = "--slow" ]; then
     shift
 fi
 
+url_host() {
+    local url="$1" rest host
+    rest="${url#*://}"
+    rest="${rest%%/*}"
+    if [ "${rest#\[}" != "$rest" ]; then
+        host="${rest#\[}"
+        host="${host%%]*}"
+        printf '%s' "$host"
+        return
+    fi
+    printf '%s' "${rest%%:*}"
+}
+
+site_url_is_local() {
+    local host="$1"
+    case "$host" in
+        localhost|127.0.0.1|0.0.0.0|::1) return 0 ;;
+    esac
+    [ "${host#hoover4-}" != "$host" ] && return 0
+    return 1
+}
+
+if [ -n "${HOOVER4_SITE_URL:-}" ]; then
+    if ! site_url_is_local "$(url_host "$HOOVER4_SITE_URL")"; then
+        echo "error: the stack suite refuses a non-local HOOVER4_SITE_URL." >&2
+        echo "       These tests run inside the website container against the local stack." >&2
+        exit 2
+    fi
+fi
+
 # `dx check` is the only thing that finds a hook called conditionally or inside a closure.
 # Such a hook shifts every hook index after it on the render that adds it and traps the
 # WebAssembly runtime: the page paints, then nothing re-renders and no handler ever fires

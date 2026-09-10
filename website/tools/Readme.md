@@ -153,8 +153,8 @@ Agents can read `../TEST_LOGIN.env` for a browser work package.
 The file stores the login URL, site URL, username, and password.
 Copy `../TEST_LOGIN.env.example` to create it.
 The repository ignores the account file. The example contains empty values.
-`../take-screenshots.sh` and `../observe-chat.sh` load the file automatically, beside a
-`HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` environment pair that takes precedence
-over it. Credential values are not accepted as `--username` or `--password` arguments.
-Neither wrapper reads a target from this file; a target comes from `--target`,
-`HOOVER4_SITE_URL`, or the built-in local default.
+`../take-screenshots.sh`, `../observe-chat.sh` and `../run-manual-qa.sh` load the file
+automatically, beside a `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` environment pair
+that takes precedence over it. Credential values are not accepted as `--username` or
+`--password` arguments. A target comes from `--target`, then `HOOVER4_SITE_URL` in the
+environment or this file. There is no built-in local default.

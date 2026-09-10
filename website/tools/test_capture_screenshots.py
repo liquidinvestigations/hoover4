@@ -18,9 +18,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 def _corpus_pages():
+    here = Path(__file__).resolve()
     for candidate in (
-        Path(__file__).resolve().parents[1] / "browser-tests",
-        Path("/tmp/qa-completion-tests/browser-tests"),
+        here.parents[1] / "browser-tests",
+        here.parent / "browser-tests",
+        Path("/tmp/capture-tests/browser-tests"),
     ):
         if candidate.is_dir():
             return {page.name: page for page in MODULE.load_scenario_pages(candidate)}
@@ -263,6 +265,77 @@ class CredentialAndInventoryTests(unittest.TestCase):
         self.assertIn("alreadyExpanded", expand[0])
         self.assertIn("if(!expanded)", expand[0])
         self.assertTrue(any(verb == "wait_text_in" and "location-1" in argument for verb, argument in actions))
+
+
+class ReportVerdictTests(unittest.TestCase):
+    def test_each_severity_maps_to_the_named_verdict(self) -> None:
+        mapping = {
+            MODULE.APPLICATION_ERROR: "FAIL",
+            MODULE.EXPECTED_OUTCOME: "PASS",
+            MODULE.TRACE: "PASS",
+            MODULE.BEHAVIORAL_WARNING: "WARNING",
+            MODULE.DIAGNOSTIC_WARNING: "WARNING",
+            MODULE.INCOMPLETE_EXECUTION: "INCOMPLETE",
+        }
+        for severity, verdict in mapping.items():
+            self.assertEqual(MODULE.report_verdict(severity), verdict)
+        self.assertEqual(MODULE.report_verdict(None), "PASS")
+        self.assertEqual(MODULE.report_verdict("ok"), "PASS")
+        with self.assertRaises(ValueError):
+            MODULE.report_verdict("not_a_severity")
+
+    def test_application_error_row_is_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "run-test"
+            run_dir.mkdir()
+            png_dir = run_dir / "720p"
+            png_dir.mkdir()
+            (png_dir / "00-broken.png").write_bytes(b"\x89PNG")
+            (png_dir / "00-broken.snapshot.txt").write_text("outline\n", encoding="utf-8")
+            totals = {sev: 0 for sev in MODULE.ALL_SEVERITIES}
+            totals[MODULE.APPLICATION_ERROR] = 1
+            manifest = {
+                "target_label": "local development target",
+                "identity": "anonymous",
+                "revision": "rev1",
+                "resolutions": {"720p": [1280, 720]},
+                "pages": [
+                    {
+                        "stem": "00-broken",
+                        "slug": "002-broken",
+                        "summary": "Exercises the broken case.",
+                        "url": "/broken",
+                        "captures": [{"file": "720p/00-broken.png", "resolution": "720p"}],
+                        "observations": [{"severity": MODULE.APPLICATION_ERROR, "message": "missing"}],
+                        "verdict": MODULE.APPLICATION_ERROR,
+                    },
+                    {
+                        "stem": "01-skipped",
+                        "slug": "003-skipped",
+                        "summary": "Exercises the skipped case.",
+                        "url": "/skipped",
+                        "skipped": "dataset missing",
+                        "verdict": MODULE.INCOMPLETE_EXECUTION,
+                    },
+                ],
+                "totals": totals,
+            }
+            MODULE.write_reports(run_dir, "run-test", manifest, 1)
+            markdown = (run_dir / "report.md").read_text(encoding="utf-8")
+            html = (run_dir / "report.html").read_text(encoding="utf-8")
+            self.assertIn("| `002-broken` |", markdown)
+            self.assertIn("| FAIL |", markdown)
+            self.assertIn('width="500"', markdown)
+            self.assertIn('href="720p/00-broken.png"', markdown)
+            self.assertIn("[snapshot](720p/00-broken.snapshot.txt)", markdown)
+            self.assertIn("FAIL", html)
+            self.assertIn('width="500"', html)
+            self.assertIn('href="720p/00-broken.png"', html)
+            broken_at = markdown.find("`002-broken`")
+            skipped_at = markdown.find("`003-skipped`")
+            self.assertGreater(skipped_at, broken_at)
+            self.assertNotIn("http://", markdown.split("## pages", 1)[1])
+            self.assertNotIn("http://", html.split("<h2>Pages</h2>", 1)[1])
 
 
 if __name__ == "__main__":
