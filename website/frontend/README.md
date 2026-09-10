@@ -24,6 +24,7 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
 ## The document viewer's right-hand tabs
 
 PDF source changes invalidate previous controllers and await each viewer's disposal once.
+A failed registry destroy does not block the next open.
 Browser cleanup remains active after the PDF component is removed.
 
 `/view_document/…` ends with a `ViewerRightTabState` URL parameter naming one of three

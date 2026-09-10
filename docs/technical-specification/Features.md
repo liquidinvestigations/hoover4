@@ -64,7 +64,7 @@ languages.
 |---|---|---|
 | `F-doc-01` | Preview a result beside the list without leaving the search | `frontend/src/components/document_view_components/` |
 | `F-doc-02` | Choose among a document's text sources, each labelled by the extractor that produced it, while retaining the in-document query | `website/common/src/document_sources.rs` |
-| `F-doc-03` | Render PDF search hits at their source-specific positions and show each source's own count. Prior controllers cannot change the current viewer. | `api/search_document_pdf`, the viewer sidecar |
+| `F-doc-03` | Render PDF search hits at their source-specific positions and show each source's own count. Prior controllers cannot change the current viewer. A scroll request for a document that has no strategy leaves the viewer running. | `api/search_document_pdf`, `website/frontend/assets/embed-pdf/_viewer/embed-pdf.js`, `components/pdf-viewer/` |
 | `F-doc-04` | Show an email's headers, body and attachments, and say so explicitly when no body text was extracted | `api/documents/` |
 | `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging. Column visibility and filter controls open one centred modal with a closing backdrop. | `website/backend/src/api/documents/table_browse.rs`, `doc_preview_for_table.rs` |
 | `F-doc-06` | Show a document's extracted entities, filterable, with a detail card explaining a scanner value; a link may name one entity, which opens that card alone and says so when the document no longer carries the value | `api/documents/`, `main_services/regex_entity_scanner/` |

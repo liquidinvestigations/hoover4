@@ -1,0 +1,242 @@
+diff --git a/packages/plugin-scroll/src/lib/scroll-plugin.ts b/packages/plugin-scroll/src/lib/scroll-plugin.ts
+index 1440875b..274b6003 100644
+--- a/packages/plugin-scroll/src/lib/scroll-plugin.ts
++++ b/packages/plugin-scroll/src/lib/scroll-plugin.ts
+@@ -126,6 +126,14 @@ export class ScrollPlugin extends BasePlugin<
+     this.viewport.onViewportChange((event) => {
+       const docState = this.getDocumentState(event.documentId);
+       if (!docState) return;
++      if (!this.strategies.has(event.documentId)) {
++        this.logger.warn(
++          'ScrollPlugin',
++          'StrategyMissing',
++          `Skipping viewport metrics for document without a strategy: ${event.documentId}`,
++        );
++        return;
++      }
+ 
+       // Compute the metrics based on the incoming event
+       const computedMetrics = this.computeMetrics(event.documentId, event.metrics);
+@@ -152,7 +160,14 @@ export class ScrollPlugin extends BasePlugin<
+   // ─────────────────────────────────────────────────────────
+   protected override onDocumentLoadingStarted(documentId: string): void {
+     const coreDoc = this.getCoreDocument(documentId);
+-    if (!coreDoc) return;
++    if (!coreDoc) {
++      this.logger.warn(
++        'ScrollPlugin',
++        'LoadingStartSkipped',
++        `Core document missing while creating strategy: ${documentId}`,
++      );
++      return;
++    }
+     // Initialize scroll state for this document
+     const docState = this.createDocumentState(coreDoc);
+     this.dispatch(initScrollState(documentId, docState));
+@@ -160,6 +175,11 @@ export class ScrollPlugin extends BasePlugin<
+     // Create strategy for this document
+     const strategy = this.createStrategy(docState.strategy);
+     this.strategies.set(documentId, strategy);
++    this.logger.debug(
++      'ScrollPlugin',
++      'StrategyCreated',
++      `Created strategy for document: ${documentId}`,
++    );
+ 
+     // Create scroller layout emitter for this document
+     this.scrollerLayoutEmitters.set(documentId, createBehaviorEmitter<ScrollerLayout>());
+@@ -183,26 +203,22 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   protected override onDocumentClosed(documentId: string): void {
+-    // Cleanup strategy
++    // Remove scroll state before the strategy so a late scroll cannot look up a missing strategy.
++    this.dispatch(cleanupScrollState(documentId));
++
+     this.strategies.delete(documentId);
+ 
+-    // Cleanup layout ready tracking
+     this.layoutReady.delete(documentId);
+     this.initialLayoutFired.delete(documentId);
+ 
+-    // Cleanup elevated pages
+     this.elevatedPages.delete(documentId);
+ 
+-    // Cleanup scroller layout emitter
+     const emitter = this.scrollerLayoutEmitters.get(documentId);
+     if (emitter) {
+       emitter.clear();
+       this.scrollerLayoutEmitters.delete(documentId);
+     }
+ 
+-    // Cleanup state
+-    this.dispatch(cleanupScrollState(documentId));
+-
+     this.logger.debug(
+       'ScrollPlugin',
+       'DocumentClosed',
+@@ -377,11 +393,17 @@ export class ScrollPlugin extends BasePlugin<
+     return state;
+   }
+ 
+-  private getStrategy(documentId?: string): BaseScrollStrategy {
+-    const id = documentId ?? this.getActiveDocumentId();
++  private getStrategy(documentId?: string): BaseScrollStrategy | null {
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id) return null;
+     const strategy = this.strategies.get(id);
+     if (!strategy) {
+-      throw new Error(`Strategy not found for document: ${id}`);
++      this.logger.warn(
++        'ScrollPlugin',
++        'StrategyMissing',
++        `Strategy not found for document: ${id}`,
++      );
++      return null;
+     }
+     return strategy;
+   }
+@@ -468,6 +490,9 @@ export class ScrollPlugin extends BasePlugin<
+     totalContentSize: { width: number; height: number };
+   } {
+     const strategy = this.getStrategy(documentId);
++    if (!strategy) {
++      return { virtualItems: [], totalContentSize: { width: 0, height: 0 } };
++    }
+     const virtualItems = strategy.createVirtualItems(pages);
+     const totalContentSize = strategy.getTotalContentSize(virtualItems);
+     return { virtualItems, totalContentSize };
+@@ -478,10 +503,20 @@ export class ScrollPlugin extends BasePlugin<
+     vp: ViewportMetrics,
+     items?: VirtualItem[],
+   ): ScrollMetrics {
+-    const coreDocState = this.getCoreDocumentOrThrow(documentId);
++    const coreDocState = this.getCoreDocument(documentId);
+     const docState = this.getDocumentState(documentId);
+     const strategy = this.getStrategy(documentId);
+-    if (!docState) throw new Error(`Document state not found: ${documentId}`);
++    if (!coreDocState || !docState || !strategy) {
++      return {
++        currentPage: docState?.currentPage ?? 1,
++        visiblePages: [],
++        pageVisibilityMetrics: [],
++        renderedPageIndexes: [],
++        scrollOffset: docState?.scrollOffset ?? { x: 0, y: 0 },
++        startSpacing: 0,
++        endSpacing: 0,
++      };
++    }
+ 
+     return strategy.handleScroll(vp, items ?? docState.virtualItems, coreDocState.scale);
+   }
+@@ -590,10 +625,22 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   private scrollToPage(options: ScrollToPageOptions, documentId?: string): void {
+-    const id = documentId ?? this.getActiveDocumentId();
+-    const docState = this.getDocumentStateOrThrow(id);
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id) {
++      this.logger.warn('ScrollPlugin', 'ScrollSkipped', 'No document id for scrollToPage');
++      return;
++    }
++    const docState = this.getDocumentState(id);
+     const strategy = this.getStrategy(id);
+-    const coreDoc = this.getCoreDocumentOrThrow(id);
++    const coreDoc = this.getCoreDocument(id);
++    if (!docState || !strategy || !coreDoc) {
++      this.logger.warn(
++        'ScrollPlugin',
++        'ScrollSkipped',
++        `Cannot scroll document without state or strategy: ${id}`,
++      );
++      return;
++    }
+ 
+     const { pageNumber, behavior = 'smooth', pageCoordinates, alignX, alignY } = options;
+ 
+@@ -620,10 +667,12 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   private scrollToNextPage(behavior: ScrollBehavior = 'smooth', documentId?: string): void {
+-    const id = documentId ?? this.getActiveDocumentId();
+-    const docState = this.getDocumentStateOrThrow(id);
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id) return;
++    const docState = this.getDocumentState(id);
+     const strategy = this.getStrategy(id);
+-    const coreDoc = this.getCoreDocumentOrThrow(id);
++    const coreDoc = this.getCoreDocument(id);
++    if (!docState || !strategy || !coreDoc) return;
+ 
+     const currentItemIndex = docState.virtualItems.findIndex((item) =>
+       item.pageNumbers.includes(docState.currentPage),
+@@ -652,10 +701,12 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   private scrollToPreviousPage(behavior: ScrollBehavior = 'smooth', documentId?: string): void {
+-    const id = documentId ?? this.getActiveDocumentId();
+-    const docState = this.getDocumentStateOrThrow(id);
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id) return;
++    const docState = this.getDocumentState(id);
+     const strategy = this.getStrategy(id);
+-    const coreDoc = this.coreState.core.documents[id];
++    const coreDoc = this.getCoreDocument(id);
++    if (!docState || !strategy || !coreDoc) return;
+ 
+     const currentItemIndex = docState.virtualItems.findIndex((item) =>
+       item.pageNumbers.includes(docState.currentPage),
+@@ -684,7 +735,18 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   private getMetrics(viewport?: ViewportMetrics, documentId?: string): ScrollMetrics {
+-    const id = documentId ?? this.getActiveDocumentId();
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id || !this.getStrategy(id) || !this.getDocumentState(id)) {
++      return {
++        currentPage: 1,
++        visiblePages: [],
++        pageVisibilityMetrics: [],
++        renderedPageIndexes: [],
++        scrollOffset: { x: 0, y: 0 },
++        startSpacing: 0,
++        endSpacing: 0,
++      };
++    }
+ 
+     if (viewport) {
+       return this.computeMetrics(id, viewport);
+@@ -709,10 +771,12 @@ export class ScrollPlugin extends BasePlugin<
+     rotation?: Rotation,
+     documentId?: string,
+   ): Rect | null {
+-    const id = documentId ?? this.getActiveDocumentId();
+-    const docState = this.getDocumentStateOrThrow(id);
++    const id = documentId ?? this.getActiveDocumentIdOrNull();
++    if (!id) return null;
++    const docState = this.getDocumentState(id);
+     const strategy = this.getStrategy(id);
+-    const coreDoc = this.getCoreDocumentOrThrow(id);
++    const coreDoc = this.getCoreDocument(id);
++    if (!docState || !strategy || !coreDoc) return null;
+ 
+     // Calculate effective rotation if not provided (page intrinsic + document rotation)
+     let effectiveRotation = rotation;
+@@ -782,6 +846,8 @@ export class ScrollPlugin extends BasePlugin<
+   }
+ 
+   async destroy(): Promise<void> {
++    super.destroy();
++
+     this.strategies.clear();
+     this.layoutReady.clear();
+     this.initialLayoutFired.clear();
+@@ -799,7 +865,5 @@ export class ScrollPlugin extends BasePlugin<
+     this.pageChangeState$.clear();
+     this.layoutReady$.clear();
+     this.state$.clear();
+-
+-    super.destroy();
+   }
+ }

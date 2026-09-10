@@ -111,9 +111,20 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let total_pages = use_signal(move || controller().total_pages());
     let set_page = Callback::new(move |new_page: i32| {
         if !controller().is_active() {
+            info!(
+                "pdf-lifecycle skip-stale-scroll generation={} current={}",
+                controller().inner.source_generation,
+                controller().inner.source_lifetime.get()
+            );
             return;
         }
         let new_page = new_page.clamp(1, total_pages());
+        info!(
+            "pdf-lifecycle rust-scroll-page generation={} document_id={} page={}",
+            controller().inner.source_generation,
+            controller().document_id(),
+            new_page
+        );
         controller().inner.scroll_api.scrollToPage(
             scroll_to_page_options(new_page, 0., 0., 0.),
             controller().document_id(),
@@ -152,6 +163,11 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
 
     let set_search_idx = Callback::new(move |new_idx: i32| {
         if !controller().is_active() {
+            info!(
+                "pdf-lifecycle skip-stale-search-hit generation={} current={}",
+                controller().inner.source_generation,
+                controller().inner.source_lifetime.get()
+            );
             return;
         }
         if search_hit_count() == 0 {
@@ -318,6 +334,10 @@ pub fn PdfViewer(
     let source_lifetime_for_drop = source_lifetime.clone();
     use_drop(move || {
         source_lifetime_for_drop.set(source_lifetime_for_drop.get() + 1);
+        info!(
+            "pdf-lifecycle rust-drop generation={}",
+            source_lifetime_for_drop.get()
+        );
         let promise = x_dispose_pdf_viewer();
         wasm_bindgen_futures::spawn_local(async move {
             if let Err(error) = wasm_bindgen_futures::JsFuture::from(promise).await {
@@ -346,6 +366,10 @@ pub fn PdfViewer(
         }
         let source_generation = source_lifetime.get() + 1;
         source_lifetime.set(source_generation);
+        info!(
+            "pdf-lifecycle rust-open generation={} url={}",
+            source_generation, pdf_url
+        );
         let source_lifetime_for_callback = source_lifetime.clone();
 
         let cb = move |pdf_url: String,
@@ -356,8 +380,12 @@ pub fn PdfViewer(
             if source_lifetime_for_callback.get() != source_generation {
                 return;
             }
-            let loaded_event =
+            let loaded_event: PdfLoadedEvent =
                 serde_wasm_bindgen::from_value(event).expect("Failed to deserialize loaded event");
+            info!(
+                "pdf-lifecycle rust-loaded generation={} document_id={}",
+                source_generation, loaded_event.documentId
+            );
             proxy_cb.call(PdfViewerControllerJs {
                 inner: Arc::new(PdfViewerControllerInnerJs {
                     pdf_url: pdf_url,

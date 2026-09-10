@@ -59,6 +59,12 @@ docker cp website/frontend/assets/embed-pdf/_viewer/embed-pdf.js hoover4-mcp-bro
 docker exec -e PDF_VIEWER_SCRIPT=/tmp/pdf-lifecycle-tests/viewer.js hoover4-mcp-browser node --test /tmp/pdf-lifecycle-tests/test.cjs
 ```
 
+Run the scroll-plugin strategy tests against the compiled nested package. Mount the repository into a browser-image container because `hoover4-mcp-browser` has no bind mounts.
+
+```sh
+docker run --rm --entrypoint node -v "$PWD":/repo -w /repo localhost/hoover4-mcp-browser:local --test /repo/components/pdf-viewer/test_scroll_strategy_lifecycle.cjs
+```
+
 ## Manual QA fixtures
 
 Run `website/tools/prepare_manual_qa.sh` from the repository root.

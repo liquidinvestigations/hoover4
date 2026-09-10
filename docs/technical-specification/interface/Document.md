@@ -33,6 +33,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 
 - PDF source changes invalidate previous callbacks and dispose each viewer once.
 - PDF disposal completes after its component is removed.
+- A missing scroll strategy skips that scroll request and leaves the current viewer running.
 - Opening a result in a new tab preserves the search preview and its find query.
 - The column modal closes from its backdrop and Escape.
 - The modal returns focus to its opening control.

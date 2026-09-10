@@ -99,3 +99,36 @@ test('rapid source changes wait for disposal and initialize only the latest sour
   assert.equal(viewers[0].destroys, 1);
   await context.window.x_dispose_pdf_viewer();
 });
+
+test('a failed registry destroy does not block the next open', async () => {
+  const { context, viewers } = environment();
+  const first = context.window.x_open_pdf_viewer('old.pdf', () => {});
+  await waitForViewers(viewers, 1);
+  viewers[0].registry.destroy = async () => {
+    viewers[0].destroys += 1;
+    throw new Error('destroy failed');
+  };
+  viewers[0].pending.resolve(viewers[0].registry);
+  assert.equal(await first, true);
+  const second = context.window.x_open_pdf_viewer('current.pdf', () => {});
+  await waitForViewers(viewers, 2);
+  viewers[1].pending.resolve(viewers[1].registry);
+  assert.equal(await second, true);
+  assert.equal(viewers[0].destroys, 1);
+  assert.equal(viewers[1].destroys, 0);
+  await context.window.x_dispose_pdf_viewer();
+  assert.equal(viewers[1].destroys, 1);
+});
+
+test('layout ready records generation and document identity', async () => {
+  const { context, viewers } = environment();
+  const opened = context.window.x_open_pdf_viewer('current.pdf', () => {});
+  await waitForViewers(viewers, 1);
+  viewers[0].pending.resolve(viewers[0].registry);
+  assert.equal(await opened, true);
+  viewers[0].layout({ documentId: 'x-pdf-viewer-doc-id', isInitial: true, pageNumber: 1, totalPages: 1 });
+  const events = context.window.x_pdf_lifecycle.map(row => row.event);
+  assert.ok(events.includes('open-start'));
+  assert.ok(events.includes('layout-ready'));
+  await context.window.x_dispose_pdf_viewer();
+});
