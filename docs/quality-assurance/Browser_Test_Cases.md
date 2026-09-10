@@ -114,17 +114,17 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 |---|---|---|---|
 | `201-view-doc-pdf-entities` | Exercises the view doc pdf entities case. | `testdata_testfiles` | `--names view-doc-pdf-entities` |
 | `202-view-doc-pdf-metadata` | Exercises the view doc pdf metadata case. | `testdata_testfiles` | `--names view-doc-pdf-metadata` |
-| `203-view-doc-image` | Exercises the view doc image case. | `other_emails` | `--names view-doc-image` |
-| `204-view-doc-email-metadata` | Exercises the view doc email metadata case. | `other_emails` | `--names view-doc-email-metadata` |
-| `205-view-doc-email-without-body` | Exercises the view doc email without body case. | `other_emails` | `--names view-doc-email-without-body` |
+| `203-view-doc-image` | Exercises the view doc image case. | `testdata_emails` | `--names view-doc-image` |
+| `204-view-doc-email-metadata` | Exercises the view doc email metadata case. | `testdata_emails` | `--names view-doc-email-metadata` |
+| `205-view-doc-email-without-body` | Exercises the view doc email without body case. | `testdata_emails` | `--names view-doc-email-without-body` |
 | `206-view-doc-text` | Exercises the view doc text case. | `testdata_testfiles` | `--names view-doc-text` |
 | `207-view-doc-docx-metadata` | Exercises the view doc docx metadata case. | `testdata_testfiles` | `--names view-doc-docx-metadata` |
 | `208-view-doc-file-locations-source` | Exercises the view doc file locations source case. | `testdata_testfiles` | `--names view-doc-file-locations-source` |
 | `209-view-doc-metadata-source` | Exercises the view doc metadata source case. | `testdata_testfiles` | `--names view-doc-metadata-source` |
 | `210-view-doc-file-locations-multi` | Exercises the view doc file locations multi case. | `testdata_zips` | `--names view-doc-file-locations-multi` |
 | `211-view-doc-stale-bookmark` | Exercises the view doc stale bookmark case. | none named | `--names view-doc-stale-bookmark` |
-| `212-view-doc-three-tabs` | Exercises the view doc three tabs case. | `other_emails` | `--names view-doc-three-tabs` |
-| `213-view-doc-file-locations-tab` | Exercises the view doc file locations tab case. | `other_emails` | `--names view-doc-file-locations-tab` |
+| `212-view-doc-three-tabs` | Exercises the view doc three tabs case. | `testdata_emails` | `--names view-doc-three-tabs` |
+| `213-view-doc-file-locations-tab` | Exercises the view doc file locations tab case. | `testdata_emails` | `--names view-doc-file-locations-tab` |
 | `214-view-doc-entity-card` | Exercises the view doc entity card case. | `testdata_testfiles` | `--names view-doc-entity-card` |
 | `215-view-doc-entity-card-stale` | Exercises the view doc entity card stale case. | `testdata_testfiles` | `--names view-doc-entity-card-stale` |
 
@@ -150,11 +150,11 @@ Collection storage, archives, breadcrumbs, and landing pages.
 | `314-qa-storage-cold-expansion` | Exercises the qa storage cold expansion case. | `testdata_zips, testdata_shapes` | `--names qa-storage-cold-expansion` |
 | `315-qa-storage-warm-navigation` | Exercises the qa storage warm navigation case. | `testdata_zips` | `--names qa-storage-warm-navigation` |
 | `316-qa-storage-back` | Exercises the qa storage back case. | `testdata_zips` | `--names qa-storage-back` |
-| `317-storage-emails` | Exercises the storage emails case. | `other_emails` | `--names storage-emails` |
-| `318-storage-email-preview` | Exercises the storage email preview case. | `other_emails` | `--names storage-email-preview` |
+| `317-storage-emails` | Exercises the storage emails case. | `testdata_emails` | `--names storage-emails` |
+| `318-storage-email-preview` | Exercises the storage email preview case. | `testdata_emails` | `--names storage-email-preview` |
 | `319-storage-container-by-url` | Exercises the storage container by url case. | `testdata_zips` | `--names storage-container-by-url` |
 | `320-storage-tree-unified` | Exercises the storage tree unified case. | `testdata_shapes` | `--names storage-tree-unified` |
-| `321-storage-tree-two-datasets` | Exercises the storage tree two datasets case. | `testdata_zips,other_emails` | `--names storage-tree-two-datasets` |
+| `321-storage-tree-two-datasets` | Exercises the storage tree two datasets case. | `testdata_zips,testdata_emails` | `--names storage-tree-two-datasets` |
 | `322-storage-tree-unified-600px` | Exercises the storage tree unified 600px case. | `testdata_shapes` | `--names storage-tree-unified-600px` |
 | `323-storage-collection-landing` | Exercises the storage collection landing case. | none named | `--names storage-collection-landing` |
 | `324-storage-collection-landing-other` | Exercises the storage collection landing other case. | none named | `--names storage-collection-landing-other` |
