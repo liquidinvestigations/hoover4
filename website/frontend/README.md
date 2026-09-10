@@ -43,9 +43,10 @@ metadata panel is offered as a preview source in the source dropdown.
 ## The Collections filter is composed client-side
 
 The storage tree retains child pages and resolved paths while its dataset remains mounted.
-Moving the deep-chain elision boundary can recreate descendant rows despite cached data.
+A shared keyed visible-row sequence keeps common folder rows mounted when the elision resume parent changes. Each row is a keyed element sibling, so a new tail row does not recreate the ones that stay visible.
 The file browser shares each resolved path between its tree and breadcrumbs.
 Navigation or remount refreshes entries older than five seconds while existing rows remain visible.
+Each structure response records how many datastore queries produced it, separately from the browser request count.
 Dataset summaries identify leaf datasets, which have no disclosure control.
 Container-root routes resolve the archive row by dataset and content identity.
 Duplicate archive locations use a stable path order because the route does not identify an outer occurrence.

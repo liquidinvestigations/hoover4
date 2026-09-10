@@ -16,7 +16,7 @@
 //! worse than a slow one. These queries are cheap: one small attribute table, no text.
 
 use common::current_user::CurrentUser;
-use common::vfs::{VfsNodeKind, VfsTreeChildren, VfsTreeNode};
+use common::vfs::{VfsNodeKind, VfsTreeChildren, VfsTreeNode, VfsTreePath};
 use serde::{Deserialize, Serialize};
 
 use crate::api::admin::collections::collectionname_valid;
@@ -155,11 +155,14 @@ pub async fn vfs_tree_children(
         folders_only,
         &options_clause,
     );
+    let started = std::time::Instant::now();
     let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
     Ok(VfsTreeChildren {
         parent_key: node_key,
         total: response.hits.total,
         nodes: response.hits.hits.into_iter().map(|h| h._source.into()).collect(),
+        datastore_queries: 1,
+        took_ms: started.elapsed().as_millis() as u64,
     })
 }
 
@@ -173,10 +176,23 @@ pub async fn vfs_tree_path_to(
     collection_dataset: String,
     node_key: String,
 ) -> anyhow::Result<Vec<VfsTreeNode>> {
+    Ok(vfs_tree_path_with_stats(user, collection_dataset, node_key).await?.nodes)
+}
+
+/// The ancestor walk plus how many structure-index queries it issued.
+///
+/// One hop is one query. A browser request count cannot stand in for this figure.
+pub async fn vfs_tree_path_with_stats(
+    user: &CurrentUser,
+    collection_dataset: String,
+    node_key: String,
+) -> anyhow::Result<VfsTreePath> {
     let table = structure_table(user, &collection_dataset).await?;
+    let started = std::time::Instant::now();
     let mut chain: Vec<VfsTreeNode> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     let mut cursor = node_key;
+    let mut datastore_queries = 0;
 
     while !cursor.is_empty() && chain.len() < MAX_PATH_DEPTH {
         if !seen.insert(cursor.clone()) {
@@ -196,6 +212,7 @@ pub async fn vfs_tree_path_to(
             format_sql_query::QuotedData(&cursor),
             sql_options_clause(1),
         );
+        datastore_queries += 1;
         let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
         let Some(hit) = response.hits.hits.into_iter().next() else {
             break;
@@ -205,7 +222,11 @@ pub async fn vfs_tree_path_to(
         chain.push(node);
     }
     chain.reverse();
-    Ok(chain)
+    Ok(VfsTreePath {
+        nodes: chain,
+        datastore_queries,
+        took_ms: started.elapsed().as_millis() as u64,
+    })
 }
 
 /// Resolve an archive or email container hash to the materialised row that enters it.
@@ -250,13 +271,25 @@ pub async fn vfs_search_in_folder(
     let table = structure_table(user, &collection_dataset).await?;
     let cleaned = sanitize_folder_search(&pattern);
     if cleaned.is_empty() {
-        return Ok(VfsTreeChildren { parent_key: node_key, nodes: Vec::new(), total: 0 });
+        return Ok(VfsTreeChildren {
+            parent_key: node_key,
+            nodes: Vec::new(),
+            total: 0,
+            datastore_queries: 0,
+            took_ms: 0,
+        });
     }
     let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
     let options_clause = sql_options_clause(limit.max(1000));
     let Some(ancestor_id) = node_term_id(&collection_dataset, &node_key).await? else {
         // The node has never been an ancestor of anything, so nothing is under it.
-        return Ok(VfsTreeChildren { parent_key: node_key, nodes: Vec::new(), total: 0 });
+        return Ok(VfsTreeChildren {
+            parent_key: node_key,
+            nodes: Vec::new(),
+            total: 0,
+            datastore_queries: 0,
+            took_ms: 0,
+        });
     };
     let sql = format!(
         "
@@ -273,11 +306,14 @@ pub async fn vfs_search_in_folder(
         format_sql_query::QuotedData(&collection_dataset),
         quoted_manticore_string(&format!("*{cleaned}*")),
     );
+    let started = std::time::Instant::now();
     let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
     Ok(VfsTreeChildren {
         parent_key: node_key,
         total: response.hits.total,
         nodes: response.hits.hits.into_iter().map(|h| h._source.into()).collect(),
+        datastore_queries: 1,
+        took_ms: started.elapsed().as_millis() as u64,
     })
 }
 
@@ -416,5 +452,17 @@ mod tests {
         assert_eq!(sanitize_folder_search("***"), "");
         assert_eq!(sanitize_folder_search("   "), "");
         assert_eq!(sanitize_folder_search(""), "");
+    }
+
+    #[test]
+    fn missing_query_stats_deserialise_as_zero() {
+        let children: VfsTreeChildren = serde_json::from_str(
+            r#"{"parent_key":"p","nodes":[],"total":0}"#,
+        )
+        .unwrap();
+        assert_eq!(children.datastore_queries, 0);
+        assert_eq!(children.took_ms, 0);
+        let path: VfsTreePath = serde_json::from_str(r#"{"nodes":[]}"#).unwrap();
+        assert_eq!(path.datastore_queries, 0);
     }
 }

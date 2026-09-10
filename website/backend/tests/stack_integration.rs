@@ -1075,6 +1075,20 @@ async fn vfs_tree_path_to_walks_the_whole_chain() {
     }
     // Depth is strictly increasing, so the breadcrumb renders top-to-bottom as given.
     assert!(chain.windows(2).all(|p| p[1].depth > p[0].depth));
+
+    let measured = backend::api::vfs::vfs_tree_path_with_stats(
+        &admin_user(),
+        SHAPES.to_string(),
+        make_node_key(SHAPES, "", &deep_path),
+    )
+    .await
+    .unwrap();
+    assert_eq!(measured.nodes.len(), chain.len());
+    assert_eq!(
+        measured.datastore_queries,
+        measured.nodes.len() as u64,
+        "one structure query per ancestor hop, not one per browser request"
+    );
 }
 
 /// The chain CROSSES a container boundary. This is the case `PathDescriptor` cannot

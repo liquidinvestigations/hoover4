@@ -30,7 +30,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.result_step` | previous/next result | moves the selection within the list, crossing a page boundary when it runs out | disabled at the ends rather than hidden |
 | `.result_card` | a result | selects it into the preview pane | selection is part of the URL, so the browser's back button steps through selections |
 | `.card_actions` | per-result actions, open the document page, open its folder | leave the search for another page | opens in the same tab: an action that silently opens a background tab reads as an action that did nothing |
-| `.tree` | folder tree | narrows to a path within a collection | Each endpoint request is uncached. Navigation or remount revalidates browser entries older than five seconds while retaining current rows. Moving the elision boundary can recreate descendant rows. |
+| `.tree` | folder tree | narrows to a path within a collection | Each endpoint request is uncached. Navigation or remount revalidates browser entries older than five seconds while retaining current rows. A shared keyed visible-row sequence keeps common folder rows mounted when the elision resume parent changes. Each visible row is a keyed element sibling. |
 | `.preview` | preview pane, source selector, in-document search, page navigation | reads the selected document without leaving the page | the pane's arrangement is part of the URL. A source change retains the find query and invalidates prior PDF controller work. |
 
 ## States

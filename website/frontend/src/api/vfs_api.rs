@@ -5,7 +5,7 @@
 //! through the NON-caching primitive: the tree changes while ingestion runs, and a
 //! stale tree is worse than a slow one.
 
-use common::vfs::{VfsTreeChildren, VfsTreeNode};
+use common::vfs::{VfsTreeChildren, VfsTreeNode, VfsTreePath};
 use dioxus::prelude::*;
 
 /// The file browser shares its resolved path between the tree and breadcrumbs.
@@ -51,9 +51,9 @@ pub async fn vfs_tree_children(
 pub async fn vfs_tree_path_to(
     collection_dataset: String,
     node_key: String,
-) -> Result<Vec<VfsTreeNode>, ServerFnError> {
+) -> Result<VfsTreePath, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::vfs::vfs_tree_path_to(&user, collection_dataset, node_key)
+    backend::api::vfs::vfs_tree_path_with_stats(&user, collection_dataset, node_key)
         .await
         .map_err(to_server_fn_error)
 }

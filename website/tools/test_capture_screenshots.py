@@ -216,6 +216,22 @@ class CredentialAndInventoryTests(unittest.TestCase):
         self.assertTrue(any("incomplete" in argument for verb, argument in empty.actions))
         self.assertEqual(rescan.actions, [("wait_text", "Rescan disk"), ("sleep", "800")])
 
+    def test_cold_expansion_does_not_toggle_an_open_dataset(self) -> None:
+        ini = Path(__file__).resolve().parents[1] / "screenshots.ini"
+        if not ini.is_file():
+            ini = Path("/tmp/qa-completion-tests/screenshots.ini")
+        if not ini.is_file():
+            self.skipTest("screenshots.ini is not beside the copied tools")
+        pages = {page.name: page for page in MODULE.parse_pages(ini)}
+        actions = pages["qa-storage-cold-expansion"].actions
+        verbs = [verb for verb, _ in actions]
+        self.assertNotIn("pointer_click_css", verbs)
+        expand = [argument for verb, argument in actions if verb == "eval"]
+        self.assertTrue(expand)
+        self.assertIn("alreadyExpanded", expand[0])
+        self.assertIn("if(!expanded)", expand[0])
+        self.assertTrue(any(verb == "wait_text_in" and "location-1" in argument for verb, argument in actions))
+
 
 if __name__ == "__main__":
     unittest.main()

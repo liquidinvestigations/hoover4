@@ -156,11 +156,29 @@ impl VfsTreeNode {
 
 /// One page of a node's children, with the "there are more" flag the tree needs to
 /// render its "N more…" row rather than silently truncating.
+///
+/// `datastore_queries` is how many structure-index round trips produced this page.
+/// `took_ms` is the time those queries took. Browser-request totals cannot replace either
+/// figure, because one path request walks every ancestor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct VfsTreeChildren {
     pub parent_key: String,
     pub nodes: Vec<VfsTreeNode>,
     pub total: u64,
+    #[serde(default)]
+    pub datastore_queries: u64,
+    #[serde(default)]
+    pub took_ms: u64,
+}
+
+/// The ancestor chain from the dataset root to one node, plus the query cost of the walk.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct VfsTreePath {
+    pub nodes: Vec<VfsTreeNode>,
+    #[serde(default)]
+    pub datastore_queries: u64,
+    #[serde(default)]
+    pub took_ms: u64,
 }
 
 /// One place a file hash appears, with the chain that leads to it.

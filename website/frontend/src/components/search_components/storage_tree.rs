@@ -11,11 +11,10 @@
 //! by an embedded [`VfsTree`] only once its row is expanded. A corpus of N collections x
 //! M datasets therefore costs one request on mount, not N x M.
 //!
-//! Everything below a dataset row (ancestor elision, sibling capping, the indent ladder,
-//! the tri-state checkbox) is the existing per-dataset tree, unchanged. The only thing
-//! this level hands it is [`SYNTHETIC_LEVELS`], which is the ladder rung its folders start
-//! on, so the two rows above a folder are paid for out of the same indent budget rather
-//! than being added on top of it.
+//! Everything below a dataset row uses the shared keyed visible-row sequence in
+//! [`VfsTree`]: ancestor elision, sibling capping, the indent ladder, and the tri-state
+//! checkbox. This level only supplies [`SYNTHETIC_LEVELS`], the rung its folders start
+//! on, so the two rows above a folder stay inside the same indent budget.
 
 use std::collections::BTreeSet;
 
@@ -33,8 +32,8 @@ use dioxus_free_icons::{
 
 use crate::api::storage_api::list_storage_tree;
 use crate::components::search_components::vfs_tree::{
-    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, TreeSkin, TriState, VfsTree,
-    indent_style, tri_state_icon, window_siblings,
+    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, TREE_QUERY_LOG, TreeSkin, TriState,
+    VfsTree, indent_style, tree_query_log_json, tri_state_icon, window_siblings,
 };
 
 /// Rows above a folder: the collection and the dataset. Folders indent from here.
@@ -278,7 +277,20 @@ pub fn StorageTree(
             // Vertical scrolling only, like the folder tree it contains: a long dataset
             // name may not make the sidebar scroll sideways, at any width.
             style: "width: 100%; min-width: 0; overflow-x: hidden;",
+            TreeQueryLogProbe {}
             {body}
+        }
+    }
+}
+
+/// Hidden query-cost log. A child so a new structure response does not re-render every row.
+#[component]
+fn TreeQueryLogProbe() -> Element {
+    rsx! {
+        div {
+            id: "x-vfs-query-log",
+            style: "display: none;",
+            "{tree_query_log_json(&TREE_QUERY_LOG())}"
         }
     }
 }
@@ -514,6 +526,7 @@ fn SyntheticRow(
             if has_disclosure {
                 button {
                     id: "{toggle_id}",
+                    "aria-expanded": if is_expanded { "true" } else { "false" },
                     style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
                     onclick: toggle,
                     if is_expanded {

@@ -81,6 +81,34 @@ pub(crate) fn browser_now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// One structure-index response, for tests that must not confuse it with a browser request.
+#[derive(Clone, PartialEq)]
+pub(crate) struct TreeQueryEvent {
+    pub kind: &'static str,
+    pub from_cache: bool,
+    pub datastore_queries: u64,
+    pub took_ms: u64,
+}
+
+pub(crate) static TREE_QUERY_LOG: GlobalSignal<Vec<TreeQueryEvent>> = Signal::global(Vec::new);
+
+pub(crate) fn record_tree_query(kind: &'static str, from_cache: bool, datastore_queries: u64, took_ms: u64) {
+    TREE_QUERY_LOG.write().push(TreeQueryEvent { kind, from_cache, datastore_queries, took_ms });
+}
+
+pub(crate) fn tree_query_log_json(events: &[TreeQueryEvent]) -> String {
+    let parts: Vec<String> = events
+        .iter()
+        .map(|event| {
+            format!(
+                "{{\"kind\":\"{}\",\"from_cache\":{},\"datastore_queries\":{},\"took_ms\":{}}}",
+                event.kind, event.from_cache, event.datastore_queries, event.took_ms
+            )
+        })
+        .collect();
+    format!("[{}]", parts.join(","))
+}
+
 /// Rungs that get the full [`INDENT_PX`] step. Past this the step shrinks to
 /// [`DEEP_INDENT_PX`]; it never stops.
 ///
@@ -199,6 +227,10 @@ pub struct TreeContext {
     pub unfolded: Signal<BTreeSet<String>>,
     /// Child pages retained for this mounted dataset tree, keyed by parent and offset.
     child_pages: Signal<BTreeMap<(String, u64), CachedChildren>>,
+    /// Next children offset the level is asking for. Zero until the user pages.
+    page_offsets: Signal<BTreeMap<String, u64>>,
+    /// Fetch errors keyed by parent, so a failed page stays a row rather than a blank.
+    fetch_errors: Signal<BTreeMap<String, String>>,
 }
 
 /// The tree rooted at one dataset.
@@ -226,6 +258,8 @@ pub fn VfsTree(
     let focus_chain = use_signal(Vec::<String>::new);
     let unfolded = use_signal(BTreeSet::<String>::new);
     let child_pages = use_signal(BTreeMap::<(String, u64), CachedChildren>::new);
+    let page_offsets = use_signal(BTreeMap::<String, u64>::new);
+    let fetch_errors = use_signal(BTreeMap::<String, String>::new);
     use_context_provider({
         let collection_dataset = collection_dataset.clone();
         move || TreeContext {
@@ -238,6 +272,8 @@ pub fn VfsTree(
             focus_chain,
             unfolded,
             child_pages,
+            page_offsets,
+            fetch_errors,
         }
     });
     let expanded = use_signal(|| initially_expanded.iter().cloned().collect::<BTreeSet<String>>());
@@ -265,11 +301,13 @@ pub fn VfsTree(
                 if let Some((fetched_at, nodes)) = cached
                     && browser_now_ms() - fetched_at < CHILDREN_CACHE_TTL_MS
                 {
+                    record_tree_query("path", true, 0, 0);
                     return Ok(Some((key, nodes)));
                 }
                 let nodes = vfs_tree_path_to(collection_dataset, key.clone()).await?;
-                cached_paths.write().insert(key.clone(), (browser_now_ms(), nodes.clone()));
-                Ok(Some((key, nodes)))
+                record_tree_query("path", false, nodes.datastore_queries, nodes.took_ms);
+                cached_paths.write().insert(key.clone(), (browser_now_ms(), nodes.nodes.clone()));
+                Ok(Some((key, nodes.nodes)))
             }
         }
     });
@@ -297,6 +335,28 @@ pub fn VfsTree(
         }
     });
 
+    let pages_now = child_pages();
+    let expanded_now = expanded();
+    let unfolded_now = unfolded();
+    let chain_now = focus_chain();
+    let errors_now = fetch_errors();
+    let items = visible_items(
+        &root_key,
+        indent_offset,
+        &chain_now,
+        &unfolded_now,
+        &expanded_now,
+        &pages_now,
+        &errors_now,
+    );
+    let fetches = needed_parents(
+        &root_key,
+        &chain_now,
+        &unfolded_now,
+        &expanded_now,
+        &pages_now,
+    );
+
     rsx! {
         div {
             // The container scrolls VERTICALLY only. `overflow-x: hidden` is the second
@@ -306,342 +366,24 @@ pub fn VfsTree(
             if let Some(Err(error)) = chain.read().as_ref() {
                 div { class: "x-error-display", "Could not load the folder path: {error}" }
             }
-            VfsTreeLevel { parent_key: root_key, depth: 0, rung: indent_offset }
-        }
-    }
-}
-
-/// What one level needs to know about the focus chain, and nothing more.
-///
-/// The point of the type is its `PartialEq`: it is what a level's focus memo compares, so
-/// a focus change somewhere else in the tree resolves to an unchanged value here and the
-/// level does not re-render.
-#[derive(Clone, PartialEq, Default)]
-struct LevelFocus {
-    /// The child of this level that the chain continues through. `None` when this level
-    /// is not on the path at all, which is the common case and the whole saving.
-    next_on_path: Option<String>,
-    /// Set only on the level that RENDERS the elision gap, with the key the chain resumes
-    /// at already resolved.
-    elision_resume: Option<(AncestorElision, String)>,
-}
-
-/// One level of the tree: either the elision gap, or the level itself.
-///
-/// The split is not cosmetic. Deciding elision needs the focus chain, and fetching the
-/// children needs a resource. Putting both in one component would mean a `use_resource`
-/// that sometimes runs and sometimes does not, which is a hook-order violation and also
-/// a wasted query against a level nobody is going to see.
-#[component]
-fn VfsTreeLevel(
-    parent_key: String,
-    depth: usize,
-    /// The ladder rung this level's rows render on. Not `depth`: ancestor elision skips
-    /// tree levels without skipping ladder rungs, which is what keeps a 42-deep chain
-    /// stepping inside a sidebar. See the module docs.
-    rung: usize,
-) -> Element {
-    let context = use_context::<TreeContext>();
-    let mut unfolded = context.unfolded;
-    let focus_chain = context.focus_chain;
-    let unfolded_signal = context.unfolded;
-
-    // Is this level on the path to the focused node, and if so which of its children is
-    // the next step? Everything below keys off those answers, and they are read through
-    // a MEMO rather than straight out of the signal. Reading `focus_chain` in the render
-    // subscribes the level to the whole chain, so every mounted level re-renders whenever
-    // the focus moves anywhere in the tree. A level that is not on the new path computes
-    // the same `LevelFocus::default()` it had before, and a memo whose value did not
-    // change wakes nobody.
-    let level_focus = use_memo(use_reactive!(|parent_key, depth| {
-        let chain = focus_chain.read();
-        if !chain.get(depth).is_some_and(|key| *key == parent_key) {
-            return LevelFocus::default();
-        }
-        // `chain_rows` is one less than the chain length: the dataset root is the tree
-        // container rather than a row in it.
-        let elision = elide_ancestors(chain.len().saturating_sub(1));
-        LevelFocus {
-            next_on_path: chain.get(depth + 1).cloned(),
-            // Resolved here, inside the memo, so the level never has to hold the chain.
-            elision_resume: elision
-                .filter(|elision| elision.head == depth)
-                .and_then(|elision| {
-                    Some((elision, chain.get(elision.resume_depth)?.clone()))
-                }),
-        }
-    }));
-    // Same reasoning for the unfolded set: one boolean per level, not the whole set.
-    let is_unfolded =
-        use_memo(use_reactive!(|parent_key| unfolded_signal.read().contains(&parent_key)));
-
-    let focus = level_focus();
-    let next_on_path = focus.next_on_path.clone();
-    let is_unfolded = is_unfolded();
-
-    // The elision gap. Rendered by the level whose children start the hidden run, which
-    // then hands off to the level the chain resumes at.
-    if let Some((elision, resume_key)) = focus.elision_resume
-        && !is_unfolded
-    {
-        let hidden = elision.hidden;
-        let gap_indent = indent_style(rung);
-        let unfold_key = parent_key.clone();
-        return rsx! {
-            button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {gap_indent};",
-                class: "x-facet-list-item",
-                title: "Show the {hidden} folder levels between here and the one you are in",
-                onclick: move |_| { unfolded.write().insert(unfold_key.clone()); },
-                Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
-                div { style: "{LABEL_STYLE}", "{hidden} more levels…" }
-            }
-            // One rung on, not `elision.hidden + 1`: the gap row stands in for the whole
-            // hidden run, so the ladder steps once for it and keeps its budget.
-            VfsTreeLevel { parent_key: resume_key, depth: elision.resume_depth, rung: rung + 1 }
-        };
-    }
-
-    rsx! {
-        VfsTreeLevelBody {
-            parent_key,
-            depth,
-            rung,
-            focus_child: next_on_path,
-            unfolded: is_unfolded,
-        }
-    }
-}
-
-#[component]
-fn VfsTreeLevelBody(
-    parent_key: String,
-    depth: usize,
-    /// See [`VfsTreeLevel`]'s `rung`.
-    rung: usize,
-    /// The child of this level that sits on the path to the focused node, if any. The
-    /// sibling window is centred on it.
-    focus_child: Option<String>,
-    /// The user clicked one of this level's "more" rows, so nothing is windowed.
-    unfolded: bool,
-) -> Element {
-    let context = use_context::<TreeContext>();
-    let mut unfolded_set = context.unfolded;
-
-    // `parent_key` through a memo, not captured directly. Dioxus props are not reactive:
-    // this component keeps its identity while its `parent_key` changes, because the level
-    // the elided chain resumes at moves whenever the focus moves. Capturing the prop by
-    // clone meant the resource kept the children of the parent it first had, so
-    // navigating UP one folder in-app left the tail of the ladder showing the folders you
-    // came FROM, correctly indented, under freshly recomputed depth badges. A page reload
-    // on the same URL rendered perfectly, which is what made it look like a data bug.
-    let parent = use_memo(use_reactive!(|parent_key| parent_key));
-
-    // The page this level is currently ASKING for, as `(parent_key, offset)` in one
-    // signal rather than two. One signal because the pair has to change atomically: a
-    // parent that changed while an offset from the previous parent was still set would
-    // fetch page three of a folder the tree is no longer showing.
-    let mut request = use_signal({
-        let parent_key = parent_key.clone();
-        move || (parent_key.clone(), 0u64)
-    });
-    // Everything fetched for this level so far, appended page by page.
-    let loaded = use_signal({
-        let parent_key = parent_key.clone();
-        move || loaded_pages_for_parent(&context.child_pages.peek(), &parent_key)
-    });
-
-    let mut request_signal = request;
-    use_effect(move || {
-        let parent = parent();
-        // Written only when it changes, an unconditional `write()` on a signal the
-        // resource reads from is a refetch per run.
-        if request_signal.peek().0 != parent {
-            request_signal.set((parent, 0));
-        }
-    });
-
-    let children = use_resource({
-        let dataset = context.collection_dataset.clone();
-        let child_pages = context.child_pages;
-        move || {
-            let dataset = dataset.clone();
-            // Read OUTSIDE the async block: that read is the subscription.
-            let (parent, offset) = request();
-            // Navigation revalidates expired pages while their current rows stay visible.
-            let _focus = (context.focus_key)();
-            let cached = child_pages.peek().get(&(parent.clone(), offset)).cloned();
-            async move {
-                if let Some(cached) = cached
-                    && browser_now_ms() - cached.fetched_at_ms < CHILDREN_CACHE_TTL_MS
-                {
-                    return Ok(ChildPageResult {
-                        page: VfsTreeChildren {
-                            parent_key: parent,
-                            nodes: cached.nodes,
-                            total: cached.total,
-                        },
-                        fetched_at_ms: cached.fetched_at_ms,
-                        from_cache: true,
-                        offset,
-                    });
-                }
-                // `folders_only`: the tree draws only what can be opened, so the server
-                // must count only that too. Counting files into `total` is what gave
-                // every folder full of plain files a "N more…" row for rows that could
-                // never be drawn, and no click could ever resolve it.
-                vfs_tree_children(dataset, parent, CHILDREN_PAGE_SIZE, offset, true)
-                    .await
-                    .map(|page| ChildPageResult {
-                        page,
-                        fetched_at_ms: browser_now_ms(),
-                        from_cache: false,
-                        offset,
-                    })
-            }
-        }
-    });
-
-    let mut loaded_signal = loaded;
-    let mut child_pages_signal = context.child_pages;
-    use_effect(move || {
-        let Some(Ok(result)) = children.read().clone() else {
-            return;
-        };
-        let page = result.page;
-        let (asked_parent, asked_offset) = request.peek().clone();
-        // The server echoes the key it answered for, so a page that arrives after the
-        // level moved on is recognisable rather than merged into the wrong folder.
-        if page.parent_key != asked_parent || result.offset != asked_offset {
-            return;
-        }
-        let cache_page = page.clone();
-        let mut next = loaded_signal.peek().clone();
-        if next.parent_key != asked_parent || (asked_offset == 0 && !result.from_cache) {
-            next = LoadedChildren { parent_key: asked_parent.clone(), nodes: Vec::new(), total: 0 };
-        }
-        if asked_offset == 0 && !result.from_cache {
-            next.nodes = page.nodes;
-        } else if asked_offset == 0 {
-            next = loaded_pages_for_parent(&child_pages_signal.peek(), &asked_parent);
-        } else if next.nodes.len() as u64 == asked_offset {
-            next.nodes.extend(page.nodes);
-        } else {
-            // The accumulator and the offset are out of step, which can only happen if a
-            // page was applied twice. Dropping the page is the safe answer: a duplicated
-            // row is a node the user can click that expands the wrong folder.
-            return;
-        }
-        next.total = page.total;
-        if *loaded_signal.peek() != next {
-            loaded_signal.set(next);
-        }
-        let mut pages = child_pages_signal.write();
-        if asked_offset == 0 && !result.from_cache {
-            // A refreshed first page changes the offsets of later pages.
-            pages.retain(|(parent, offset), _| parent != &asked_parent || *offset == 0);
-        }
-        pages.insert(
-            (asked_parent, asked_offset),
-            CachedChildren {
-                nodes: cache_page.nodes,
-                total: cache_page.total,
-                fetched_at_ms: result.fetched_at_ms,
-            },
-        );
-    });
-
-    let parent_now = parent();
-    let listing = loaded();
-    if listing.parent_key != parent_now {
-        return match children.read().clone() {
-            Some(Err(error)) => rsx! {
-                div {
-                    class: "x-error-display",
-                    style: "padding: 4px 8px; font-size: 14px; color: rgb(160,30,30);",
-                    "Could not load this folder: {error}"
-                }
-            },
-            _ => rsx! {
-                div {
-                    style: "padding: 4px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
-                    "Loading…"
-                }
-            },
-        };
-    }
-
-    // No client-side kind filter: `folders_only` already excluded plain files, so
-    // `nodes.len()` and `total` count the same thing and the offset arithmetic below is
-    // in the same space the server pages in. Filtering here again would silently shift
-    // every offset by the number of files dropped.
-    let fetched = listing.nodes.len() as u64;
-    let nodes: Vec<VfsTreeNode> = listing.nodes;
-
-    if nodes.is_empty() && depth == 0 {
-        return rsx! {
+            // Fetch components emit no row. They sit in a separate parent so a change
+            // in the fetch list cannot replace keyed folder rows.
             div {
-                style: "padding: 6px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
-                "No folders in this dataset."
+                key: "fetches",
+                style: "display: none;",
+                for parent in fetches {
+                    VfsTreeLevelFetch { key: "fetch-{parent}", parent_key: parent.clone() }
+                }
             }
-        };
-    }
-
-    let focus_index = focus_child
-        .as_ref()
-        .and_then(|key| nodes.iter().position(|node| node.node_key == *key));
-    let window = if unfolded {
-        SiblingWindow::everything(nodes.len())
-    } else {
-        window_siblings(nodes.len(), focus_index)
-    };
-
-    // The fetch row and the window rows both mean "more siblings", so only one of them is
-    // ever on screen. While the window is capping, the window's own row is the accurate
-    // one: raising the fetch limit would not reveal anything the window is hiding.
-    let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(fetched) };
-    let more_indent = indent_style(rung);
-    let visible: Vec<VfsTreeNode> = nodes[window.start..window.end].to_vec();
-    let unfold_before = parent_key.clone();
-    let unfold_after = parent_key.clone();
-
-    rsx! {
-        if window.hidden_before > 0 {
-            button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
-                class: "x-facet-list-item",
-                title: "Show all {nodes.len()} folders here",
-                onclick: move |_| { unfolded_set.write().insert(unfold_before.clone()); },
-                Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
-                div { style: "{LABEL_STYLE}", "{window.hidden_before} more above…" }
-            }
-        }
-        for node in visible {
-            VfsTreeBranch { key: "{node.node_key}", node: node.clone(), depth, rung }
-        }
-        if window.hidden_after > 0 {
-            button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
-                class: "x-facet-list-item",
-                title: "Show all {nodes.len()} folders here",
-                onclick: move |_| { unfolded_set.write().insert(unfold_after.clone()); },
-                Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
-                div { style: "{LABEL_STYLE}", "{window.hidden_after} more below…" }
-            }
-        }
-        if more > 0 {
-            button {
-                style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
-                class: "x-facet-list-item",
-                title: "Load the next {CHILDREN_PAGE_SIZE.min(more)} of the {listing.total} folders here",
-                onclick: move |_| {
-                    // The NEXT page, at the offset already loaded. Raising the limit
-                    // instead is what made this row a no-op: the server caps the page
-                    // size, so a wider request came back as the same page.
-                    let loaded_now = loaded.peek().nodes.len() as u64;
-                    request.set((parent_now.clone(), loaded_now));
-                },
-                "{more} more…"
+            // Dioxus diffs a sibling list by position when the first sibling has no
+            // key. These rows must be the only children of this parent, or a resume
+            // shift recreates every folder after the elision slot.
+            div {
+                key: "visible-rows",
+                style: "min-width: 0; width: 100%;",
+                for item in items {
+                    VisibleTreeRow { key: "{item.row_key()}", item: item.clone() }
+                }
             }
         }
     }
@@ -649,9 +391,8 @@ fn VfsTreeLevelBody(
 
 /// Everything one level has fetched so far, and what the server says is there in total.
 ///
-/// Keyed by `parent_key` so a page that arrives for the folder the level USED to show is
-/// discarded rather than appended: `VfsTreeLevelBody` keeps its identity while its
-/// `parent_key` changes.
+/// Keyed by `parent_key` so a page that arrives for a folder the tree is no longer
+/// showing is discarded rather than appended to the visible sequence.
 #[derive(Clone, PartialEq, Default)]
 struct LoadedChildren {
     parent_key: String,
@@ -703,28 +444,436 @@ fn loaded_pages_for_parent(
     result
 }
 
-/// One row of the tree and, when it is open, the level beneath it.
-///
-/// A component rather than an inline block, because the expansion boolean is a HOOK: the
-/// row subscribes to its OWN expansion through a memo, so toggling one chevron wakes one
-/// row instead of every level in the tree. `VfsTreeLevelBody` reading the expansion set
-/// directly is what made a click cost O(levels x rows) of render work in WASM. Nothing
-/// visibly wrong, because the DOM diff then found almost nothing to do, but all of the
-/// work.
-#[component]
-fn VfsTreeBranch(node: VfsTreeNode, depth: usize, rung: usize) -> Element {
-    let expanded = use_context::<Signal<BTreeSet<String>>>();
-    let node_key = node.node_key.clone();
-    // A memo of a boolean: recomputing it is one set lookup, and it only wakes this row
-    // when the answer actually changes.
-    let is_expanded = use_memo(use_reactive!(|node_key| expanded.read().contains(&node_key)));
-    let child_key = node.node_key.clone();
 
-    rsx! {
-        VfsTreeRow { node, depth, rung, is_expanded: is_expanded() }
-        if is_expanded() {
-            VfsTreeLevel { parent_key: child_key, depth: depth + 1, rung: rung + 1 }
+/// One visible row in the shared keyed sequence.
+///
+/// Folder rows use the node key. Elision and overflow rows use a synthetic key that
+/// cannot collide with a node key, because node keys contain a unit separator.
+#[derive(Clone, PartialEq, Debug)]
+enum VisibleItem {
+    Folder { node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool },
+    Elision { parent_key: String, hidden: usize, rung: usize },
+    MoreSiblings { parent_key: String, hidden: usize, rung: usize, above: bool, fetched: usize },
+    FetchMore { parent_key: String, more: u64, total: u64, rung: usize, loaded: u64 },
+    Loading { parent_key: String, rung: usize },
+    Error { parent_key: String, message: String, rung: usize },
+    EmptyRoot,
+}
+
+impl VisibleItem {
+    fn row_key(&self) -> String {
+        match self {
+            Self::Folder { node, .. } => node.node_key.clone(),
+            Self::Elision { .. } => "elision".to_string(),
+            Self::MoreSiblings { parent_key, above, .. } => {
+                format!("more-{}:{parent_key}", if *above { "before" } else { "after" })
+            }
+            Self::FetchMore { parent_key, .. } => format!("fetch:{parent_key}"),
+            Self::Loading { parent_key, .. } => format!("loading:{parent_key}"),
+            Self::Error { parent_key, .. } => format!("error:{parent_key}"),
+            Self::EmptyRoot => "empty-root".to_string(),
         }
+    }
+}
+
+fn visible_items(
+    root_key: &str,
+    indent_offset: usize,
+    focus_chain: &[String],
+    unfolded: &BTreeSet<String>,
+    expanded: &BTreeSet<String>,
+    pages: &BTreeMap<(String, u64), CachedChildren>,
+    errors: &BTreeMap<String, String>,
+) -> Vec<VisibleItem> {
+    let mut items = Vec::new();
+    walk_visible(
+        root_key,
+        0,
+        indent_offset,
+        focus_chain,
+        unfolded,
+        expanded,
+        pages,
+        errors,
+        &mut items,
+    );
+    items
+}
+
+fn walk_visible(
+    parent_key: &str,
+    depth: usize,
+    rung: usize,
+    focus_chain: &[String],
+    unfolded: &BTreeSet<String>,
+    expanded: &BTreeSet<String>,
+    pages: &BTreeMap<(String, u64), CachedChildren>,
+    errors: &BTreeMap<String, String>,
+    items: &mut Vec<VisibleItem>,
+) {
+    if focus_chain.get(depth).is_some_and(|key| *key == parent_key) {
+        let elision = elide_ancestors(focus_chain.len().saturating_sub(1));
+        if let Some(elision) = elision
+            && elision.head == depth
+            && !unfolded.contains(parent_key)
+        {
+            items.push(VisibleItem::Elision {
+                parent_key: parent_key.to_string(),
+                hidden: elision.hidden,
+                rung,
+            });
+            if let Some(resume) = focus_chain.get(elision.resume_depth) {
+                let resume_cached = pages.keys().any(|(parent, _)| parent == resume);
+                if resume_cached {
+                    walk_visible(
+                        resume,
+                        elision.resume_depth,
+                        rung + 1,
+                        focus_chain,
+                        unfolded,
+                        expanded,
+                        pages,
+                        errors,
+                        items,
+                    );
+                } else if let Some((cached_depth, cached_key)) = (elision.resume_depth..focus_chain.len()).find_map(|depth| {
+                    let key = focus_chain.get(depth)?;
+                    pages.keys().any(|(parent, _)| parent == key).then_some((depth, key.clone()))
+                }) {
+                    // The new resume parent is still loading. Keep already-cached
+                    // tail folders mounted instead of replacing them with a loading row.
+                    walk_visible(
+                        &cached_key,
+                        cached_depth,
+                        rung + 1,
+                        focus_chain,
+                        unfolded,
+                        expanded,
+                        pages,
+                        errors,
+                        items,
+                    );
+                } else {
+                    items.push(VisibleItem::Loading {
+                        parent_key: resume.clone(),
+                        rung: rung + 1,
+                    });
+                }
+            }
+            return;
+        }
+    }
+
+    if let Some(message) = errors.get(parent_key) {
+        items.push(VisibleItem::Error {
+            parent_key: parent_key.to_string(),
+            message: message.clone(),
+            rung,
+        });
+        return;
+    }
+
+    let listing = loaded_pages_for_parent(pages, parent_key);
+    let has_page = pages.keys().any(|(parent, _)| parent == parent_key);
+    if !has_page {
+        items.push(VisibleItem::Loading { parent_key: parent_key.to_string(), rung });
+        return;
+    }
+    if listing.nodes.is_empty() && depth == 0 {
+        items.push(VisibleItem::EmptyRoot);
+        return;
+    }
+
+    let on_path = focus_chain.get(depth).is_some_and(|key| *key == parent_key);
+    let focus_child = if on_path { focus_chain.get(depth + 1).cloned() } else { None };
+    let focus_index = focus_child
+        .as_ref()
+        .and_then(|key| listing.nodes.iter().position(|node| node.node_key == *key));
+    let window = if unfolded.contains(parent_key) {
+        SiblingWindow::everything(listing.nodes.len())
+    } else {
+        window_siblings(listing.nodes.len(), focus_index)
+    };
+    let fetched = listing.nodes.len() as u64;
+    let more = if window.is_capping() { 0 } else { listing.total.saturating_sub(fetched) };
+
+    if window.hidden_before > 0 {
+        items.push(VisibleItem::MoreSiblings {
+            parent_key: parent_key.to_string(),
+            hidden: window.hidden_before,
+            rung,
+            above: true,
+            fetched: listing.nodes.len(),
+        });
+    }
+    for node in &listing.nodes[window.start..window.end] {
+        let is_expanded = expanded.contains(&node.node_key);
+        items.push(VisibleItem::Folder {
+            node: node.clone(),
+            depth,
+            rung,
+            is_expanded,
+        });
+        if is_expanded {
+            walk_visible(
+                &node.node_key,
+                depth + 1,
+                rung + 1,
+                focus_chain,
+                unfolded,
+                expanded,
+                pages,
+                errors,
+                items,
+            );
+        }
+    }
+    if window.hidden_after > 0 {
+        items.push(VisibleItem::MoreSiblings {
+            parent_key: parent_key.to_string(),
+            hidden: window.hidden_after,
+            rung,
+            above: false,
+            fetched: listing.nodes.len(),
+        });
+    }
+    if more > 0 {
+        items.push(VisibleItem::FetchMore {
+            parent_key: parent_key.to_string(),
+            more,
+            total: listing.total,
+            rung,
+            loaded: fetched,
+        });
+    }
+}
+
+fn needed_parents(
+    root_key: &str,
+    focus_chain: &[String],
+    unfolded: &BTreeSet<String>,
+    expanded: &BTreeSet<String>,
+    pages: &BTreeMap<(String, u64), CachedChildren>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_needed(root_key, 0, focus_chain, unfolded, expanded, pages, &mut out);
+    out
+}
+
+fn collect_needed(
+    parent_key: &str,
+    depth: usize,
+    focus_chain: &[String],
+    unfolded: &BTreeSet<String>,
+    expanded: &BTreeSet<String>,
+    pages: &BTreeMap<(String, u64), CachedChildren>,
+    out: &mut Vec<String>,
+) {
+    if focus_chain.get(depth).is_some_and(|key| *key == parent_key) {
+        let elision = elide_ancestors(focus_chain.len().saturating_sub(1));
+        if let Some(elision) = elision
+            && elision.head == depth
+            && !unfolded.contains(parent_key)
+        {
+            if let Some(resume) = focus_chain.get(elision.resume_depth) {
+                collect_needed(resume, elision.resume_depth, focus_chain, unfolded, expanded, pages, out);
+            }
+            // The next shallower resume parent sits in the elision gap. Fetch it
+            // so a parent click does not replace the visible tail with a loading row.
+            if elision.resume_depth > elision.head + 1
+                && let Some(next_up) = focus_chain.get(elision.resume_depth - 1)
+                && !out.iter().any(|key| key == next_up)
+            {
+                out.push(next_up.clone());
+            }
+            return;
+        }
+    }
+    if out.iter().any(|key| key == parent_key) {
+        return;
+    }
+    out.push(parent_key.to_string());
+    let listing = loaded_pages_for_parent(pages, parent_key);
+    if listing.nodes.is_empty() && !pages.keys().any(|(parent, _)| parent == parent_key) {
+        return;
+    }
+    let on_path = focus_chain.get(depth).is_some_and(|key| *key == parent_key);
+    let focus_child = if on_path { focus_chain.get(depth + 1).cloned() } else { None };
+    let focus_index = focus_child
+        .as_ref()
+        .and_then(|key| listing.nodes.iter().position(|node| node.node_key == *key));
+    let window = if unfolded.contains(parent_key) {
+        SiblingWindow::everything(listing.nodes.len())
+    } else {
+        window_siblings(listing.nodes.len(), focus_index)
+    };
+    for node in &listing.nodes[window.start..window.end] {
+        if expanded.contains(&node.node_key) {
+            collect_needed(&node.node_key, depth + 1, focus_chain, unfolded, expanded, pages, out);
+        }
+    }
+}
+
+/// Fetch one parent's current page into the shared cache. Renders nothing.
+#[component]
+fn VfsTreeLevelFetch(parent_key: String) -> Element {
+    let context = use_context::<TreeContext>();
+    let parent = use_memo(use_reactive!(|parent_key| parent_key));
+    let children = use_resource({
+        let dataset = context.collection_dataset.clone();
+        let child_pages = context.child_pages;
+        let page_offsets = context.page_offsets;
+        move || {
+            let dataset = dataset.clone();
+            let parent = parent();
+            let offset = page_offsets.read().get(&parent).copied().unwrap_or(0);
+            let _focus = (context.focus_key)();
+            let cached = child_pages.peek().get(&(parent.clone(), offset)).cloned();
+            async move {
+                if let Some(cached) = cached
+                    && browser_now_ms() - cached.fetched_at_ms < CHILDREN_CACHE_TTL_MS
+                {
+                    record_tree_query("children", true, 0, 0);
+                    return Ok(ChildPageResult {
+                        page: VfsTreeChildren {
+                            parent_key: parent,
+                            nodes: cached.nodes,
+                            total: cached.total,
+                            datastore_queries: 0,
+                            took_ms: 0,
+                        },
+                        fetched_at_ms: cached.fetched_at_ms,
+                        from_cache: true,
+                        offset,
+                    });
+                }
+                vfs_tree_children(dataset, parent, CHILDREN_PAGE_SIZE, offset, true)
+                    .await
+                    .map(|page| {
+                        record_tree_query("children", false, page.datastore_queries, page.took_ms);
+                        ChildPageResult {
+                            page,
+                            fetched_at_ms: browser_now_ms(),
+                            from_cache: false,
+                            offset,
+                        }
+                    })
+            }
+        }
+    });
+
+    let mut child_pages_signal = context.child_pages;
+    let mut fetch_errors = context.fetch_errors;
+    use_effect(move || {
+        match children.read().clone() {
+            Some(Ok(result)) => {
+                let page = result.page.clone();
+                let asked_parent = parent();
+                let asked_offset = context.page_offsets.peek().get(&asked_parent).copied().unwrap_or(0);
+                if page.parent_key != asked_parent || result.offset != asked_offset {
+                    return;
+                }
+                let mut pages = child_pages_signal.write();
+                if asked_offset == 0 && !result.from_cache {
+                    pages.retain(|(parent, offset), _| parent != &asked_parent || *offset == 0);
+                }
+                pages.insert(
+                    (asked_parent.clone(), asked_offset),
+                    CachedChildren {
+                        nodes: page.nodes,
+                        total: page.total,
+                        fetched_at_ms: result.fetched_at_ms,
+                    },
+                );
+                fetch_errors.write().remove(&asked_parent);
+            }
+            Some(Err(error)) => {
+                fetch_errors.write().insert(parent(), error.to_string());
+            }
+            None => {}
+        }
+    });
+
+    rsx! {}
+}
+
+#[component]
+fn VisibleTreeRow(item: VisibleItem) -> Element {
+    let context = use_context::<TreeContext>();
+    let mut unfolded_set = context.unfolded;
+    let mut page_offsets = context.page_offsets;
+    match item {
+        VisibleItem::Folder { node, depth, rung, is_expanded } => rsx! {
+            VfsTreeRow { node, depth, rung, is_expanded }
+        },
+        VisibleItem::Elision { parent_key, hidden, rung } => {
+            let gap_indent = indent_style(rung);
+            let unfold_key = parent_key.clone();
+            rsx! {
+                button {
+                    style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {gap_indent};",
+                    class: "x-facet-list-item",
+                    title: "Show the {hidden} folder levels between here and the one you are in",
+                    onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
+                    Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
+                    div { style: "{LABEL_STYLE}", "{hidden} more levels…" }
+                }
+            }
+        }
+        VisibleItem::MoreSiblings { parent_key, hidden, rung, above, fetched } => {
+            let more_indent = indent_style(rung);
+            let unfold_key = parent_key.clone();
+            let direction = if above { "above" } else { "below" };
+            rsx! {
+                button {
+                    style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
+                    class: "x-facet-list-item",
+                    title: "Show all {fetched} folders here",
+                    onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
+                    Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
+                    div { style: "{LABEL_STYLE}", "{hidden} more {direction}…" }
+                }
+            }
+        }
+        VisibleItem::FetchMore { parent_key, more, total, rung, loaded } => {
+            let more_indent = indent_style(rung);
+            rsx! {
+                button {
+                    style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
+                    class: "x-facet-list-item",
+                    title: "Load the next {CHILDREN_PAGE_SIZE.min(more)} of the {total} folders here",
+                    onclick: move |_| {
+                        page_offsets.write().insert(parent_key.clone(), loaded);
+                    },
+                    "{more} more…"
+                }
+            }
+        }
+        VisibleItem::Loading { rung, .. } => {
+            let pad = indent_style(rung);
+            rsx! {
+                div {
+                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 14px; color: rgba(0,0,0,0.5);",
+                    "Loading…"
+                }
+            }
+        }
+        VisibleItem::Error { message, rung, .. } => {
+            let pad = indent_style(rung);
+            rsx! {
+                div {
+                    class: "x-error-display",
+                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 14px; color: rgb(160,30,30);",
+                    "Could not load this folder: {message}"
+                }
+            }
+        }
+        VisibleItem::EmptyRoot => rsx! {
+            div {
+                style: "padding: 6px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
+                "No folders in this dataset."
+            }
+        },
     }
 }
 
@@ -910,6 +1059,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             // line up rather than jittering by 18 px.
             button {
                 style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
+                "aria-expanded": if is_expanded { "true" } else { "false" },
                 onclick: toggle,
                 if is_expanded {
                     Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
@@ -1383,5 +1533,103 @@ mod tests {
         let small = window_siblings(5, Some(2));
         assert!(!small.is_capping());
         assert_eq!(small, SiblingWindow::everything(5));
+    }
+
+    fn chain_pages(keys: &[&str]) -> (Vec<String>, BTreeMap<(String, u64), CachedChildren>) {
+        let chain: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
+        let mut pages = BTreeMap::new();
+        for window in chain.windows(2) {
+            let parent = window[0].clone();
+            let child = window[1].clone();
+            pages.insert(
+                (parent.clone(), 0),
+                CachedChildren {
+                    nodes: vec![cached_node(&child)],
+                    total: 1,
+                    fetched_at_ms: 0.0,
+                },
+            );
+        }
+        let last = chain.last().unwrap().clone();
+        pages.insert(
+            (last, 0),
+            CachedChildren { nodes: Vec::new(), total: 0, fetched_at_ms: 0.0 },
+        );
+        (chain, pages)
+    }
+
+    fn folder_keys(items: &[VisibleItem]) -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|item| match item {
+                VisibleItem::Folder { node, .. } => Some(node.node_key.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn visible_rows_elide_the_middle_and_keep_unique_keys() {
+        let (chain, pages) = chain_pages(&(0..21).map(|i| format!("n{i}")).map(|s| Box::leak(s.into_boxed_str()) as &str).collect::<Vec<_>>());
+        let expanded: BTreeSet<String> = chain.iter().cloned().collect();
+        let items = visible_items(&chain[0], 2, &chain, &BTreeSet::new(), &expanded, &pages, &BTreeMap::new());
+        let keys: Vec<String> = items.iter().map(|item| item.row_key()).collect();
+        let unique = BTreeSet::from_iter(keys.iter().cloned());
+        assert_eq!(keys.len(), unique.len(), "visible row keys must be unique: {keys:?}");
+        assert!(items.iter().any(|item| matches!(item, VisibleItem::Elision { hidden: 12, .. })), "{items:?}");
+        let folders = folder_keys(&items);
+        assert!(folders.contains(&chain[1]));
+        assert!(folders.contains(&chain[20]));
+        assert!(!folders.contains(&chain[5]), "elided ancestors are not mounted: {folders:?}");
+    }
+
+    #[test]
+    fn common_visible_folder_keys_survive_an_elision_resume_shift() {
+        let labels: Vec<String> = (0..21).map(|i| format!("n{i}")).collect();
+        let leaked: Vec<&str> = labels.iter().map(|s| Box::leak(s.clone().into_boxed_str()) as &str).collect();
+        let (chain_deep, pages) = chain_pages(&leaked);
+        let expanded: BTreeSet<String> = chain_deep.iter().cloned().collect();
+        let deep_items = visible_items(&chain_deep[0], 2, &chain_deep, &BTreeSet::new(), &expanded, &pages, &BTreeMap::new());
+        let chain_up = chain_deep[..20].to_vec();
+        let up_items = visible_items(&chain_up[0], 2, &chain_up, &BTreeSet::new(), &expanded, &pages, &BTreeMap::new());
+        let deep_keys: BTreeSet<String> = folder_keys(&deep_items).into_iter().collect();
+        let up_keys: BTreeSet<String> = folder_keys(&up_items).into_iter().collect();
+        let common: BTreeSet<String> = deep_keys.intersection(&up_keys).cloned().collect();
+        assert!(common.contains(&chain_deep[1]));
+        assert!(common.contains(&chain_deep[19]));
+        assert!(!common.is_empty());
+        let deep_row_keys: Vec<String> = deep_items.iter().map(|item| item.row_key()).collect();
+        let up_row_keys: Vec<String> = up_items.iter().map(|item| item.row_key()).collect();
+        assert_eq!(deep_row_keys.iter().filter(|k| *k == "elision").count(), 1);
+        assert_eq!(up_row_keys.iter().filter(|k| *k == "elision").count(), 1);
+        let deep_elision = deep_row_keys.iter().position(|k| k == "elision").expect("deep elision");
+        let up_elision = up_row_keys.iter().position(|k| k == "elision").expect("up elision");
+        assert_ne!(
+            deep_row_keys.get(deep_elision + 1),
+            up_row_keys.get(up_elision + 1),
+            "a resume shift inserts a new folder immediately after the elision slot"
+        );
+        let common_order_deep: Vec<String> =
+            deep_row_keys.iter().filter(|k| common.contains(*k)).cloned().collect();
+        let common_order_up: Vec<String> =
+            up_row_keys.iter().filter(|k| common.contains(*k)).cloned().collect();
+        assert_eq!(
+            common_order_deep, common_order_up,
+            "shared visible folders keep the same keys and order when the resume parent moves"
+        );
+    }
+
+    #[test]
+    fn needed_parents_skip_elided_levels() {
+        let labels: Vec<String> = (0..21).map(|i| format!("n{i}")).collect();
+        let leaked: Vec<&str> = labels.iter().map(|s| Box::leak(s.clone().into_boxed_str()) as &str).collect();
+        let (chain, pages) = chain_pages(&leaked);
+        let expanded: BTreeSet<String> = chain.iter().cloned().collect();
+        let needed = needed_parents(&chain[0], &chain, &BTreeSet::new(), &expanded, &pages);
+        assert!(!needed.contains(&chain[5]), "elided parents are not fetched: {needed:?}");
+        assert!(needed.contains(&chain[0]));
+        let elision = elide_ancestors(chain.len().saturating_sub(1)).expect("deep chain elides");
+        let next_up = &chain[elision.resume_depth - 1];
+        assert!(needed.contains(next_up), "the next shallower resume parent is fetched: {needed:?}");
     }
 }

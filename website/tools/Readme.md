@@ -25,6 +25,7 @@ Each scenario writes a steps JSON file with input, starting URL, observed values
 An optional `init_script` runs before the scenario's document loads and does not affect later documents.
 Scenario navigation waits for a new document and application mount before it performs an action.
 The cache regression fixes the browser clock during warm navigation, then advances it six seconds to verify expiry.
+The storage tree writes datastore query counts to `#x-vfs-query-log`, separate from browser request totals.
 The file retains completed steps and the failing action when a later assertion fails.
 Failed manual phases also retain the current PDF registry, viewer generation, source, and resource timings before another phase navigates.
 Both browser entry points use `browser_lifecycle.py` for bounded startup and awaited process cleanup.

@@ -77,10 +77,10 @@ languages.
 | id | capability | owned by |
 |---|---|---|
 | `F-store-01` | Browse a collection's folder tree, including inside archives and emails | `website/backend/src/api/vfs/tree.rs` |
-| `F-store-02` | Page folder children, reuse mounted-tree pages and paths for five seconds, and window siblings and ancestors around the current focus | `website/frontend/src/components/search_components/vfs_tree.rs` |
+| `F-store-02` | Page folder children, reuse mounted-tree pages and paths for five seconds, window siblings and ancestors around the current focus, and keep common visible folder rows mounted across an elision resume change | `website/frontend/src/components/search_components/vfs_tree.rs` |
 | `F-store-03` | Resize the storage sidebar and remember its width | `website/frontend/src/components/resizable_sidebar.rs` |
 | `F-store-04` | Navigate by breadcrumb across container boundaries | `website/backend/src/api/vfs/tree.rs` |
-| `F-store-05` | Read each tree endpoint request without the search cache and revalidate expired browser entries on navigation or remount | `website/backend/src/db_utils/manticore_utils.rs` |
+| `F-store-05` | Read each tree endpoint request without the search cache, revalidate expired browser entries on navigation or remount, and report datastore query count and duration on each structure response | `website/backend/src/api/vfs/tree.rs` |
 
 ## Browser verification
 

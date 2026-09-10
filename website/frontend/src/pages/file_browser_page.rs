@@ -565,13 +565,17 @@ fn FileBrowserContent(
             if let Some((fetched_at, nodes)) = cached
                 && browser_now_ms() - fetched_at < CHILDREN_CACHE_TTL_MS
             {
+                crate::components::search_components::vfs_tree::record_tree_query("path", true, 0, 0);
                 return Ok(Some((key, nodes)));
             }
-            let nodes = crate::api::vfs_api::vfs_tree_path_to(dataset, key.clone()).await?;
+            let path = crate::api::vfs_api::vfs_tree_path_to(dataset, key.clone()).await?;
+            crate::components::search_components::vfs_tree::record_tree_query(
+                "path", false, path.datastore_queries, path.took_ms,
+            );
             cached_paths.write().insert(key.clone(), (
-                browser_now_ms(), nodes.clone(),
+                browser_now_ms(), path.nodes.clone(),
             ));
-            Ok(Some((key, nodes)))
+            Ok(Some((key, path.nodes)))
         }
     });
     use_context_provider(move || crate::api::vfs_api::ResolvedVfsPath { dataset: collection, chain: resolved_path });
