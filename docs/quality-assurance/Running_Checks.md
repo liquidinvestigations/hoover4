@@ -14,8 +14,10 @@ evidence for something it never examined.
 - [Whole-stack verification](#whole-stack-verification)
 - [Test reachability](#test-reachability)
 - [Screenshots](#screenshots)
+- [Remote targets](#remote-targets)
 - [Waiting without disturbing](#waiting-without-disturbing)
 
+The measured counts for each suite are [Test suites](Test_Suites.md).
 The scripts that wrap each of these live beside the verifying skill, in
 `.agents/skills/verifying-before-claiming/scripts/`. Run those rather than retyping the
 commands: each already carries the container name, the working directory, and the flags that
@@ -139,9 +141,25 @@ independent layers by design, so the website is unreachable through it. The scri
 runs a plain browser inside that container with neither filter, and moves itself and its
 output by file copy because the container has no bind mounts.
 
+Each run writes `report.md` and `report.html` as a table. See
+[Capture report format](Capture_Report_Format.md).
+
 Two traps it exists to encapsulate: setting an input's value is invisible to the frontend
 framework unless it goes through the prototype setter and dispatches a bubbling input event,
 and the home box submits on key press, so Enter must be a real key event.
+
+## Remote targets
+
+The browser wrappers accept `--target` or `HOOVER4_SITE_URL`. They capture a remote site
+without writing into it.
+
+`main_services/verify-stack.sh` refuses a website URL that is not local. It ingests into
+the stack it talks to. A loopback host, the local `WEBSITE_BIND_IP`, or a `hoover4-`
+container name is local. A hostname that starts with `hoover4-` and also contains a
+dot is not local.
+
+`website/run-stack-tests.sh` refuses a non-local `HOOVER4_SITE_URL` before `dx check`.
+`site_url()` in `stack_integration.rs` refuses the same class of host.
 
 ## Waiting without disturbing
 

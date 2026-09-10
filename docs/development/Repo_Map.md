@@ -75,6 +75,7 @@ fixtures.
 | how the agent configuration works | [Working with agents](Working_With_Agents.md) |
 | every configuration key and its consumer | [Configuration reference](../operations/Configuration_Reference.md) |
 | what the product does, as agreed | [`docs/technical-specification/`](../technical-specification/Readme.md) |
+| how the suites run, and what each check covers | [`docs/quality-assurance/`](../quality-assurance/Readme.md) |
 | how to reach the demo box or the GPU box | `INFRASTRUCTURE_INVENTORY.md` at the repository root, local and gitignored |
 
 ## Searching, when searching is right

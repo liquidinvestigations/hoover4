@@ -81,7 +81,7 @@ route_path() {
         matched=1
         printf 'GATE\tthe stack integration suite: website/run-stack-tests.sh\n'
         printf 'GATE\tthe browser acceptance pass: website/take-screenshots.sh\n'
-        printf 'HAND\tboth fixture-driven suites are welded to this corpus, so a change here makes them fail by naming a dataset that does not exist, which reads as a broken site and is not (docs/development/Running_Checks.md)\n'
+        printf 'HAND\tboth fixture-driven suites are welded to this corpus, so a change here makes them fail by naming a dataset that does not exist, which reads as a broken site and is not (docs/quality-assurance/Running_Checks.md)\n'
     fi
 
     if [[ "$p" == components/* ]]; then

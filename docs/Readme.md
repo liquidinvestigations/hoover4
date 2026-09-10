@@ -5,7 +5,8 @@ describe their directory; these pages describe the system.
 
 - [`architecture/`](architecture/Readme.md), how the system is shaped and why
 - [`operations/`](operations/Readme.md), running it: deploying, configuring, hosts, diagnosis
-- [`development/`](development/Readme.md), changing it: navigation, checks, conventions, agents
+- [`development/`](development/Readme.md), changing it: navigation, conventions, agents
+- [`quality-assurance/`](quality-assurance/Readme.md), the suites, the browser cases, and what each check covers
 - [`user-manual/`](user-manual/Readme.md), the product manual, for people using the site
 - [`technical-specification/`](technical-specification/Readme.md), what the product does, stated once
 

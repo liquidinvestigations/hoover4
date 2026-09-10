@@ -2,6 +2,9 @@
 
 The suites, what each one covers, and the two diagnostics beside them. What each check does
 *not* cover is [Running the checks](Running_Checks.md).
+The numbered cases are [Browser test cases](Browser_Test_Cases.md).
+The capture report is [Capture report format](Capture_Report_Format.md).
+Measured counts are [Test suites](Test_Suites.md).
 
 Use [Design browser tests around state changes](Browser_Test_Design.md) to define fixtures, ordered interactions, assertions, and evidence.
 
@@ -58,6 +61,11 @@ website/take-screenshots.sh --target URL
 website/take-screenshots.sh --login-env path/to/file   # credentials from a file
 ```
 
+The capture target is `--target`, then `HOOVER4_SITE_URL` in the environment, then
+`HOOVER4_SITE_URL` from the login-env file. There is no built-in default. The wrapper
+exits 2 when all three are empty. `TEST_LOGIN.env.example` names the key. The real
+value lives in the gitignored login file.
+
 With no `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair or `--login-env` file, the run
 proceeds unauthenticated (a screenshot page runner can go on without an identity;
 `observe-chat.sh`, below, cannot). `TEST_LOGIN.env` beside the script, when present, is the
@@ -72,7 +80,8 @@ occurred. A console
 error or warning, a failed subresource request, or a request to an outside origin is
 `diagnostic_warning` and exits 0, recorded in the report but never gating the run.
 `expected_outcome` (a negative state a scenario declared with `expect`) and
-`behavioral_warning` also exit 0.
+`behavioral_warning` also exit 0. The capture report maps those six values to four words.
+See [Capture report format](Capture_Report_Format.md).
 
 **Output structure**, per run directory: `<resolution>/NN-name.png` and
 `.snapshot.txt`; on a raised action, `<resolution>/NN-name.FAILED.png` and

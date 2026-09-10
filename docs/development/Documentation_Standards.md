@@ -126,6 +126,7 @@ The second is shorter, is still true next year, and tells a reader what to do.
 | this directory's contents and its local invariants | the `Readme.md` beside the code |
 | how a subsystem is shaped, and why | `docs/architecture/` |
 | a procedure a person will repeat | `docs/operations/` or `docs/development/` |
+| the test suites, browser cases, and what each check covers | `docs/quality-assurance/` |
 | a procedure an agent loads mid-task | a skill in `.agents/skills/` |
 | an invariant that applies while editing a kind of file | a rule in `.agents/rules/` |
 | what the product does, as agreed | `docs/technical-specification/` |

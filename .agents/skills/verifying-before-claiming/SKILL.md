@@ -132,5 +132,5 @@ concluding anything from a wall of red, check that the fixtures are there.
 - `reference/verification-runs.md`, the phases of `main_services/verify-stack.sh`, what it
   asserts, and how to read a partial run.
 - `reference/browser-pass.md`, the minimum click-through for a UI claim.
-- `docs/development/Running_Checks.md`, the same ground for a person reading cold, with what
+- `docs/quality-assurance/Running_Checks.md`, the same ground for a person reading cold, with what
   each check does **not** cover.

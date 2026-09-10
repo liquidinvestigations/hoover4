@@ -2,6 +2,7 @@
 
 This method defines browser scenarios with explicit state, ordered actions, independent expectations, and retained evidence.
 Use [Testing the website](Testing_The_Website.md) for commands and diagnostic outcomes.
+The numbered cases are [Browser test cases](Browser_Test_Cases.md).
 Use the [browser tools documentation](../../website/tools/Readme.md) for the capture implementation.
 
 ## Contents

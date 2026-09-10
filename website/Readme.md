@@ -30,7 +30,7 @@ The explanations live in `docs/`, because they outlive any one change here:
 | sessions, database routing, the full-text argument builder, failure surfacing, in-document PDF search, tabular browsing | [`docs/architecture/Website_Backend.md`](../docs/architecture/Website_Backend.md) |
 | the search fan-out, what is exact and what is approximate, filters, the date histogram, sorting, the folder tree, cache invalidation | [`docs/architecture/Search_Architecture.md`](../docs/architecture/Search_Architecture.md) |
 | the chat turn, which agent answers, streaming, retries, citations, the admin views | [`docs/architecture/Chat_And_Agents.md`](../docs/architecture/Chat_And_Agents.md) |
-| the suites, the screenshot harness, the two diagnostics | [`docs/development/Testing_The_Website.md`](../docs/development/Testing_The_Website.md) |
+| the suites, the screenshot harness, the two diagnostics | [`docs/quality-assurance/Testing_The_Website.md`](../docs/quality-assurance/Testing_The_Website.md) |
 | what the site does, per route, as agreed | [`docs/technical-specification/`](../docs/technical-specification/Readme.md) |
 
 ## Testing
@@ -64,7 +64,7 @@ Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screensh
 `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair is supplied. Pass `--login-env FILE`
 to name another file. Credential values are not accepted as `--username` or `--password`
 arguments.
-See [`docs/development/Testing_The_Website.md`](../docs/development/Testing_The_Website.md)
+See [`docs/quality-assurance/Testing_The_Website.md`](../docs/quality-assurance/Testing_The_Website.md)
 for the full runner and observer contract.
 
 ## Navigation

@@ -6,11 +6,11 @@ allowed-tools: Bash, Read, Grep, Glob
 
 # Writing tests
 
-The whole fast Python tier is 1,494 tests in about 17 seconds. Nothing here selects a
-subset of it, because selecting inside a suite that already runs in seconds saves nothing.
-The Rust suites are compilation-bound instead: the stack suite spends 4.69 seconds on tests
-inside 117 seconds of wall clock, so filtering it still pays the same compile.
-`reference/suites.md` carries the full measured table.
+The fast Python tier runs in seconds. Nothing here selects a subset of it, because
+selecting inside a suite that already runs in seconds saves nothing. The Rust suites are
+compilation-bound: filtering the stack suite still pays the compile.
+[`docs/quality-assurance/Test_Suites.md`](../../../docs/quality-assurance/Test_Suites.md)
+carries the measured table. `reference/suites.md` points there.
 
 **What is worth routing is the gate a change owes**, because the gates that cost 6 to 25
 minutes are the ones this repository documents as deliberately off the per-commit path, and
@@ -19,7 +19,7 @@ they are the ones a change actually skips.
 ## The four rules
 
 1. **Always run the fast tier.** `pytest-unit.sh` and `pytest-agents.sh`, both of them,
-   after any Python change. It costs about 17 seconds total.
+   after any Python change.
 2. **Rebuild before believing an agent suite.** The agent tests run inside the images and
    the agent code is baked into them. A source edit under `main_services/agents/` that is
    not followed by an image rebuild leaves the suite testing the previous image, and it
@@ -41,7 +41,7 @@ they are the ones a change actually skips.
 ## A repair carries a regression test
 
 Where a fast suite already reaches the changed code, a repair carries a regression test.
-`Running_Checks.md` already settles a fix by the failing case reproduced before and absent
+`docs/quality-assurance/Running_Checks.md` already settles a fix by the failing case reproduced before and absent
 after, and a regression test is that sentence made durable.
 
 **Three areas have no fast-test interface**: the frontend, configuration, and scripts.
@@ -52,11 +52,11 @@ names, is the evidence a fast suite would otherwise give.
 
 `gate-map.sh` names the command; it does not run it and does not wrap it a second time.
 Run the named script from `verifying-before-claiming`, and read
-`docs/development/Running_Checks.md` for what each one does and does not cover.
+`docs/quality-assurance/Running_Checks.md` for what each one does and does not cover.
 
 ## References
 
-- `reference/suites.md`, the measured table for every suite in the tree, how it runs, and
-  what it does not cover.
+- [`docs/quality-assurance/Test_Suites.md`](../../../docs/quality-assurance/Test_Suites.md), the measured table for every suite, how it runs, and what it does not cover.
+- `reference/suites.md`, a pointer to that table.
 - `reference/test-shapes.md`, what a good test is and the three anti-patterns.
 - `scripts/gate-map.sh`, the router.
