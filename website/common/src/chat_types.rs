@@ -149,6 +149,13 @@ pub struct ChatDocRef {
     /// marked quote is a fact the reader can act on.
     #[serde(default)]
     pub quote_verified: bool,
+    /// Why an unverified quote failed the check: `short`, `absent`, or
+    /// `lookup_failed`. Empty when the quote verified, and empty on stored results
+    /// that never recorded a reason, so a later reader does not invent one.
+    ///
+    /// These strings are written by `collection_search_server.citations`.
+    #[serde(default)]
+    pub quote_reason: String,
 }
 
 impl ChatDocRef {
@@ -732,6 +739,8 @@ fn extract_from_citations(content: &serde_json::Value) -> Vec<ChatDocRef> {
         doc.why = value.get("why").and_then(|v| v.as_str()).unwrap_or("").to_string();
         doc.quote_verified =
             value.get("quote_verified").and_then(|v| v.as_bool()).unwrap_or(false);
+        doc.quote_reason =
+            value.get("quote_reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
         // The snippet slot carries the quote, so the card shows what was cited rather
         // than an unrelated passage of the same file.
         if doc.snippet.is_empty() {
@@ -894,6 +903,7 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
         quote: String::new(),
         why: String::new(),
         quote_verified: false,
+        quote_reason: String::new(),
     })
 }
 
@@ -1027,6 +1037,7 @@ mod tests {
             quote: String::new(),
             why: String::new(),
             quote_verified: false,
+            quote_reason: String::new(),
         }
     }
 
@@ -1049,6 +1060,30 @@ mod tests {
         // The snippet slot carries the quote, so the card shows what was cited rather
         // than an unrelated passage of the same file.
         assert_eq!(refs[0].snippet, "the board approved");
+        assert_eq!(refs[0].quote_reason, "");
+    }
+
+    #[test]
+    fn a_stored_citation_without_a_reason_stays_readable() {
+        let output = citation_output(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa",
+                 "quote": "the board approved", "quote_verified": false}]"#,
+        );
+        let refs = extract_doc_refs("cite_documents", &output);
+        assert_eq!(refs.len(), 1);
+        assert!(!refs[0].quote_verified);
+        assert_eq!(refs[0].quote_reason, "", "an older message did not record a reason");
+    }
+
+    #[test]
+    fn a_citation_carries_the_reason_the_server_recorded() {
+        let output = citation_output(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa",
+                 "quote": "the", "quote_verified": false, "quote_reason": "short"}]"#,
+        );
+        let refs = extract_doc_refs("cite_documents", &output);
+        assert_eq!(refs[0].quote_reason, "short");
+        assert!(!refs[0].quote_verified);
     }
 
     #[test]

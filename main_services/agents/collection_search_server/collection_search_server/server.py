@@ -40,7 +40,11 @@ from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
 from collection_search_server.citations import (
     HandleTable,
     MIN_QUOTE_CHARS,
-    quote_occurs_in,
+    QUOTE_MATCH_VERIFIED,
+    QUOTE_REASON_ABSENT,
+    QUOTE_REASON_LOOKUP_FAILED,
+    QUOTE_REASON_SHORT,
+    quote_match_in_pages,
 )
 from collection_search_server.backends import (
     GLOBAL_DB,
@@ -95,7 +99,12 @@ PAYLOAD_BUDGET_CHARS = int(os.getenv("SEARCH_PAYLOAD_BUDGET_CHARS", "24000"))
 MIN_SNIPPET_CHARS = int(os.getenv("SEARCH_MIN_SNIPPET_CHARS", "120"))
 
 #: How much text one document may contribute to a `read_documents` call.
+#: Citation verification does not use this limit. It reads every extracted page.
 MAX_DOCUMENT_CHARS = int(os.getenv("MAX_DOCUMENT_CHARS", "40000"))
+
+#: Extracted pages one verification query fetches. The matcher then folds a window
+#: as long as the quote, so a match that crosses this batch still verifies.
+VERIFY_PAGE_BATCH = 32
 
 #: Candidate pool per shard (keyword) and per `_vectors` shard (KNN) when the fused
 #: pipeline runs, and the cap on the fused pool sent to the reranker.
@@ -226,8 +235,8 @@ class DocumentText(BaseModel):
 
 
 class DocumentsText(BaseModel):
-    """A batch read. The per-document arm is `DocumentText`, unchanged and still used by
-    `cite_documents`, so nothing that reads one document had to learn a new shape."""
+    """A batch read. The per-document arm is `DocumentText`. Citation verification
+    reads extracted pages on its own path so the model excerpt limit does not apply."""
 
     success: bool
     documents: list[DocumentText] = Field(default_factory=list)
@@ -1011,8 +1020,9 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
     """The tool's body, callable from other tools.
 
     Separate from the decorated function because reaching into a tool object to find the
-    callable it wraps is a dependency on the MCP library's internals, and the quote check
-    in `cite_documents` needs exactly this and nothing else.
+    callable it wraps is a dependency on the MCP library's internals. The returned text
+    is truncated at `MAX_DOCUMENT_CHARS`. Citation verification reads pages separately
+    and does not use this excerpt.
     """
     try:
         acl = _caller()
@@ -1313,6 +1323,10 @@ class CitationResult(BaseModel):
     #: The quoted span was found in the document's extracted text. False is not a
     #: refusal. The citation still stands and the reader sees it marked.
     quote_verified: bool = False
+    #: Why an unverified quote failed the check: `short`, `absent`, or
+    #: `lookup_failed`. Empty when the quote verified, and empty on stored results
+    #: that never recorded a reason, so a later reader does not invent one.
+    quote_reason: str = ""
     error: str | None = None
 
 
@@ -1352,9 +1366,9 @@ def _session_id() -> str:
         "document, a quote copied verbatim from it, and why it matters. You get back a "
         "handle like [D1] for each; write those handles into your prose where the claim "
         "is made, and the reader sees the document beside it. The quote is checked "
-        "against the document's text, and one that does not check out comes back marked, so "
-        "re-read rather than paraphrase. Cite what you relied on, not everything a "
-        "search returned."
+        "against the document's extracted pages, and one that does not check out comes "
+        "back marked with the reason, so re-read rather than paraphrase. Cite what you "
+        "relied on, not everything a search returned."
     ),
 )
 def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
@@ -1383,19 +1397,36 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
 
     session = _session_id()
     results: list[CitationResult] = []
-    unverified = 0
+    short = 0
+    absent = 0
+    lookup_failed = 0
     for citation in parsed:
         result = _cite_one(acl, session, citation)
-        if result.error is None and not result.quote_verified:
-            unverified += 1
+        if result.quote_reason == QUOTE_REASON_SHORT:
+            short += 1
+        elif result.quote_reason == QUOTE_REASON_ABSENT:
+            absent += 1
+        elif result.quote_reason == QUOTE_REASON_LOOKUP_FAILED:
+            lookup_failed += 1
         results.append(result)
 
-    if unverified:
+    if short:
         note_parts.append(
-            f"{unverified} of {len(results)} quotes were not found in the document they "
+            f"{short} of {len(results)} quotes were too short to check. "
+            f"A quote must be at least {MIN_QUOTE_CHARS} characters after "
+            "whitespace is folded."
+        )
+    if absent:
+        note_parts.append(
+            f"{absent} of {len(results)} quotes were not found in the document they "
             "were attributed to. Those citations are shown to the reader marked as "
             "unverified. Re-read the document and quote it exactly rather than from "
             "memory."
+        )
+    if lookup_failed:
+        note_parts.append(
+            f"{lookup_failed} of {len(results)} documents could not be read for "
+            "quote verification. Those citations are shown marked."
         )
     if any(r.error is None and not r.handle for r in results):
         note_parts.append(
@@ -1440,6 +1471,49 @@ def _as_citation_list(value: Any) -> list[Citation] | None:
     return out
 
 
+def _extracted_pages(collectionname: str, file_hash: str):
+    """Yield extracted page texts in `extracted_by, page_id` order, one query batch at a time."""
+    offset = 0
+    while True:
+        rows = clickhouse_query(
+            "SELECT text FROM text_content FINAL WHERE file_hash = {hash:String} "
+            "ORDER BY extracted_by, page_id "
+            "LIMIT {limit:UInt32} OFFSET {offset:UInt64}",
+            database=collection_db(collectionname),
+            params={
+                "hash": file_hash,
+                "limit": VERIFY_PAGE_BATCH,
+                "offset": offset,
+            },
+        )
+        if not rows:
+            break
+        for row in rows:
+            yield row.get("text") or ""
+        if len(rows) < VERIFY_PAGE_BATCH:
+            break
+        offset += len(rows)
+
+
+def _first_and_rest(pages):
+    """Split an iterator into its first item and an iterator that still yields it.
+
+    Used so citation verification can tell 'no extracted text' from 'text that does
+    not contain the quote' without reading every page first.
+    """
+    iterator = iter(pages)
+    try:
+        first = next(iterator)
+    except StopIteration:
+        return False, iterator
+
+    def remaining():
+        yield first
+        yield from iterator
+
+    return True, remaining()
+
+
 def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResult:
     result = CitationResult(
         collectionname=citation.collectionname,
@@ -1456,18 +1530,34 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         result.error = "file_hash must be a content hash from search_collections"
         return result
 
-    document = _read_document_text(citation.collectionname, citation.file_hash)
-    if not document.success:
-        result.error = document.error or "the document could not be read"
+    try:
+        path_rows = clickhouse_query(
+            "SELECT any(path) AS path, any(collection_dataset) AS collection_dataset "
+            "FROM vfs_files WHERE hash = {hash:String} AND is_deleted = 0",
+            database=collection_db(citation.collectionname),
+            params={"hash": citation.file_hash},
+        )
+        has_text, pages = _first_and_rest(
+            _extracted_pages(citation.collectionname, citation.file_hash)
+        )
+    except Exception as exc:  # noqa: BLE001
+        result.error = f"lookup failed: {exc}"
+        result.quote_reason = QUOTE_REASON_LOOKUP_FAILED
         return result
 
-    result.collection_dataset = document.collection_dataset
-    result.path = document.path
-    # A quote too short to check is reported as unverified rather than as verified: "the"
-    # occurs in every document, and a check that always passes proves nothing.
-    result.quote_verified = quote_occurs_in(citation.quote, document.text)
-    if not result.quote_verified and len(citation.quote.strip()) < MIN_QUOTE_CHARS:
-        result.why = result.why or ""
+    if path_rows:
+        result.collection_dataset = path_rows[0].get("collection_dataset") or ""
+        result.path = path_rows[0].get("path") or None
+
+    if not has_text:
+        result.error = "no extracted text for this document"
+        result.quote_reason = QUOTE_REASON_LOOKUP_FAILED
+        return result
+
+    match = quote_match_in_pages(citation.quote, pages)
+    result.quote_verified = match == QUOTE_MATCH_VERIFIED
+    if match != QUOTE_MATCH_VERIFIED:
+        result.quote_reason = match
     result.handle = _HANDLES.handle_for(
         session, citation.collectionname, citation.file_hash
     )

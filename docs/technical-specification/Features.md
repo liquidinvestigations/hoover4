@@ -110,7 +110,7 @@ languages.
 | `F-chat-05` | Read several web pages in one call with a real browser, each returning its text plus an archived copy | `read_page` |
 | `F-chat-05a` | Drive a page that has to be operated (navigate, snapshot, click, type, select, press) over a configurable allowlist of the browser sidecar's surface | `BROWSER_EXPOSED_TOOLS` |
 | `F-chat-06` | Look up the registration of several domains in one call | `whois_lookup` |
-| `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns | `cite_documents`, `frontend` markdown rendering |
+| `F-chat-07` | Cite the documents an answer rests on, with a sources strip and inline chips that resolve across turns. Quote verification reads every extracted page in bounded batches, independent of the model excerpt limit, and names a short quote, absent wording, or a source lookup failure | `cite_documents`, `frontend` markdown rendering |
 | `F-chat-08` | Show each tool call as a card, with its input and output | `frontend/src/components/chat_components/` |
 | `F-chat-08a` | Open a listed entity's explainer card from inside the transcript, in the address so the open card is a link, offered only for a value a rule validated, since a model-found name has no card, and only for a document the conversation named a dataset for | `chat_components/tool_cards/entities_card.rs`, `DocViewerState::selected_entity` |
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically. Browser verification compares persisted answer content across reload and navigation. | `chat_sessions`, `chat_messages`, `chat_observer.check_history` |
@@ -182,3 +182,4 @@ languages.
 | `F-auth-04` | Restrict a collection to the groups granted it, and resolve every per-collection read after the permission check | `db_auth/`, `website/backend/src/db_utils/clickhouse_utils.rs` |
 | `F-auth-05` | Rate-limit chat, polling and API calls per user, with a ladder that decays for human-paced traffic and is flat for machine-paced polling | `website/backend/src/api/rate_limit.rs` |
 | `F-auth-06` | Resolve an artefact id to its owner and refuse a foreign one with a permission failure, not a missing row | `website/backend/src/db_chat/artifacts.rs` |
+| `F-auth-07` | Show the Admin navigation link only after the shared session identifies an administrator, and hide it while identity is unresolved and for ordinary users. Direct routes and admin APIs still refuse a non-administrator | `navbar.rs`, `session_context.rs`, `auth/guard.rs` |

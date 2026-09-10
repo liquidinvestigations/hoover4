@@ -463,6 +463,19 @@ fn AttemptDisclosure(
     }
 }
 
+/// Message for a nonempty unverified quote.
+///
+/// `quote_reason` values are written by `collection_search_server.citations`. An empty
+/// reason is a stored message that never recorded one, so the wording stays the
+/// message this page already showed.
+fn unverified_quote_message(reason: &str) -> &'static str {
+    match reason {
+        "short" => "Unverified quote. The quoted span is too short to check.",
+        "lookup_failed" => "Unverified quote. The document text could not be read.",
+        _ => "Unverified quote. This wording was not found in the document.",
+    }
+}
+
 /// The documents the agent put forward, under the answer that used them.
 ///
 /// Not the search cards, which stay where they are under their disclosure. Those are
@@ -511,7 +524,8 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                             // A quote the server could not find in the document is shown
                             // and marked, never dropped. A model that stops citing is a
                             // worse outcome than a marked quote, and the marker is a fact
-                            // the reader can act on.
+                            // the reader can act on. An empty reason is an older stored
+                            // result, so the page keeps the wording it already showed.
                             if !doc.quote.is_empty() && !doc.quote_verified {
                                 div {
                                     style: "
@@ -519,7 +533,7 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                                         border: 1px solid #FDE68A; border-radius: 6px;
                                         padding: 3px 7px; margin: 2px 4px;
                                     ",
-                                    "Unverified quote. This wording was not found in the document."
+                                    "{unverified_quote_message(&doc.quote_reason)}"
                                 }
                             }
                         }

@@ -302,6 +302,7 @@ def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
             one["quote"] = str(item.get("quote") or "")
             one["why"] = str(item.get("why") or "")
             one["quote_verified"] = bool(item.get("quote_verified"))
+            one["quote_reason"] = str(item.get("quote_reason") or "")
             # The snippet slot carries the quote, so the card shows what was cited
             # rather than an unrelated passage of the same file.
             if not one["snippet"]:

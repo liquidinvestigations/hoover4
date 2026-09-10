@@ -91,4 +91,30 @@ mod tests {
         assert!(is_forbidden(&forbidden));
         assert!(!is_not_found(&forbidden));
     }
+
+    #[test]
+    fn an_ordinary_user_is_refused_admin_access() {
+        let user = CurrentUser {
+            username: "reader".into(),
+            fullname: String::new(),
+            email: String::new(),
+            is_admin: false,
+            groups: vec![],
+        };
+        let err = require_admin(&user).expect_err("ordinary user must be refused");
+        assert_eq!(err.to_string(), "forbidden");
+        assert!(is_forbidden(&err));
+    }
+
+    #[test]
+    fn an_administrator_is_admitted() {
+        let user = CurrentUser {
+            username: "admin".into(),
+            fullname: String::new(),
+            email: String::new(),
+            is_admin: true,
+            groups: vec![],
+        };
+        assert!(require_admin(&user).is_ok());
+    }
 }

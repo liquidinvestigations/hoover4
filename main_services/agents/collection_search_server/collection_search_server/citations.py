@@ -8,10 +8,11 @@ turns an answer into a pile of links.
 Two properties this module exists for.
 
 **The quote is verified.** The server checks that the quoted span actually occurs in the
-document's extracted text before handing back a handle. A quote that does not verify is
-returned flagged rather than refused: a model that stops citing is a worse outcome than a
-citation carrying a visible "unverified quote" marker, and the marker is a fact the
-reader can act on.
+document's extracted pages before handing back a handle. Verification reads every page
+in bounded batches and is independent of the excerpt the model is shown. A quote that
+does not verify is returned flagged rather than refused: a model that stops citing is a
+worse outcome than a citation carrying a visible "unverified quote" marker, and the
+marker is a fact the reader can act on.
 
 **Handles are allocated per SESSION, not per turn.** `[D7]` from the first turn has to
 still resolve in the ninth, because the answer that used it is still on screen and the
@@ -42,6 +43,36 @@ MAX_HANDLES_PER_SESSION = 200
 #: it is treated as unverifiable rather than as verified.
 MIN_QUOTE_CHARS = 12
 
+#: Join between extracted pages. `_read_document_text` concatenates with this, and
+#: verification must use the same join so a quote that crosses a page still matches.
+PAGE_JOIN = "\n\n"
+
+#: `quote_reason` values on a citation result. Empty means verified, or a stored
+#: message that never recorded a reason. These strings are also read by the website.
+QUOTE_MATCH_VERIFIED = "verified"
+QUOTE_REASON_SHORT = "short"
+QUOTE_REASON_ABSENT = "absent"
+QUOTE_REASON_LOOKUP_FAILED = "lookup_failed"
+
+# Typographic quotes and dashes, which extractors substitute in both directions.
+_PUNCTUATION_FOLDS = (
+    ("\u2018", "'"),
+    ("\u2019", "'"),
+    ("\u201c", '"'),
+    ("\u201d", '"'),
+    ("\u2013", "-"),
+    ("\u2014", "-"),
+    ("\u00a0", " "),
+)
+
+
+def _fold_for_match(text: str) -> str:
+    """NFKC, typographic punctuation, and case. Whitespace is left for the caller."""
+    text = unicodedata.normalize("NFKC", text)
+    for fancy, plain in _PUNCTUATION_FOLDS:
+        text = text.replace(fancy, plain)
+    return text.lower()
+
 
 def normalise_for_match(text: str) -> str:
     """Fold the differences that a quote legitimately survives.
@@ -54,22 +85,71 @@ def normalise_for_match(text: str) -> str:
     Case is folded too. A quote is evidence about content, and a reader shown `Board`
     where the document says `BOARD` has not been misled.
     """
-    text = unicodedata.normalize("NFKC", text)
-    # Typographic quotes and dashes, which extractors substitute in both directions.
-    for fancy, plain in (
-        ("‘", "'"), ("’", "'"), ("“", '"'), ("”", '"'),
-        ("–", "-"), ("—", "-"), (" ", " "),
-    ):
-        text = text.replace(fancy, plain)
-    return re.sub(r"\s+", " ", text).strip().lower()
+    return re.sub(r"\s+", " ", _fold_for_match(text)).strip()
 
 
 def quote_occurs_in(quote: str, document_text: str) -> bool:
     """Whether a quote is present in the document, after whitespace and case folding."""
+    return quote_match_in_pages(quote, [document_text]) == QUOTE_MATCH_VERIFIED
+
+
+def quote_match_in_pages(quote: str, pages) -> str:
+    """Match a quote against extracted pages joined the same way as a full-document read.
+
+    Pages are the `text_content` rows in `extracted_by, page_id` order. They are joined
+    with `PAGE_JOIN` and then folded the same way as `normalise_for_match`. The scan
+    keeps only a window of folded text as long as the quote, so a document longer than
+    the model-facing excerpt still verifies, including a match that crosses a page.
+    """
     needle = normalise_for_match(quote)
     if len(needle) < MIN_QUOTE_CHARS:
+        return QUOTE_REASON_SHORT
+    window = _FoldedWindow(needle)
+    first = True
+    for page in pages:
+        if not first:
+            if window.feed(PAGE_JOIN):
+                return QUOTE_MATCH_VERIFIED
+        first = False
+        if window.feed(page or ""):
+            return QUOTE_MATCH_VERIFIED
+    return QUOTE_REASON_ABSENT
+
+
+class _FoldedWindow:
+    """A streaming fold of extracted text that can match without holding the document."""
+
+    def __init__(self, needle: str) -> None:
+        self._needle = needle
+        self._keep = max(len(needle) - 1, 0)
+        self._tail = ""
+        self._started = False
+        self._pending_space = False
+
+    def feed(self, raw: str) -> bool:
+        folded = _fold_for_match(raw)
+        out: list[str] = []
+        for char in folded:
+            if char.isspace():
+                if self._started:
+                    self._pending_space = True
+                continue
+            if self._pending_space:
+                out.append(" ")
+                self._pending_space = False
+            out.append(char)
+            self._started = True
+        if not out:
+            return False
+        chunk = "".join(out)
+        haystack = self._tail + chunk
+        if self._needle in haystack:
+            return True
+        if self._keep == 0:
+            self._tail = ""
+            return False
+        self._tail = haystack[-self._keep:] if len(haystack) >= self._keep else haystack
         return False
-    return needle in normalise_for_match(document_text)
 
 
 class HandleTable:

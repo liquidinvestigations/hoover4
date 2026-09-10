@@ -49,13 +49,19 @@ which documents a search happened to return. Each citation names a document, a q
 one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its
 prose; the reader sees the handle as a chip and the document beneath the answer.
 
-**The quote is checked** against the document's extracted text before a handle is issued,
-after folding whitespace, case and typographic punctuation. A model quoting a sentence it
-read reproduces the words, not the extractor's line breaks, and an exact-substring test
+**The quote is checked** against the document's extracted pages before a handle is issued,
+after folding whitespace, case and typographic punctuation. Verification reads every
+extracted page in bounded batches and is independent of `MAX_DOCUMENT_CHARS`, which only
+bounds the excerpt `read_documents` shows the model. A model quoting a sentence it read
+reproduces the words, not the extractor's line breaks, and an exact-substring test
 rejects nearly every accurate quote. A quote that does not check out is returned **flagged,
-never refused**: a model that stops citing is a worse outcome than a citation the reader
-sees marked as unverified. A quote too short to prove anything is unverified for the same
-reason a check that always passes is not a check.
+never refused**, with a reason of `short`, `absent`, or `lookup_failed`. A model that stops
+citing is a worse outcome than a citation the reader sees marked. A quote too short to
+prove anything is unverified for the same reason a check that always passes is not a check.
+A paraphrase is absent wording. A stored citation that never recorded a reason stays
+readable and does not display a reason that was never established. Pages are fetched in
+batches of 32 (`VERIFY_PAGE_BATCH`). A match that crosses a batch or a page still
+verifies, because the pages are joined with the same separator a full-document read uses.
 
 **Handles are allocated per chat session**, not per turn. `[D7]` from the first turn has to
 still resolve in the ninth, because the answer that used it is still on screen. The table
@@ -207,13 +213,13 @@ versions:
 | `SEARCH_PAYLOAD_BUDGET_CHARS` / `SEARCH_MIN_SNIPPET_CHARS` | `24000` / `120` |
 | `COLLECTION_SEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` |
 | `COLLECTION_SEARCH_FUSION_CANDIDATES` | `60` |
-| `MAX_DOCUMENT_CHARS` | `40000` |
+| `MAX_DOCUMENT_CHARS` | `40000` (model-facing `read_documents` excerpt only) |
 | `SERVER_INSTRUCTIONS` | overrides the rendered instructions; empty means render `prompts/` |
 
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 72 tests
+docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 161 tests
 ```
 
 Everything in `tests/test_acl.py` is pure (no database), because the ACL and the query

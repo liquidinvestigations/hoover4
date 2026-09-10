@@ -9,6 +9,7 @@ use crate::components::error_boundary::GlobalErrorBoundary;
 use crate::components::hover_card::HoverCard;
 use crate::components::hover_card::HoverCardContent;
 use crate::components::hover_card::HoverCardTrigger;
+use crate::components::session_context::use_session_user;
 use crate::data_definitions::url_param::UrlParam;
 use crate::routes::Route;
 use common::search_query::SearchQuery;
@@ -114,6 +115,10 @@ fn NavbarTopIconLinks() -> Element {
 
 #[component]
 fn NavbarBottomIconLinks() -> Element {
+    // The Admin link reads the shared session. A second whoami here would send
+    // another identity request on every navbar render.
+    let user = use_session_user();
+    let show_admin = user.as_ref().is_some_and(|u| u.is_admin);
     rsx! {
 
         div {
@@ -126,7 +131,9 @@ fn NavbarBottomIconLinks() -> Element {
                 justify-content: center;
             ",
 
-            IconLink { to: Route::AdminDashboardPage { }, icon: MdPerson, label: "Admin" }
+            if show_admin {
+                IconLink { to: Route::AdminDashboardPage { }, icon: MdPerson, label: "Admin" }
+            }
         }
     }
 }

@@ -149,6 +149,39 @@ def test_a_batch_entity_listing_yields_one_ref_per_document():
     assert [r["file_hash"] for r in refs] == ["aaa", "bbb"]
 
 
+def test_a_citation_keeps_its_reason_and_an_older_row_has_none():
+    refs = extract_doc_refs(
+        "cite_documents",
+        {
+            "citations": [
+                {
+                    "file_hash": "aaa",
+                    "handle": "[D1]",
+                    "quote": "the board approved",
+                    "quote_verified": True,
+                },
+                {
+                    "file_hash": "bbb",
+                    "handle": "[D2]",
+                    "quote": "the",
+                    "quote_verified": False,
+                    "quote_reason": "short",
+                },
+                {
+                    "file_hash": "ccc",
+                    "handle": "[D3]",
+                    "quote": "older stored quote",
+                    "quote_verified": False,
+                },
+            ]
+        },
+    )
+    assert refs[0]["quote_verified"] is True
+    assert refs[0]["quote_reason"] == ""
+    assert refs[1]["quote_reason"] == "short"
+    assert refs[2]["quote_reason"] == ""
+
+
 def test_a_pre_batch_entities_row_still_renders():
     # The single-document shape the tool answered with before it was batched. Stored
     # transcripts still hold these rows and a card that cannot render one loses the record.
