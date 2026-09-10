@@ -69,6 +69,31 @@ class RecordIndexedParams:
 
 
 @dataclass
+class RefreshDocumentLocationsParams:
+    """Rewrite page-row folder attributes for documents whose locations changed.
+
+    `item_hashes` empty means select the stale set from current `vfs_files` and
+    the indexed `file_paths`. A supplied list is the recovery target and is still
+    intersected with shard assignments.
+    """
+    collectionname: str
+    collection_dataset: str
+    item_hashes: list[str]
+
+
+@dataclass
+class RefreshDocumentLocationsResult:
+    """What one location refresh rewrote, and what it compared against."""
+
+    collectionname: str
+    collection_dataset: str
+    indexed_documents: int
+    affected_hashes: list[str]
+    refreshed_hashes: list[str]
+    mechanism: str
+
+
+@dataclass
 class BuildEmailGraphParams:
     """Collection-scoped work triggered by one dataset finishing.
 

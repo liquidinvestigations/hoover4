@@ -40,6 +40,8 @@ from .params import (
     BuildVfsNodesParams,
     IndexShardParams,
     OptimizeShardsParams,
+    RefreshDocumentLocationsParams,
+    RefreshDocumentLocationsResult,
     ResolveCanonicalFileTypeParams,
 )
 from tasks.heartbeat import with_heartbeat
@@ -452,6 +454,42 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             client.commit()
         client.commit()
     return sorted({row['file_hash'] for row in rows})
+
+
+@activity.defn
+@with_heartbeat
+def refresh_stale_document_locations(
+    params: RefreshDocumentLocationsParams,
+) -> RefreshDocumentLocationsResult:
+    """Rewrite page rows for documents whose folder closure is behind `vfs_files`.
+
+    Rebuilds no shard tables and does not run extraction, OCR, or embedding.
+    Vectors stay as they are. Callers rebuild ClickHouse `vfs_nodes` first so
+    the closures this reads are current.
+    """
+    from .location_refresh import (
+        load_shard_assignments,
+        list_stale_location_hashes,
+        rewrite_page_locations,
+    )
+
+    selected, indexed_count, mechanism = list_stale_location_hashes(
+        params.collectionname, params.collection_dataset, params.item_hashes,
+    )
+    assignments = load_shard_assignments(
+        params.collectionname, params.collection_dataset,
+    )
+    refreshed = rewrite_page_locations(
+        params.collectionname, params.collection_dataset, selected, assignments,
+    )
+    return RefreshDocumentLocationsResult(
+        collectionname=params.collectionname,
+        collection_dataset=params.collection_dataset,
+        indexed_documents=indexed_count,
+        affected_hashes=selected,
+        refreshed_hashes=refreshed,
+        mechanism=mechanism,
+    )
 
 
 def primary_filename(basenames) -> str:

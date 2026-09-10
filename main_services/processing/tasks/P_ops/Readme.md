@@ -60,7 +60,8 @@ cancellation), so both writers agree and the order between them stops mattering.
 
 `add_dataset` and `rescan_dataset` drive the ingest chain, and `compute_plans` and
 `execute_plans` drive one of its stages alone; `reindex_collection` rebuilds a collection's
-shard tables from its finished plans; `ensure_collection` and `drop_collection_database`
+shard tables from its finished plans; `refresh_document_locations` rewrites page-row folder
+attributes for documents whose locations changed, without extraction; `ensure_collection` and `drop_collection_database`
 provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
 `change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
 chain of them; `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
@@ -86,8 +87,9 @@ the deletion rather than with the number of activities that have returned. A pur
 the two task-telemetry tables it writes to while it runs. An operation counting its own
 telemetry as work left to do could never reach its total.
 
-**Three kinds have no progress fraction at all, deliberately.** `compute_plans` writes
-every plan in one statement, and `ensure_collection` and `drop_collection_database` are one
+**Four kinds have no progress fraction at all, deliberately.** `compute_plans` writes
+every plan in one statement, `refresh_document_locations` rewrites a selected hash list
+in one child, and `ensure_collection` and `drop_collection_database` are one
 activity each, so none of them has a unit that finishes repeatedly and none has an accurate
 denominator. Their counters stay at zero and their result string says what happened. A bar
 invented for them would sit empty and then be full, which reports less than no bar.

@@ -10,14 +10,19 @@ This stage indexes parsed text and metadata into Manticore to enable search and 
 
 ## Entry Points
 
-- Workflow: `IndexDatasetPlan` in `workflows.py`
-- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `optimize_shard_tables` in `activities.py`
-- Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
+- Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in `workflows.py`
+- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `optimize_shard_tables`, `refresh_stale_document_locations` in `activities.py`
+- Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `location_refresh.py` (stale folder-closure selection), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
-afterwards it runs again, followed by `resolve_canonical_file_type`'s dataset-wide sweep,
-`index_vfs_structure` and `index_entity_terms`. `IndexDatasetPlan` itself writes shards
-and the email graph.
+afterwards it runs again, followed by `resolve_canonical_file_type`'s dataset-wide sweep
+when plans ran, `refresh_stale_document_locations`, `index_vfs_structure` and
+`index_entity_terms`. `IndexDatasetPlan` itself writes shards and the email graph.
+`RefreshDocumentLocations` rebuilds the tree and rewrites page-row folder attributes
+for a dataset whose indexed locations lag `vfs_files`. It does not extract, OCR, or
+embed, and it is not started at deployment. It reads indexed `file_paths` from the
+`filename_index` row by `extracted_by`. A bound `page_id = -1` does not match the
+unsigned value Manticore stores for that sentinel.
 
 ## Technical Details
 

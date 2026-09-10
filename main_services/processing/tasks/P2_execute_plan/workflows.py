@@ -81,9 +81,10 @@ with workflow.unsafe.imports_passed_through():
         build_vfs_nodes,
         index_entity_terms,
         index_vfs_structure,
+        refresh_stale_document_locations,
         resolve_canonical_file_type,
     )
-    from tasks.P6_index_data.params import BuildVfsNodesParams, ResolveCanonicalFileTypeParams
+    from tasks.P6_index_data.params import BuildVfsNodesParams, RefreshDocumentLocationsParams, ResolveCanonicalFileTypeParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -158,67 +159,65 @@ class ExecutePlans:
                     task_queue="processing-common-queue",
                     search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
-            log.info(f"[P2] No plans to execute")
-            return "no plans"
+            log.info("[P2] No plans to execute; refreshing locations if they changed")
 
-        # 2) If more than 1000, keep the 101st for continuation
-        continuation_hash = None
-        if len(plan_hashes) > 1000:
-            continuation_hash = plan_hashes[1000]
-            plan_hashes = plan_hashes[:1000]
-            log.info(f"[P2] Continuation hash: {continuation_hash}")
-
-        # Dataset-scoped tree, once per ExecutePlans invocation, before any per-plan
-        # writer. document_metadata builds ancestor closures from ClickHouse vfs_nodes,
-        # so those writers must not run against an empty tree. Nested extraction
-        # restarts ExecutePlans after ComputePlans, and that next invocation rebuilds
-        # once for the new blobs.
-        #
-        # Canonical file type is NOT here. It reads `file_types`, which P3 writes inside
-        # the per-plan children below, so a pass at this point reads an empty table on a
-        # first ingest and writes nothing at all. Each plan resolves its own documents,
-        # and a dataset-wide sweep after the children catches the ones whose evidence
-        # crossed a plan boundary.
         vfs_params = BuildVfsNodesParams(
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
         )
-        await workflow.execute_activity(
-            build_vfs_nodes,
-            vfs_params,
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
+        continuation_hash = None
 
-        # 3) Run per-plan child workflows, 16 in flight. Plans differ in size by orders
-        # of magnitude, so a barrier here costs the largest plan in each group of 16.
-        CONCURRENCY = 16
+        if plan_hashes:
+            # 2) If more than 1000, keep the 101st for continuation
+            if len(plan_hashes) > 1000:
+                continuation_hash = plan_hashes[1000]
+                plan_hashes = plan_hashes[:1000]
+                log.info(f"[P2] Continuation hash: {continuation_hash}")
 
-        def _plan_factory(ph):
-            return lambda: workflow.execute_child_workflow(
-                ExecuteSinglePlan.run,
-                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
-                id=f"execute-plan-{params.collection_dataset}-{ph}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(params.collection_dataset),
+            # Dataset-scoped tree, once per ExecutePlans invocation, before any per-plan
+            # writer. document_metadata builds ancestor closures from ClickHouse vfs_nodes,
+            # so those writers must not run against an empty tree. Nested extraction
+            # restarts ExecutePlans after ComputePlans, and that next invocation rebuilds
+            # once for the new blobs.
+            #
+            # Canonical file type is NOT here. It reads `file_types`, which P3 writes inside
+            # the per-plan children below, so a pass at this point reads an empty table on a
+            # first ingest and writes nothing at all. Each plan resolves its own documents,
+            # and a dataset-wide sweep after the children catches the ones whose evidence
+            # crossed a plan boundary.
+            await workflow.execute_activity(
+                build_vfs_nodes,
+                vfs_params,
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=INDEXING_TASK_QUEUE,
             )
 
-        plan_results = await run_with_window(
-            [_plan_factory(ph) for ph in plan_hashes], CONCURRENCY)
-        for res in plan_results:
-            if isinstance(res, Exception):
-                raise res
+            # 3) Run per-plan child workflows, 16 in flight. Plans differ in size by orders
+            # of magnitude, so a barrier here costs the largest plan in each group of 16.
+            CONCURRENCY = 16
 
-        # Rebuild the tree over what this batch just discovered, then copy it into
-        # Manticore. The pre-loop rebuild cannot see structure the batch's own P3
-        # produced -- an archive member whose content already had a blob adds a
-        # `vfs_files` row without adding a plan, so nothing restarts to pick it up.
-        # Both are dataset-scoped and once per invocation, not once per plan, which
-        # is what made this stage quadratic. Manticore vfs does not need to exist
-        # for the per-plan writers: `plan_shards` creates the table and they write
-        # pages and vectors, not the tree.
+            def _plan_factory(ph):
+                return lambda: workflow.execute_child_workflow(
+                    ExecuteSinglePlan.run,
+                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
+                    id=f"execute-plan-{params.collection_dataset}-{ph}",
+                    task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
+                )
+
+            plan_results = await run_with_window(
+                [_plan_factory(ph) for ph in plan_hashes], CONCURRENCY)
+            for res in plan_results:
+                if isinstance(res, Exception):
+                    raise res
+
+        # Rebuild the tree over current vfs_files, rewrite page-row folder
+        # attributes for documents whose locations changed, then copy the tree
+        # into Manticore. This runs when the invocation executed plans and when it
+        # did not: a disk rescan of known bytes, and an archive member whose content
+        # already had a blob, add vfs_files rows without adding a plan.
         #
         # This sits BEFORE the continuation and restart returns on purpose. Placing
         # it after them means the tree is only ever indexed by whichever invocation
@@ -232,18 +231,31 @@ class ExecutePlans:
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=INDEXING_TASK_QUEUE,
         )
-        # The dataset-wide sweep, with the children's detections and evidence now all
-        # present. Each plan already resolved its own documents; this catches a document
-        # whose evidence arrived in a different plan from its detections, and it is what
-        # makes the empty-archive demotion see a container's real member count.
+        if plan_hashes:
+            # The dataset-wide sweep, with the children's detections and evidence now all
+            # present. Each plan already resolved its own documents; this catches a document
+            # whose evidence arrived in a different plan from its detections, and it is what
+            # makes the empty-archive demotion see a container's real member count.
+            await workflow.execute_activity(
+                resolve_canonical_file_type,
+                ResolveCanonicalFileTypeParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    item_hashes=[],
+                ),
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=INDEXING_TASK_QUEUE,
+            )
         await workflow.execute_activity(
-            resolve_canonical_file_type,
-            ResolveCanonicalFileTypeParams(
+            refresh_stale_document_locations,
+            RefreshDocumentLocationsParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 item_hashes=[],
             ),
-            start_to_close_timeout=timedelta(minutes=30),
+            start_to_close_timeout=timedelta(minutes=45),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=INDEXING_TASK_QUEUE,
@@ -318,6 +330,8 @@ class ExecutePlans:
                 log.error(f"[P2] Error executing restart plans: {e}")
                 return f"error executing restart plans: {e}"
 
+        if not plan_hashes:
+            return "no plans"
         return f"executed {len(plan_hashes)} plans"
 
 

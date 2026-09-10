@@ -40,6 +40,7 @@ Usage:
 - Remove one dataset's data with `python main.py purge-dataset <collectionname> <collection_dataset> [--apply] [--registered]`. Deletes its rows from every Manticore table of the collection and every collection-DB table that has a `collection_dataset` column, then recomputes the shard ledger. The recovery path for a dataset that was abandoned rather than deleted (a failed ingest, or a re-ingest under a new name), whose index rows otherwise keep answering searches and keep the Collections filter offering a dataset that no longer exists. It reports what it will delete and deletes nothing without `--apply`, refuses a dataset that still has a live registry row (deleting a live dataset belongs in the admin UI, which purges *and* removes the row) unless `--registered` is passed, and is idempotent. A second run finds nothing to purge.
 - Retry the documents one stage failed on with `python main.py retry-failed-files <collectionname> [--dataset X] [--task P4_ExtractEntities] [--apply]`. Reads the file hashes out of `processing_errors` and re-runs the stage that failed them, with no re-ingest. A stage that decides an input needs no work (an image too small to hold text, a file below the minimum table shape) never writes a `processing_errors` row for it, so this command never retries a skip; `processing_task_runs.outcome` records that decision as `skipped` instead. A plan is marked finished when its stages have *run*, not when every document succeeded, so re-running the `ExecutePlans` workflow is a no-op for exactly these failures. NER failures clear the failed hashes' `nlp_processed` watermarks and re-run P4 + P6 for their plans; index failures re-run P6 alone; embedding failures re-run P5 + P6; parse failures have no per-file entry point and reopen the whole plan. The `processing_errors` rows are cleared only after the re-run has demonstrably fixed the document, so a second failure leaves the record it started from.
 - Re-index a collection with `python main.py reindex-collection <collectionname>`, drops the collection's Manticore shard tables and shard ledger, then re-runs indexing for every finished plan (recovery path for a lost Manticore volume, a `MAX_SHARD_TEXT_BYTES` change, or shard fragmentation; files are not re-parsed). It refuses while any operation for the collection is non-terminal, or while any `IndexDatasetPlan` workflow is open for it: truncating the ledger under a live writer produces a ledger claiming documents no table holds.
+- Refresh searchable folder attributes with `python main.py refresh-document-locations <collectionname> <collection_dataset> [--apply]`. Selects hashes whose indexed `file_paths` lag current `vfs_files` closures. Dry-run is the default. `--apply` dispatches the rewrite. Does not extract, OCR, or embed, and does not drop shard tables. Deployment does not start this.
 - Inspect long operations with `python main.py operations list|show|rerun|cancel`. Every significant command above dispatches one and then follows it, so an interrupted command loses a view and never the work. `rerun` mints a fresh operation with the same kind and target, never a resumption, because the original run's record is what the log is for. `cancel` releases the lock the operation holds and lands it in `cancelled`, which is a state of its own and is re-runnable.
 - Start workers with `python main.py worker [common|tika|ocr|nlp|embed|indexing|index-planner|operations]`. The `index-planner` worker must run at exactly one process (see [tasks/Readme.md](tasks/Readme.md)). `operations` runs in its own container rather than in the pipeline fleet, so a long operation's load is bounded by that container's budget; it is not in the set the bare `worker` command spawns. Worker startup also registers the `CollectionDataset` Temporal search attribute and starts the singleton `CollectEtaSamples` ETA workflow, both idempotent, so restarts are safe.
 
@@ -82,7 +83,8 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   archive, or being an email, is a guess, and an email with no attachments rendered as a
   folder that opens onto nothing. What is inside a container hangs off the container FILE;
   there is no `/` node in between. `ExecutePlans` runs it once per batch, before the
-  per-plan writers.
+  per-plan writers, and again after them. An invocation that finds no pending
+  plans still rebuilds it, so a rescan of known bytes updates the tree.
 * `index_vfs_structure`, copies it into the collection's `<name>_vfs` Manticore table
   with multi-row REPLACE, then deletes Manticore rows whose `node_key` is not in the
   current ClickHouse tree. No dataset-wide DELETE first. Once per terminal `ExecutePlans`
@@ -92,6 +94,8 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,
   `primary_filename`, `email_from`, `email_to`) and its `vfs_node` closure term ids.
   One writer, because every row of a document must carry the same metadata.
+  `refresh_stale_document_locations` runs that writer again for hashes whose
+  indexed closure lags `vfs_files`, without extraction.
 * `optimize_shard_tables`, compacts a shard whose killed rows or chunk count have
   built up. Storage, not latency.
 

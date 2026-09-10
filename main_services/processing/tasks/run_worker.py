@@ -220,7 +220,7 @@ async def run_common_worker():
     from .P4_extract_entities.workflows import ExtractEntitiesForPlan, ScanRegexEntitiesForPlan
     from .P4_extract_entities.scan_regex_entities import scan_regex_entities_for_hashes
     from .P5_chunk_embed.workflows import ChunkEmbedForPlan
-    from .P6_index_data.workflows import IndexDatasetPlan
+    from .P6_index_data.workflows import IndexDatasetPlan, RefreshDocumentLocations
     from .P_admin.activities import (
         collect_eta_samples,
         drop_collection_database,
@@ -310,6 +310,7 @@ async def run_common_worker():
             ScanRegexEntitiesForPlan,
             ChunkEmbedForPlan,
             IndexDatasetPlan,
+            RefreshDocumentLocations,
             EnsureCollectionDatabase,
             DropCollectionDatabase,
             PurgeDataset,
@@ -514,7 +515,7 @@ async def run_indexing_worker():
   from .P6_index_data.activities import (
       build_email_graph, build_vfs_nodes, index_text_pages, index_vectors,
       index_entity_terms, index_vfs_structure, optimize_shard_tables,
-      resolve_canonical_file_type,
+      refresh_stale_document_locations, resolve_canonical_file_type,
   )
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
@@ -534,7 +535,8 @@ async def run_indexing_worker():
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
                   index_vfs_structure, build_email_graph, optimize_shard_tables,
-                  resolve_canonical_file_type, index_entity_terms],
+                  resolve_canonical_file_type, index_entity_terms,
+                  refresh_stale_document_locations],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

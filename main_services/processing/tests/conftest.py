@@ -74,11 +74,12 @@ def temp_collection():
     )
     from database.manticore import drop_collection_tables
 
-    # 'x' after the '_', never all digits: a '_<digits>' tail would be rejected by
-    # validate_collectionname (shard-name collision) and an all-digit hex suffix
-    # makes that ~2.3% likely per draw. ('-' is not an option: collection names
-    # are [a-z0-9_] only, because Manticore table names are unquoted identifiers.)
-    collectionname = f"test_x{uuid.uuid4().hex[:7]}"
+    # Letters then hex, no underscore. ``collection_bucket`` concatenates this
+    # name onto the S3 prefix, and an S3 bucket name cannot contain ``_``.
+    # A ``_<digits>`` tail would also be rejected by validate_collectionname.
+    # ``-`` is not an option: collection names are [a-z0-9_] only, because
+    # Manticore table names are unquoted identifiers.
+    collectionname = f"testx{uuid.uuid4().hex[:7]}"
     try:
         # Validate before writing anything: a rejected name must not leave an
         # orphan registry row behind.

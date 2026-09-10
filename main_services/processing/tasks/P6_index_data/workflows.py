@@ -18,17 +18,23 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_common import record_errors_from_results
     from .params import (
         BuildEmailGraphParams,
+        BuildVfsNodesParams,
         FinalizeIndexBatchParams,
         IndexDatasetPlanParams,
         IndexShardParams,
         PlanShardsParams,
         RecordIndexedParams,
+        RefreshDocumentLocationsParams,
     )
     from .activities import (
         build_email_graph,
+        build_vfs_nodes,
+        index_entity_terms,
         index_text_pages,
         index_vectors,
+        index_vfs_structure,
         optimize_shard_tables,
+        refresh_stale_document_locations,
     )
     from .params import OptimizeShardsParams
     from .shard_planner import finalize_index_batch, plan_shards, record_indexed
@@ -211,3 +217,63 @@ class IndexDatasetPlan:
 
         log.info(f"[P6] Done: Indexing dataset plan {params.collection_dataset} {params.plan_hash}")
         return f"indexed {params.plan_hash}"
+
+
+@workflow.defn
+class RefreshDocumentLocations:
+    """Rebuild the dataset tree and rewrite page-row folder attributes.
+
+    Recovery entry for a dataset whose indexed `file_paths` lag `vfs_files`.
+    It is not started at deployment. ExecutePlans also calls the page rewrite
+    after a scan that produced no new plans.
+    """
+
+    @workflow.run
+    async def run(self, params: RefreshDocumentLocationsParams) -> str:
+        vfs_params = BuildVfsNodesParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+        )
+        await workflow.execute_activity(
+            build_vfs_nodes,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        result = await workflow.execute_activity(
+            refresh_stale_document_locations,
+            params,
+            start_to_close_timeout=timedelta(minutes=45),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        await workflow.execute_activity(
+            index_vfs_structure,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        await workflow.execute_activity(
+            index_entity_terms,
+            vfs_params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=INDEXING_TASK_QUEUE,
+        )
+        refreshed = len(result.refreshed_hashes)
+        affected = len(result.affected_hashes)
+        log.info(
+            "[P6] location refresh %s: %d affected, %d rewritten, %d indexed, %s",
+            params.collection_dataset, affected, refreshed,
+            result.indexed_documents, result.mechanism,
+        )
+        return (
+            f"refreshed {refreshed} of {affected} stale location hashes "
+            f"({result.indexed_documents} indexed, {result.mechanism})"
+        )

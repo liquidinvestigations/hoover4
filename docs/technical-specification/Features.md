@@ -33,12 +33,13 @@ languages.
 | `F-ingest-08` | Scan text for pattern entities (identifiers, amounts, dates and similar) with checksum validation where the format has one | `P4_extract_entities/`, `main_services/regex_entity_scanner/` |
 | `F-ingest-09` | Chunk and embed every text variant into a durable vector store | `P5_chunk_embed/` |
 | `F-ingest-10` | Index everything into shard tables sized by a planner | `P6_index_data/` |
-| `F-ingest-11` | Rescan a dataset incrementally: changed files reprocess, unchanged files are untouched, removed paths are marked and de-indexed by reachability | `P0_scan_disk/`, `vfs_files` |
+| `F-ingest-11` | Rescan a dataset incrementally: changed files reprocess, unchanged files are untouched, removed paths are marked and de-indexed by reachability, and known content that gains a location refreshes searchable folder attributes without repeating extraction | `P0_scan_disk/`, `vfs_files`, `ExecutePlans`, `refresh_stale_document_locations` |
 | `F-ingest-12` | Re-run one stage for the documents it failed on, without re-ingesting, keeping each failure at one recorded row however many times it is retried | `main.py retry-failed-files`, the `retry_failed_files` operation |
 | `F-ingest-13` | Re-index a collection from parsed content, without re-parsing | `main.py reindex-collection` |
 | `F-ingest-14` | Purge an abandoned dataset's rows from every table and the index | `main.py purge-dataset`, the `purge_dataset` operation |
 | `F-ingest-15` | Survive a worker restart mid-ingest: in-flight activities are drained rather than killed, batch stages give their work back at an item boundary, and the dataset finishes with every document's chunks, vectors and index rows | `tasks/run_worker.py`, `tasks/heartbeat.py`, `main_services/verify-stack.sh --restart-resilience` |
 | `F-ingest-16` | Record a stage's own decision that an input needs no work (an image too small to hold text, a file below the minimum table shape) as a distinct outcome, never as a failure, so it is never retried and never counted in a failure total | `tasks/task_timing.py` (`SkippedOutcome`, `processing_task_runs.outcome`), `P3_parse_files/parse_ocr.py`, `P3_parse_files/parse_table.py` |
+| `F-ingest-17` | Refresh searchable folder attributes for documents whose source locations changed, without repeating extraction, OCR, or embedding, and without dropping shard tables. Invocation is explicit. | `main.py refresh-document-locations`, the `refresh_document_locations` operation, `refresh_stale_document_locations` |
 
 ## Search
 
@@ -159,7 +160,7 @@ languages.
 | `F-admin-11` | Record every long operation permanently (what was asked for, by whom, its progress, and how it ended) outliving both the process that asked and the workflow history | the `operations` table, `main_services/processing/database/operations.py` |
 | `F-admin-12` | Run long operations in a container of their own, with its own memory and CPU budget and the datastore volumes mounted read-only, so they cannot take capacity from ingestion | `hoover4-ops`, `tasks/run_worker.py:run_operations_worker` |
 | `F-admin-13` | Refuse a second dispatch of the same kind of operation against the same target while one is still running, naming what is in the way | `database/operations.py:assert_lock_free` |
-| `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `main.py purge-dataset --apply`, `main.py retry-failed-files --apply`, `tasks/P_ops/cli.py` |
+| `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `main.py refresh-document-locations --apply`, `main.py purge-dataset --apply`, `main.py retry-failed-files --apply`, `tasks/P_ops/cli.py` |
 | `F-admin-15` | List, inspect, re-run and cancel operations from the command line | `main.py operations list\|show\|rerun\|cancel` |
 | `F-admin-16` | Browse the operations log in the interface (newest first, paginated, filtered by state and by collection) with progress, estimate, outcome and the error against each row | `/admin/operations`, `website/backend/src/api/admin/operations.rs` |
 | `F-admin-17` | Re-run or cancel an operation from the interface, where a destructive kind is refused until the target is typed out | `admin_rerun_operation`, `admin_cancel_operation` |

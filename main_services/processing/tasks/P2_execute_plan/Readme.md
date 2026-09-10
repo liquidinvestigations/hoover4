@@ -68,13 +68,7 @@ The dataset tree is rebuilt once per `ExecutePlans` batch, before the per-plan c
 restarts `ExecutePlans` after `ComputePlans`, and that next invocation rebuilds once for
 the new blobs.
 
-After the children, the tree is rebuilt a second time and then copied into Manticore
-`<coll>_vfs`. The second rebuild is not redundant: the pre-loop one cannot see structure
-this batch's own P3 produced, and an archive member whose content already had a blob adds
-a `vfs_files` row without adding a plan, so nothing restarts to pick it up. Both calls sit
-**before** the continuation and restart hand-offs, so every invocation indexes the plans
-it executed. Indexing only on the terminal invocation means a child that raises, or one
-that finds no plans left, leaves the browser on the previous ingest.
+After the children, the tree is rebuilt a second time, page-row folder attributes are rewritten for documents whose locations changed, and the tree is copied into Manticore `<coll>_vfs`. The second rebuild is not redundant: the pre-loop one cannot see structure this batch's own P3 produced, and an archive member whose content already had a blob adds a `vfs_files` row without adding a plan, so nothing restarts to pick it up. A rescan that adds a path for already processed bytes also produces no pending plans. That invocation still rebuilds the tree and rewrites those page-row attributes. Both calls sit **before** the continuation and restart hand-offs, so every invocation indexes the plans it executed. Indexing only on the terminal invocation means a child that raises, or one that finds no plans left, leaves the browser on the previous ingest.
 
 The copy is incremental: `REPLACE` in multi-row chunks of 512, then a delete of Manticore
 rows whose `node_key` is not in the current ClickHouse tree. There is no dataset-wide

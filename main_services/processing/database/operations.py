@@ -50,6 +50,7 @@ KINDS: dict[str, dict] = {
     "delete_dataset": {"target_kind": "dataset", "destructive": True},
     "change_ocr_languages": {"target_kind": "dataset", "destructive": False},
     "reindex_collection": {"target_kind": "collection", "destructive": False},
+    "refresh_document_locations": {"target_kind": "dataset", "destructive": False},
     "retry_failed_files": {"target_kind": "dataset", "destructive": False},
     "ensure_collection": {"target_kind": "collection", "destructive": False},
     "drop_collection_database": {"target_kind": "collection", "destructive": True},

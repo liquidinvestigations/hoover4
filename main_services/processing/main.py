@@ -502,6 +502,69 @@ def reindex_collection(collectionname: str):
         raise click.ClickException(f"{op_id} failed.")
 
 
+@cli.command(name="refresh-document-locations")
+@click.argument("collectionname", type=str)
+@click.argument("collection_dataset", type=str)
+@click.option("--apply/--dry-run", default=False, show_default=True,
+              help="--dry-run (the default) lists hashes whose indexed folder "
+                   "attributes lag current locations. --apply dispatches the rewrite.")
+def refresh_document_locations(collectionname: str, collection_dataset: str, apply: bool):
+    """Rewrite searchable folder attributes for documents whose locations changed.
+
+    Does not extract, OCR, or embed. Does not drop shard tables. Selects only
+    hashes whose indexed `file_paths` differ from current `vfs_files` closures.
+    Invocation is explicit: deployment does not start this.
+
+    The dry run is a local read. `--apply` dispatches a
+    `refresh_document_locations` operation and follows it. Ctrl-C detaches.
+    """
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P6_index_data.location_refresh import list_stale_location_hashes
+    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    selected, indexed_count, mechanism = list_stale_location_hashes(
+        collectionname, collection_dataset, [],
+    )
+    click.echo(
+        f"{collection_dataset}: {len(selected)} stale location hash(es) "
+        f"out of {indexed_count} indexed documents ({mechanism})"
+    )
+    for file_hash in selected[:50]:
+        click.echo(file_hash)
+    if len(selected) > 50:
+        click.echo(f"... {len(selected) - 50} more")
+
+    if not apply:
+        click.echo("dry run; pass --apply to rewrite those page-row folder attributes")
+        return
+    if not selected:
+        click.echo("nothing to refresh")
+        return
+
+    try:
+        op_id = submit_operation(
+            "refresh_document_locations",
+            collectionname=collectionname,
+            collection_dataset=collection_dataset,
+            detail={"item_hashes": selected, "indexed_documents": indexed_count,
+                    "mechanism": mechanism},
+        )
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
+    if state == "detached":
+        click.echo(where_to_look(op_id))
+
+
 @cli.command(name="purge-dataset")
 @click.argument("collectionname", type=str)
 @click.argument("collection_dataset", type=str)

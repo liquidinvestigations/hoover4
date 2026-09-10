@@ -147,6 +147,19 @@ class Operation:
                 heartbeat_timeout=timedelta(minutes=5),
             )
             return f"queued {queued} plan(s) for re-indexing"
+        if params.kind == "refresh_document_locations":
+            result = await workflow.execute_child_workflow(
+                "RefreshDocumentLocations",
+                {
+                    "collectionname": params.collectionname,
+                    "collection_dataset": params.collection_dataset,
+                    "item_hashes": list(params.detail.get("item_hashes") or []),
+                },
+                id=f"refresh-document-locations-{params.op_id}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
+            return result
         raise ApplicationErrorKind(params.kind)
 
     async def _ingest_dataset(self, params: OperationParams) -> str:

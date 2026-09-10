@@ -188,13 +188,15 @@ def test_execute_plans_rebuilds_the_tree_once_per_batch():
     source = open(p2_workflows.__file__).read()
     ordered = [name for _, name in _execute_targets(source, "ExecutePlans")]
     for required in ("build_vfs_nodes", "resolve_canonical_file_type",
-                     "ExecuteSinglePlan", "index_vfs_structure"):
+                     "ExecuteSinglePlan", "index_vfs_structure",
+                     "refresh_stale_document_locations"):
         assert required in ordered, (
             f"{required} is not executed by ExecutePlans: {ordered}"
         )
     assert ordered.index("build_vfs_nodes") \
         < ordered.index("ExecuteSinglePlan") \
         < ordered.index("resolve_canonical_file_type") \
+        < ordered.index("refresh_stale_document_locations") \
         < ordered.index("index_vfs_structure"), (
         f"tree rebuild must wrap the per-plan children: {ordered}"
     )
@@ -238,4 +240,24 @@ def test_canonical_file_type_runs_inside_the_plan_that_produced_the_evidence():
     assert index_line < handoff_line, (
         f"index_vfs_structure (line {index_line}) must precede the continuation "
         f"hand-off (line {handoff_line})"
+    )
+
+
+def test_execute_plans_refreshes_locations_before_returning_no_plans():
+    """A rescan of known bytes produces no pending plans. The old path returned
+    `no plans` before the tree rebuild, so indexed folder attributes stayed on the
+    previous locations. The return must follow the location refresh.
+    """
+    source = open(p2_workflows.__file__).read()
+    refresh_line = next(
+        line for line, name in _execute_targets(source, "ExecutePlans")
+        if name == "refresh_stale_document_locations"
+    )
+    no_plans_return = next(
+        n for n, text in enumerate(source.splitlines(), start=1)
+        if text.strip() == 'return "no plans"'
+    )
+    assert refresh_line < no_plans_return, (
+        f"refresh_stale_document_locations (line {refresh_line}) must precede "
+        f'return "no plans" (line {no_plans_return})'
     )

@@ -18,6 +18,8 @@ This stage creates processing plans from newly ingested blobs. Plans define batc
 
 Plans are built with a 1 GB total size cap and up to 1000 items per plan. Plan hashes are derived from a stable JSON payload of sorted item hashes. The workflow runs with time budgets derived from blob counts to maintain throughput targets.
 
+A blob already present in `processing_plan_hits` does not receive another plan when a new path refers to it. `ExecutePlans` still rebuilds the dataset tree and rewrites page-row folder attributes for those documents.
+
 ## Usage
 
 - Triggered automatically after dataset ingestion in `main.py`.
