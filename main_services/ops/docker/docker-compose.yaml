@@ -459,9 +459,8 @@ services:
       # The regex entity scanner (compose/regex-entity-scanner.yaml). Always present, so
       # the scan stage has no absent-endpoint branch to carry.
       - "REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}"
-      # Worker fleet sizing. Unset everywhere by default: each tier's own default is a
-      # measurement, not a guess, and the common tier's process count already follows
-      # the host's core count. Set one to override that for this deployment.
+      # Worker fleet sizing. Unset for the pipeline tiers: each default is a measurement.
+      # The three chat keys are set from the ini: a slot is one turn in flight.
       - "HOOVER4_COMMON_WORKERS=${HOOVER4_COMMON_WORKERS:-}"
       - "HOOVER4_COMMON_CONCURRENCY=${HOOVER4_COMMON_CONCURRENCY:-}"
       - "HOOVER4_TIKA_CONCURRENCY=${HOOVER4_TIKA_CONCURRENCY:-}"
@@ -469,6 +468,9 @@ services:
       - "HOOVER4_NLP_CONCURRENCY=${HOOVER4_NLP_CONCURRENCY:-}"
       - "HOOVER4_EMBED_CONCURRENCY=${HOOVER4_EMBED_CONCURRENCY:-}"
       - "HOOVER4_INDEXING_CONCURRENCY=${HOOVER4_INDEXING_CONCURRENCY:-}"
+      - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
+      - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
+      - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
       # A rendered .env is substituted INTO this file; it does not reach the container by
       # itself. Without this line the worker reads no graceful shutdown period, falls
       # back to its own default, and the ini key silently stops deciding anything.

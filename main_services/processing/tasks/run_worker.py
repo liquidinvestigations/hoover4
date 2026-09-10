@@ -246,8 +246,6 @@ async def run_common_worker():
         PurgeDataset,
         SweepChatArtifacts,
     )
-    from .P_agent.activities import run_research_agent, write_chat_message
-    from .P_agent.workflows import ResearchTask
     from .visibility import ensure_search_attributes
 
     log.info("Starting common worker...")
@@ -317,7 +315,6 @@ async def run_common_worker():
             ChangeOcrLanguages,
             CollectEtaSamples,
             SweepChatArtifacts,
-            ResearchTask,
           ],
           activities=[
             list_disk_folder,
@@ -374,10 +371,6 @@ async def run_common_worker():
             reopen_plans_for_ocr_change,
             purge_dropped_ocr_variants,
             delete_orphaned_derived_pdfs,
-
-            # P_agent long-running AI research tasks
-            run_research_agent,
-            write_chat_message,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
@@ -586,16 +579,25 @@ OPERATIONS_QUEUE_SLOTS = {
 
 
 async def run_chat_worker():
-  """Serve `chat-queue`: every ordinary chat turn.
+  """Serve the three agent queues from one process.
 
-  Its own process and its own queue, which is what keeps it responsive. A chat turn is a person
-  waiting at a screen, and an ingestion backlog on the shared queue would put them behind
-  however many thousand documents are being processed -- a delay no amount of worker
-  concurrency fixes, because the queue is FIFO and the backlog is ahead of them.
+  One process rather than three because the slot counts, not the process boundary, are
+  what bounds the load: twenty slots of mostly-waiting work do not need three interpreters,
+  and one process means one place for the container's memory budget to apply. The queues
+  stay separate so a long model turn cannot hold a write slot, and a research turn cannot
+  take a chat-model slot.
 
-  Concurrency is the number of chat turns that may be in flight at once across the whole
-  deployment. Each one holds a thread that is almost entirely waiting on the agent, so
-  the number is about how many conversations may be live, not about this host's CPU.
+  `chat-queue` carries `ChatTurn` and the short activities (write, todo read, title).
+  `chat-model-queue` carries `run_research_agent` for those chat turns. `research-queue`
+  carries `ResearchTask` and its own `run_research_agent`. A slot is one turn in flight,
+  not one model call: one turn still makes up to `AGENT_MAX_TOOL_TURNS` model calls in
+  sequence and starts up to `AGENT_SUBAGENT_CONCURRENCY` workers, and none of those go
+  through Temporal.
+
+  The three queues are not the ingestion queue. An ingestion backlog delaying a person
+  waiting at a screen is the failure a shared queue guarantees, and these three make it
+  impossible. The worker deploys before the website: a workflow addressed to a queue
+  nothing polls waits for ever with no error anywhere.
   """
   from .P_agent.activities import (
       read_chat_todo,
@@ -603,26 +605,60 @@ async def run_chat_worker():
       summarize_session,
       write_chat_message,
   )
-  from .P_agent.workflows import CHAT_TASK_QUEUE, ChatTurn
+  from .P_agent.workflows import (
+      CHAT_MODEL_TASK_QUEUE,
+      CHAT_TASK_QUEUE,
+      RESEARCH_TASK_QUEUE,
+      ChatTurn,
+      ResearchTask,
+  )
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
   client = await Client.connect("temporal:7233")
   attach_temporal_client(client)
   await ensure_search_attributes(client)
-  CONCURRENCY = worker_concurrency("chat", 8)
-  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
-    worker = Worker(
-      client,
-      interceptors=[TaskTimingInterceptor()],
-      workflow_runner=sandboxed_runner(),
-      task_queue=CHAT_TASK_QUEUE,
-      graceful_shutdown_timeout=graceful_shutdown_timeout(),
-      workflows=[ChatTurn],
-      activities=[read_chat_todo, run_research_agent, summarize_session, write_chat_message],
-      activity_executor=activity_executor,
-      max_concurrent_activities=CONCURRENCY,
-    )
-    await run_until_signalled(worker)
+  # An empty key yields 8 slots. The ini sets 12, 4 and 4.
+  model_slots = worker_concurrency("chat_model", 8)
+  low_latency_slots = worker_concurrency("chat_low_latency", 8)
+  research_slots = worker_concurrency("research", 8)
+  thread_count = model_slots + low_latency_slots + research_slots
+  with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as activity_executor:
+    workers = [
+      Worker(
+        client,
+        interceptors=[TaskTimingInterceptor()],
+        workflow_runner=sandboxed_runner(),
+        task_queue=CHAT_TASK_QUEUE,
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflows=[ChatTurn],
+        activities=[read_chat_todo, summarize_session, write_chat_message],
+        activity_executor=activity_executor,
+        max_concurrent_activities=low_latency_slots,
+      ),
+      Worker(
+        client,
+        interceptors=[TaskTimingInterceptor()],
+        workflow_runner=sandboxed_runner(),
+        task_queue=CHAT_MODEL_TASK_QUEUE,
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflows=[],
+        activities=[run_research_agent],
+        activity_executor=activity_executor,
+        max_concurrent_activities=model_slots,
+      ),
+      Worker(
+        client,
+        interceptors=[TaskTimingInterceptor()],
+        workflow_runner=sandboxed_runner(),
+        task_queue=RESEARCH_TASK_QUEUE,
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflows=[ResearchTask],
+        activities=[run_research_agent],
+        activity_executor=activity_executor,
+        max_concurrent_activities=research_slots,
+      ),
+    ]
+    await run_until_signalled(*workers)
 
 
 async def run_operations_worker():

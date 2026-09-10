@@ -107,7 +107,9 @@ user an administrator.
 
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys
 (`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `nlp_concurrency`,
-`embed_concurrency`, `indexing_concurrency`). Empty means the default.
+`embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
+`chat_low_latency_concurrency`, `research_concurrency`). Empty means the default, except
+the three chat keys, which are set: a slot is one turn in flight, not one model call.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
@@ -194,6 +196,7 @@ is the map back to the group above that explains it.
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
 - `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
+- `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`

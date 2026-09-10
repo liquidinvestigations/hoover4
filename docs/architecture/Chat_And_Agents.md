@@ -111,8 +111,10 @@ collapsing them would hide that the agent chose one of the things it found.
 **Every turn is a Temporal workflow, and the website holds nothing open.** `send_message`
 takes the session's **turn lock**, writes the user row, reserves the answer's `seq` as an
 empty stream row, dispatches `ChatTurn` to `chat-queue` and returns the transcript
-*including* the message just sent. A worker consumes the agent's `/chat/stream` SSE feed
-and mirrors it into `chat_message_stream`; the page follows it with `chat_poll`.
+*including* the message just sent. The model call runs on `chat-model-queue`. A deep
+research turn dispatches `ResearchTask` to `research-queue`. A worker consumes the agent's
+`/chat/stream` SSE feed and mirrors it into `chat_message_stream`; the page follows it with
+`chat_poll`.
 
 That is what makes a turn survive things it used to die of: a website restart, a closed
 tab, a request that timed out. The turn carries on and the page picks it back up, because
@@ -125,18 +127,18 @@ one that holds across processes.
 
 | Piece | Where |
 |---|---|
-| dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE` |
+| dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE`, `RESEARCH_TASK_QUEUE` |
 | the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `ChatTurn` |
 | stream consumer, fold into rows | `main_services/processing/tasks/P_agent/stream_writer.py` |
 | stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
 | long-poll | `api::chat::poll_chat`, `RateLimitKind::ChatPoll` |
 
-**Chat turns have their own queue and it is not the ingestion queue.** An ingestion
-backlog delaying a person waiting at a screen is the one failure a shared queue
-guarantees, and a separate queue makes it impossible for one worker process. The queue
-name is declared in the workflow module and mirrored in `api::chat`: a workflow addressed
-to a queue nothing polls waits for ever with no error anywhere, and presents as chat
-hanging. **Deploy the worker before the website**, for the same reason.
+**Chat turns, chat model calls and deep research each have their own queue, and none of
+them is the ingestion queue.** An ingestion backlog delaying a person waiting at a screen
+is the one failure a shared queue guarantees. The queue names are declared in the workflow
+module and mirrored in `api::chat`: a workflow addressed to a queue nothing polls waits for
+ever with no error anywhere, and presents as chat hanging. **Deploy the worker before the
+website**, for the same reason. A slot is one turn in flight, not one model call.
 
 Three rules that are commonly broken and hard to notice:
 

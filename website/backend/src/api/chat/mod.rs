@@ -966,17 +966,26 @@ fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
 // Temporal, over its HTTP API
 // ---------------------------------------------------------------------------
 
-/// The queue chat turns are dispatched to.
+/// The queue chat turns are dispatched to, and the queue that writes the transcript,
+/// reads the todo list and titles the session.
 ///
 /// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`**. The worker
 /// polls the name it declares there and this addresses the name it declares here, and a
 /// workflow addressed to a queue nothing polls waits for ever with no error anywhere. It
-/// presents as chat hanging, so the two move in the same patch or not at all.
+/// presents as chat hanging, so the three names move in the same patch or not at all.
 const CHAT_TASK_QUEUE: &str = "chat-queue";
 
-/// The queue research turns are dispatched to. The general processing queue, where a run
-/// measured in minutes can sit behind ingestion without anyone watching it.
-const RESEARCH_TASK_QUEUE: &str = "processing-common-queue";
+/// The queue `ChatTurn` sends `run_research_agent` to. The website does not address
+/// this name. It is declared here so the three queue names cannot drift from the Python
+/// worker that polls them. Twelve slots means twelve concurrent turns, not twelve
+/// model calls.
+#[allow(dead_code)]
+const CHAT_MODEL_TASK_QUEUE: &str = "chat-model-queue";
+
+/// The queue research turns are dispatched to. Its own queue, with four slots outside
+/// the twelve chat-model slots, so a research run cannot sit behind ingestion and cannot
+/// take a chat turn's slot.
+const RESEARCH_TASK_QUEUE: &str = "research-queue";
 
 fn temporal_base_url() -> String {
     std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())

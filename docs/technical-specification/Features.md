@@ -102,7 +102,7 @@ languages.
 | id | capability | owned by |
 |---|---|---|
 | `F-chat-01` | Ask a question about the corpus and get a streamed answer | `backend/src/api/chat/`, `chat_message_stream` |
-| `F-chat-02` | Choose, at the first turn, whether the answer may use the open web and whether it is a deep research turn, then hold both for the conversation | `db_chat::lock_session_options` |
+| `F-chat-02` | Choose, at the first turn, whether the answer may use the open web and whether it is a deep research turn, then hold both for the conversation. A deep research turn runs on `research-queue`, not the ingestion queue. | `db_chat::lock_session_options`, `RESEARCH_TASK_QUEUE` |
 | `F-chat-03` | Search the corpus from several query angles in one call, every hit naming the queries that found it | `search_collections`, `matched_queries` |
 | `F-chat-03a` | Read several documents in one call, sharing one character budget and naming what did not fit | `read_documents` |
 | `F-chat-03b` | List the entities found in several documents in one call, in two tiers, sharing one character budget | `list_document_entities` |
@@ -118,7 +118,7 @@ languages.
 | `F-chat-09` | Keep a conversation history, resume it, and title it automatically. Browser verification compares persisted answer content across reload and navigation. | `chat_sessions`, `chat_messages`, `chat_observer.check_history` |
 | `F-chat-10` | Stop a turn in flight, keeping its partial answer out of the conversation rather than saving an unmarked fragment, and saying so on the control; and show an interrupted turn as interrupted rather than as a spinner | `chat::stop_chat_turn`, the stream table |
 | `F-chat-11` | Retry a failed turn automatically, on whichever worker picks it up | `ChatTurn`, its activity retry policy |
-| `F-chat-12` | Run every turn durably, outside the request, so a website restart or a closed tab does not lose it | `main_services/processing/tasks/P_agent/` |
+| `F-chat-12` | Run every turn durably, outside the request, so a website restart or a closed tab does not lose it. A chat model turn, a transcript write and a deep-research turn each have their own queue. | `main_services/processing/tasks/P_agent/`, `chat-queue`, `chat-model-queue`, `research-queue` |
 | `F-chat-13` | List every agent turn running anywhere, and cancel one | `chat::admin_list_live_runs`, Temporal visibility |
 | `F-chat-14` | Keep a plan for the conversation (a goal and steps) written whole, read back, its rows edited and its steps marked off in a batch, versioned so every revision survives | `main_services/agents/agent_todo_server/`, `chat_todos` |
 | `F-chat-14a` | Refuse a step abandoned with no reason, so giving up on part of a plan is recorded rather than free | `chat_todos.normalise_item` |

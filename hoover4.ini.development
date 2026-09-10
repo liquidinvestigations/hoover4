@@ -161,10 +161,9 @@ search_max_parallelism =
 search_timeout_seconds =
 
 # ---- worker fleet ---------------------------------------------------------------
-; All empty by default, and that is the intended state: each tier's default is a
-; measurement of what that tier waits on, and the common tier -- where the parse
-; fan-out lands -- already sizes its process count from the host's cores. Set one
-; only to override a measurement on a particular host.
+; The pipeline tiers stay empty: each default is a measurement of what that tier
+; waits on. The three chat keys are set, because a slot is a turn in flight and
+; those numbers are chosen rather than measured.
 ; The two that decide the parse burst's load, and they multiply. More processes
 ; with fewer slots each beats the reverse -- same admission width, less contention
 ; inside any one interpreter. NOT derived from the core count: the fleet's cost is
@@ -177,6 +176,12 @@ ocr_concurrency       =            ; default 4
 nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
 embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
 indexing_concurrency  =            ; default 1
+; Activity slots for chat model turns. One slot is one turn in flight, not one model call.
+chat_model_concurrency = 12
+; Activity slots for chat writes, todo reads and session titles.
+chat_low_latency_concurrency = 4
+; Activity slots for deep-research turns. These sit outside the chat model slots.
+research_concurrency = 4
 
 # How long a worker being shut down may keep its in-flight activities before they are
 # cancelled. ONE key, because the container's own stop grace period is derived from it:

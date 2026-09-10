@@ -92,18 +92,19 @@ in this fleet. See [P_ops/Readme.md](P_ops/Readme.md).
 ### P_agent - every AI agent turn
 
 **Both kinds of turn run here.** `ChatTurn` owns an ordinary chat message on `chat-queue`;
-`ResearchTask` owns an exhaustive research run on the common queue. They differ in which
-agent they reach, how long they may take and which queue they wait on, not in what they do
-with the result, so they share their activities and their transcript writer.
+its model call runs on `chat-model-queue`. `ResearchTask` owns an exhaustive research run
+on `research-queue`. They differ in which agent they reach, how long they may take and
+which queue they wait on, not in what they do with the result, so they share their
+activities and their transcript writer.
 
 The website holds nothing open for either: it writes the user row, reserves the answer's
 seq and dispatches. That is what makes a turn survive a browser reload, a website restart
 and a worker crash.
 
-`chat-queue` is deliberately not the ingestion queue. An ingestion backlog delaying
-somebody waiting at a screen is the one failure a shared queue guarantees, and it costs one
-worker process to make it impossible. **The worker deploys before the website**: a workflow
-addressed to a queue nothing polls waits for ever with no error anywhere.
+None of the three queues is the ingestion queue. An ingestion backlog delaying
+somebody waiting at a screen is the one failure a shared queue guarantees. **The worker
+deploys before the website**: a workflow addressed to a queue nothing polls waits for ever
+with no error anywhere. A slot is one turn in flight, not one model call.
 
 Two activities per turn on purpose: the agent call is slow and retryable, the write is fast
 and keyed, so a retried agent call cannot leave half a transcript.
@@ -277,12 +278,19 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `processing-index-planner-queue`, P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger
   and assignments, which is only race-free when serialized.
+- `chat-queue`, `ChatTurn` plus transcript writes, todo reads and session titles
+  (`main.py worker chat`, concurrency from `chat_low_latency_concurrency`).
+- `chat-model-queue`, `run_research_agent` for those chat turns
+  (`chat_model_concurrency`). A slot is one turn, not one model call.
+- `research-queue`, `ResearchTask` (`research_concurrency`). Four slots, outside the
+  chat-model slots.
 
 ### How the numbers are chosen
 
 Every tier's slot count comes from what that tier waits on, and `worker_concurrency()`
-lets `hoover4.ini` override any of them. The ini keys are all empty by default, because
-a default that is a measurement is better than one a deployment guessed.
+lets `hoover4.ini` override any of them. The pipeline keys are empty by default, because
+a default that is a measurement is better than one a deployment guessed. The three chat
+keys are set: a slot is one turn in flight, not one model call.
 
 The two remote tiers pipeline HTTP against a GPU that has its own admission control, so
 their number is the *server's* window (`ai_server_ner_concurrency`,

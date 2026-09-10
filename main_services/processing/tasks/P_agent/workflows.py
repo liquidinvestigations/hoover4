@@ -4,9 +4,10 @@ Two workflows, one shape. `ChatTurn` owns an ordinary chat turn and `ResearchTas
 deep research run: they differ in which agent they reach, how long they may take, and
 which queue they are dispatched to, not in what they do with the result.
 
-`ChatTurn` runs on `chat-queue`, deliberately not on the ingestion queue. An ingestion
-backlog delaying a chat turn is the one failure a shared queue guarantees and a separate
-queue makes impossible, and it costs one worker process.
+`ChatTurn` runs on `chat-queue`. Its model call runs on `chat-model-queue`. Deep research
+runs on `research-queue`. None of these is the ingestion queue. An ingestion backlog
+delaying a person at a screen is the failure a shared queue guarantees, and these three
+queues make it impossible.
 """
 
 import asyncio
@@ -35,10 +36,25 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P_agent.trajectory import pair_tool_calls
 
 
-#: The queue chat turns are dispatched to. Named here so the worker that polls it and
-#: the caller that addresses it cannot drift: a workflow addressed to a queue nothing is
-#: polling waits for ever with no error anywhere, which presents as chat hanging.
+#: The queue `ChatTurn` is dispatched to, and the queue that writes the transcript,
+#: reads the todo list and titles the session. Named here so the worker that polls it
+#: and the caller that addresses it cannot drift: a workflow addressed to a queue nothing
+#: is polling waits for ever with no error anywhere, which presents as chat hanging.
+#:
+#: **Mirrored in `website/backend/src/api/chat/mod.rs`.** The three names move in the
+#: same patch or not at all.
 CHAT_TASK_QUEUE = "chat-queue"
+
+#: The queue `ChatTurn` sends `run_research_agent` to. Twelve slots means twelve
+#: concurrent turns. One turn still makes up to `AGENT_MAX_TOOL_TURNS` model calls in
+#: sequence and starts up to `AGENT_SUBAGENT_CONCURRENCY` workers, and none of those
+#: go through Temporal.
+CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
+
+#: The queue `ResearchTask` is dispatched to. Four slots, outside the twelve chat-model
+#: slots, so a research run cannot take a chat turn's slot and an ingestion backlog
+#: cannot sit in front of it.
+RESEARCH_TASK_QUEUE = "research-queue"
 
 #: How long the chat agent activity may go without proving it is alive before Temporal
 #: reschedules it on another worker.
@@ -64,10 +80,11 @@ async def _write_row(params, seq: int, role: str, content: str, **extra) -> None
     Short and retryable: the insert is keyed on `(username, session_id, seq)`, so a retry
     replaces the row rather than appending a second one.
 
-    The three timeout arguments are spelled out rather than unpacked from a shared dict.
-    `test_every_execute_activity_declares_a_heartbeat_timeout` reads the call sites as
-    source, so a dict would hide the heartbeat from the check that exists to find a
-    wedged activity in minutes instead of hours.
+    The timeout arguments and `task_queue` are spelled out rather than unpacked from a
+    shared dict. `test_every_execute_activity_declares_a_heartbeat_timeout` and
+    `test_agent_activities_declare_their_task_queue` read the call sites as source, so a
+    dict would hide both from the checks that exist to find a wedged activity or a
+    queue nobody polls.
     """
     await workflow.execute_activity(
         write_chat_message,
@@ -82,6 +99,7 @@ async def _write_row(params, seq: int, role: str, content: str, **extra) -> None
         start_to_close_timeout=timedelta(minutes=2),
         heartbeat_timeout=HEARTBEAT_TIMEOUT,
         retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        task_queue=CHAT_TASK_QUEUE,
     )
 
 
@@ -199,6 +217,7 @@ async def _name_the_conversation(params, answer: str) -> None:
             start_to_close_timeout=timedelta(seconds=90),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=1),
+            task_queue=CHAT_TASK_QUEUE,
         )
     except Exception:  # noqa: BLE001 - a title is never worth an answer
         workflow.logger.warning(
@@ -218,6 +237,7 @@ class ChatTurn:
     worker picks it up.
 
     It runs on `chat-queue` so an ingestion backlog can never delay a chat turn.
+    The model call goes to `chat-model-queue` so a long turn cannot hold a write slot.
 
     Cancellation is what the interface's stop button does, and it writes an ending rather
     than vanishing: a user row with nothing after it leaves the page following a turn
@@ -258,6 +278,7 @@ class ChatTurn:
                     start_to_close_timeout=timedelta(seconds=900),
                     heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=2),
+                    task_queue=CHAT_MODEL_TASK_QUEUE,
                 )
             except asyncio.CancelledError:
                 await _write_ending(params, seq, "This turn was stopped.")
@@ -321,6 +342,7 @@ class ChatTurn:
             start_to_close_timeout=timedelta(seconds=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
         )
         return json.loads(raw)
 
@@ -337,6 +359,9 @@ class ResearchTask:
     silently failed workflow. The user is looking at a chat window waiting for an
     answer, and "nothing ever appeared" is the one outcome that gives them nothing to
     act on.
+
+    It runs on `research-queue` so an ingestion backlog cannot sit in front of it, and
+    so its four slots sit outside the twelve chat-model slots.
     """
 
     @workflow.run
@@ -349,6 +374,7 @@ class ResearchTask:
                 start_to_close_timeout=timedelta(seconds=2400),
                 heartbeat_timeout=timedelta(minutes=10),
                 retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=RESEARCH_TASK_QUEUE,
             )
         except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
             await _write_row(

@@ -1036,9 +1036,10 @@ def worker(worker_type: str | None = None):
     from tasks.run_worker import common_worker_processes
     common_count = common_worker_processes()
     log.info("Spawning %d common workers", common_count)
-    # `chat` is one process and is listed first on purpose: it is the only queue with a
+    # `chat` is one process and is listed first on purpose: it is the only process with a
     # person waiting on the other end, so it must exist before anything competes for the
-    # host's memory. It polls its own queue and never touches the ingestion one.
+    # host's memory. It polls chat-queue, chat-model-queue and research-queue, and never
+    # the ingestion queue.
     for wt in ["chat", "tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * common_count:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))

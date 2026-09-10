@@ -116,9 +116,8 @@ DEFAULTS = {
         "search_max_parallelism": "",
         "search_timeout_seconds": "",
         "ocr_pdf_enabled": "true",
-        # Worker fleet. Empty = the worker's own default, which for the common tier is
-        # cores/4 processes of 8 activity slots each and for the rest is shaped by what
-        # that tier waits on. Set one only to override a measurement.
+        # Worker fleet. Empty = the worker's own default, except the three chat keys,
+        # which the ini sets because a slot is one turn in flight.
         "common_workers": "",
         "common_concurrency": "",
         # Hard memory ceiling for the worker container. Explicit because the fleet's
@@ -130,6 +129,9 @@ DEFAULTS = {
         "nlp_concurrency": "",
         "embed_concurrency": "",
         "indexing_concurrency": "",
+        "chat_model_concurrency": "",
+        "chat_low_latency_concurrency": "",
+        "research_concurrency": "",
         # How long a shutting-down worker may keep its in-flight activities before they
         # are cancelled. The container's stop grace period is DERIVED from this (see
         # render_main_env) rather than configured beside it, because an SDK grace period
@@ -673,7 +675,8 @@ def render_main_env(cfg):
         env["HOOVER4_WORKER_MEM_LIMIT"] = cfg.get(m, "worker_mem_limit")
     if cfg.get(m, "common_workers"):
         env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
-    for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing"):
+    for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing",
+                 "chat_model", "chat_low_latency", "research"):
         value = cfg.get(m, "%s_concurrency" % tier)
         if value:
             env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
