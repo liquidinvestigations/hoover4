@@ -132,6 +132,13 @@ DEFAULTS = {
         "chat_model_concurrency": "",
         "chat_low_latency_concurrency": "",
         "research_concurrency": "",
+        # Chat poll and browser caps. Empty would fall back to the code defaults.
+        "max_held_polls_per_user": "8",
+        "rate_chat_poll_per_minute": "1800",
+        "browser_max_contexts": "16",
+        "agent_subagent_concurrency": "5",
+        "mcp_browser_mem_limit": "24G",
+        "full_research_agent_workers": "4",
         # How long a shutting-down worker may keep its in-flight activities before they
         # are cancelled. The container's stop grace period is DERIVED from this (see
         # render_main_env) rather than configured beside it, because an SDK grace period
@@ -714,6 +721,13 @@ def render_main_env(cfg):
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
     env["HOOVER4_ERROR_RATE_ALERT_PERCENT"] = cfg.get(m, "error_rate_alert_percent")
+
+    env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
+    env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
+    env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
+    env["AGENT_SUBAGENT_CONCURRENCY"] = cfg.get(m, "agent_subagent_concurrency")
+    env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")
+    env["FULL_RESEARCH_AGENT_WORKERS"] = cfg.get(m, "full_research_agent_workers")
 
     return env
 

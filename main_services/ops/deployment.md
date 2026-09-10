@@ -348,8 +348,8 @@ docker ps -a --filter status=exited --format '{{.Names}}\t{{.Status}}'   # look 
 ```
 
 The largest ingest is the window in which this happens. If something is killed, raise
-that container's `mem_limit`, or, for `hoover4-mcp-browser`, which has no `mem_limit`
-and runs up to eight Chromium instances, lower `BROWSER_MAX_CONTEXTS`.
+that container's `mem_limit`, or, for `hoover4-mcp-browser`, which has a 24 GB
+`mem_limit` and runs up to sixteen Chromium instances, lower `BROWSER_MAX_CONTEXTS`.
 
 **A killed server process does not look like a memory problem to its callers.** When a
 cgroup kills the process inside a container that restarts, `docker ps` shows the service

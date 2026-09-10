@@ -159,7 +159,7 @@ Three rules that are commonly broken and hard to notice:
 Poll cadence: holds up to 15 s when nothing changes, and every poll after the first takes
 at least 500 ms, with content flowing each poll returns immediately, so without that
 floor the client spins as fast as the network allows. Concurrently-held polls are capped
-per user (`MAX_HELD_POLLS_PER_USER`).
+per user (`MAX_HELD_POLLS_PER_USER`, 8). The poll ceiling is 1800 per minute per user.
 
 **Rate limiting a poll loop is not rate limiting a person.** `RateLimitKind::ChatPoll` has
 a *flat* window ladder (factor 1.0 everywhere), unlike chat messages and API calls, whose

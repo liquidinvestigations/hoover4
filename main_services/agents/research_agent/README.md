@@ -14,6 +14,10 @@ full-research agent's workers run in-process. See "Delegation" below.
 | MCP servers | collections **only** | collections + metasearch + browser + ddg + whois + wikipedia |
 | Used by | the website's AI Chat page | the Temporal `ResearchTask` |
 
+`hoover4-full-research-agent` runs four uvicorn worker processes (`UVICORN_WORKERS`).
+Each process holds its own graph cache and MCP connections. Citation `[Dn]` handles
+are allocated in the collections MCP server, so the worker processes do not split them.
+
 **The internal-search agent has no web tools on purpose.** A chat about the user's own
 documents must not quietly become a web search. The user cannot tell from the answer
 which sentence came from their archive and which came from a search engine.
@@ -84,7 +88,7 @@ number.
 | cap | default | why |
 |---|---|---|
 | `AGENT_SUBAGENT_MAX_TASKS` | 5 | tasks one call may carry; beyond it a model is fanning out rather than decomposing |
-| `AGENT_SUBAGENT_CONCURRENCY` | 3 | workers at once; more in flight buys queueing, not answers |
+| `AGENT_SUBAGENT_CONCURRENCY` | 5 | workers at once; more in flight buys queueing, not answers |
 | `AGENT_SUBAGENT_TOOL_TURNS` | 6 | tool turns per worker, then it is made to write its report |
 | `AGENT_SUBAGENT_MAX_PER_TURN` | 10 | workers per **user turn**, across every call it makes |
 | delegation depth | 1 | not bindable, so not exceedable |

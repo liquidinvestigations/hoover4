@@ -180,6 +180,27 @@ chat_model_concurrency = 12
 chat_low_latency_concurrency = 4
 ; Activity slots for deep-research turns. These sit outside the chat model slots.
 research_concurrency = 4
+; Concurrently-held chat polls per user. A held poll waits up to 15 s. Past this
+; cap a poll returns immediately and the client asks again after 500 ms. Eight
+; covers twelve tabs of one user, eight hold and four take the 500 ms floor.
+max_held_polls_per_user = 8
+; Chat-poll requests per minute per user, flat across every window. One tab
+; while content flows is 120 per minute. Twelve tabs at that floor are 1440.
+; 1800 is that figure plus a quarter of headroom.
+rate_chat_poll_per_minute = 1800
+; Live Chromium processes on the browser MCP server, one per chat. Sixteen
+; times about 500 MB is 8 GB of chat browsers plus the template. The container
+; memory limit below is what stops that from filling the host.
+browser_max_contexts = 16
+; Hard memory ceiling for hoover4-mcp-browser. Sixteen live chats at 500 MB
+; plus the template fit in 24 GB with room.
+mcp_browser_mem_limit = 24G
+; Subagent workers the full-research agent may start at once from one call.
+agent_subagent_concurrency = 5
+; Uvicorn worker processes on hoover4-full-research-agent. Each worker holds
+; its own graph cache and MCP connections. The citation handle table lives in
+; the collections MCP server, so these workers do not split it.
+full_research_agent_workers = 4
 
 # How long a worker being shut down may keep its in-flight activities before they are
 # cancelled. ONE key, because the container's own stop grace period is derived from it:

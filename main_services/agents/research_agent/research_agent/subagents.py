@@ -97,7 +97,7 @@ MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 6)
 #: Tools a worker does not get, by name.
 #:
 #: The interactive browser six, because each needs a persistent context and the server
-#: holds eight in total; `read_page` is the overwhelmingly common browser action, needs no
+#: holds sixteen in total; `read_page` is the overwhelmingly common browser action, needs no
 #: persistent context, and is deliberately still there. The three todo *writers*, because
 #: the plan belongs to the conversation and a worker with one objective has nothing to
 #: plan: `read_todo` stays so a worker can see the plan its briefing came out of.

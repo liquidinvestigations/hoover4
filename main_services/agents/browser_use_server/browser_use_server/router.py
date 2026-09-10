@@ -2,7 +2,7 @@
 
 The lifetime rules, and why each number is what it is:
 
-* ``BROWSER_MAX_CONTEXTS`` (8), a whole Chromium per chat costs a few hundred MB, so this
+* ``BROWSER_MAX_CONTEXTS`` (16), a whole Chromium per chat costs about 500 MB, so this
   is a memory ceiling, not a politeness limit. Past it the least recently used **idle**
   chat is evicted: both processes die and the profile directory goes. A chat with a call
   in flight is never evicted, so the cap is exceeded instead when every chat is busy. The
@@ -33,7 +33,7 @@ from browser_use_server.chat_browser import BrowserSpawnFailed, ChatBrowser
 
 log = logging.getLogger(__name__)
 
-MAX_CONTEXTS = int(os.getenv("BROWSER_MAX_CONTEXTS", "8"))
+MAX_CONTEXTS = int(os.getenv("BROWSER_MAX_CONTEXTS", "16"))
 IDLE_SECONDS = float(os.getenv("BROWSER_IDLE_SECONDS", "900"))
 REAP_INTERVAL_SECONDS = float(os.getenv("BROWSER_REAP_INTERVAL", "60"))
 MAX_TABS_PER_CHAT = int(os.getenv("BROWSER_MAX_TABS_PER_CHAT", "6"))
@@ -58,7 +58,7 @@ class Router:
         # **Never hold this across a spawn, a stop or a sidecar restart.** Holding it
         # across `chat_browser.start()`, which is a cold Chromium launch plus a Node
         # sidecar (45 to 90 seconds) makes one chat's first browse block every other
-        # chat's map lookup for that whole time. The cap says eight contexts; the lock
+        # chat's map lookup for that whole time. The cap says sixteen contexts; the lock
         # made it behave like one.
         self._lock = asyncio.Lock()
         # In-flight spawns, by chat key. This is what lets the lock be released during a

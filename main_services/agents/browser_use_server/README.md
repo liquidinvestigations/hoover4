@@ -158,7 +158,7 @@ the agent sees, mid-conversation, with nothing in the transcript saying so.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BROWSER_MAX_CONTEXTS` | `8` | live chats before the least recently used is evicted |
+| `BROWSER_MAX_CONTEXTS` | `16` | live chats before the least recently used is evicted |
 | `BROWSER_IDLE_SECONDS` | `900` | a chat idle this long has its browser reaped |
 | `BROWSER_REAP_INTERVAL` | `60` | how often the reaper sweeps |
 | `BROWSER_MAX_TABS_PER_CHAT` | `6` | a model opening a tab per result must not exhaust the container |
@@ -173,12 +173,12 @@ Idempotent: closing an unknown session is a 200 with `closed: false`.
 
 **There is no global lock any more.** It existed because one Chromium cannot serve
 concurrent CDP sessions safely; with one browser per chat, serialisation belongs per chat,
-and a global lock would make eight conversations queue behind each other.
+and a global lock would make sixteen conversations queue behind each other.
 
 The router keeps one lock over its **map**, and that lock is never held across a spawn, an
 eviction stop or a sidecar restart. **Never hold it across `chat_browser.start()`**. A
 cold Chromium launch plus a Node sidecar is 45 to 90 seconds, and holding the map lock for
-that long blocks every other chat's lookup: the cap says eight contexts and the router
+that long blocks every other chat's lookup: the cap says sixteen contexts and the router
 behaves like one. Callers racing for the *same* chat still share a single spawn,
 through a future parked in the map: releasing the lock must not buy back the bug the lock
 was there to prevent (two browsers for one chat, double the memory, split cookies).

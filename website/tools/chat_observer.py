@@ -8,9 +8,10 @@ browser helpers (`type_css`, `press_enter`, `judge`, `verify_identity`, the seve
 constants) rather than copying them, so the login flow, the console/network gates and the
 exit-status rule stay in one place.
 
-The ten prompts below are a versioned workload. Their text is fixed: a run's results are
-comparable across time only when the prompts that produced them did not change, so treat an
-edit to this list as a new workload rather than a wording fix.
+The chat and deep-research prompts below are a versioned workload. Their text is fixed: a run's
+results are comparable across time only when the prompts that produced them did not change, so
+treat an edit to this list as a new workload rather than a wording fix. Four extra chat names
+reuse an existing prompt's text so a twelve-conversation run stays on chat turns.
 
 Per-conversation output, under `<out_root>/<run_name>/chat/<NN-slug>/`
 -----------------------------------------------------------------------
@@ -161,6 +162,34 @@ PROMPTS: list[tuple[str, str, str]] = [
         "evidence. Give source links and separate verified facts from hypotheses.",
     ),
     (
+        "public-source-research-2", "chat",
+        "Use Internet research to explain how the Internet Archive preserves websites and what "
+        "its captures can and cannot establish. Prefer its official documentation. Provide "
+        "source links, distinguish capture time from publication time, and give a reproducible "
+        "verification procedure. State which pages you actually inspected.",
+    ),
+    (
+        "open-source-project-research-2", "chat",
+        "Research the public OpenStreetMap project using its official sources. Explain its "
+        "governance, data license, contribution process, and ways to inspect a map edit's "
+        "provenance. Link evidence for each section. Separate documented facts from "
+        "recommendations and state any source access failures.",
+    ),
+    (
+        "public-organization-research-2", "chat",
+        "Research the public governance and funding disclosures of the Wikimedia Foundation "
+        "using official sources. Produce an evidence table with the claim, source, reporting "
+        "period, and limitation. Avoid research about private individuals. Explain how a "
+        "reader can verify the disclosures and distinguish current pages from older reports.",
+    ),
+    (
+        "conflicting-claims-2", "chat",
+        "Investigate the claim that a PDF creation timestamp proves when its contents were "
+        "originally written. Use authoritative technical sources. Explain alternative causes "
+        "for timestamps, identify what the metadata can establish, and propose corroborating "
+        "evidence. Give source links and separate verified facts from hypotheses.",
+    ),
+    (
         "reproducible-internet-investigation", "deep_research",
         "Design a reproducible investigation of changes to a public organization's website. "
         "Use official documentation for web archives and domain registration lookup services. "
@@ -205,18 +234,18 @@ DOCREFS_TOGGLE_SEL = ".x-chat-docrefs-toggle"
 DOC_CARD_SEL = "div[style*='height: 148px']"
 
 # ---------------------------------------------------------------------------------
-# Item 3: the polling allowance. `HOOVER4_RATE_CHAT_POLL_PER_MINUTE` defaults to 600,
+# Item 3: the polling allowance. `HOOVER4_RATE_CHAT_POLL_PER_MINUTE` defaults to 1800,
 # flat, keyed by username -- every observer tab under the one supplied login shares it.
-# `MAX_HELD_POLLS_PER_USER` (2, in `website/backend/src/api/chat/mod.rs`) means a tab
+# `MAX_HELD_POLLS_PER_USER` (8, in `website/backend/src/api/chat/mod.rs`) means a tab
 # beyond the held cap gets an unheld, immediate response and the frontend's poll loop
 # calls again with no client-side delay, which is the fast path to exhausting the flat
 # budget. This throttle keeps the observer inside that budget without changing the
 # application: it patches `fetch` inside every observer tab, before the app boots, to
 # space out calls to the poll endpoint. `min_interval_ms` is sized from the tab count
-# this run opens, so the whole run's poll rate stays under the 600/min budget with
+# this run opens, so the whole run's poll rate stays under the 1800/min budget with
 # headroom for the identity check and the wrapper's own traffic.
-POLL_BUDGET_PER_MINUTE = 600
-POLL_BUDGET_HEADROOM = 550  # leave ~8% under the flat ceiling
+POLL_BUDGET_PER_MINUTE = 1800
+POLL_BUDGET_HEADROOM = 1650  # leave ~8% under the flat ceiling
 POLL_FLOOR_MS = 500  # never throttle below the server's own floor
 
 

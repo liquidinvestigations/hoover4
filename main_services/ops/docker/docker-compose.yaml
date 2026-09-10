@@ -629,6 +629,10 @@ services:
       # `${VAR:-}` renders an empty string, which the backend treats as unset.
       - HOOVER4_SEARCH_MAX_PARALLELISM=${HOOVER4_SEARCH_MAX_PARALLELISM:-}
       - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-}
+      # Held chat polls per user, and the flat poll ceiling. Both are read once
+      # at process start (LazyLock). A change needs a website restart, not a reload.
+      - HOOVER4_MAX_HELD_POLLS_PER_USER=${HOOVER4_MAX_HELD_POLLS_PER_USER:-8}
+      - HOOVER4_RATE_CHAT_POLL_PER_MINUTE=${HOOVER4_RATE_CHAT_POLL_PER_MINUTE:-1800}
       # The failure rate above which the operations page calls a task type out as a
       # possible tooling limitation rather than as ordinary corpus mess.
       - HOOVER4_ERROR_RATE_ALERT_PERCENT=${HOOVER4_ERROR_RATE_ALERT_PERCENT:-5}

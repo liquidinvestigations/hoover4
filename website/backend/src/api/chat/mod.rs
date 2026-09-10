@@ -371,8 +371,18 @@ const POLL_STEP: Duration = Duration::from_millis(500);
 
 /// Concurrently-held polls per user. A held request is a cheap way to exhaust a
 /// server, so past this cap a poll answers immediately with the current state instead
-/// of holding. The client polls again sooner.
-const MAX_HELD_POLLS_PER_USER: usize = 2;
+/// of holding. The client polls again sooner. Eight covers twelve tabs of one user:
+/// eight hold, and four take the 500 ms floor. Override with
+/// `HOOVER4_MAX_HELD_POLLS_PER_USER`.
+const DEFAULT_MAX_HELD_POLLS_PER_USER: usize = 8;
+
+static MAX_HELD_POLLS_PER_USER: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| {
+    std::env::var("HOOVER4_MAX_HELD_POLLS_PER_USER")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_MAX_HELD_POLLS_PER_USER)
+});
 
 static HELD_POLLS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, usize>>,
@@ -388,7 +398,7 @@ impl HeldPollGuard {
     fn try_acquire(username: &str) -> Option<Self> {
         let mut held = HELD_POLLS.lock().unwrap_or_else(|e| e.into_inner());
         let count = held.entry(username.to_string()).or_insert(0);
-        if *count >= MAX_HELD_POLLS_PER_USER {
+        if *count >= *MAX_HELD_POLLS_PER_USER {
             return None;
         }
         *count += 1;

@@ -62,7 +62,7 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ## `[main_services]`
 
-Seventy-seven keys. Read by `deploy.py`, the main compose files, the worker and the website.
+Seventy-seven keys plus the six chat and agent cap keys. Read by `deploy.py`, the main compose files, the worker and the website.
 
 ### Which provider serves what
 
@@ -86,7 +86,8 @@ bound the pattern scanner's runtime and its admission control.
 
 `website_release_mode` picks between the development server and a release build.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
-empty takes the code's defaults.
+empty takes the code's defaults. `max_held_polls_per_user` is how many chat polls one user
+may hold at once. `rate_chat_poll_per_minute` is the flat poll ceiling per user.
 
 `development_auth_backdoor_enabled` switches on `hoover4-development-auth-backdoor`, a
 header-setting reverse proxy that asserts a fixed identity on every request, with no
@@ -110,6 +111,11 @@ user an administrator.
 `embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
 `chat_low_latency_concurrency`, `research_concurrency`). Empty means the default, except
 the three chat keys, which are set: a slot is one turn in flight, not one model call.
+
+`browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
+`mcp_browser_mem_limit` is that container's memory ceiling. `agent_subagent_concurrency`
+is how many subagent workers one `run_subagent` call may start at once.
+`full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
@@ -197,6 +203,8 @@ is the map back to the group above that explains it.
 - `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
+- `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
+- `agent_subagent_concurrency`, `mcp_browser_mem_limit`, `full_research_agent_workers`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`

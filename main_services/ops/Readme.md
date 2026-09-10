@@ -281,8 +281,9 @@ defaults to `1.00` rather than decaying. Polling is machine-paced: a tab watchin
 streaming answer polls at the 500 ms floor for as long as the model generates, so for
 that limiter "sustained" is "working". Under the decaying ladder one tab sat
 exactly on the 1 h window's ceiling and two tripped it, at which point the page declared
-the chat lost mid-turn. The per-minute default is 600 (~5 streaming tabs); the expensive
-half of a poll, the held request, has its own separate cap.
+the chat lost mid-turn. The per-minute default is 1800 (twelve tabs at the 500 ms
+floor, plus headroom); the expensive half of a poll, the held request, has its own
+separate cap.
 
 The counters are **in-process** (a `Mutex<HashMap>` in the website, pruned on access),
 correct only while the website is a single container. Redis was considered and rejected

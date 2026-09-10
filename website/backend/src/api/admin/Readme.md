@@ -157,7 +157,7 @@ for strangers is an existence oracle.
 
 Three in-process sliding-window limiters: chat (`HOOVER4_RATE_CHAT_PER_MINUTE`, default
 40), API (`HOOVER4_RATE_API_PER_MINUTE`, default 1000), and chat polling
-(`HOOVER4_RATE_CHAT_POLL_PER_MINUTE`, default 600). The first two have a window ladder.
+(`HOOVER4_RATE_CHAT_POLL_PER_MINUTE`, default 1800). The first two have a window ladder.
 1 Min at `X`, then 10 min / 30 min / 1 h / 6 h / 24 h at decaying factors (1.00 / 0.75
 / 0.50 / 0.30 / 0.20), every factor an env var, `0` disables a window. A request is
 allowed only if every enabled window still has budget, so a burst is fine and sustained

@@ -214,10 +214,11 @@ services:
   # Browser: a router in front of one Chromium + one playwright-mcp sidecar PER CHAT.
   # The image is ~1.5 GB (Chromium, fonts, Node, two extensions) and that is expected.
   #
-  # Memory is the reason BROWSER_MAX_CONTEXTS is 8 and not 32: this is a whole browser
+  # Memory is the reason BROWSER_MAX_CONTEXTS is 16 and not 32: this is a whole browser
   # per conversation, not a browser context. It has to be a whole browser. Playwright-mcp
   # attached with --cdp-endpoint shares one context across every client on that endpoint,
-  # measured, so the isolation boundary has to sit one level lower.
+  # measured, so the isolation boundary has to sit one level lower. One live chat costs
+  # about 500 MB. Sixteen chats plus the template fit in the 24 GB container limit.
   #
   # SECURITY: this server is driven by an LLM and sits on the same network as
   # clickhouse:8123 and temporal:7233, which answer unauthenticated. Every URL-shaped
@@ -240,7 +241,7 @@ services:
       - SERVER_NAME=${BROWSER_SERVER_NAME:-hoover4_browser}
       - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
       - BROWSER_ACTION_TIMEOUT=${BROWSER_ACTION_TIMEOUT:-15}
-      - BROWSER_MAX_CONTEXTS=${BROWSER_MAX_CONTEXTS:-8}
+      - BROWSER_MAX_CONTEXTS=${BROWSER_MAX_CONTEXTS:-16}
       - BROWSER_IDLE_SECONDS=${BROWSER_IDLE_SECONDS:-900}
       - BROWSER_MAX_TABS_PER_CHAT=${BROWSER_MAX_TABS_PER_CHAT:-6}
       - BROWSER_WINDOW_WIDTH=${BROWSER_WINDOW_WIDTH:-1280}
@@ -262,9 +263,11 @@ services:
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     # Chromium fills the default 64 MB /dev/shm and then crashes on content-heavy pages.
-    # With up to eight browsers live at once this is the difference between "slow" and
+    # With up to sixteen browsers live at once this is the difference between "slow" and
     # "the container dies mid-answer".
     shm_size: 2gb
+    mem_limit: ${HOOVER4_MCP_BROWSER_MEM_LIMIT:-24G}
+    memswap_limit: ${HOOVER4_MCP_BROWSER_MEM_LIMIT:-24G}
     # A real init as PID 1, because Chromium is a process TREE. PID 1 here is the Python
     # server, which never calls wait() on grandchildren, so every renderer and crashpad
     # handler a closed browser leaves behind stays a zombie forever, 104 of them were
@@ -424,6 +427,10 @@ services:
       - AGENT_SUBAGENT_CONCURRENCY=${AGENT_SUBAGENT_CONCURRENCY:-}
       - AGENT_SUBAGENT_TOOL_TURNS=${AGENT_SUBAGENT_TOOL_TURNS:-}
       - AGENT_SUBAGENT_MAX_PER_TURN=${AGENT_SUBAGENT_MAX_PER_TURN:-}
+      # Uvicorn worker processes. Each holds its own graph cache and MCP connections.
+      # The citation HandleTable lives in hoover4-mcp-collections, so these workers
+      # do not split a session's [Dn] handles.
+      - UVICORN_WORKERS=${FULL_RESEARCH_AGENT_WORKERS:-4}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -436,6 +443,7 @@ services:
     volumes:
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+      - ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent/main.py:/app/main.py:ro
     depends_on:
       - hoover4-mcp-collections
       - hoover4-mcp-metasearch

@@ -26,6 +26,15 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
+    try:
+        workers = int(os.getenv("UVICORN_WORKERS", "1"))
+    except ValueError:
+        workers = 1
+    if workers < 1:
+        workers = 1
+    # Reload forks a watcher, so this process then runs with one worker.
+    if reload:
+        workers = 1
     
     print(f"🚀 Starting Research Agent API...")
     print(f"🌐 Server: http://{host}:{port}")
@@ -36,5 +45,6 @@ if __name__ == "__main__":
         host=host,
         port=port,
         reload=reload,
+        workers=workers,
         log_level="info"
     )

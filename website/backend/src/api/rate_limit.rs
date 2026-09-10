@@ -129,10 +129,11 @@ fn load_config(kind: RateLimitKind) -> LimiterConfig {
     // real cost instead.
     let (base, default_x, decays) = match kind {
         RateLimitKind::ChatMessage => ("HOOVER4_RATE_CHAT", 40, true),
-        // 600/min ≈ 5 tabs of the same conversation streaming flat out. The expensive
-        // half of a poll (the held request) has its own cap (`HeldPollGuard`),, so this
-        // number is about query load, which a poll barely makes.
-        RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 600, false),
+        // 1800/min is twelve tabs at the 500 ms floor (1440) plus a quarter of headroom.
+        // One tab while content flows is 120/min. The expensive half of a poll (the
+        // held request) has its own cap (`HeldPollGuard`), so this number is about
+        // query load, which a poll barely makes.
+        RateLimitKind::ChatPoll => ("HOOVER4_RATE_CHAT_POLL", 1800, false),
         RateLimitKind::ApiCall => ("HOOVER4_RATE_API", 1000, true),
     };
     LimiterConfig {
@@ -400,11 +401,12 @@ mod tests {
             "polling is machine-paced: its sustained rate IS its normal rate"
         );
         // Every window, expressed back as a sustained per-minute rate, must leave room
-        // for several tabs at 120/min.
+        // for twelve tabs at 120/min (1440). The shipped ceiling is 1800.
+        assert_eq!(config.per_minute, 1800);
         for (w, factor) in WINDOWS.iter().zip(&config.factors) {
             let per_minute = budget(config.per_minute, w, *factor) * 60 / w.duration.as_secs();
             assert!(
-                per_minute >= 4 * 120,
+                per_minute >= 12 * 120,
                 "{} allows only {per_minute}/min sustained",
                 w.name
             );
