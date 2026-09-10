@@ -35,7 +35,7 @@ because they never get built. `cargo check --workspace --tests` (fast) or `cargo
 `cargo check` whenever a public signature moves.
 
 **Both fixture-driven suites are welded to the corpus `main_services/verify-stack.sh`
-ingests**: `website/screenshots.ini`'s routes and `stack_integration.rs`'s `TESTFILES`, `SHAPES`,
+ingests**: `website/browser-tests/` routes and `stack_integration.rs`'s `TESTFILES`, `SHAPES`,
 `ZIPS` and `other`. On any other corpus they fail by naming a dataset that does not exist,
 which reads as a broken page or a broken endpoint and is neither. Run `verify-stack.sh`
 before either of them, or read their failures as a missing precondition rather than a
@@ -43,7 +43,7 @@ regression.
 
 ## Screenshots
 
-`website/take-screenshots.sh` walks `website/screenshots.ini` and, per page, writes the PNG a
+`website/browser-tests/` holds one file per page. `website/take-screenshots.sh` captures each page and writes the PNG a
 person would see, a text outline of the rendered DOM, and (where an action raised) the state
 at the moment it failed. Output goes to `website/test_reports/screenshots/`, gitignored, and
 is **never wiped**. Each run adds `run-<UTC-timestamp>-<pid>/` and rewrites the `latest`

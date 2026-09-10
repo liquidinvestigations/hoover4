@@ -18,6 +18,10 @@ All of them run by copying the script into the browser container and executing i
 container has no bind mounts, so both the script and its output travel by file copy. They do
 not use the browser MCP endpoint, which refuses internal hosts by design.
 
+Screenshot scenarios live in `../browser-tests/`, one numbered ini file per case. Procedures
+live in `../browser-tests/procedures/`. The capture engine reads that directory in slug-number
+order.
+
 Screenshot scenarios can use `pointer_click_css`, `press_key`, and `wait_eval` for CDP
 input and bounded assertions. Set `color_scheme` to `light` or `dark` before navigation.
 Use `history_back` and `history_forward` to navigate actual browser history entries.
@@ -36,7 +40,7 @@ Run the capture-driver tests in the browser container.
 ```sh
 docker exec hoover4-mcp-browser mkdir -p /tmp/capture-tests
 docker cp website/tools/. hoover4-mcp-browser:/tmp/capture-tests/
-docker cp website/screenshots.ini hoover4-mcp-browser:/tmp/capture-tests/screenshots.ini
+docker cp website/browser-tests hoover4-mcp-browser:/tmp/capture-tests/browser-tests
 docker exec -w /tmp/capture-tests hoover4-mcp-browser python3 -m unittest test_capture_screenshots -v
 ```
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import importlib.util
 import json
 import time
 from pathlib import Path
@@ -285,7 +286,9 @@ return result;
         await self.h.wait_for_app_mounted(self.tab)
 
     async def registered(self, name):
-        page = next(p for p in self.h.parse_pages(Path(__file__).with_name("screenshots.ini")) if p.name == name)
+        page = next(
+            p for p in self.h.load_scenario_pages(self.h.default_scenarios_path()) if p.name == name
+        )
         if page.init_script:
             await self.h.navigate_document(self.tab, self.base + page.url, page.init_script)
         else:
@@ -341,147 +344,6 @@ return result;
                 raise AssertionError("opening the child changed the selected source")
 
 
-async def shipping(r):
-    async def baseline():
-        await r.preview("shipping_manifest", "CSQU3054383")
-        await r.find("is", 4)
-        await r.hit("next", 2, 4)
-        await r.hit("previous", 1, 4)
-        return {"query": "CSQU3054383", "find_hits": 4}
-    await r.phase("baseline", "The manifest is selected and document find navigates four occurrences.", baseline)
-    await r.phase("keyboard-find", "Enter submits the find and next/previous change the counter.", baseline)
-    async def popup():
-        identity = await r.preview("shipping_manifest", "CSQU3054383")
-        await r.find("is", 4)
-        expected = next(x for x in r.contract["fixtures"] if x["name"] == "shipping_manifest")["expected"]["entity_values"]
-        result = await r.popup(f'a[href^="/view_document/{route(identity)}/"]', "Entities", [x["value"] for x in expected])
-        await r.text("1 / 4")
-        result["expected_entities"] = expected
-        text = "\n".join(result["child"]["lines"])
-        missing = [x["value"] for x in expected if x["value"] not in text]
-        if missing:
-            raise AssertionError(f"entity values absent from full viewer: {missing}")
-        return result
-    await r.phase("popup-return", "The full viewer has the declared entities and the preview retains its find.", popup)
-    async def no_match():
-        await r.preview("shipping_manifest", "CSQU3054383")
-        await r.find(ABSENT, 0)
-        return await r.check("const p=document.querySelector('#x-search-results-right-panel');const counter=[...p.querySelectorAll('div')].find(e=>e.children.length===0&&e.textContent.trim()==='- / -');const buttons=[...counter.parentElement.querySelectorAll('button')];return {ok:!p.querySelector('.x-hit-span-active-match')&&buttons.length===2&&buttons.every(b=>b.disabled),query:document.querySelector(%s).value};" % json.dumps(FIND))
-    await r.phase("no-match", "An absent term clears the active hit.", no_match)
-
-
-async def mail_search(r):
-    async def baseline():
-        await r.preview("enron_like_text_substitute", "hoover")
-        await r.text("jeff.hoover@enron.com")
-        await r.find("enron", 21)
-        return {"substitute": True, "hits": 21, "draft_ordinal": 66}
-    await r.phase("baseline", "The declared substitute contains the address and 21 Enron occurrences.", baseline)
-    await r.phase("stable-identity", "Selection uses the pinned hash independently of result position.", baseline)
-    async def page_return():
-        original = r.profile.get("original_cases", {}).get("mail_page_return")
-        if not original:
-            raise UnmetPrerequisite("The original Enron corpus and its later-page document identity are unavailable.")
-        identity = original["document"]
-        ordinal = original["result_ordinal"]
-        if not isinstance(ordinal, int) or ordinal <= 20 or not original.get("source_sha256"):
-            raise UnmetPrerequisite("The original mail case needs a later-page ordinal and independently verified source provenance.")
-        await r.search("hoover", [])
-        for page_number in range((ordinal - 1) // 20):
-            await r.action("eval", "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;")
-            await r.check("return location.pathname.split('/')[3]===%s;" % json.dumps(str(page_number + 1)))
-        token = route(identity)
-        await r.check("const links=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return links[%d]?.getAttribute('href').split('/')[2]===%s;" % ((ordinal - 1) % 20, json.dumps(token)))
-        await r.select_identity(identity)
-        await r.find("hoover", 21)
-        result = await r.popup(f'a[href^="/view_document/{token}/"]', "Entities")
-        await r.text("1 / 21")
-        result["expected_original"] = original
-        return result
-    await r.phase("page-return", "A later-page document returns through browser history.", page_return)
-
-
-async def size_filters(r):
-    async def baseline():
-        await r.search()
-        await r.expected_results(x["hash"] for x in r.metadata()["files"])
-        await r.preview("easychair_odt", "easychair")
-        await r.find("Mac", 2)
-        await r.modal("File size")
-        await r.type('input[placeholder="min"]', "1")
-        await r.type('input[placeholder="max"]', "10")
-        await r.action("press_key", "Tab")
-        await r.apply()
-        await r.count(0)
-        return await r.check("return {ok:!document.querySelector(%s),chips:document.querySelector('#x-filter-chips')?.innerText};" % json.dumps(FIND))
-    await r.phase("baseline", "The selected ODT has two Mac hits. The size filter clears its preview and returns zero hits.", baseline)
-    async def clear():
-        await baseline()
-        await r.action("eval", "const p=[...document.querySelectorAll('#x-filter-chips [title]')].find(x=>x.textContent.includes('Collections'));const b=p?.querySelector('button[title=\"Remove this filter\"]');if(!b)throw Error('collection chip remove control unavailable');b.click();return true;")
-        await r.check("return document.querySelector('#x-filter-chips')?.innerText.includes('File size');")
-        await r.click("Clear all", "#x-filter-chips")
-        return await r.check("return {ok:!document.querySelector('#x-filter-chips')?.innerText.trim(),url:location.href};")
-    await r.phase("find-zero-clear", "Removing Collections retains the size filter. Clear all removes every chip.", clear)
-    async def reload():
-        await baseline()
-        before = await r.action("eval", "return location.pathname;")
-        await r.reload()
-        await r.count(0)
-        await r.check("return location.pathname===%s;" % json.dumps(before))
-        await r.modal("File size")
-        return await r.check("return {ok:document.querySelector('input[placeholder=min]')?.value==='1'&&document.querySelector('input[placeholder=max]')?.value==='10'};")
-    await r.phase("reload-persistence", "The applied size interval survives a reload.", reload)
-
-
-async def type_filters(r):
-    async def incremental():
-        await r.search()
-        types = []
-        records = []
-        for kind in ("text", "doc", "email"):
-            await r.modal("File types")
-            await r.click(kind, "#x-filter-modal")
-            await r.apply()
-            types.append(kind)
-            records.append(await r.expected_results(x["hash"] for x in r.metadata()["types"] if x["file_type"] in types))
-        await r.select("security_incident")
-        return {"source_metadata_counts": records, "draft_counts": [18, 22, 24]}
-    await r.phase("baseline", "Cumulative file types retain previous selections and select the expected email.", incremental)
-    await r.phase("incremental-types", "Each applied type set matches the independent canonical-type rows.", incremental)
-    async def appearance():
-        await r.search()
-        await r.modal("File types")
-        return await r.palette("#x-filter-modal")
-    await r.phase("popover-appearance", "The file-type pane renders under both color preferences.", appearance)
-
-
-async def dates(r):
-    async def bounds(start="2001-01-01", end="2010-12-31"):
-        await r.search()
-        await r.modal("Date")
-        await r.click("Between…", "#x-filter-modal")
-        await r.type('#x-filter-modal input[type="date"]:first-of-type', start)
-        await r.action("eval", "const es=[...document.querySelectorAll('#x-filter-modal input[type=date]')];if(es.length!==2)throw Error('date inputs unavailable');es[1].id='qa-date-end';return true;")
-        await r.type("#qa-date-end", end)
-    async def baseline():
-        from datetime import datetime, timezone
-        start, end = "2001-01-01", "2010-12-31"
-        await bounds(start, end)
-        await r.apply()
-        minimum = int(datetime.fromisoformat(start).replace(tzinfo=timezone.utc).timestamp())
-        maximum = int(datetime.fromisoformat(end).replace(tzinfo=timezone.utc).timestamp()) + 86399
-        return await r.expected_results(x["hash"] for x in r.metadata()["dates"] if minimum <= int(x["date"]) <= maximum)
-    await r.phase("baseline", "Each date-filter result has a confirmed source date within the inclusive bounds.", baseline)
-    await r.phase("boundary-input", "Keyboard input applies both date boundaries.", baseline)
-    async def reversed_dates():
-        await bounds("2010-12-31", "2001-01-01")
-        await r.text("The start date is after the end date.", "#x-filter-modal")
-        await r.type("#qa-date-end", "2011-01-01")
-        await r.apply()
-        return await r.check("return !document.querySelector('.x-error-display');")
-    await r.phase("reversed-dates", "An inverted interval displays an error and corrected bounds recover.", reversed_dates)
-
-
 async def email_envelope(r, full=False):
     if full:
         await r.full("romanian_email")
@@ -505,92 +367,6 @@ async def email_envelope(r, full=False):
         if actual is None or unroute(actual["href"].split('/')[2])["file_hash"] != attachment["sha3_256"]:
             raise AssertionError(f"attachment identity differs: {attachment['filename']}")
     return {"envelope": panel, "attachments": links}
-
-
-async def email_tabs(r):
-    async def baseline():
-        return await email_envelope(r)
-    await r.phase("baseline", "The original email envelope and all three attachment hashes match source bytes.", baseline)
-    async def attachments():
-        observed = await email_envelope(r)
-        records = []
-        for item in observed["attachments"]:
-            records.append(await r.popup(f'a[href="{item["href"]}"]', item["name"]))
-        await r.action("wait_css", ".x-email-details-panel")
-        return records
-    await r.phase("attachment-tabs", "Each attachment opens its own full viewer and preserves the email tab.", attachments)
-    async def combined():
-        await r.search()
-        await r.modal("Email")
-        await r.click("Email has attachments", "#x-filter-modal")
-        await r.apply()
-        metadata = r.metadata()
-        containers = {x["container_hash"] for x in metadata["files"] if x["container_hash"]}
-        emails = {x["email_hash"] for x in metadata["emails"]} & containers
-        first = await r.expected_results(emails)
-        await r.modal("Email")
-        await r.type('input[placeholder="Search senders…"]', "penultim_o@yahoo.com")
-        await r.click("penultim_o@yahoo.com", "#x-filter-modal")
-        await r.apply()
-        senders = {x["email_hash"] for x in metadata["addresses"] if x["role"] == "from" and x["address"] == "penultim_o@yahoo.com"}
-        second = await r.expected_results(emails & senders)
-        await r.reload()
-        await r.expected_results(emails & senders)
-        await r.modal("Email")
-        await r.text("penultim_o@yahoo.com", "#x-filter-modal")
-        return {"has_attachments": first, "combined": second, "draft_counts": [5, 2]}
-    await r.phase("combined-sender", "Attachment and sender filters combine and survive reload.", combined)
-
-
-async def email_viewer(r):
-    async def baseline():
-        preview = await email_envelope(r)
-        full = await email_envelope(r, True)
-        if preview != full:
-            raise AssertionError("preview and full email envelope or attachments differ")
-        return full
-    await r.phase("baseline", "Preview and full viewer match the original email bytes.", baseline)
-    await r.phase("preview-parity", "Envelope and attachment identities agree across both viewers.", baseline)
-    async def attachment_return():
-        observed = await email_envelope(r, True)
-        first = observed["attachments"][0]
-        result = await r.popup(f'a[href="{first["href"]}"]', first["name"])
-        await r.action("wait_css", ".x-email-details-panel")
-        return result
-    await r.phase("attachment-return", "Closing an attachment preserves the full email viewer state.", attachment_return)
-
-
-async def entity_filter(r):
-    async def baseline():
-        await r.search()
-        await r.modal("Entities")
-        await r.click("Location", "#x-filter-modal")
-        await r.type('input[placeholder="Search location…"]', "Manchester")
-        await r.click("Manchester", "#x-filter-modal")
-        await r.apply()
-        expected = {x["file_hash"] for x in r.metadata()["entities"] if x["entity_type"] in ("LOC", "loc", "location") and "Manchester" in x["entity_values"]}
-        result = await r.expected_results(expected)
-        await r.select("easychair_odt")
-        await r.type(FIND, "Manchester", True)
-        await r.check("return [...document.querySelectorAll('div')].some(x=>x.children.length===0&&/^1 \\/ [1-9]/.test(x.textContent));")
-        return result
-    await r.phase("baseline", "The exact Manchester entity selects only documents carrying that source entity.", baseline)
-    await r.phase("exact-entity", "The ODT document find locates the selected entity.", baseline)
-    async def no_match():
-        await r.search()
-        await r.modal("Entities")
-        await r.click("Location", "#x-filter-modal")
-        await r.type('input[placeholder="Search location…"]', ABSENT)
-        await r.text("No", "#x-filter-modal")
-        await r.click("Cancel", "#x-filter-modal")
-        await r.modal("Entities")
-        return await r.check("return {ok:!document.querySelector('#x-filter-chips')?.innerText.includes('Entities')};")
-    await r.phase("entity-no-match", "An absent location creates no hidden selection.", no_match)
-    async def appearance():
-        await r.search()
-        await r.modal("Entities")
-        return await r.palette("#x-filter-modal")
-    await r.phase("popover-appearance", "Entity controls render under both color preferences.", appearance)
 
 
 async def sort_results(r, key):
@@ -651,91 +427,6 @@ async def sort_results(r, key):
                   "Reload retains order. Size sorting also agrees with two document Metadata values.", persistence)
 
 
-async def sort_dates(r):
-    await sort_results(r, "Date")
-
-
-async def sort_sizes(r):
-    await sort_results(r, "FileSize")
-
-
-async def sort_names(r):
-    await sort_results(r, "Name")
-
-
-async def relevance(r):
-    async def baseline():
-        await r.search("child")
-        await r.click("Sort", "#x-search-input-top-bar")
-        await r.click("Relevance")
-        await r.action("eval", "const b=[...document.querySelectorAll('#x-search-input-top-bar button')].find(b=>b.textContent.trim()==='Search');if(b&&!b.disabled)b.click();return true;")
-        await r.check("return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;")
-        expected = [row["file_hash"] for row in r.metadata().get("raw_relevance", [])]
-        if not expected:
-            raise UnmetPrerequisite("Refresh the independent raw relevance-score oracle.")
-        actual = await r.identities()
-        if actual != expected:
-            raise AssertionError(f"relevance differs from raw scores: expected {expected}, observed {actual}")
-        await r.reload()
-        await r.check("return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;")
-        return {"identities": actual, "raw_scores": r.metadata()["raw_relevance"],
-                "draft_first": "parent.zip", "prepared_parent_ordinal": actual.index(r.fixture("parent_archive")[1]["file_hash"]) + 1}
-    await r.phase("baseline", "The child query follows independent raw relevance scores in descending order.", baseline)
-    await r.phase("explicit-relevance", "Explicit relevance and reload retain descending order.", baseline)
-    async def empty():
-        await r.registered("qa-sort-empty-default")
-        await r.registered("qa-sort-legacy-ascending-relevance")
-        return {"current_and_legacy_direction": "descending"}
-    await r.phase("empty-query", "Current and legacy empty relevance routes expose a disabled descending direction.", empty)
-
-
-async def tables(r):
-    async def baseline():
-        await r.preview("manual_table_substitute")
-        await r.type(FIND, "", True)
-        await r.text("A-01")
-        await r.registered("qa-table-data-sort-filter")
-        return {"source": "manual-qa-table.csv", "remaining_row": ["A-02", "Cluj", "20"]}
-    await r.phase("baseline", "The source table renders in preview and full view and applies numeric order and a text filter.", baseline)
-    await r.phase("sort-and-filter", "The filtered row matches the generated source bytes.", baseline)
-    async def columns():
-        await r.full("manual_table_substitute")
-        await r.text("A-01")
-        await r.action("pointer_click_css", 'button[aria-label="Choose visible columns"]')
-        await r.action("pointer_click_css", 'button[aria-label="Hide all columns"]')
-        await r.text("Every column of this sheet is hidden.")
-        await r.action("pointer_click_css", '[role="dialog"] input[type="checkbox"]')
-        await r.action("press_key", "Escape")
-        await r.check("return document.querySelectorAll('thead th').length===2;")
-        url = await r.action("eval", "return location.pathname;")
-        await r.action("goto", url)
-        return await r.check("return {ok:document.querySelectorAll('thead th').length===2,headers:[...document.querySelectorAll('thead th')].map(x=>x.innerText)};")
-    await r.phase("columns-and-reload", "Hide all displays an empty state. Showing one column survives route reload.", columns)
-    async def no_matches():
-        await r.full("manual_table_substitute")
-        await r.text("A-01")
-        await r.action("pointer_click_css", 'button[aria-label="Filter Region"]')
-        await r.type('[role="dialog"] input[placeholder="Contains…"]', ABSENT)
-        await r.action("pointer_click_css", 'button[aria-label="Apply contains filter"]')
-        await r.text("rows 0–0 of 0")
-        await r.action("click_css", 'button[title="Remove every column filter"]')
-        await r.text("A-01")
-        return await r.check("return {ok:document.querySelectorAll('tbody tr').length===3};")
-    await r.phase("no-matches", "An absent value produces zero rows and clearing filters restores three rows.", no_matches)
-    async def keyboard():
-        await r.registered("qa-table-modal-keyboard")
-        return {"focus_return": True, "escape": True}
-    await r.phase("keyboard", "Keyboard focus stays inside the modal and Escape returns focus to its trigger.", keyboard)
-    async def modal():
-        for name in ("qa-table-modal-geometry", "qa-table-modal-backdrop", "qa-table-modal-light-colors", "qa-table-modal-dark-colors"):
-            page = next(p for p in r.h.parse_pages(Path(__file__).with_name("screenshots.ini")) if p.name == name)
-            await r.h.set_color_scheme(r.tab, page.color_scheme)
-            await r.registered(name)
-        await r.h.set_color_scheme(r.tab, "")
-        return {"geometry": True, "backdrop_hit_test": True, "single_modal": True, "palette": "light"}
-    await r.phase("single-modal-and-palette", "Pointer hit testing prevents background activation and the modal retains the fixed palette.", modal)
-
-
 async def pdf_state(r, count=7):
     deadline = time.monotonic() + 30
     state = None
@@ -758,267 +449,44 @@ return {ready:!!search,search,overlays};
     raise AssertionError(f"PDF search state or visible highlights did not become ready: {state}")
 
 
-async def pdf(r):
-    async def baseline():
-        await r.preview("stanley_pdf_with_ocr", "stanley")
-        await r.find("MIT", 7)
-        first = await pdf_state(r)
-        await r.hit("next", 2, 7)
-        second = await pdf_state(r)
-        if first["search"].get("activeResultIndex") == second["search"].get("activeResultIndex"):
-            raise AssertionError("the active PDF result did not advance")
-        await r.full("stanley_pdf_with_ocr", find_query="MIT")
-        await r.text("1 / 7")
-        return {"preview_first": first, "preview_second": second, "full": await pdf_state(r)}
-    await r.phase("baseline", "The Stanley PDF has seven MIT hits with visible highlights in preview and full view.", baseline)
-    async def source_switch():
-        results = []
-        for preview in (False, True):
-            if preview:
-                await r.preview("stanley_pdf_with_ocr", "stanley")
-            else:
-                await r.full("stanley_pdf_with_ocr")
-            await r.find("MIT", 7)
-            original = await pdf_state(r)
-            await r.pdf_source("PDF · OCR · Tesseract · eng", preview)
-            await r.text("1 / 7")
-            derived = await pdf_state(r)
-            if original["search"]["results"] == derived["search"]["results"]:
-                raise AssertionError("original and OCR search geometry unexpectedly match")
-            await r.hit("next", 2, 7)
-            await pdf_state(r)
-            await r.pdf_source("PDF", preview)
-            await r.text("1 / 7")
-            results.append({"preview": preview, "original": original, "ocr": derived, "returned": await pdf_state(r)})
-        await r.full("stanley_pdf_with_ocr")
-        await r.action("eval", "window.__qa_original_fetch=window.fetch;window.__qa_held=false;window.__qa_released=false;window.fetch=(...args)=>{const u=typeof args[0]==='string'?args[0]:args[0].url;if(u.includes('search_document_pdf')&&!window.__qa_held){window.__qa_held=true;return new Promise((resolve,reject)=>{window.__qa_release=()=>window.__qa_original_fetch(...args).then(value=>{window.__qa_released=true;resolve(value)},reject);});}return window.__qa_original_fetch(...args)};return true;")
-        try:
-            await r.type(FIND, "MIT", True)
-            await r.check("return window.__qa_held===true;")
-            await r.pdf_source("PDF · OCR · Tesseract · eng")
-            await r.text("1 / 7")
-            current = await pdf_state(r)
-            await r.action("eval", "window.__qa_release();return true;")
-            await r.check("return window.__qa_released===true;")
-            await r.hit("next", 2, 7)
-            after = await pdf_state(r)
-            if current["search"]["results"] != after["search"]["results"]:
-                raise AssertionError("the delayed original request replaced current OCR geometry")
-            results.append({"delayed_original": True, "current_before": current, "current_after": after})
-        finally:
-            await r.action("eval", "window.fetch=window.__qa_original_fetch;window.__qa_release?.();return true;")
-        return results
-    await r.phase("active-find-source-switch", "Both source orders preserve current geometry. A held original request cannot replace usable OCR results.", source_switch)
-    async def controls():
-        await r.full("stanley_pdf_with_ocr")
-        await r.action("wait_css", "#x-pdf-viewer embedpdf-container")
-        await r.check("return [...document.querySelectorAll('input')].some(e=>!e.placeholder&&e.value==='1');")
-        await r.action("eval", "const e=[...document.querySelectorAll('input')].find(e=>!e.placeholder&&e.value==='1');if(!e)throw Error('page field unavailable');e.id='qa-pdf-page';e.parentElement.parentElement.id='qa-pdf-controls';return true;")
-        await r.type("#qa-pdf-page", "3", True)
-        await r.check("return document.querySelector('#qa-pdf-page')?.value==='3';")
-        before = await r.action("eval", "return document.querySelector('#qa-pdf-controls').innerText;")
-        await r.action("click_css", "#qa-pdf-controls button:nth-of-type(3)")
-        await r.check("return document.querySelector('#qa-pdf-controls').innerText!==%s;" % json.dumps(before))
-        await r.action("click_css", "#qa-pdf-controls button:nth-of-type(4)")
-        await r.check("return document.querySelector('#qa-pdf-controls').innerText===%s;" % json.dumps(before))
-        await r.full("born_digital_pdf_without_ocr")
-        return await r.check("return {ok:!document.body.innerText.includes('PDF · OCR'),text:document.body.innerText};")
-    await r.phase("page-and-zoom", "Page input and both zoom controls change once. The original-only PDF has no OCR source.", controls)
-    async def no_match():
-        await r.full("stanley_pdf_with_ocr")
-        await r.find(ABSENT, 0)
-        await r.pdf_source("PDF · OCR · Tesseract · eng")
-        await r.text("- / -")
-        observed = await pdf_state(r, 0)
-        if observed["overlays"]:
-            raise AssertionError("an absent term retained PDF highlight overlays")
-        return observed
-    await r.phase("no-match", "An absent query leaves no PDF highlight after a source change.", no_match)
-    async def appearance():
-        await r.preview("stanley_pdf_with_ocr", "stanley")
-        await r.find("MIT", 7)
-        await r.action("click_css", '[data-source-trigger="true"]')
-        result = []
-        for scheme in ("light", "dark"):
-            await r.h.set_color_scheme(r.tab, scheme)
-            result.append(await r.check("const list=document.querySelector('[data-source-list=true]');if(!list)return false;const rows=[...list.querySelectorAll('[data-source-label]')].map(e=>({label:e.dataset.sourceLabel,count:e.nextElementSibling?.textContent.trim(),background:getComputedStyle(e.parentElement).backgroundColor}));const box=list.getBoundingClientRect();return {ok:box.width>0&&box.left>=0&&box.right<=innerWidth&&rows.some(e=>e.label==='PDF'&&e.count==='7')&&rows.some(e=>e.label==='PDF · OCR · Tesseract · eng'&&e.count==='7')&&rows.every(e=>e.background==='rgb(255, 255, 255)'),scheme:%s,rows,width:box.width};" % json.dumps(scheme)))
-        await r.h.set_color_scheme(r.tab, "")
-        return result
-    await r.phase("source-appearance", "The source selector renders under both color preferences.", appearance)
-
-
 async def folder_route(r, dataset, path="/", container=""):
     await r.action("goto", f"/file_browser/{dataset}/{route({'container_hash':container,'path':path})}/9g==/9g==")
     await r.action("wait_css", 'input[placeholder="Search in folder…"]')
 
 
-async def folder_search(r):
-    async def baseline():
-        await folder_route(r, "testdata_manualqa", "/entity-fixtures")
-        await r.type('input[placeholder="Search in folder…"]', "invoice")
-        await r.text("1 matches in this folder and below")
-        await r.click("invoice-batch.docx", "table")
-        await r.action("wait_css", FIND)
-        await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
-        await r.click("Open in Search")
-        await r.check("return location.pathname.startsWith('/search/');")
-        expected = {x["hash"] for x in r.metadata()["files"] if x["path"] in ('/entity-fixtures/generate.py', '/entity-fixtures/invoice-batch.docx')}
-        result = await r.expected_results(expected)
-        await r.text("File location", "#x-filter-chips")
-        return {"expected_folder_documents": result, "draft_members": ["generate.py", "invoice-batch.docx"]}
-    await r.phase("baseline", "Folder search selects the invoice and transfers the folder constraint to global search.", baseline)
-    await r.phase("handoff", "Open in Search returns the source metadata identities below the selected folder.", baseline)
-    async def return_clear():
-        await baseline()
-        destination = await r.action("eval", "return location.pathname;")
-        await r.action("history_back")
-        await r.check("return location.pathname.startsWith('/file_browser/');")
-        await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
-        await r.action("history_forward")
-        await r.check("return location.pathname===%s;" % json.dumps(destination))
-        await r.action("click_css", '#x-filter-chips button[title="Remove this filter"]')
-        return await r.check("return !document.querySelector('#x-filter-chips')?.innerText.includes('File location');")
-    await r.phase("return-and-clear", "Back restores the folder filter text. Forward restores search and the folder chip can be removed.", return_clear)
+def _procedure_dir() -> Path:
+    here = Path(__file__).resolve().parent
+    for candidate in (
+        here.parent / "browser-tests" / "procedures",
+        here / "browser-tests" / "procedures",
+    ):
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError("procedure files are missing beside the capture tools")
 
 
-async def archive_viewer(r):
-    async def baseline():
-        await folder_route(r, "testdata_manualqa", "/archives")
-        await r.text("parent.zip")
-        await r.action("eval", "const row=[...document.querySelectorAll('tr')].find(x=>x.innerText.includes('parent.zip'));const b=[...row.querySelectorAll('button')].find(x=>x.innerText.includes('View Details'));if(!b)throw Error('archive preview control unavailable');b.click();return true;")
-        await r.text("parent.zip")
-        _, identity = r.fixture("parent_archive")
-        return await r.popup(f'a[href^="/view_document/{route(identity)}/"]', "parent.zip")
-    await r.phase("baseline", "View Details opens the archive preview and its full document viewer.", baseline)
-    await r.phase("no-source-archive", "The archive document title and right-side tabs load without an endless pending state.", baseline)
-    async def separate():
-        await folder_route(r, "testdata_manualqa", "/archives")
-        await r.click("parent.zip", "table")
-        expected = r.fixture("parent_archive")[1]["file_hash"]
-        descriptor = await r.action("eval", "return location.pathname.split('/')[3];")
-        if unroute(descriptor)["container_hash"] != expected:
-            raise AssertionError("archive row did not enter its container")
-        return {"container": expected}
-    await r.phase("separate-container-action", "Clicking the archive row enters the container independently of View Details.", separate)
+_PROCEDURES: dict[str, object] | None = None
 
 
-async def archive_storage(r):
-    async def baseline():
-        identity = await r.preview("directory_archive", "the-directory.zip")
-        await r.action("eval", "const a=document.querySelector(%s);let row=a;while(row&&!row.style.height.includes('148px'))row=row.parentElement;const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;" % json.dumps(f'a[href^="/view_document/{route(identity)}/"]'))
-        await r.click("Open in File Browser")
-        await r.check("return location.pathname.startsWith('/file_browser/');")
-        await r.text("the-directory.zip")
-        await r.click("the-directory.zip", "table")
-        await r.check("return document.querySelectorAll('#x-storage-tree [aria-current=\"location\"]').length===1;")
-        return await r.action("eval", "return {route:location.pathname,tree:document.querySelector('#x-storage-tree').innerText,listing:document.querySelector('table')?.innerText};")
-    await r.phase("baseline", "The search action opens the archive location and the archive row enters its root.", baseline)
-    await r.phase("search-handoff", "The selected archive and storage focus agree.", baseline)
-    async def history():
-        await baseline()
-        before = await r.action("eval", "return location.pathname;")
-        await r.action("history_back")
-        await r.text("the-directory.zip")
-        await r.action("history_forward")
-        return await r.check("return {ok:location.pathname===%s,route:location.pathname};" % json.dumps(before))
-    await r.phase("return-navigation", "Browser history returns to the archive route.", history)
-    async def highlight():
-        await r.registered("qa-storage-archive-highlight")
-        return {"current_rows": 1}
-    await r.phase("archive-highlight", "Exactly one tree row identifies the current archive.", highlight)
-
-
-async def entities(r):
-    async def baseline():
-        await r.full("easychair_office")
-        await r.action("wait_css", 'input[placeholder="Filter Entities ..."]')
-        expected = r.profile.get("source_expectations", {}).get("easychair_entities")
-        if not expected:
-            raise UnmetPrerequisite("The Easychair entity-value and source-text count oracle is unavailable.")
-        observed = []
-        for item in expected:
-            await r.type('input[placeholder="Filter Entities ..."]', item["value"])
-            await r.text(item["value"])
-            await r.check("const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===%s);return {ok:!!e&&e.lastElementChild?.textContent.trim()===%s,text:e?.innerText};" % (json.dumps(item["value"]), json.dumps(str(item["count"]))))
-            await r.action("click_css", '.x-entity-chip[title=%s]' % json.dumps(item["value"]))
-            await r.check("return document.querySelector(%s)?.value.includes(%s);" % (json.dumps(FIND), json.dumps(item["value"])))
-            await r.text(item["value"])
-            observed.append(item)
-            await r.action("press_key", "Escape")
-        return observed
-    await r.phase("baseline", "Known Easychair values and counts match the original DOCX text.", baseline)
-    await r.phase("multiple-values", "Two selected entity values open their own cards and counts.", baseline)
-    async def stale():
-        await r.full("easychair_office", selected_entity=ABSENT)
-        await r.text("has no entity")
-        return {"missing_value": ABSENT}
-    await r.phase("stale-entity", "An absent selected entity produces the explicit missing-value state.", stale)
-    async def appearance():
-        await r.full("easychair_office")
-        await r.action("wait_css", ".x-entity-chip")
-        await r.action("click_css", ".x-entity-chip")
-        return await r.palette('.x-entity-chip')
-    await r.phase("appearance", "Entity values and cards render under both color preferences.", appearance)
-
-
-async def tree(r):
-    async def baseline():
-        await r.registered("storage-shapes-deep")
-        await r.registered("qa-storage-warm-navigation")
-        return {"deep_chain": True, "warm_ancestor_retained": True}
-    await r.phase("baseline", "Deep routes expand the tree and warm archive navigation retains its ancestor.", baseline)
-    async def two_datasets():
-        await r.registered("qa-storage-cold-expansion")
-        zips_state = await r.action("eval", "const btn=document.querySelector('#x-tree-d-testdata_zips'); return {ok:!!btn, aria:btn&&btn.getAttribute('aria-expanded'), already:window.__qa_zips_expand||null, locationReady:[...document.querySelectorAll('#x-storage-tree [data-node-key]')].some(x=>x.title==='/location-1'||x.title.endsWith('/location-1'))};")
-        await r.click("location-1", "#x-storage-tree")
-        await r.action("history_back")
-        both = await r.check("const keys=[...document.querySelectorAll('#x-storage-tree [data-node-key]')].map(e=>e.dataset.nodeKey);const zips=document.querySelector('#x-tree-d-testdata_zips');const shapes=document.querySelector('#x-tree-d-testdata_shapes');return {ok:!!zips&&!!shapes&&keys.some(x=>x.startsWith('testdata_shapes'))&&keys.some(x=>x.startsWith('testdata_zips')),visibleNodeKeys:keys,zipsExpanded:zips&&zips.getAttribute('aria-expanded'),shapesExpanded:shapes&&shapes.getAttribute('aria-expanded')};")
-        both["expandState"] = zips_state
-        return both
-    await r.phase("two-datasets", "Both dataset controls remain available after expansion and history navigation.", two_datasets)
-    async def keyboard():
-        await folder_route(r, "testdata_shapes")
-        await r.action("wait_css", "#x-tree-d-testdata_zips")
-        await r.action("eval", "document.querySelector('#x-tree-d-testdata_zips').focus();return true;")
-        await r.action("press_enter")
-        await r.text("location-1", "#x-storage-tree")
-        return await r.check("return {ok:document.activeElement?.id==='x-tree-d-testdata_zips',active:document.activeElement?.outerHTML};")
-    await r.phase("keyboard-tree", "Enter activates the focused dataset disclosure once.", keyboard)
-    async def narrow():
-        original = await r.h.measured_viewport(r.tab)
-        try:
-            await r.h.set_exact_viewport(r.tab, 600, 900)
-            await r.registered("storage-shapes-deep-600px")
-            await r.reload()
-            await r.action("wait_css", "#x-storage-tree [aria-current]")
-            (r.directory / f"{r.stem}.narrow-600.png").write_bytes(await r.h.screenshot(r.tab, False))
-            return await r.check("return {ok:document.documentElement.scrollWidth<=innerWidth,width:innerWidth,scrollWidth:document.documentElement.scrollWidth};")
-        finally:
-            await r.h.set_exact_viewport(r.tab, *original)
-    await r.phase("reload-and-narrow-view", "The deep route remains inside a narrow viewport.", narrow)
-    async def leaf():
-        await r.registered("qa-storage-leaf-dataset")
-        return {"disclosure": False, "navigation": True}
-    await r.phase("leaf-disclosure", "A leaf dataset opens its root without a disclosure or empty-folder child message.", leaf)
-    async def retained():
-        await r.registered("storage-shapes-deep")
-        await r.check("const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=rows.find(x=>x.getAttribute('aria-current')==='location');return !!current&&rows.some(x=>current.title.startsWith(x.title+'/'));")
-        await r.action("eval", "window.__qa_deep_route=location.pathname;window.__qa_deep_rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=window.__qa_deep_rows.find(x=>x.getAttribute('aria-current')==='location');window.__qa_deep_ancestors=window.__qa_deep_rows.filter(x=>current?.title.startsWith(x.title+'/'));window.__qa_deep_ancestor_keys=window.__qa_deep_ancestors.map(x=>x.dataset.nodeKey);window.__qa_deep_requests=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).length;window.__qa_deep_queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]');return {rows:window.__qa_deep_rows.map(x=>({key:x.dataset.nodeKey,title:x.title})),ancestorKeys:window.__qa_deep_ancestor_keys};")
-        await r.action("eval", "const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=rows.find(x=>x.getAttribute('aria-current')==='location');const parent=rows.filter(x=>current?.title.startsWith(x.title+'/')).at(-1);if(!parent)throw Error('deep parent row unavailable');window.__qa_deep_current_title=current.title;window.__qa_deep_parent_title=parent.title;parent.click();return {parentKey:parent.dataset.nodeKey,parentTitle:parent.title};")
-        await r.check("return location.pathname!==window.__qa_deep_route;")
-        await r.check("return document.querySelector('#x-storage-tree [aria-current=location]')?.title===window.__qa_deep_parent_title;")
-        await r.action("async_eval", "await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);return true;")
-        await r.check("const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const keys=new Set(rows.map(x=>x.dataset.nodeKey));return {ok:rows.some(x=>x.title===window.__qa_deep_parent_title)&&!rows.some(x=>x.title.startsWith(window.__qa_deep_current_title+'/'))&&window.__qa_deep_ancestor_keys.every(k=>keys.has(k)),visibleKeys:[...keys],ancestorKeys:window.__qa_deep_ancestor_keys};")
-        await r.action("history_back")
-        await r.check("return location.pathname===window.__qa_deep_route;")
-        await r.check("return document.querySelector('#x-storage-tree [aria-current=location]')?.title===window.__qa_deep_current_title;")
-        await r.action("async_eval", "await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);return true;")
-        return await r.action("eval", "const common=window.__qa_deep_ancestors; const after=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).length; const queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]'); const live=new Set([...document.querySelectorAll('#x-storage-tree [data-node-key]')].map(x=>x.dataset.nodeKey)); const result={ancestorKeys:window.__qa_deep_ancestor_keys,ancestors:common.map(x=>x.title),connected:common.map(x=>x.isConnected),requestsBefore:window.__qa_deep_requests,requestsAfter:after,datastoreQueriesBefore:window.__qa_deep_queries,datastoreQueriesAfter:queries}; if(!common.length) throw Error('no common ancestors: '+JSON.stringify(result)); if(common.some(x=>!x.isConnected)||window.__qa_deep_ancestor_keys.some(k=>!live.has(k))) throw Error('common ancestor identity lost: '+JSON.stringify(result)); return result;")
-    await r.phase("cache-and-history", "Returning through a deep route retains common ancestor DOM nodes and records tree request counts.", retained)
-    async def freshness():
-        await r.registered("qa-storage-warm-navigation")
-        return await r.action("eval", "const queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]'); const requests=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).map(x=>({name:x.name,duration:x.duration})); const pathQueries=queries.filter(x=>x.kind==='path'); const childQueries=queries.filter(x=>x.kind==='children'); const cold=queries.filter(x=>!x.from_cache); const fresh=queries.filter(x=>x.from_cache); return {ok:true, browserRequests:requests.length, datastoreQueries:queries, coldDatastoreQueries:cold, freshCachedQueries:fresh, requestDurations:requests};")
-    await r.phase("freshness-and-query-cost", "Warm archive navigation records browser requests and datastore query counts separately.", freshness)
+def load_procedures() -> dict[str, object]:
+    """Import each procedure module from website/browser-tests/procedures/."""
+    global _PROCEDURES
+    if _PROCEDURES is not None:
+        return _PROCEDURES
+    found: dict[str, object] = {}
+    for path in sorted(_procedure_dir().glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        spec = importlib.util.spec_from_file_location(
+            f"h4_procedure_{path.stem.replace('-', '_')}", path
+        )
+        if spec is None or spec.loader is None:
+            raise FileNotFoundError(f"cannot load procedure {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        found[module.PROCEDURE_NAME] = module.run
+    _PROCEDURES = found
+    return found
 
 
 async def run_procedure(name, tab, base, network, directory, stem, harness):
@@ -1030,7 +498,7 @@ async def run_procedure(name, tab, base, network, directory, stem, harness):
     originals = Path(__file__).with_name("manual_qa_original_cases.json")
     if originals.is_file():
         profile["original_cases"] = json.loads(originals.read_text())
-    procedure = PROCEDURES.get(name)
+    procedure = load_procedures().get(name)
     if procedure is None:
         raise ValueError(f"unknown executable procedure {name}")
     run = Run(tab, base, network, directory, stem, harness, profile, contract)
@@ -1043,13 +511,3 @@ async def run_procedure(name, tab, base, network, directory, stem, harness):
         raise UnmetPrerequisite(message)
 
 
-PROCEDURES = {"manual-shipping": shipping, "manual-mail-search": mail_search,
-              "manual-size-filters": size_filters, "manual-type-filters": type_filters,
-              "manual-dates": dates, "manual-email-filters": email_tabs,
-              "manual-entity-filter": entity_filter, "manual-email-viewer": email_viewer}
-PROCEDURES.update({"manual-sort-dates": sort_dates, "manual-sort-size": sort_sizes,
-                   "manual-sort-name": sort_names, "manual-relevance": relevance, "manual-table": tables,
-                   "manual-pdf": pdf})
-PROCEDURES.update({"manual-folder-search": folder_search, "manual-archive-viewer": archive_viewer,
-                   "manual-archive-storage": archive_storage, "manual-entities": entities,
-                   "manual-tree": tree})

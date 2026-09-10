@@ -2,7 +2,7 @@
 
 Runs INSIDE `hoover4-mcp-browser`, which is the only container with a Chromium and
 `nodriver` installed. It is invoked by `website/take-screenshots.sh`, which copies this
-file and the ini in, runs it, and copies the output back out. Read
+file and the scenario files in, runs it, and copies the output back out. Read
 `website/take-screenshots.sh` first: it resolves the target, the credentials, the output
 run directory and the run lock, and passes the results here through arguments and
 environment variables. This file never reads ``TEST_LOGIN.env`` itself. The wrapper exports
@@ -51,7 +51,7 @@ status follows from the worst one seen:
 * ``incomplete_execution`` -- no suitable document, a missing fixture, a failed login, a stopped browser, or a
   capture that could not be written -- exit 2, unless an application error also occurred
 
-Per-page exemptions live in the ini: ``allow_error_markers``, ``allow_http_errors``,
+Per-page exemptions live in the scenario file: ``allow_error_markers``, ``allow_http_errors``,
 ``allow_console`` (a substring, one per line) demote a specific observation the way they
 always have. ``expect`` (values ``missing_page``, ``error_display``, ``error_bar``) is the
 newer, explicit form: it asserts a scenario expects that negative state, and reclassifies
@@ -143,8 +143,11 @@ class IncompleteCapture(OSError):
 
 
 # ---------------------------------------------------------------------------------
-# The ini
+# Scenario files
 # ---------------------------------------------------------------------------------
+
+SCENARIO_FILE = re.compile(r"^(\d+)-.+\.ini$")
+DIRECTORY_DEFAULTS = {"settle_ms": "800"}
 
 @dataclass
 class Page:
@@ -181,11 +184,15 @@ class Page:
     procedure: str = ""
     init_script: str = ""
     document_fixture: str = ""
+    summary: str = ""
+    slug: str = ""
 
 
-def parse_pages(ini_path: Path) -> list[Page]:
+def parse_pages(ini_path: Path, defaults: dict[str, str] | None = None) -> list[Page]:
     parser = configparser.ConfigParser(interpolation=None)
     parser.optionxform = str
+    if defaults:
+        parser.read_dict({"DEFAULT": defaults})
     parser.read(ini_path, encoding="utf-8")
 
     pages: list[Page] = []
@@ -246,8 +253,51 @@ def parse_pages(ini_path: Path) -> list[Page]:
                 manual_asset=section.get("manual_asset", "").strip(),
                 color_scheme=color_scheme,
                 document_fixture=section.get("document_fixture", "").strip(),
+                summary=section.get("summary", "").strip(),
             )
         )
+    return pages
+
+
+def default_scenarios_path() -> Path:
+    """Directory of per-slug scenario files, or a concatenated ini copied beside the tools."""
+    here = Path(__file__).resolve().parent
+    for candidate in (here / "browser-tests", here.parent / "browser-tests"):
+        if candidate.is_dir() and any(SCENARIO_FILE.match(child.name) for child in candidate.iterdir()):
+            return candidate
+    for candidate in (here / "screenshots.ini", here.parent / "screenshots.ini"):
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        "browser scenario files are missing; copy website/browser-tests next to the capture tools"
+    )
+
+
+def load_scenario_pages(path: Path) -> list[Page]:
+    """Read one concatenated ini, or every numbered ini in a directory in slug-number order."""
+    path = Path(path)
+    if path.is_file():
+        pages = parse_pages(path)
+        for page in pages:
+            if not page.slug:
+                page.slug = page.name
+        return pages
+    if not path.is_dir():
+        raise SystemExit(f"scenario path {path} is not a file or directory")
+    files: list[tuple[int, str, Path]] = []
+    for child in path.iterdir():
+        match = SCENARIO_FILE.match(child.name)
+        if match:
+            files.append((int(match.group(1)), child.name, child))
+    files.sort()
+    pages = []
+    for _number, _filename, child in files:
+        parsed = parse_pages(child, defaults=DIRECTORY_DEFAULTS)
+        if len(parsed) != 1:
+            raise SystemExit(f"{child} must contain exactly one scenario section")
+        page = parsed[0]
+        page.slug = child.stem
+        pages.append(page)
     return pages
 
 
@@ -1566,7 +1616,11 @@ def select_pages(pages: list[Page], only: str, names_csv: str) -> list[Page]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ini", default="/tmp/h4shots/screenshots.ini")
+    parser.add_argument(
+        "--ini",
+        default="/tmp/h4shots/screenshots.ini",
+        help="concatenated scenario ini, or a directory of numbered per-slug ini files",
+    )
     parser.add_argument("--out-root", default="/tmp/h4shots/out")
     parser.add_argument("--run-name", required=True, help="the run-<stamp>-<pid> directory name")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -1607,7 +1661,7 @@ def main() -> int:
     # wrapper never deletes. Creating it here does not touch anything the wrapper owns.
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    pages = parse_pages(Path(args.ini))
+    pages = load_scenario_pages(Path(args.ini))
     try:
         pages = select_pages(pages, args.only, args.names)
     except ValueError as error:

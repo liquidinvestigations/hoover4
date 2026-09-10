@@ -70,9 +70,14 @@ def select_cases(selection: str) -> list[Case]:
 
 
 def scenario_names(ini_path: Path) -> set[str]:
-    parser = configparser.ConfigParser(interpolation=None)
-    parser.read(ini_path, encoding="utf-8")
-    return set(parser.sections())
+    path = Path(ini_path)
+    names: set[str] = set()
+    files = sorted(path.glob("*.ini")) if path.is_dir() else [path]
+    for file_path in files:
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.read(file_path, encoding="utf-8")
+        names.update(parser.sections())
+    return names
 
 
 def prerequisite_status(cases: list[Case], profile: dict[str, object]) -> list[dict[str, object]]:
@@ -137,7 +142,7 @@ def summarize(root: Path, resolutions: list[str], browser_exit: int, chat_exit: 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", type=Path, default=Path("website/test_reports/manual_qa_fixtures.json"))
-    parser.add_argument("--ini", type=Path, default=Path("website/screenshots.ini"))
+    parser.add_argument("--ini", type=Path, default=Path("website/browser-tests"))
     parser.add_argument("--select", default="")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--print-scenarios", action="store_true")

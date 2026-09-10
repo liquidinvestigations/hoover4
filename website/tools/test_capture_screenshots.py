@@ -17,6 +17,16 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
+def _corpus_pages():
+    for candidate in (
+        Path(__file__).resolve().parents[1] / "browser-tests",
+        Path("/tmp/qa-completion-tests/browser-tests"),
+    ):
+        if candidate.is_dir():
+            return {page.name: page for page in MODULE.load_scenario_pages(candidate)}
+    return None
+
+
 class ScenarioParsingTests(unittest.TestCase):
     def test_initial_script_is_specific_to_its_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -65,6 +75,34 @@ class ScenarioParsingTests(unittest.TestCase):
                 ("wait_eval", "return true;"),
             ],
         )
+
+    def test_directory_loader_reads_slug_number_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "102-search-later.ini").write_text(
+                "[search-later]\nurl = /later\nactions =\n wait_text later\n",
+                encoding="utf-8",
+            )
+            (root / "101-search-first.ini").write_text(
+                "[search-first]\nurl = /first\nsummary = Exercises the search first case.\n",
+                encoding="utf-8",
+            )
+            pages = MODULE.load_scenario_pages(root)
+        self.assertEqual([page.name for page in pages], ["search-first", "search-later"])
+        self.assertEqual([page.slug for page in pages], ["101-search-first", "102-search-later"])
+        self.assertEqual(pages[0].url, "/first")
+        self.assertEqual(pages[1].actions, [("wait_text", "later")])
+        self.assertEqual(pages[0].summary, "Exercises the search first case.")
+        self.assertEqual(pages[0].settle_ms, 800)
+
+    def test_numbering_keeps_relative_order_inside_a_block(self) -> None:
+        import split_browser_tests as split
+        numbered = split.number_sections(["home", "search-b", "search-a", "bad-url-x"])
+        by_name = {name: slug for name, _base, slug in numbered}
+        self.assertEqual(by_name["home"], "001-home")
+        self.assertEqual(by_name["bad-url-x"], "002-bad-url-x")
+        self.assertEqual(by_name["search-b"], "101-search-b")
+        self.assertEqual(by_name["search-a"], "102-search-a")
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):
@@ -198,12 +236,9 @@ class CredentialAndInventoryTests(unittest.TestCase):
             MODULE.resolve_document_url(missing, {"datasets": {}}, contract)
 
     def test_destructive_confirm_actions_never_click_rerun(self) -> None:
-        ini = Path(__file__).resolve().parents[1] / "screenshots.ini"
-        if not ini.is_file():
-            ini = Path("/tmp/qa-completion-tests/screenshots.ini")
-        if not ini.is_file():
-            self.skipTest("screenshots.ini is not beside the copied tools")
-        pages = {page.name: page for page in MODULE.parse_pages(ini)}
+        pages = _corpus_pages()
+        if pages is None:
+            self.skipTest("browser scenario files are not beside the copied tools")
         confirm = pages["admin-operations-destructive-confirm"]
         empty = pages["admin-operations-errored-empty"]
         rescan = pages["admin-dataset-rescan-dispatch"]
@@ -217,12 +252,9 @@ class CredentialAndInventoryTests(unittest.TestCase):
         self.assertEqual(rescan.actions, [("wait_text", "Rescan disk"), ("sleep", "800")])
 
     def test_cold_expansion_does_not_toggle_an_open_dataset(self) -> None:
-        ini = Path(__file__).resolve().parents[1] / "screenshots.ini"
-        if not ini.is_file():
-            ini = Path("/tmp/qa-completion-tests/screenshots.ini")
-        if not ini.is_file():
-            self.skipTest("screenshots.ini is not beside the copied tools")
-        pages = {page.name: page for page in MODULE.parse_pages(ini)}
+        pages = _corpus_pages()
+        if pages is None:
+            self.skipTest("browser scenario files are not beside the copied tools")
         actions = pages["qa-storage-cold-expansion"].actions
         verbs = [verb for verb, _ in actions]
         self.assertNotIn("pointer_click_css", verbs)

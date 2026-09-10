@@ -2,9 +2,9 @@
 
 ## Format
 
-One section per screenshot in `website/screenshots.ini`. The section name becomes the file
-stem, prefixed with its index, so **reordering renumbers everything; append rather than
-insert** when you can.
+One file per screenshot in `website/browser-tests/`. The file name is the slug,
+`{number}-{section}.ini`. Capture order is slug-number order. A new case takes the next
+unused number in its hundred-block. Other blocks keep their numbers.
 
 Per section: the path on the site, an optional viewport, an optional settle time, a
 full-page flag, and a list of actions, one per line, each a verb and its argument. The verbs
@@ -17,13 +17,12 @@ through the UI, for the reason in the skill: a URL reaches the page in one step.
 
 ## Adding a page
 
-1. Append a section rather than inserting one.
+1. Add a numbered file in the hundred-block that matches what the case exercises.
 2. Give it the smallest action list that reaches the state you want to see. Every action is a
    failure mode.
 3. Prefer waiting on text or a selector over sleeping. A sleep that is long enough on a warm
    stack is short enough to flake on a cold one.
 4. Run with the `--only` filter on your new section until it passes, then run the whole list.
-   A new page can only break the numbering of the ones after it, and that is worth seeing.
 
 ## Reading a run
 
