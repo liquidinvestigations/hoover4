@@ -78,7 +78,7 @@ async def run(r):
         await r.action("click_css", "#qa-pdf-controls button:nth-of-type(4)")
         await r.check("return document.querySelector('#qa-pdf-controls').innerText===%s;" % json.dumps(before))
         await r.full("born_digital_pdf_without_ocr")
-        return await r.check("const row=[...document.querySelectorAll('[data-source-list=true] [data-source-label]')].find(e=>getComputedStyle(e).color==='rgb(17, 17, 17)');return {ok:!row||!row.textContent.includes('PDF · OCR'),text:row?.textContent};")
+        return await r.check("const row=[...document.querySelectorAll('[data-source-list=true] [data-source-label]')].find(e=>getComputedStyle(e).color==='rgb(17, 17, 17)');if(!row)throw Error('no selected pdf source row found');return {ok:!row.textContent.includes('PDF · OCR'),text:row.textContent};")
     await r.phase("page-and-zoom", "Page input and both zoom controls change once. The original-only PDF has no OCR source.", controls)
     async def no_match():
         await r.full("stanley_pdf_with_ocr")
