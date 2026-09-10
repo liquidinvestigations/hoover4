@@ -5,6 +5,7 @@ from __future__ import annotations
 from manual_qa_runtime import (
     folder_route,
     route,
+    unroute,
 )
 
 PROCEDURE_NAME = 'manual-archive-viewer'
