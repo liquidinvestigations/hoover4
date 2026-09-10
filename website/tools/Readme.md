@@ -21,6 +21,12 @@ not use the browser MCP endpoint, which refuses internal hosts by design.
 Screenshot scenarios live in `../browser-tests/`, one numbered ini file per case. Procedures
 live in `../browser-tests/procedures/`. The capture engine reads that directory in slug-number
 order.
+The wrapper `../take-screenshots.sh` splits the scenario list into four cost-balanced
+processes by default. `--shards 1` runs one process. `--shard I/N` on
+`capture_screenshots.py` selects one process's pages after `--only` and `--names`.
+Image stems keep the global position in the selected list. A merge step writes one
+`report.md`, one `report.html` and one `image_inventory.json`. A shard that exits
+with a code other than 0, 1 or 2 is incomplete execution over the scenarios it held.
 
 Screenshot scenarios can use `pointer_click_css`, `press_key`, and `wait_eval` for CDP
 input and bounded assertions. Set `color_scheme` to `light` or `dark` before navigation.

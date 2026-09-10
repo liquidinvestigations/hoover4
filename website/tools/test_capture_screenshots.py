@@ -338,5 +338,164 @@ class ReportVerdictTests(unittest.TestCase):
             self.assertNotIn("http://", html.split("<h2>Pages</h2>", 1)[1])
 
 
+class ShardAndMergeTests(unittest.TestCase):
+    def _pages(self, names: list[str], procedures: set[str] | None = None) -> list:
+        procedures = procedures or set()
+        pages = [
+            MODULE.Page(
+                name=name,
+                url=f"/{name}",
+                procedure="proc" if name in procedures else "",
+                summary=f"Exercises the {name} case.",
+                slug=f"{index:03d}-{name}",
+            )
+            for index, name in enumerate(names)
+        ]
+        return MODULE.assign_global_indices(pages)
+
+    def test_shard_spec_parses_index_and_count(self) -> None:
+        self.assertEqual(MODULE.parse_shard_spec("0/4"), (0, 4))
+        self.assertEqual(MODULE.parse_shard_spec("3/4"), (3, 4))
+        with self.assertRaisesRegex(ValueError, "not I/N"):
+            MODULE.parse_shard_spec("4")
+        with self.assertRaisesRegex(ValueError, "outside"):
+            MODULE.parse_shard_spec("4/4")
+        with self.assertRaisesRegex(ValueError, "at least 1"):
+            MODULE.parse_shard_spec("0/0")
+
+    def test_one_shard_is_the_full_list(self) -> None:
+        pages = self._pages(["a", "b", "c"])
+        self.assertEqual(
+            [page.name for page in MODULE.select_shard(pages, 0, 1)],
+            ["a", "b", "c"],
+        )
+
+    def test_shard_keeps_global_index_from_the_selected_list(self) -> None:
+        pages = self._pages(["home", "search", "admin"])
+        selected = MODULE.select_pages(pages, "", "search,admin")
+        MODULE.assign_global_indices(selected)
+        shard = MODULE.select_shard(selected, 0, 2)
+        self.assertEqual({page.name: page.global_index for page in selected}, {"search": 0, "admin": 1})
+        for page in shard:
+            self.assertIn(page.global_index, (0, 1))
+            self.assertEqual(MODULE.page_stem(page), f"{page.global_index:02d}-{page.name}")
+
+    def test_procedures_spread_across_shards(self) -> None:
+        names = [f"p{i}" for i in range(4)] + [f"q{i}" for i in range(8)]
+        pages = self._pages(names, procedures={f"p{i}" for i in range(4)})
+        shards = [MODULE.select_shard(pages, index, 4) for index in range(4)]
+        procedure_counts = [sum(1 for page in shard if page.procedure) for shard in shards]
+        self.assertEqual(procedure_counts, [1, 1, 1, 1])
+        held = [page.name for shard in shards for page in shard]
+        self.assertEqual(sorted(held), sorted(names))
+        self.assertEqual(len(held), len(set(held)))
+
+    def test_shard_applies_after_name_filter(self) -> None:
+        pages = self._pages(["keep-a", "drop", "keep-b", "keep-c", "keep-d"])
+        selected = MODULE.select_pages(pages, "", "keep-a,keep-b,keep-c,keep-d")
+        MODULE.assign_global_indices(selected)
+        shards = [MODULE.select_shard(selected, index, 4) for index in range(4)]
+        held = sorted(page.name for shard in shards for page in shard)
+        self.assertEqual(held, ["keep-a", "keep-b", "keep-c", "keep-d"])
+        self.assertNotIn("drop", held)
+        self.assertEqual([page.global_index for page in selected], [0, 1, 2, 3])
+
+    def test_merge_orders_pages_by_global_position_and_sums_totals(self) -> None:
+        pages = self._pages(["alpha", "beta", "gamma", "delta"])
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            for shard_index in range(4):
+                shard_pages = MODULE.select_shard(pages, shard_index, 4)
+                shard_totals = {sev: 0 for sev in MODULE.ALL_SEVERITIES}
+                if shard_index == 0:
+                    shard_totals[MODULE.APPLICATION_ERROR] = 1
+                    verdict = MODULE.APPLICATION_ERROR
+                else:
+                    verdict = "ok"
+                entries = []
+                for page in shard_pages:
+                    entries.append({
+                        "stem": MODULE.page_stem(page),
+                        "slug": page.slug,
+                        "summary": page.summary,
+                        "url": page.url,
+                        "verdict": verdict,
+                    })
+                MODULE.write_shard_manifest(run_dir, shard_index, {
+                    "target_label": "local development target",
+                    "identity": "tester",
+                    "revision": "rev1",
+                    "resolutions": {"720p": [1280, 720]},
+                    "pages": entries,
+                    "totals": shard_totals,
+                })
+            template = {
+                "target_label": "missing",
+                "identity": "anonymous",
+                "revision": "",
+                "resolutions": {},
+            }
+            manifest, exit_status = MODULE.merge_shard_manifests(
+                pages, run_dir, 4, [1, 0, 0, 0], template,
+            )
+        self.assertEqual([entry["stem"] for entry in manifest["pages"]], [
+            "00-alpha", "01-beta", "02-gamma", "03-delta",
+        ])
+        self.assertEqual(manifest["totals"][MODULE.APPLICATION_ERROR], 1)
+        self.assertEqual(manifest["identity"], "tester")
+        self.assertEqual(exit_status, 1)
+
+    def test_dead_shard_pages_are_incomplete_execution(self) -> None:
+        pages = self._pages(["alpha", "beta", "gamma", "delta"])
+        dead_names = {page.name for page in MODULE.select_shard(pages, 1, 4)}
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            for shard_index in range(4):
+                if shard_index == 1:
+                    continue
+                shard_pages = MODULE.select_shard(pages, shard_index, 4)
+                entries = [{
+                    "stem": MODULE.page_stem(page),
+                    "slug": page.slug,
+                    "summary": page.summary,
+                    "url": page.url,
+                    "verdict": "ok",
+                } for page in shard_pages]
+                MODULE.write_shard_manifest(run_dir, shard_index, {
+                    "target_label": "local development target",
+                    "identity": "tester",
+                    "revision": "rev1",
+                    "resolutions": {"720p": [1280, 720]},
+                    "pages": entries,
+                    "totals": {sev: 0 for sev in MODULE.ALL_SEVERITIES},
+                })
+            manifest, exit_status = MODULE.merge_shard_manifests(
+                pages, run_dir, 4, [0, 137, 0, 0],
+                {"target_label": "", "identity": "anonymous", "revision": "", "resolutions": {}},
+            )
+            MODULE.write_reports(run_dir, "run-dead", manifest, exit_status)
+            markdown = (run_dir / "report.md").read_text(encoding="utf-8")
+        dead_entries = [
+            entry for entry in manifest["pages"]
+            if entry.get("verdict") == MODULE.INCOMPLETE_EXECUTION
+        ]
+        self.assertEqual({entry["slug"] for entry in dead_entries}, {
+            next(page.slug for page in pages if page.name == name) for name in dead_names
+        })
+        self.assertTrue(all("did not finish" in (entry.get("skipped") or "") for entry in dead_entries))
+        self.assertEqual(manifest["totals"][MODULE.INCOMPLETE_EXECUTION], len(dead_names))
+        self.assertEqual(exit_status, 2)
+        for name in dead_names:
+            slug = next(page.slug for page in pages if page.name == name)
+            self.assertIn(f"| `{slug}` |", markdown)
+            self.assertIn("INCOMPLETE", markdown)
+
+    def test_worst_capture_exit_treats_a_signal_as_incomplete(self) -> None:
+        self.assertEqual(MODULE.worst_capture_exit(0, 0, 0, 0), 0)
+        self.assertEqual(MODULE.worst_capture_exit(0, 2, 0, 0), 2)
+        self.assertEqual(MODULE.worst_capture_exit(0, 137, 0, 1), 1)
+        self.assertEqual(MODULE.worst_capture_exit(0, 143, 0, 0), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

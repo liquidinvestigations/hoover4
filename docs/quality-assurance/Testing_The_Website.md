@@ -57,6 +57,7 @@ website/take-screenshots.sh                          # every page in the list
 website/take-screenshots.sh --only search             # one substring of the scenario name
 website/take-screenshots.sh --names qa-sort-empty-default,qa-sort-explicit-relevance
 website/take-screenshots.sh --resolutions 1080p        # one resolution instead of the default 720p,1080p
+website/take-screenshots.sh --shards 1                 # one process; the default is four cost-balanced shards
 website/take-screenshots.sh --target URL
 website/take-screenshots.sh --login-env path/to/file   # credentials from a file
 ```
@@ -103,7 +104,9 @@ at two independent layers by design (a deny-list in `urlcheck.py` and a PAC scri
 to Chromium in `netfilter.py`), so `hoover4-website` is unreachable through it. The script
 copies `website/tools/capture_screenshots.py` into that container and runs a plain Chromium with
 neither filter, touching nothing about the MCP server's own behaviour. The container has no
-bind mounts, so both the script and the output travel by `docker cp`.
+bind mounts, so both the script and the output travel by `docker cp`. The default run starts
+four capture processes in that container and merges one report. `--shards 1` starts one
+process.
 
 Two traps the script exists to encapsulate: setting an input's `.value` is invisible to
 Dioxus unless you go through the prototype's setter and dispatch a bubbling `input` event,

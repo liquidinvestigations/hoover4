@@ -87,7 +87,7 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-qa-01` | Run browser scenarios with recorded actions, observed values, request counts, and partial failure evidence. Await owned browser startup and cleanup. | `website/tools/capture_screenshots.py`, `website/tools/browser_lifecycle.py` |
+| `F-qa-01` | Run browser scenarios with recorded actions, observed values, request counts, and partial failure evidence. Await owned browser startup and cleanup. Split the scenario list into four cost-balanced capture processes by default, keep global image names, and write one merged report. `--shards 1` runs the list in one process. | `website/tools/capture_screenshots.py`, `website/take-screenshots.sh`, `website/tools/browser_lifecycle.py` |
 | `F-qa-02` | Accept capture login and site URL from a login file or inherited environment names. Require `--target` or `HOOVER4_SITE_URL`. There is no local default. Do not place credential values in wrapper, Docker, or Python argument lists. | `website/take-screenshots.sh`, `website/observe-chat.sh`, `website/run-manual-qa.sh`, `website/tools/capture_credentials.sh`, `website/tools/capture_credentials.py` |
 | `F-qa-03` | Write an image inventory for every saved PNG. Default review state is `unreviewed`. Keep review state apart from machine assertion verdicts. | `website/tools/capture_credentials.py`, `write_reports`, `write_run_index` |
 | `F-qa-04` | Treat an empty errored-operations view as a valid distinct state. Confirm destructive re-run input and button state from an isolated local errored row, or record incomplete coverage when that row is absent. Do not click Re-run. Keep rescan display-only. | `website/browser-tests/`, `website/tools/prepare_manual_qa.py` |
@@ -95,7 +95,7 @@ languages.
 | `F-qa-06` | Record missing fixtures, missing originals, and missing operation rows as incomplete execution. Continue other runnable cases. A missing fixture is not a successful assertion. | `website/tools/capture_screenshots.py`, `website/tools/manual_qa.py` |
 | `F-qa-07` | Run one real conversation and follow-up in the manual orchestration. Reuse preview and per-resolution history evidence when the session matches. Verify cleanup on success, failure, and interruption without stopping unrelated browser processes. | `website/run-manual-qa.sh`, `website/tools/chat_observer.py`, `website/tools/browser_lifecycle.py` |
 | `F-qa-08` | Locate every verification dataset from one committed mapping in the testdata repository. The mapping names the collection, the dataset, the root inside the checkout, the purpose, and the shape a check can assert. | `qa/datasets.json` in hoover-testdata, `website/tools/manual_qa_fixtures.json`, `main_services/verify-stack.sh` |
-| `F-qa-09` | Write a capture report table in markdown and HTML, one row per scenario, with slug, summary, PASS FAIL WARNING or INCOMPLETE, inline images 500 pixels wide that link to the original file, and a relative snapshot link. | `write_reports` |
+| `F-qa-09` | Write a capture report table in markdown and HTML, one row per scenario, with slug, summary, PASS FAIL WARNING or INCOMPLETE, inline images 500 pixels wide that link to the original file, and a relative snapshot link. A sharded run still writes one report covering every scenario. | `write_reports` |
 
 ## Chat
 

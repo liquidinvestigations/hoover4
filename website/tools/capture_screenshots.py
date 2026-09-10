@@ -186,6 +186,9 @@ class Page:
     document_fixture: str = ""
     summary: str = ""
     slug: str = ""
+    # Position in the full selected list, assigned before any shard split so image
+    # stems stay `NN-name` even when this process captures a subset.
+    global_index: int = -1
 
 
 def parse_pages(ini_path: Path, defaults: dict[str, str] | None = None) -> list[Page]:
@@ -958,6 +961,10 @@ MOUNT_RELOAD_GRACE_S = 60.0
 
 # A page that never finishes loading has to be a failure, not a stalled run.
 PAGE_BUDGET_S = 180.0
+# A scenario that names a `procedure` is given this budget instead of PAGE_BUDGET_S.
+# Shard cost estimates use the same pair so the expensive members spread across jobs.
+PROCEDURE_BUDGET_S = 600.0
+DEFAULT_SHARD_COUNT = 4
 
 
 async def wait_for_app_mounted(tab) -> None:
@@ -1349,6 +1356,7 @@ async def capture_all(
     password: str,
     profile: dict | None = None,
     contract: dict | None = None,
+    shard_index: int | None = None,
 ) -> tuple[dict, int]:
     """Runs the whole scenario list. Returns (manifest, exit_status)."""
     import nodriver
@@ -1375,8 +1383,9 @@ async def capture_all(
 
     from browser_lifecycle import start_browser, stop_browser
 
+    log_name = "chromium.log" if shard_index is None else f"chromium.shard-{shard_index}.log"
     browser = await start_browser(
-        diagnostics_dir / "chromium.log",
+        diagnostics_dir / log_name,
         browser_args=[
             "--no-sandbox",
             "--disable-dev-shm-usage",
@@ -1414,7 +1423,7 @@ async def capture_all(
         present_datasets = await discover_present_datasets(tab, base_url, needed_datasets)
 
         for index, page in enumerate(pages):
-            stem = f"{index:02d}-{page.name}"
+            stem = page_stem(page)
             missing = missing_datasets(page, present_datasets)
             if missing:
                 reason = f"dataset(s) not on this site: {', '.join(missing)}"
@@ -1461,7 +1470,7 @@ async def capture_all(
                 try:
                     captures, observations, diags = await asyncio.wait_for(
                         capture_one(tab, base_url, network, page, res_name, size, res_dir, stem, whitelist),
-                        600.0 if page.procedure else PAGE_BUDGET_S,
+                        PROCEDURE_BUDGET_S if page.procedure else PAGE_BUDGET_S,
                     )
                     for capture in captures:
                         capture["size_source"] = size_source
@@ -1472,7 +1481,7 @@ async def capture_all(
                     )
                 except Exception as exc:  # noqa: BLE001
                     reason = (
-                        f"the page did not finish within {600.0 if page.procedure else PAGE_BUDGET_S:g}s"
+                        f"the page did not finish within {PROCEDURE_BUDGET_S if page.procedure else PAGE_BUDGET_S:g}s"
                         if isinstance(exc, asyncio.TimeoutError)
                         else str(exc)
                     )
@@ -1726,6 +1735,199 @@ def select_pages(pages: list[Page], only: str, names_csv: str) -> list[Page]:
     return pages
 
 
+def assign_global_indices(pages: list[Page]) -> list[Page]:
+    """Stamp each page with its position in the selected list, before any shard split."""
+    for index, page in enumerate(pages):
+        page.global_index = index
+    return pages
+
+
+def page_stem(page: Page) -> str:
+    """Image filename stem. Uses the global position so a shard does not renumber."""
+    if page.global_index < 0:
+        raise ValueError(f"page {page.name!r} has no global index")
+    return f"{page.global_index:02d}-{page.name}"
+
+
+def scenario_cost(page: Page) -> float:
+    """Estimated seconds. Matches the per-page wait in capture_all."""
+    return PROCEDURE_BUDGET_S if page.procedure else PAGE_BUDGET_S
+
+
+def parse_shard_spec(spec: str) -> tuple[int, int]:
+    """Parse `I/N` into a zero-based index and a shard count."""
+    parts = spec.split("/")
+    if len(parts) != 2:
+        raise ValueError(f"shard spec {spec!r} is not I/N")
+    try:
+        index = int(parts[0])
+        count = int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"shard spec {spec!r} is not I/N") from exc
+    if count < 1:
+        raise ValueError("shard count must be at least 1")
+    if not 0 <= index < count:
+        raise ValueError(f"shard index {index} is outside 0..{count - 1}")
+    return index, count
+
+
+def select_shard(pages: list[Page], shard_index: int, shard_count: int) -> list[Page]:
+    """Deal round-robin over pages ordered by descending cost, then global index.
+
+    A scenario with a procedure costs PROCEDURE_BUDGET_S. Every other scenario costs
+    PAGE_BUDGET_S. One shard of N is the identity of the list.
+    """
+    if shard_count < 1:
+        raise ValueError("shard count must be at least 1")
+    if not 0 <= shard_index < shard_count:
+        raise ValueError(f"shard index {shard_index} is outside 0..{shard_count - 1}")
+    if shard_count == 1:
+        return list(pages)
+    ordered = sorted(pages, key=lambda page: (-scenario_cost(page), page.global_index))
+    return [page for index, page in enumerate(ordered) if index % shard_count == shard_index]
+
+
+def shard_manifest_path(run_dir: Path, shard_index: int) -> Path:
+    return run_dir / f"manifest.shard-{shard_index}.json"
+
+
+def write_shard_manifest(run_dir: Path, shard_index: int, manifest: dict) -> None:
+    shard_manifest_path(run_dir, shard_index).write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+
+
+def shard_exit_is_clean(exit_code: int) -> bool:
+    """A capture process that finished writes 0, 1 or 2. Any other code is a dead shard."""
+    return exit_code in (0, 1, 2)
+
+
+def worst_capture_exit(*codes: int) -> int:
+    """1 beats 2 beats 0. A code that is not a capture exit becomes 2."""
+    normalized = [code if shard_exit_is_clean(code) else 2 for code in codes]
+    if 1 in normalized:
+        return 1
+    if 2 in normalized:
+        return 2
+    return 0
+
+
+def incomplete_page_entry(page: Page, reason: str) -> dict:
+    stem = page_stem(page)
+    return {
+        "stem": stem,
+        "slug": page.slug or page.name,
+        "summary": page.summary,
+        "url": page.url,
+        "skipped": reason,
+        "verdict": INCOMPLETE_EXECUTION,
+    }
+
+
+def empty_capture_manifest(base_url: str, resolutions: list[tuple[str, tuple[int, int]]]) -> dict:
+    return {
+        "target_label": target_label(base_url),
+        "resolutions": {name: list(size) for name, size in resolutions},
+        "identity": "anonymous",
+        "revision": capture_revision(),
+        "pages": [],
+        "page_reports": [],
+        "totals": {sev: 0 for sev in ALL_SEVERITIES},
+    }
+
+
+def merge_shard_manifests(
+    pages: list[Page],
+    run_dir: Path,
+    shard_count: int,
+    shard_exits: list[int],
+    template: dict,
+) -> tuple[dict, int]:
+    """Build one manifest from per-shard files. A dead shard's pages are incomplete."""
+    if shard_count < 1:
+        raise ValueError("shard count must be at least 1")
+    if len(shard_exits) != shard_count:
+        raise ValueError(
+            f"shard-exits has {len(shard_exits)} values, expected {shard_count}"
+        )
+    by_index: dict[int, dict] = {}
+    totals = {sev: 0 for sev in ALL_SEVERITIES}
+    identity = template.get("identity") or "anonymous"
+    target = template.get("target_label") or ""
+    revision = template.get("revision") or capture_revision()
+    resolutions = template.get("resolutions") or {}
+
+    for shard_i in range(shard_count):
+        assigned = select_shard(pages, shard_i, shard_count)
+        path = shard_manifest_path(run_dir, shard_i)
+        exit_code = shard_exits[shard_i]
+        clean = shard_exit_is_clean(exit_code) and path.is_file()
+        loaded_stems: set[str] = set()
+        if clean:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            shard_identity = data.get("identity") or ""
+            if shard_identity and shard_identity != "anonymous":
+                identity = shard_identity
+            if data.get("target_label"):
+                target = data["target_label"]
+            if data.get("revision"):
+                revision = data["revision"]
+            if data.get("resolutions"):
+                resolutions = data["resolutions"]
+            for entry in data.get("pages") or []:
+                stem = entry.get("stem") or ""
+                try:
+                    index = int(str(stem).split("-", 1)[0])
+                except ValueError:
+                    continue
+                by_index[index] = entry
+                loaded_stems.add(stem)
+            for sev, count in (data.get("totals") or {}).items():
+                if sev in totals:
+                    totals[sev] += int(count)
+        if clean:
+            reason = f"shard {shard_i}/{shard_count} omitted this scenario"
+        else:
+            reason = f"shard {shard_i}/{shard_count} did not finish"
+        for page in assigned:
+            stem = page_stem(page)
+            if stem in loaded_stems:
+                continue
+            by_index[page.global_index] = incomplete_page_entry(page, reason)
+            totals[INCOMPLETE_EXECUTION] += 1
+
+    merged_pages = [by_index[index] for index in sorted(by_index)]
+    page_reports = []
+    for entry in merged_pages:
+        stem = entry.get("stem") or ""
+        url = entry.get("url") or ""
+        if entry.get("skipped"):
+            page_reports.append(
+                f"- `{stem}` (`{url}`): {INCOMPLETE_EXECUTION} ({entry['skipped']})"
+            )
+            continue
+        worst = entry.get("verdict") or "ok"
+        page_reports.append(f"- `{stem}` (`{url}`): {worst}")
+        for observation in entry.get("observations") or []:
+            page_reports.append(
+                f"    - {observation.get('severity')}: {observation.get('message')}"
+            )
+
+    manifest = {
+        "target_label": target,
+        "resolutions": resolutions,
+        "identity": identity,
+        "revision": revision,
+        "pages": merged_pages,
+        "page_reports": page_reports,
+        "totals": totals,
+        "shards": shard_count,
+        "shard_exits": list(shard_exits),
+    }
+    totals_exit = 1 if totals[APPLICATION_ERROR] else (2 if totals[INCOMPLETE_EXECUTION] else 0)
+    return manifest, worst_capture_exit(totals_exit, *shard_exits)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1748,13 +1950,36 @@ def main() -> int:
         "--contract",
         default=str(Path(__file__).with_name("manual_qa_fixtures.json")),
     )
+    parser.add_argument(
+        "--shard",
+        default="",
+        help="capture shard I/N of the list remaining after --only and --names",
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="merge per-shard manifests in --out-root/--run-name and write one report",
+    )
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        default=0,
+        help="shard count for --merge",
+    )
+    parser.add_argument(
+        "--shard-exits",
+        default="",
+        help="comma-separated exit codes, one per shard, for --merge",
+    )
     args = parser.parse_args()
 
-    try:
-        username, password = read_credentials()
-    except CredentialError as error:
-        sys.stderr.write(f"error: {error}\n")
-        return 2
+    username, password = "", ""
+    if not args.merge:
+        try:
+            username, password = read_credentials()
+        except CredentialError as error:
+            sys.stderr.write(f"error: {error}\n")
+            return 2
 
     try:
         resolutions = [(name, RESOLUTIONS[name]) for name in
@@ -1779,7 +2004,52 @@ def main() -> int:
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
+    assign_global_indices(pages)
+
+    if args.merge:
+        if args.shard_count < 1:
+            sys.stderr.write("error: --merge needs --shard-count N with N >= 1\n")
+            return 2
+        if not args.shard_exits.strip():
+            sys.stderr.write("error: --merge needs --shard-exits, one integer per shard\n")
+            return 2
+        try:
+            shard_exits = [int(part.strip()) for part in args.shard_exits.split(",")]
+        except ValueError:
+            sys.stderr.write("error: --shard-exits must be comma-separated integers\n")
+            return 2
+        template = empty_capture_manifest(args.base_url.rstrip("/"), resolutions)
+        try:
+            manifest, exit_status = merge_shard_manifests(
+                pages, run_dir, args.shard_count, shard_exits, template,
+            )
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        write_reports(run_dir, args.run_name, manifest, exit_status)
+        totals = manifest["totals"]
+        print(
+            f"{len(manifest['pages'])} pages: "
+            + ", ".join(f"{sev}={totals.get(sev, 0)}" for sev in ALL_SEVERITIES)
+            + f"; output in {run_dir} (see report.md); exit {exit_status}"
+        )
+        return exit_status
+
+    shard_index, shard_count = 0, 1
+    if args.shard:
+        try:
+            shard_index, shard_count = parse_shard_spec(args.shard)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        pages = select_shard(pages, shard_index, shard_count)
+
     if not pages:
+        if shard_count > 1:
+            manifest = empty_capture_manifest(args.base_url.rstrip("/"), resolutions)
+            write_shard_manifest(run_dir, shard_index, manifest)
+            print(f"shard {shard_index}/{shard_count} holds no pages; exit 0")
+            return 0
         print("no pages selected", file=sys.stderr)
         return 2
 
@@ -1792,6 +2062,7 @@ def main() -> int:
             capture_all(
                 pages, args.base_url.rstrip("/"), run_dir, resolutions, whitelist,
                 username, password, profile, contract,
+                shard_index=shard_index if shard_count > 1 else None,
             )
         )
     except Exception as exc:  # noqa: BLE001
@@ -1806,11 +2077,18 @@ def main() -> int:
             "page_reports": [f"- **incomplete execution**: {type(exc).__name__}: {exc}"],
             "totals": {sev: (1 if sev == INCOMPLETE_EXECUTION else 0) for sev in ALL_SEVERITIES},
         }
+        if shard_count > 1:
+            write_shard_manifest(run_dir, shard_index, manifest)
+            print(f"incomplete execution: {exc}", file=sys.stderr)
+            return 2
         write_reports(run_dir, args.run_name, manifest, 2)
         print(f"incomplete execution: {exc}", file=sys.stderr)
         return 2
 
-    write_reports(run_dir, args.run_name, manifest, exit_status)
+    if shard_count > 1:
+        write_shard_manifest(run_dir, shard_index, manifest)
+    else:
+        write_reports(run_dir, args.run_name, manifest, exit_status)
     totals = manifest["totals"]
     print(
         f"{len(manifest['pages'])} pages: "

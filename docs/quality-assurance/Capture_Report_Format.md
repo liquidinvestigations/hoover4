@@ -33,7 +33,7 @@ See [Browser test cases](Browser_Test_Cases.md) for the numbered rows.
 `trace` is a count or a selected document that differs from an earlier run.
 `behavioral_warning` is a find term with no match, or a control with no observable effect.
 `diagnostic_warning` is a console error or warning, a failed subresource, or a request to an outside origin.
-`incomplete_execution` is a missing fixture, a failed login, a stopped browser, or a capture that could not be written.
+`incomplete_execution` is a missing fixture, a failed login, a stopped browser, a capture that could not be written, or a capture shard that did not finish.
 
 Exit status still follows the severities. `application_error` exits 1.
 `incomplete_execution` exits 2 when no application error also occurred.

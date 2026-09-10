@@ -3,7 +3,7 @@
 # 1080p by default.
 #
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
-#                               [--login-env FILE] [--resolutions LIST]
+#                               [--login-env FILE] [--resolutions LIST] [--shards N]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -40,6 +40,12 @@
 # it, which launches a plain Chromium with no proxy filtering. Nothing about the MCP
 # server's own filtering is touched or relaxed.
 #
+# The default run splits the scenario list into four cost-balanced processes inside that
+# container, waits for every one, and merges their manifests into one report. `--shards 1`
+# runs the list in a single process. Image filenames keep the global scenario position,
+# so a shard does not rename the files `docs/user-manual/` links. A shard that exits with
+# a code other than 0, 1 or 2 is incomplete execution over the scenarios it held.
+#
 # The container has NO bind mounts, so the script goes in with `docker cp` and the images
 # come back out the same way. `docker cp` copies are lost when a build recreates the
 # container, which is fine -- the container-side scratch at $REMOTE_DIR is rebuilt every
@@ -66,6 +72,7 @@ ONLY=""
 NAMES=""
 LOGIN_ENV_ARG=""
 RESOLUTIONS_ARG=""
+SHARDS=4
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -78,9 +85,20 @@ while [ $# -gt 0 ]; do
             exit 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
+        --shards) SHARDS="${2:?--shards needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
+
+case "$SHARDS" in
+    ''|*[!0-9]*)
+        echo "error: --shards needs an integer >= 1, got '$SHARDS'" >&2
+        exit 2 ;;
+esac
+if [ "$SHARDS" -lt 1 ]; then
+    echo "error: --shards needs an integer >= 1, got '$SHARDS'" >&2
+    exit 2
+fi
 
 # --login-env defaults to TEST_LOGIN.env beside this script, but ONLY when that file
 # exists; an unset, absent default is not an error, it is "no file source".
@@ -148,8 +166,14 @@ RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_NAME="run-${RUN_STAMP}-$$"
 printf '%s\n%s\n' "$$" "$RUN_NAME" > "$LOCK_OWNER_FILE"
 
+SHARD_PIDS=()
+
 cleanup() {
     local status=$?
+    local pid
+    for pid in "${SHARD_PIDS[@]+"${SHARD_PIDS[@]}"}"; do
+        kill "$pid" 2>/dev/null || true
+    done
     docker exec "$BROWSER_CONTAINER" python "$REMOTE_DIR/browser_lifecycle.py" --stop-run "$REMOTE_DIR" >/dev/null 2>&1 || true
     if [ "$status" -ne 0 ]; then
         docker cp "$BROWSER_CONTAINER:$REMOTE_DIR/out/." "$OUT_DIR/" >/dev/null 2>&1 || true
@@ -189,7 +213,7 @@ fi
 docker cp browser-tests "$BROWSER_CONTAINER:$REMOTE_DIR/browser-tests"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
 
-echo "== capturing from $SITE_URL =="
+echo "== capturing from $SITE_URL ($SHARDS shard(s)) =="
 set +e
 # Forwarded only when set: this is the override a page's `requires_dataset` is checked
 # against instead of the site's own storage tree, which is how a run simulates an absent
@@ -201,16 +225,46 @@ PASS_THROUGH_ENV=()
 # form would place the secret in the host argument list.
 [ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
-docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
-    --ini "$REMOTE_DIR/browser-tests" \
-    --out-root "$REMOTE_DIR/out" \
-    --run-name "$RUN_NAME" \
-    --base-url "$SITE_URL" \
-    --console-whitelist "$REMOTE_DIR/console_whitelist.txt" \
-    --only "$ONLY" \
-    --names "$NAMES" \
-    --resolutions "${RESOLUTIONS_ARG:-720p,1080p}"
-CAPTURE_STATUS=$?
+
+run_capture_python() {
+    docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
+        --ini "$REMOTE_DIR/browser-tests" \
+        --out-root "$REMOTE_DIR/out" \
+        --run-name "$RUN_NAME" \
+        --base-url "$SITE_URL" \
+        --console-whitelist "$REMOTE_DIR/console_whitelist.txt" \
+        --only "$ONLY" \
+        --names "$NAMES" \
+        --resolutions "${RESOLUTIONS_ARG:-720p,1080p}" \
+        "$@"
+}
+
+if [ "$SHARDS" -eq 1 ]; then
+    run_capture_python
+    CAPTURE_STATUS=$?
+else
+    SHARD_PIDS=()
+    shard_i=0
+    while [ "$shard_i" -lt "$SHARDS" ]; do
+        run_capture_python --shard "${shard_i}/${SHARDS}" &
+        SHARD_PIDS+=($!)
+        echo "== shard ${shard_i}/${SHARDS} started (host pid ${SHARD_PIDS[$shard_i]}) =="
+        shard_i=$((shard_i + 1))
+    done
+    SHARD_EXITS=()
+    shard_i=0
+    while [ "$shard_i" -lt "$SHARDS" ]; do
+        wait "${SHARD_PIDS[$shard_i]}"
+        shard_exit=$?
+        SHARD_EXITS+=("$shard_exit")
+        echo "== shard ${shard_i}/${SHARDS} exited ${shard_exit} =="
+        shard_i=$((shard_i + 1))
+    done
+    SHARD_PIDS=()
+    shard_exits_csv=$(IFS=,; echo "${SHARD_EXITS[*]}")
+    run_capture_python --merge --shard-count "$SHARDS" --shard-exits "$shard_exits_csv"
+    CAPTURE_STATUS=$?
+fi
 set -e
 
 echo "== copying the results out =="

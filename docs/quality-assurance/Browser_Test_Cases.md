@@ -34,6 +34,8 @@ website/take-screenshots.sh --names SECTION
 `SECTION` is the ini section name in the reproduce column. More than one name may be comma-separated.
 `--only SUBSTRING` selects every section whose name contains the substring.
 With no `--names` and no `--only`, the wrapper captures every file.
+The default run splits the list into four cost-balanced processes and writes one report.
+`--shards 1` runs the list in one process.
 
 Output lands in `website/test_reports/screenshots/run-<stamp>-<pid>/`.
 See [Capture report format](Capture_Report_Format.md) for the table that run writes.
