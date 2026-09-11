@@ -98,9 +98,10 @@ Run `website/run-stack-tests.sh --slow slow_qa_pdf_sources` to verify PDF bytes,
 
 The profile command returns one when a required fixture is unmet.
 `--discover-only` reads indexed identities and operation rows without ingest, rescan, or
-recovery. Use it for a remote profile. `--profile-only` writes the local resolved profile
-from already prepared sources. Use `--observe-incomplete` only to record an incomplete
-local profile without a failure status.
+recovery. It fills `source_expectations` from the tracked fixture sources. It fills
+`metadata_oracle` from ClickHouse and Manticore. Use it for a remote profile.
+`--profile-only` writes the local resolved profile from already prepared sources. Use
+`--observe-incomplete` only to record an incomplete local profile without a failure status.
 Each invocation moves the previous profile to `manual_qa_fixtures.previous.json` before contacting the worker.
 A failed refresh cannot leave that profile at the current result path.
 The worker log includes captured command output when ingestion fails.

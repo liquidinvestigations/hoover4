@@ -21,7 +21,8 @@ async def run(r):
     await r.phase("baseline", "The declared substitute contains the address and 21 Enron occurrences.", baseline)
     await r.phase("stable-identity", "Selection uses the pinned hash independently of result position.", baseline)
     async def page_return():
-        original = r.profile.get("original_cases", {}).get("mail_page_return")
+        originals = r.profile.get("original_cases")
+        original = originals.get("mail_page_return") if isinstance(originals, dict) else None
         if not original:
             raise UnmetPrerequisite("The original Enron corpus and its later-page document identity are unavailable.")
         identity = original["document"]

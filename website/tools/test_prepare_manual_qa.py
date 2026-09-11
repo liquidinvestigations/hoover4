@@ -183,6 +183,50 @@ class DiscoveryTests(unittest.TestCase):
         self.assertNotIn("stanley.ec02.pdf", reasons)
         self.assertIn("per-target original-case inventory", reasons)
 
+    def test_discover_profile_fills_source_expectations_and_oracle(self) -> None:
+        expectations = {"romanian_email": {"attachments": [{"filename": "a.bin"}]}}
+        oracle = {"scope": "testdata_manualqa", "files": []}
+        with patch.object(MODULE, "DISCOVER_DATASETS", ("testdata_manualqa",)), \
+             patch.object(MODULE, "source_rows", return_value=[]), \
+             patch.object(MODULE, "clickhouse", return_value=[]), \
+             patch.object(MODULE, "source_expectations_from_sources", return_value=expectations) as sources, \
+             patch.object(MODULE, "metadata_oracle", return_value=oracle) as meta, \
+             patch.object(MODULE, "discover_operation_states", return_value={
+                 "available": True, "errored_destructive": [], "qa_errored_confirm": "absent"}):
+            result = MODULE.discover_profile({"fixtures": []})
+        sources.assert_called_once_with()
+        meta.assert_called_once_with()
+        self.assertEqual(result["source_expectations"], expectations)
+        self.assertEqual(result["metadata_oracle"], oracle)
+
+    def test_source_expectations_from_sources_do_not_need_generated_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            text = root / "copy.txt"
+            text.write_bytes(b"hello")
+            message = EmailMessage()
+            message["From"] = "Ana <ana@example.test>"
+            message["Subject"] = "Urăsc canicula"
+            message.set_content("Body text.")
+            message.add_attachment(b"one", maintype="application", subtype="octet-stream", filename="one.bin")
+            email_path = root / "mail.eml"
+            email_path.write_bytes(message.as_bytes())
+            sources = {
+                "copy.txt": text,
+                "emails/Urăsc canicula, e nașpa.eml": email_path,
+                "documents/easychair.docx": root / "missing.docx",
+            }
+            with patch.object(MODULE, "SOURCES", sources), \
+                 patch.object(MODULE, "SOURCE_ROOT", root), \
+                 patch.object(MODULE, "ORIGINAL_PDF_ROOT", root / "no-original-pdf"), \
+                 patch.object(MODULE, "fixture_repository_revision", return_value="abc123"):
+                result = MODULE.source_expectations_from_sources()
+        self.assertEqual(result["fixture_repository_revision"], "abc123")
+        self.assertEqual(result["copied_sources"][0]["size_bytes"], 5)
+        self.assertEqual(result["romanian_email"]["subject"], "Urăsc canicula")
+        self.assertEqual(result["omitted"],
+                         ["documents/easychair.docx", "easychair_entities", "generated_sources"])
+
     def test_empty_operation_state_is_distinct_from_errored_confirm(self) -> None:
         empty = {"available": True, "errored_destructive": [], "qa_errored_confirm": "absent"}
         present = {"available": True, "errored_destructive": [{"kind": "delete_dataset", "collection_dataset": MODULE.QA_ERRORED_DATASET}],

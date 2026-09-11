@@ -166,6 +166,35 @@ def email_expectations(source: bytes) -> dict[str, object]:
     return {"subject": str(message.get("subject", "")), "envelope": envelope, "attachments": attachments}
 
 
+def copied_source_row(destination: str, source: Path, content: bytes) -> dict[str, object]:
+    return {"dataset": "testdata_manualqa", "path": "/" + destination,
+            "source_path": str(source.relative_to(SOURCE_ROOT)),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "sha3_256": hashlib.sha3_256(content).hexdigest(), "size_bytes": len(content)}
+
+
+def easychair_entities(docx_path: Path) -> list[dict[str, object]]:
+    with zipfile.ZipFile(docx_path) as archive:
+        document_xml = ElementTree.fromstring(archive.read("word/document.xml"))
+    office_text = "\n".join("".join(paragraph.itertext()) for paragraph in document_xml.iter(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"))
+    office_text = re.sub(r"\s+", " ", office_text)
+    return [{"value": value, "count": len(re.findall(re.escape(value), office_text, re.IGNORECASE)),
+             "basis": "Occurrences in the original DOCX document XML."}
+            for value in ("University of Manchester", "Microsoft Word")]
+
+
+def fixture_repository_revision() -> str:
+    result = subprocess.run(
+        ["git", "-C", str(SOURCE_ROOT.parent), "-c", "safe.directory=*", "rev-parse", "HEAD"],
+        check=False, text=True, capture_output=True)
+    print(result.stdout, end="")
+    print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
 def source_expectations(generated_root: Path) -> dict[str, object]:
     """Verify copied source identities and record their independent expectations."""
     files = []
@@ -174,24 +203,58 @@ def source_expectations(generated_root: Path) -> dict[str, object]:
         copied = (generated_root / destination).read_bytes()
         if copied != content:
             raise ValueError(f"Prepared source differs from fixture source: {destination}")
-        files.append({"dataset": "testdata_manualqa", "path": "/" + destination,
-                      "source_path": str(source.relative_to(SOURCE_ROOT)),
-                      "sha256": hashlib.sha256(content).hexdigest(),
-                      "sha3_256": hashlib.sha3_256(content).hexdigest(), "size_bytes": len(content)})
+        files.append(copied_source_row(destination, source, content))
+    revision = fixture_repository_revision()
+    if not revision:
+        raise RuntimeError("git rev-parse HEAD failed for the fixture repository")
     email_source = SOURCES["emails/Urăsc canicula, e nașpa.eml"].read_bytes()
-    with zipfile.ZipFile(generated_root / "documents/easychair.docx") as archive:
-        document_xml = ElementTree.fromstring(archive.read("word/document.xml"))
-    office_text = "\n".join("".join(paragraph.itertext()) for paragraph in document_xml.iter(
-        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"))
-    office_text = re.sub(r"\s+", " ", office_text)
     return {
-        "fixture_repository_revision": run(["git", "-C", str(SOURCE_ROOT.parent), "rev-parse", "HEAD"]).strip(),
+        "fixture_repository_revision": revision,
         "copied_sources": files,
         "romanian_email": email_expectations(email_source),
-        "easychair_entities": [{"value": value, "count": len(re.findall(re.escape(value), office_text, re.IGNORECASE)),
-                                 "basis": "Occurrences in the original DOCX document XML."}
-                                for value in ("University of Manchester", "Microsoft Word")],
+        "easychair_entities": easychair_entities(generated_root / "documents/easychair.docx"),
     }
+
+
+def source_expectations_from_sources() -> dict[str, object]:
+    """Record independent expectations from tracked fixture sources. No generated copy is required."""
+    omitted: list[str] = []
+    files = []
+    for destination, source in SOURCES.items():
+        if not source.is_file():
+            omitted.append(destination)
+            continue
+        files.append(copied_source_row(destination, source, source.read_bytes()))
+    result: dict[str, object] = {"copied_sources": files}
+    revision = fixture_repository_revision()
+    if revision:
+        result["fixture_repository_revision"] = revision
+    else:
+        omitted.append("fixture_repository_revision")
+    email_source = SOURCES["emails/Urăsc canicula, e nașpa.eml"]
+    if email_source.is_file():
+        result["romanian_email"] = email_expectations(email_source.read_bytes())
+    else:
+        omitted.append("romanian_email")
+    docx = SOURCES["documents/easychair.docx"]
+    if docx.is_file():
+        result["easychair_entities"] = easychair_entities(docx)
+    else:
+        omitted.append("easychair_entities")
+    original = ORIGINAL_PDF_ROOT / "original-only.pdf"
+    if original.is_file():
+        original_pdf = original.read_bytes()
+        result["generated_sources"] = [{
+            "dataset": "testdata_manualpdf", "path": "/original-only.pdf",
+            "sha3_256": hashlib.sha3_256(original_pdf).hexdigest(),
+            "sha256": hashlib.sha256(original_pdf).hexdigest(), "size_bytes": len(original_pdf),
+            "recipe": "The tiny PDF fixture followed by the original-only QA version-one comment.",
+        }]
+    else:
+        omitted.append("generated_sources")
+    if omitted:
+        result["omitted"] = omitted
+    return result
 
 
 def profile(generated_root: Path) -> dict[str, object]:
@@ -416,6 +479,18 @@ def discover_profile(contract: dict[str, object]) -> dict[str, object]:
                 f"WHERE collection_dataset='{dataset}' ORDER BY image_hash, engine, languages")
         except Exception:  # noqa: BLE001
             result["image_ocr_rows"][dataset] = []
+    result["source_expectations"] = source_expectations_from_sources()
+    try:
+        result["metadata_oracle"] = metadata_oracle()
+    except Exception as error:  # noqa: BLE001
+        result["metadata_oracle_error"] = str(error)
+    try:
+        table = document(result, "testdata_manualqa", "/substitutes/manual-qa-table.csv")
+        result["table_cells"]["manual-qa-table.csv"] = [] if table is None else clickhouse(
+            "SELECT toString(sheet_id) AS sheet_id, toString(row_id) AS row_id, toString(column_id) AS column_id, cell_text FROM Hoover4_Collection_testdata.table_cells FINAL "
+            f"WHERE file_hash='{table['hash']}' ORDER BY sheet_id, row_id, column_id")
+    except Exception:  # noqa: BLE001
+        result["table_cells"]["manual-qa-table.csv"] = []
     result["outcomes"] = fixture_outcomes(contract, result)
     result["operation_states"] = discover_operation_states()
     result["original_cases"] = original_case_status(discovered=True)
