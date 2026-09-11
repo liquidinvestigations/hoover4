@@ -50,6 +50,7 @@ EXPECTED_GLOBAL_TABLES = {
     "llm_call_events",
     "llm_models",
     "operations",
+    "operation_failures",
     "ai_service_telemetry",
     "bench_runs",
     "processing_eta_samples",
