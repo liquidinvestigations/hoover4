@@ -58,5 +58,5 @@ Distinguish observed application errors from data differences and capture failur
 
 ## Your budget
 
-**58 tool calls**, with a warning at 80%. Reading is cheap and re-reading is not: open what you
+**101 tool calls**, with a warning at 80%. Reading is cheap and re-reading is not: open what you
 need to settle a finding, and do not re-read the tree for reassurance.

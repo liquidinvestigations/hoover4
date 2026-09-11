@@ -24,9 +24,22 @@ whose failures are indistinguishable from each other in the logs.
   one reporting a "2.5× overrun" had used forty-seven. Ask a pass what it did not reach, never
   how long it took. An agent's sense of its own elapsed time is a feeling, and wall clock has
   to come from outside it.
-- **One item per pass**, and two only when they are one item in a dependency chain that a
-  single check closes. A brief listing five different items has been measured to deliver one.
-  **Items of the same shape are one item.** One rule applied across a tree is one pass however
+- **About three tasks per pass**, given as an ordered list with the command that settles each
+  one on its own line. A task is what one check settles, it costs about 80 tool calls when it
+  is the first in a pass and 45 then 22 after that, and a pass costs 29 before it does any
+  work. A brief listing five different items with no check per line has been measured to
+  deliver one.
+- **Every pass also costs its coordinator 38 tool calls and $9.00**, spent writing the package
+  and reading the diff, and paid again for every pass. A pass starts with a fresh context, so
+  that cost never enters its own budget. **The efficiency floor is 60 percent of a plan's calls
+  spent on work**: a one-task pass comes out at 55 percent and fails it, and a two-task pass
+  reaches 65. Three tasks is the ceiling too, unless the package names the task it hands over,
+  because four is 197 calls against a packing target of 183.
+  **It is best effort**: when the work does not exist, a thinner pass is correct and says in
+  one line what stopped it filling. **A pass may open with a review of earlier work and
+  continue into related development**, which turns two half-empty passes into one, and it
+  never reviews its own work.
+  **Items of the same shape are one task.** One rule applied across a tree is one pass however
   many directories it touches, and a pass here has been measured changing 515 files inside one
   context without compacting.
 
@@ -83,10 +96,11 @@ sections above. Before launch, confirm its commit stamp and re-check every fact 
 
 ## Sizing the pass against its context
 
-A pass runs out of context long after it runs out of items. Across 96 recorded passes here the
-median peak prompt was 190,402 tokens and the p90 was 293,276, against a window of 1,000,000.
-Four of the 96 compacted, all under an earlier and smaller window. The largest recorded pass
-reached 689,268 tokens over four work packages and 357 tool calls, and never compacted.
+A pass runs out of context long after it runs out of tasks, which is why it is given several.
+Across the 185 passes recorded here the median peak prompt of an implementation pass was
+185,042 tokens and the p90 was 288,230, against a window of 1,000,000. Eight of 150 measurable
+passes compacted. The largest pass recorded here reached 732,644 tokens, produced a 515-file
+change and survived review.
 
 **Two limits apply and the lower binds.** 60% of the window, and an absolute cap of 250,000
 tokens for a pass that writes source or 150,000 for one that only reads. On a one-million-token
@@ -96,20 +110,33 @@ The cap is a cost rule. A turn taken at 600,000 tokens of carried context costs 
 the same turn taken below 100,000, measured over 20,405 turns, because every turn re-sends the
 whole prompt.
 
-**Give the pass the budget in tool calls, because it cannot see its own context.** At the p90
-growth rate of 2,603 tokens per call, 250,000 is 96 calls and 150,000 is 58. A typical
-implementation pass spends 152, so **the median implementation pass hands over about once**.
-Plan for that rather than discovering it.
+**Give the pass the budget in tool calls, because it cannot see its own context.** At the
+measured median growth of 1,489 tokens a call, the 300,000 cap on a pass that writes is 202
+calls and the 150,000 cap on one that only reads is 101. Counting the first-turn prompt of
+27,179 tokens moves those to 183 and 83, which is what a plan packs to, and the difference is
+the slack a pass spends when one task runs long.
+
+**The counter needs nothing from you.** `.agents/hooks/warn-tool-call-budget.py` counts a
+pass's calls under the `agent_id` the hook payload carries, which is present on a sub-agent's
+call and absent on the organizer's. A pass therefore starts at zero because its counter does
+not exist yet, and nothing has to be armed before a launch or put back after it. A pass
+resumed under the same agent id continues its own count, which is correct, because a resume is
+the same context carrying on. The budget comes from the `agent_type` on the launch call, being
+the read-only figure for an agent type that only reads and the writing figure for every
+other.
 
 **When the cap and the merge rule disagree, the plan stays merged and the context splits.** One
 pass owns the whole job and restarts with a written handover carrying the rule it derived. Losing
 that rule is what the merge rule exists to prevent, and a handover keeps it for about 19,000
 tokens, which is the measured median first-turn prompt.
 
-**If two passes fit inside one context and one check settles both, they are one pass.**
+**Tasks that fit inside one context are one pass, whether or not one check settles them all.**
+One check settling two tasks makes them one task, which is a different question and is answered
+in the same reference.
 
-These figures are pinned in `.agents/skills/planning-work/reference/estimating.md`. Plan against
-them as they stand, and leave re-deriving them to a person who asks for it.
+These figures are pinned in `.agents/skills/planning-work/reference/estimating.md`, where every
+row carries its sample count. Plan against them as they stand, and leave re-deriving them to a
+person who asks for it.
 
 ## A worktree does not isolate a pass here
 

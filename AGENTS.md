@@ -187,17 +187,49 @@ edit that adds one.
   restates it with an actuals column. That column stops the next estimate being copied from
   the last guess. **The pass count is the number to get right.** An estimate that costs ten
   passes correctly and needed one is wrong by ten. Items that share one procedure, one check
-  and one context are one pass, and a plan with more than three passes states in one line what
-  forced each split. `planning-work` carries the method.
+  and one context are one task before any of that. **A plan names the tier it assumes**,
+  because the same work costs fifty times more on the dearest model than the cheapest while
+  its duration and its call count barely move. `planning-work` carries the method.
+- **A task is not a pass, and a pass carries about three tasks.** A task is what one check
+  settles. Measured here: a pass spends 29 tool calls on being a pass before it does any work,
+  its first task costs 80, and a later task in the same context costs 45 and then 22. Three
+  tasks is 175 calls against a packing target of 183, and a hook warns from 162. A plan whose
+  passes each hold one task has bought the fixed part of a pass once for every task, and it is
+  wrong by the number of passes that arithmetic removes.
+- **A pass also costs its coordinator 38 tool calls and $9.00 before it runs**, spent writing
+  the package and reading the diff, and paid again for every pass. A pass starts with a fresh
+  context, so that cost never enters its own budget. It is what packing removes: nine tasks
+  cost 1,319 tool calls as nine passes and 639 as three.
+- **The efficiency floor is 60 percent of a plan's calls spent on work**, being the marginal
+  calls over the pass's calls plus its coordinator's. A one-task pass comes out at 55 percent
+  and fails it. A two-task pass reaches 65. Compute the fraction and write it in the estimate
+  table. **Three tasks is the ceiling too**, unless the package names the task it hands over
+  on reaching the budget, because four is 197 calls and past the target.
+- **The efficiency rule is best effort, and a pass short of work says so.** When the work does
+  not exist, a thinner pass is correct and it carries one line naming what stopped it filling.
+  What is refused is a thin pass nobody noticed. **A pass may open with a review of earlier
+  work and continue into related development**, which is how two half-empty passes become one.
+  Such a pass never reviews its own work, because a reader who is also the author is not a
+  second reader.
+- **There is no verification adder.** Every figure in the reference class already contains the
+  checks the sampled passes ran, so adding a stack verification or a browser walk on top
+  counts those minutes twice. Only a container rebuild and a full stack reset stay additive,
+  and a rebuild is paid once per pass rather than once per task.
 - **A plan carries the text of every item it schedules.** An item taken from a standing list,
   a defect list or an archived folder is copied into the plan. The copy carries its date and a
   link back to the source. Those sources are rewritten on their own
   schedule and can be deleted, so a link on its own is a promise the plan cannot keep. **Copy
   across a folder boundary, and link inside one**, because two copies of one sentence in one
   folder drift apart with nobody noticing. `planning-work` carries the method.
+- **The tag letters are fixed, and a plan does not invent its own.** `W1` a work pass, `W1.1`
+  a task inside it, `G1` a scope item, `C1` a cut, `Q1` a question, `D1` a decision. **`P`,
+  `S`, `H` and `E` are forbidden**, because `P0` to `P7` are the pipeline stages, `S3` is the
+  object store, `H1` to `H6` are heading levels and `E5` is the embedding model. The full list
+  of look-alike tokens this tree owns is the `NOT_TAGS` set in `.agents/check-doc-ids.py`, and
+  a tag that appears there is silently excused by the checker. A plan that needs a class this
+  list does not have adds a row to the table in `planning-work` in the same patch.
 - **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
-  letter-and-number tags for a scope item, a decision, a question or a cut are free and
-  useful, because they let a scope table and a result table line up. Outside that folder
+  letter-and-number tags let a scope table and a result table line up. Outside that folder
   they are unreadable, so refer to another pass's item by naming it and linking to it. A
   bare tag in `docs/`, in `.agents/`, or in a `Readme.md` beside code is always wrong.
 - **A document that uses tags opens with a `## Key` table** that gives every tag it

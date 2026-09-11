@@ -13,7 +13,11 @@ Narrow by construction:
 
   * it fires on `.md`, `.rs`, `.py`, `.sh`, `.sql`, `.toml` and `.yaml` only;
   * it exempts the documents that define the rule, which have to quote every word they ban;
-  * it exempts the two frozen migration directories, the vendored trees and `plans/`;
+  * it exempts the vendored trees and `plans/`;
+  * **it does not exempt the migration directories**, because it fires on an edit being made
+    now, and a new migration is written in the register like anything else. The two reporting
+    checkers do exempt them, because they scan files that are already applied and cannot be
+    corrected without breaking every deployment that ran them;
   * it never fires on anything it cannot parse.
 
 `.agents/check-prose-style.py` reports the same phrases over the whole tree, plus the
@@ -36,6 +40,8 @@ EXTENSIONS = (".md", ".rs", ".py", ".sh", ".sql", ".toml", ".yaml", ".yml")
 # directories are not here: a new migration is written in the register like anything else.
 EXEMPT = (
     "AGENTS.md",
+    # A byte-identical mirror of AGENTS.md, written for another harness.
+    "GEMINI.md",
     ".agents/check-prose-style.py",
     ".agents/hooks/deny-claudisms.py",
     ".agents/skills/writing-project-docs/SKILL.md",

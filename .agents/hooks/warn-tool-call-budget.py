@@ -16,10 +16,17 @@ the whole environment. `agent_id` is what tells them apart. The organizer theref
 warning and runs until its context ends it. A count of the organizer's calls does not measure
 the work it has left, because it reads diffs and launches passes.
 
-Every sub-agent gets the same budget, `DEFAULT_BUDGET`, or `HOOVER4_TOOL_BUDGET` when the
-environment sets one. The count is kept per agent id in a state file, because a hook process
-does not survive between calls. A new sub-agent starts at zero on its own, so nothing has to
-run before a launch to reset it.
+A sub-agent's budget comes from its `agent_type`: the smaller read-only figure for an agent
+type that only reads, and the writing figure for every other. An agent type this file does
+not know gets the writing budget, which is the safe direction, because a budget that is too
+high costs a handover that was not planned and one that is too low stops a pass that had work
+left. `HOOVER4_TOOL_BUDGET` overrides both for a whole session.
+
+The count is kept per agent id in a state file, because a hook process does not survive
+between calls. **A new sub-agent starts at zero on its own**, because its counter file does
+not exist yet. Nothing has to be armed before a launch and nothing has to be put back after
+one. A pass resumed under the same agent id continues its own count, which is correct, because
+a resume is the same context carrying on.
 
 Reads the hook payload on stdin. Writes a JSON reason on stdout only when a threshold is
 crossed, and stays silent otherwise, so it costs nothing on the other calls. It never
@@ -31,8 +38,16 @@ import os
 import pathlib
 import sys
 
-#: 250,000 tokens at the measured p90 growth rate of 2,603 tokens per tool call.
-DEFAULT_BUDGET = 96
+#: The 300,000-token cap on a pass that writes, at the measured median growth of 1,489 tokens
+#: a tool call. See `.agents/skills/planning-work/reference/estimating.md`, section 2c.
+DEFAULT_BUDGET = 202
+
+#: The 150,000-token cap on a pass that only reads, at the same measured rate.
+REVIEW_BUDGET = 101
+
+#: The agent types that only read. Everything else writes source and gets the larger budget.
+#: An agent type that writes anything takes the writing budget, whatever else it does.
+READ_ONLY_AGENTS = {"reviewer", "Explore", "Plan"}
 
 #: Warn once at each of these fractions of the budget.
 THRESHOLDS = (0.80, 0.95)
@@ -42,15 +57,18 @@ STATE_DIR = pathlib.Path(
 ) / "hoover4-tool-budget"
 
 
-def budget():
-    """Return the budget every sub-agent gets.
+def budget(payload):
+    """Return the budget for the sub-agent this call belongs to.
 
-    One number covers every pass, because the payload does not carry the cap a work package
-    chose. `HOOVER4_TOOL_BUDGET` changes it for a whole session when a run needs another.
+    Decided by its agent type, because nothing arms it beforehand and the type is the only
+    thing the payload says about what the pass is for. `HOOVER4_TOOL_BUDGET` overrides both
+    figures for a whole session when a run needs another.
     """
     raw = os.environ.get("HOOVER4_TOOL_BUDGET")
     if raw and raw.strip().isdigit() and int(raw.strip()) > 0:
         return int(raw.strip())
+    if payload.get("agent_type") in READ_ONLY_AGENTS:
+        return REVIEW_BUDGET
     return DEFAULT_BUDGET
 
 
@@ -105,7 +123,7 @@ def main():
     agent_id = payload.get("agent_id")
     if not agent_id:
         return 0
-    total = budget()
+    total = budget(payload)
     count = bump(agent_id)
     if not count:
         return 0

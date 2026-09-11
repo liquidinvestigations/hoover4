@@ -33,11 +33,24 @@ Written against commit `<short sha>`. Tool-call budget: `<n>`.
 <the standing prohibitions, restated because they are easiest to violate under pressure>
 <what would be unrecoverable, such as anything published, pushed, or deleted>
 
+### Technical implementation
+<for a pass that changes code, follow technical-pass-design.md beside this template>
+<name the files and symbols this pass owns, and the shared ones with their owner>
+<give interfaces with types, units, valid values and lifecycle>
+<give algorithm steps, invariants, tie rules and stopping conditions>
+<define state transitions, persistence, retry and recovery>
+<give schemas, identifiers, ordering and migration behaviour>
+<name every caller, container, registry and documentation row that moves with the change>
+<link each primary source to the decision it supports>
+<say which commands exist today and which this pass must create>
+<give acceptance cases whose expected result does not come from the implementation>
+
 ## 5. Before you finish
 <each check as a runnable command, with what its output must show>
 
 ## 6. The report
-<the exact section list the report must carry>
+<the exact section list the report must carry, and a new report path beside this package>
+<order one Write for a new report beside its prompt, then no more than two later edits>
 <end it with "Open questions for the user": each one written out in full with a recommended
  answer, never a count and never a pointer elsewhere, and restated in the handover message>
 ```
@@ -71,6 +84,12 @@ git diff --stat <sha>..HEAD -- <the paths the package names>
 Run that before launching. An empty output means the package is still true. Anything else goes
 into "What is true now" before the pass starts, and not into a correction afterwards.
 
-**Name the tool-call budget.** The context cap cannot be checked by the pass, and a tool-call
-count can. Say what to do on reaching it, which is to stop, finish the current step, and hand
-over the rule it derived.
+**Name the tool-call budget**, being 202 for a pass that writes and 101 for one that only
+reads. The context cap cannot be checked by the pass, and a tool-call count can. Say what to
+do on reaching it, which is to stop, finish the current step, and hand over the rule it
+derived. `.agents/hooks/warn-tool-call-budget.py` sets the same two numbers from the agent
+type on the launch call, so the package and the counter agree.
+
+**Name the pass's tasks in order, with the check on each line.** A pass carries about three. A
+list with no check on a line is the brief shape that has been measured to deliver one task of
+five.

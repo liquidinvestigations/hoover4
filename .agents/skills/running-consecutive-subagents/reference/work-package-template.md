@@ -71,8 +71,12 @@ State the timebox as a budget of effort and attention, and never as a clock. A p
 measure its own elapsed time and always overestimates it.
 
 **State the tool-call budget as a number.** The context cap is a token figure and a pass cannot
-see its own context, so the package carries the cap converted at the p90 growth rate: 96 calls
-for an implementation pass, 58 for a read-only one. Tell the pass what to do when it reaches
+see its own context, so the package carries the cap converted at the measured median growth of
+1,489 tokens a call: 202 calls for a pass that writes, 101 for one that only reads. A plan packs
+a pass to 183 and 83, being the same caps with the first-turn prompt counted, and the difference
+is the slack the pass spends when one task runs long. `warn-tool-call-budget.py` sets the same
+two numbers from the agent type on the launch call, so the package and the counter agree.
+Tell the pass what to do when it reaches
 the budget, which is to stop taking new work, finish the step it is on, and write a handover
 naming what is done, what is not, and **the rule it derived**. A handover that carries the rule
 is what stops the next context deriving it again, and that re-derivation is the whole of the
@@ -82,6 +86,10 @@ Say what the pass owns, and instruct it to stop and report what it did not reach
 narrowing the work to fit a feeling about time. A pass that stops with items unreached has told
 you the scope was wrong. A pass that runs long while still making progress has not.
 
-Where the item is one rule applied across many files, say so, and tell the pass to build the
+**List the pass's tasks in order, with the command that settles each one on its line.** A pass
+carries about three. A list with no check on a line is the brief shape that has been measured to
+deliver one task of five.
+
+Where a task is one rule applied across many files, say so, and tell the pass to build the
 instrument first. Deriving the rule once and applying it with a script is what makes a large
 homogeneous item fit inside one pass at all.

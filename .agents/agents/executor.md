@@ -43,7 +43,7 @@ A related screenshot does not prove the requested interaction.
 
 ## Your budget
 
-**You have 96 tool calls.** A counter warns you at 80% of that. When the warning arrives, stop
+**You have 202 tool calls.** A counter warns you at 80% of that. When the warning arrives, stop
 taking new work, finish the step you are on, and write a handover that says what is done, what is
 not, and what the next context needs to know. A handover that carries the rule you derived is
 what makes the restart cheap.

@@ -10,7 +10,8 @@ its type. Retrying sends the same bytes and gets the same answer, so each of the
 raises a non-retryable `ApplicationError` instead of the plain `RuntimeError` that
 Temporal would retry to `MaximumAttemptsReached`.
 
-Measured on the demo box, 2026-09-05: `plans/06-qa-bugfixes/4-plan/pass-04-report.md`.
+The four cases below were measured against real documents on the demo deployment, where
+each reader produced the message this test asserts on.
 """
 
 import subprocess

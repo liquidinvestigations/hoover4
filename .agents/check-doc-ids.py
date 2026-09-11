@@ -44,6 +44,24 @@ EXCLUDE = (
     # survives that pass being archived. They are transcribed, not authored, and are
     # left exactly as written.
     "/inherited/",
+    # Generated capture reports. The harness writes them, and each one embeds a model's
+    # own answer verbatim, including the `[D1]` citation markers it chose. Text quoted
+    # from another system keeps its exact wording, so these can never satisfy the tag
+    # rules and editing them would falsify the record of what the model said.
+    "/docs/quality-assurance/capture-reports/",
+    "/website/test_reports/",
+    # Clones of the Liquid upstream repositories, worked on locally. They carry their own
+    # git history and their own remotes, so their prose is not ours to hold to this rule.
+    "/external/",
+    # A service's own scratch folder. `main_services/regex_entity_scanner/.gitignore`
+    # keeps it out of git, exactly as the root `plans/` is kept out, so nothing tracked
+    # can cite it and its tags cannot become a dead link for anyone.
+    "/main_services/regex_entity_scanner/plans/",
+    # Applied migrations. The runner records an md5 of the whole file, so correcting one
+    # word in one makes it refuse to start on every deployment that already ran it.
+    # Reporting on them invites a fix that is a breaking change, and the fix belongs in a
+    # new numbered file or beside the code that reads the table.
+    "/db_global_migrations/", "/db_collection_migrations/",
 )
 
 # Source files whose comments are checked too. A tag is no more resolvable in a Rust
@@ -90,6 +108,10 @@ NOT_TAGS_SOURCE = {
     "W09", "W35", "W53",     # ISO week dates
     "T1", "K0", "K1", "A0", "B0", "S0", "C0", "C11", "V8", "O2", "O3",
     "ES6", "VP9", "X11", "S7b", "C1.5", "P08",
+    # `[D1]` is the research agent's own citation marker for the first cited document,
+    # and it appears in its tests as data. It is excused on the source side only, because
+    # `D1` is the decision tag inside a plan folder and must stay checked there.
+    "D1", "D2", "D3",
 }
 
 KEY_HEADING_RE = re.compile(r"^#{1,4}\s+Key\b", re.I)

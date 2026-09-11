@@ -55,6 +55,20 @@ EXCLUDE = (
     "/website/backend/pdf-viewer/_server/dist/", "/website/frontend/assets/embed-pdf/",
     "/website/frontend/assets/", "/components/pdf-viewer/",
     "/plans/",
+    # Generated capture reports. The harness writes them, and each one embeds a model's
+    # own answer verbatim. Text quoted from another system keeps its exact wording, so
+    # these can never satisfy the register rules, and rewriting one would falsify the
+    # record of what the model actually said.
+    "/docs/quality-assurance/capture-reports/",
+    "/website/test_reports/",
+    # Clones of the Liquid upstream repositories, worked on locally. They carry their own
+    # git history and their own remotes, so their prose is not ours to hold to this rule.
+    "/external/",
+    # Applied migrations. The runner records an md5 of the whole file, so correcting one
+    # word in one makes it refuse to start on every deployment that already ran it.
+    # Reporting on them invites a fix that is a breaking change, and the fix belongs in a
+    # new numbered file or beside the code that reads the table.
+    "/db_global_migrations/", "/db_collection_migrations/",
 )
 
 EXCLUDE_SUFFIX = (".map", ".min.js", ".lock")
@@ -62,6 +76,9 @@ EXCLUDE_SUFFIX = (".map", ".min.js", ".lock")
 # Paths that define the rule and therefore quote every word it bans.
 RULE_DOCS = (
     "AGENTS.md",
+    # A byte-identical mirror of AGENTS.md, written for another harness. It quotes every
+    # banned phrase for the same reason the original does.
+    "GEMINI.md",
     ".agents/check-prose-style.py",
     ".agents/hooks/deny-claudisms.py",
     ".agents/skills/writing-project-docs/SKILL.md",
