@@ -96,12 +96,17 @@ fn FailuresContent() -> Element {
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().err().map(user_facing_message));
-    let instances: Vec<FailureInstanceRow> = instances_res
-        .read()
+    let instances_ready = instances_res.read();
+    let instances_error = instances_ready
+        .as_ref()
+        .and_then(|r| r.as_ref().err().map(user_facing_message));
+    let instances_loading = expanded().is_some() && instances_ready.is_none();
+    let instances: Vec<FailureInstanceRow> = instances_ready
         .as_ref()
         .and_then(|r| r.as_ref().ok())
         .cloned()
         .unwrap_or_default();
+    drop(instances_ready);
     let expanded_sig = expanded();
 
     let Some(data) = data else {
@@ -219,6 +224,8 @@ fn FailuresContent() -> Element {
                                     group: group.clone(),
                                     expanded: expanded_sig.as_deref() == Some(group.signature.as_str()),
                                     instances: if expanded_sig.as_deref() == Some(group.signature.as_str()) { instances.clone() } else { Vec::new() },
+                                    instances_loading: expanded_sig.as_deref() == Some(group.signature.as_str()) && instances_loading,
+                                    instances_error: if expanded_sig.as_deref() == Some(group.signature.as_str()) { instances_error.clone() } else { None },
                                     on_toggle: {
                                         let sig = group.signature.clone();
                                         move |_| {
@@ -340,6 +347,8 @@ fn GroupRows(
     group: FailureGroupRow,
     expanded: bool,
     instances: Vec<FailureInstanceRow>,
+    instances_loading: bool,
+    instances_error: Option<String>,
     on_toggle: EventHandler<()>,
 ) -> Element {
     let expand_label = if expanded { "Hide" } else { "Show" };
@@ -374,8 +383,14 @@ fn GroupRows(
         if expanded {
             tr {
                 td { style: TD, colspan: "7",
-                    if instances.is_empty() {
+                    if let Some(e) = instances_error {
+                        p { id: "x-failures-instances-error-{index}", style: HELP_TEXT, "{e}" }
+                    } else if instances_loading {
                         p { style: HELP_TEXT, "Loading instances…" }
+                    } else if instances.is_empty() {
+                        p { id: "x-failures-instances-empty-{index}", style: HELP_TEXT,
+                            "No instances for this signature."
+                        }
                     } else {
                         ul { id: "x-failures-instances-{index}", style: "margin: 0; padding-left: 18px;",
                             for inst in instances.iter() {
